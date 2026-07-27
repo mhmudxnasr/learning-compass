@@ -1022,9 +1022,8 @@
     container.scrollTop = container.scrollHeight;
   }
 
-  // Webhook config — tunnel URL + HMAC secret
-  var _agentUrl = 'https://surgical-public-bios-requesting.trycloudflare.com';
-  var _agentSecret = '3b0a8c2fe1ec8d9c972c1c59716874e751998a7961d55693eecac00e87d7c423';
+  // Agent config — tunnel URL (updated per session)
+  var _agentUrl = '';
 
   function _chatSendMessage(text) {
     if (!text || !text.trim()) return;
