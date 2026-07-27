@@ -691,6 +691,81 @@ const htmlPage = String.raw`<!DOCTYPE html>
     .heatmap-stat:hover { border-color: var(--border-strong); transform: translateY(-1px); }
     .heatmap-stat .hs-value { font-size: 22px; font-weight: 600; }
     .heatmap-stat .hs-label { font-size: 11px; color: var(--ink-tertiary); margin-top: 2px; }
+
+    /* ====== BRAIN TABS (W1) ====== */
+    .brain-card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 20px; margin-bottom: 16px; }
+    .brain-card-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .brain-badge { font-size: 11px; background: var(--bg-base); color: var(--ink-secondary); padding: 2px 8px; border-radius: 12px; font-weight: 500; }
+    .brain-sub { font-size: 11px; color: var(--ink-tertiary); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin: 16px 0 8px; }
+    .brain-text { font-size: 13px; line-height: 1.6; color: var(--ink-primary); }
+    .brain-meta { font-size: 12px; color: var(--ink-secondary); line-height: 1.5; font-family: 'JetBrains Mono', monospace; }
+
+    .pri-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+    .pri-list li { display: grid; grid-template-columns: 32px 80px 1fr; gap: 12px; align-items: center; padding: 8px 12px; background: var(--bg-base); border-radius: var(--radius-sm); font-size: 13px; }
+    .pri-rank { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-tertiary); }
+    .pri-id { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--accent); font-size: 12px; }
+    .pri-label { color: var(--ink-primary); }
+
+    .pattern-row { padding: 12px; background: var(--bg-base); border-radius: var(--radius-sm); margin-bottom: 8px; border-left: 3px solid var(--accent); }
+    .pattern-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .pat-strength { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .pat-strength.s-locked { background: oklch(0.65 0.18 25); color: white; }
+    .pat-strength.s-confirmed { background: var(--accent); color: var(--bg-base); }
+    .pat-strength.s-weak { background: var(--bg-surface); color: var(--ink-secondary); }
+    .pat-id { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-secondary); }
+    .pat-desc { font-size: 13px; line-height: 1.5; color: var(--ink-primary); margin-bottom: 6px; }
+    .pat-date { font-size: 11px; color: var(--ink-tertiary); font-family: 'JetBrains Mono', monospace; }
+    .brain-evidence { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+    .ev-chip { font-size: 11px; background: var(--bg-surface); border: 1px solid var(--border-subtle); padding: 3px 8px; border-radius: 4px; color: var(--ink-secondary); }
+
+    .mastered-list { display: flex; flex-direction: column; gap: 4px; }
+    .mastered-item { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; background: var(--bg-base); border-radius: var(--radius-sm); font-size: 13px; }
+    .mi-id { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--state-consumed); font-weight: 600; }
+    .mi-label { color: var(--ink-primary); }
+    .mi-author { color: var(--ink-secondary); font-size: 12px; }
+    .mi-rating { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--state-active); }
+    .mi-notes { width: 100%; font-size: 11px; color: var(--ink-tertiary); margin-top: 4px; font-style: italic; }
+
+    .blacklist-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; background: var(--bg-base); border-radius: var(--radius-sm); margin-bottom: 4px; border-left: 3px solid var(--state-rejected); }
+    .bl-sev { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; background: var(--state-rejected); color: white; padding: 2px 6px; border-radius: 4px; }
+    .bl-sev.sev-1 { background: oklch(0.55 0.20 25); }
+    .bl-sev.sev-2 { background: oklch(0.60 0.18 25); }
+    .bl-sev.sev-3 { background: oklch(0.65 0.16 25); }
+    .bl-name { font-weight: 600; color: var(--ink-primary); font-size: 13px; }
+    .bl-work { color: var(--ink-secondary); font-size: 12px; font-style: italic; }
+    .bl-reason { width: 100%; font-size: 11px; color: var(--ink-tertiary); margin-top: 4px; }
+
+    .log-list { display: flex; flex-direction: column; gap: 4px; }
+    .log-row { display: grid; grid-template-columns: 110px 80px 1fr; gap: 8px; padding: 6px 10px; background: var(--bg-base); border-radius: var(--radius-sm); font-size: 12px; align-items: start; }
+    .log-ts { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-tertiary); }
+    .log-kind { font-size: 10px; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: var(--bg-surface); color: var(--ink-secondary); }
+    .log-kind.k-feedback { background: var(--state-active); color: var(--bg-base); }
+    .log-kind.k-pattern { background: var(--accent); color: var(--bg-base); }
+    .log-summary { color: var(--ink-primary); font-size: 12px; }
+
+    .tree-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .tree-cat { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 16px; }
+    .tree-cat-title { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle); letter-spacing: -0.01em; }
+    .tree-branch { padding: 8px 10px; background: var(--bg-base); border-radius: var(--radius-sm); margin-bottom: 6px; }
+    .tb-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .tb-id { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); font-weight: 600; }
+    .tb-status { font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.04em; }
+    .tb-status.s-locked { background: oklch(0.65 0.18 25); color: white; }
+    .tb-status.s-love { background: oklch(0.72 0.18 80); color: var(--bg-base); }
+    .tb-status.s-fresh { background: oklch(0.62 0.16 170); color: white; }
+    .tb-status.s-standard { background: var(--bg-surface); color: var(--ink-secondary); }
+    .tb-label { font-size: 13px; color: var(--ink-primary); }
+
+    .stale-row { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: var(--bg-base); border-radius: var(--radius-sm); margin-bottom: 4px; border-left: 3px solid var(--state-rejected); }
+    .stale-title { font-size: 13px; color: var(--ink-primary); font-weight: 500; }
+    .stale-meta { font-size: 11px; color: var(--ink-tertiary); }
+
+    .bh-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+    .bh-cell { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; background: var(--bg-base); border-radius: var(--radius-sm); border-left: 3px solid var(--accent); }
+    .bh-branch { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); font-weight: 600; }
+    .bh-count { font-size: 18px; font-weight: 600; color: var(--ink-primary); }
+    .bh-avg { font-size: 11px; color: var(--ink-secondary); }
+    .bh-last { font-size: 10px; color: var(--ink-tertiary); font-family: 'JetBrains Mono', monospace; }
   </style>
 </head>
 <body>
@@ -723,6 +798,8 @@ const htmlPage = String.raw`<!DOCTYPE html>
         <button class="tab" onclick="setTab('all', this)">All <span class="tab-count" id="count-all">0</span></button>
         <button class="tab" onclick="setTab('html_files', this)">HTML Vault <span class="tab-count" id="count-html">0</span></button>
         <button class="tab" style="color: var(--state-consumed);" onclick="setTab('learning', this)">Learning</button>
+        <button class="tab" style="color: var(--state-active);" onclick="setTab('profile', this)">Profile</button>
+        <button class="tab" style="color: var(--accent);" onclick="setTab('tree', this)">Tree</button>
         <button class="tab" style="color: var(--accent);" onclick="setTab('system', this)">System Hub</button>
       </div>
       <div class="search-box">
@@ -923,6 +1000,8 @@ let data=[],htmlFilesData=[],learningData=[],currentTab="active",statsData=null,
 async function fetchRecs(){try{const r=await fetch('/recommendations/list');if(r.ok){const j=await r.json();data=j.recommendations||[];listTotal=j.total||data.length;}}catch(e){}try{const r=await fetch('/html/list');if(r.ok){const j=await r.json();htmlFilesData=j.files||[];}}catch(e){}fetchLearningData();render();}
 async function fetchLearningData(){try{const r=await fetch('/learning/heatmap');if(r.ok){const j=await r.json();learningData=j.days||[];}else learningData=[];}catch(e){learningData=[];}render();}
 async function fetchStats(){try{const r=await fetch('/stats');if(r.ok)statsData=await r.json();}catch(e){}render();}
+let brainProfile=null,brainTree=null,brainHealth=null;
+async function fetchBrain(){try{const[r1,r2,r3]=await Promise.all([fetch('/brain/profile'),fetch('/brain/tree'),fetch('/brain/health')]);if(r1.ok)brainProfile=(await r1.json());if(r2.ok)brainTree=(await r2.json());if(r3.ok)brainHealth=(await r3.json());}catch(e){}}
 async function uploadHtmlFile(input){const file=input.files[0];if(!file)return;const reader=new FileReader();reader.onload=async(e)=>{try{const res=await fetch('/html/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,content:e.target.result})});if(res.ok){showToast('Uploaded: '+file.name);fetchRecs();}else{showToast('Upload failed');}}catch{showToast('Upload error');}input.value='';};reader.readAsText(file);}
 function autoDetectHtmlName(textarea){const nameInput=document.getElementById('paste-html-name');if(nameInput.value.trim())return;const html=textarea.value;const start=html.toLowerCase().indexOf('<title');if(start===-1)return;const open=html.indexOf('>',start);if(open===-1)return;const closeTag='<'+'/title>';const end=html.toLowerCase().indexOf(closeTag,open);if(end===-1)return;const title=html.slice(open+1,end).trim();if(!title)return;nameInput.value=title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/,'')+'.html';}
 async function submitPasteHtml(){let name=document.getElementById('paste-html-name').value.trim();const code=document.getElementById('paste-html-code').value;if(!name)return showToast('Enter a file name');if(!code.trim())return showToast('Paste some HTML first');if(!name.endsWith('.html')&&!name.endsWith('.htm'))name+='.html';try{const res=await fetch('/html/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:name,content:code})});if(res.ok){showToast('Saved: '+name);closeModal('modal-paste-html');fetchRecs();}else{showToast('Failed to save');}}catch{showToast('Error saving HTML');}}
@@ -1589,6 +1668,8 @@ function render(){
 
   if(currentTab==='system'){renderSystemTab();return;}
   if(currentTab==='learning'){renderLearningTab();return;}
+  if(currentTab==='profile'){renderProfileTab();return;}
+  if(currentTab==='tree'){renderTreeTab();return;}
 
   if(currentTab==='html_files'){
     body.style.display='block';rowHeader.style.display='none';body.innerHTML='';
@@ -1810,7 +1891,122 @@ function prevPage(){if(currentPage>1){currentPage--;render();}}
 function nextPage(){const max=Math.ceil(totalItems/pageSize)||1;if(currentPage<max){currentPage++;render();}}
 
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
-fetchRecs();</script>
+
+// ====== BRAIN TABS (W1) ======
+function renderProfileTab(){
+  const body=document.getElementById('list-body');const rowHeader=document.getElementById('row-header');
+  body.style.display='block';rowHeader.style.display='none';body.innerHTML='';
+  if(!brainProfile){fetchBrain();const e=document.createElement('div');e.className='empty';e.textContent='Loading brain...';body.appendChild(e);return;}
+  const P=brainProfile.profile;const pri=brainProfile.priorities||[];const mas=brainProfile.mastered||[];const blk=brainProfile.blacklist||[];const pat=brainProfile.patterns||[];const log=brainProfile.recent||[];
+
+  // Identity card
+  const c=document.createElement('div');c.className='brain-card';
+  let h='<div class="brain-card-title">Identity</div><div class="brain-meta">'+(P?.identity_json||'—')+'</div>';
+  if(P?.core_filter){h+='<div class="brain-sub">Core filter</div><div class="brain-text">'+escHtml(P.core_filter)+'</div>';}
+  c.innerHTML=h;body.appendChild(c);
+
+  // Mega priority
+  const cP=document.createElement('div');cP.className='brain-card';
+  let ph='<div class="brain-card-title">Mega-Deep Priority</div><ol class="pri-list">';
+  pri.forEach(p=>{ph+='<li><span class="pri-rank">#'+p.rank+'</span><span class="pri-id">'+escHtml(p.branch_id||'')+'</span><span class="pri-label">'+escHtml(p.label||'')+'</span></li>';});
+  ph+='</ol>';
+  cP.innerHTML=ph;body.appendChild(cP);
+
+  // Patterns
+  const cPat=document.createElement('div');cPat.className='brain-card';
+  let path='<div class="brain-card-title">Patterns Confirmed <span class="brain-badge">'+pat.length+'</span></div>';
+  pat.forEach(p=>{
+    let ev='';try{const arr=JSON.parse(p.evidence_json||'[]');if(arr.length)ev='<div class="brain-evidence">'+arr.map(e=>'<span class="ev-chip">'+escHtml(e)+'</span>').join('')+'</div>';}catch{}
+    path+='<div class="pattern-row"><div class="pattern-head"><span class="pat-strength s-'+escHtml(p.strength||'confirmed')+'">'+escHtml(p.strength||'confirmed')+'</span><span class="pat-id">'+escHtml(p.id)+'</span></div><div class="pat-desc">'+escHtml(p.description)+'</div>'+ev+'<div class="pat-date">confirmed '+escHtml(p.confirmed_date||'')+'</div></div>';
+  });
+  cPat.innerHTML=path;body.appendChild(cPat);
+
+  // Mastered
+  const cM=document.createElement('div');cM.className='brain-card';
+  const topics=mas.filter(m=>m.kind==='topic');const books=mas.filter(m=>m.kind==='book');
+  let mh='<div class="brain-card-title">Mastered <span class="brain-badge">'+mas.length+'</span></div>';
+  if(topics.length){mh+='<div class="brain-sub">Topics ('+topics.length+')</div><div class="mastered-list">';topics.forEach(t=>{mh+='<div class="mastered-item"><span class="mi-id">'+escHtml(t.id)+'</span><span class="mi-label">'+escHtml(t.label)+'</span>'+(t.notes?'<div class="mi-notes">'+escHtml(t.notes)+'</div>':'')+'</div>';});mh+='</div>';}
+  if(books.length){mh+='<div class="brain-sub">Books ('+books.length+')</div><div class="mastered-list">';books.forEach(b=>{mh+='<div class="mastered-item"><span class="mi-label">'+escHtml(b.label)+'</span><span class="mi-author">— '+escHtml(b.author||'')+'</span>'+(b.rating?'<span class="mi-rating">'+escHtml(b.rating)+'</span>':'')+'</div>';});mh+='</div>';}
+  cM.innerHTML=mh;body.appendChild(cM);
+
+  // Blacklist
+  const cB=document.createElement('div');cB.className='brain-card';
+  let bh='<div class="brain-card-title">Blacklist <span class="brain-badge">'+blk.length+'</span></div>';
+  blk.forEach(b=>{bh+='<div class="blacklist-row"><span class="bl-sev sev-'+b.severity+'">'+b.severity+'</span><span class="bl-name">'+escHtml(b.name)+'</span>'+(b.work?'<span class="bl-work">— '+escHtml(b.work)+'</span>':'')+(b.reason?'<div class="bl-reason">'+escHtml(b.reason)+'</div>':'')+'</div>';});
+  cB.innerHTML=bh;body.appendChild(cB);
+
+  // Recent log
+  if(log.length){
+    const cL=document.createElement('div');cL.className='brain-card';
+    let lh='<div class="brain-card-title">Recent Activity <span class="brain-badge">'+log.length+'</span></div><div class="log-list">';
+    log.forEach(l=>{lh+='<div class="log-row"><span class="log-ts">'+escHtml((l.ts||'').slice(0,16))+'</span><span class="log-kind k-'+escHtml(l.kind||'system')+'">'+escHtml(l.kind||'system')+'</span><span class="log-summary">'+escHtml(l.summary)+'</span></div>';});
+    lh+='</div>';
+    cL.innerHTML=lh;body.appendChild(cL);
+  }
+
+  // Quality rules
+  if(P){
+    const cQ=document.createElement('div');cQ.className='brain-card';
+    let qh='<div class="brain-card-title">Quality Rules & Operational Style</div>';
+    if(P.reaction_style_json)qh+='<div class="brain-sub">Reaction style</div><div class="brain-text">'+escHtml(P.reaction_style_json)+'</div>';
+    if(P.quality_rules_json)qh+='<div class="brain-sub">Quality rules</div><div class="brain-text">'+escHtml(P.quality_rules_json)+'</div>';
+    if(P.operational_style_json)qh+='<div class="brain-sub">Operational style</div><div class="brain-text">'+escHtml(P.operational_style_json)+'</div>';
+    if(P.patterns_summary_json)qh+='<div class="brain-sub">Patterns summary</div><div class="brain-text">'+escHtml(P.patterns_summary_json)+'</div>';
+    if(P.recent_signal)qh+='<div class="brain-sub">Recent signal</div><div class="brain-text">'+escHtml(P.recent_signal)+'</div>';
+    cQ.innerHTML=qh;body.appendChild(cQ);
+  }
+}
+
+function renderTreeTab(){
+  const body=document.getElementById('list-body');const rowHeader=document.getElementById('row-header');
+  body.style.display='block';rowHeader.style.display='none';body.innerHTML='';
+  if(!brainTree){fetchBrain();const e=document.createElement('div');e.className='empty';e.textContent='Loading tree...';body.appendChild(e);return;}
+  const nodes=brainTree.nodes||[];
+  // group by super_category
+  const groups={};
+  nodes.forEach(n=>{const k=n.super_category||'root';if(!groups[k])groups[k]=[];groups[k].push(n);});
+  const order=['cat-faith','cat-mind','cat-body','cat-money','cat-life','cat-tools'];
+  const wrap=document.createElement('div');wrap.className='tree-grid';
+  order.forEach(catId=>{
+    if(!groups[catId]||!groups[catId].length)return;
+    const cat=groups[catId].find(n=>n.id===catId);
+    const branches=groups[catId].filter(n=>n.type==='branch'&&n.id!==catId);
+    if(!branches.length)return;
+    const card=document.createElement('div');card.className='tree-cat';
+    let h='<div class="tree-cat-title">'+escHtml(cat?cat.label:catId)+'</div>';
+    branches.forEach(b=>{
+      h+='<div class="tree-branch">';
+      h+='<div class="tb-head"><span class="tb-id">'+escHtml(b.id)+'</span>'+(b.status?'<span class="tb-status s-'+escHtml(b.status)+'">'+escHtml(b.status)+'</span>':'')+'<span class="tb-label">'+escHtml(b.label||b.id)+'</span></div>';
+      h+='</div>';
+    });
+    card.innerHTML=h;wrap.appendChild(card);
+  });
+  body.appendChild(wrap);
+
+  // Stale items section
+  if(brainHealth&&brainHealth.stale_count>0){
+    const sec=document.createElement('div');sec.className='brain-card';
+    let sh='<div class="brain-card-title" style="color:var(--state-rejected)">Stale Active Items <span class="brain-badge">'+brainHealth.stale_count+'</span></div><p style="color:var(--ink-secondary);font-size:13px;margin-bottom:12px">Active for 30+ days without review.</p>';
+    brainHealth.stale.forEach(s=>{sh+='<div class="stale-row"><span class="stale-title">'+escHtml(s.video_title)+'</span><span class="stale-meta">'+escHtml(s.creator||'')+' · added '+escHtml(s.verified||'')+'</span></div>';});
+    sec.innerHTML=sh;body.appendChild(sec);
+  }
+
+  // Branch health
+  if(brainHealth&&brainHealth.byBranch&&brainHealth.byBranch.length){
+    const bh=document.createElement('div');bh.className='brain-card';
+    let bhh='<div class="brain-card-title">Branch Health <span class="brain-badge">'+brainHealth.byBranch.length+'</span></div>';
+    bhh+='<div class="bh-grid">';
+    brainHealth.byBranch.forEach(b=>{
+      const avg=b.avg_rating?Number(b.avg_rating).toFixed(1):'—';
+      bhh+='<div class="bh-cell"><span class="bh-branch">'+escHtml(b.branch||'root')+'</span><span class="bh-count">'+b.consumed_count+'</span><span class="bh-avg">avg '+avg+'</span><span class="bh-last">'+escHtml((b.last_consumed||'').slice(0,10))+'</span></div>';
+    });
+    bhh+='</div>';
+    bh.innerHTML=bhh;body.appendChild(bh);
+  }
+}
+
+fetchRecs();
+fetchBrain();</script>
 </body>
 </html>`
 
@@ -2183,6 +2379,228 @@ app.post('/html/delete', async (c) => {
     return c.json({ ok: true })
   } catch (err) {
     return c.json(safeError('Delete failed')(err), 500)
+  }
+})
+
+// ====== TASTE BRAIN API (v2) ======
+// Profile · Tree · Patterns · Blacklist · Mastered · Priorities · Update log · Resurfacing · Contradictions
+
+// ---- /brain/profile — full profile snapshot
+app.get('/brain/profile', async (c) => {
+  const { DB } = c.env
+  c.header('Cache-Control', 'no-store')
+  try {
+    const profile = await DB.prepare('SELECT * FROM profile WHERE id = 1').first()
+    const priorities = await DB.prepare('SELECT * FROM priorities ORDER BY rank ASC').all()
+    const mastered = await DB.prepare('SELECT * FROM mastered ORDER BY mastered_at DESC').all()
+    const blacklist = await DB.prepare('SELECT * FROM blacklist ORDER BY severity ASC, added_at DESC').all()
+    const patterns = await DB.prepare("SELECT * FROM patterns ORDER BY CASE strength WHEN 'locked' THEN 0 WHEN 'confirmed' THEN 1 ELSE 2 END, confirmed_date DESC").all()
+    const recent = await DB.prepare("SELECT * FROM update_log ORDER BY id DESC LIMIT 10").all()
+    return c.json({
+      profile: profile || null,
+      priorities: priorities.results || [],
+      mastered: mastered.results || [],
+      blacklist: blacklist.results || [],
+      patterns: patterns.results || [],
+      recent: recent.results || []
+    })
+  } catch (err) {
+    return c.json(safeError('Profile failed')(err), 500)
+  }
+})
+
+// ---- /brain/tree — full tree nodes with positions
+app.get('/brain/tree', async (c) => {
+  const { DB } = c.env
+  c.header('Cache-Control', 'no-store')
+  try {
+    const nodes = await DB.prepare('SELECT * FROM tree_nodes ORDER BY id ASC').all()
+    return c.json({ nodes: nodes.results || [], count: nodes.results?.length || 0 })
+  } catch (err) {
+    return c.json(safeError('Tree failed')(err), 500)
+  }
+})
+
+// ---- /brain/branches — grouped by super_category
+app.get('/brain/branches', async (c) => {
+  const { DB } = c.env
+  c.header('Cache-Control', 'no-store')
+  try {
+    const result = await DB.prepare("SELECT super_category, status, COUNT(*) as c FROM tree_nodes WHERE type IN ('branch','leaf') GROUP BY super_category, status").all()
+    return c.json({ groups: result.results || [] })
+  } catch (err) {
+    return c.json(safeError('Branches failed')(err), 500)
+  }
+})
+
+// ---- /brain/resurfacing — items due for review
+app.get('/brain/resurfacing', async (c) => {
+  const { DB } = c.env
+  c.header('Cache-Control', 'no-store')
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    const due = await DB.prepare(
+      "SELECT r.*, rec.video_title, rec.creator, rec.user_rating FROM resurfacing r LEFT JOIN recommendations rec ON rec.id = r.recommendation_id WHERE r.resolved_at IS NULL AND r.due_at <= ? ORDER BY r.due_at ASC"
+    ).bind(today).all()
+    return c.json({ due: due.results || [], today })
+  } catch (err) {
+    return c.json(safeError('Resurfacing failed')(err), 500)
+  }
+})
+
+// ---- /brain/contradictions — detected tensions
+app.get('/brain/contradictions', async (c) => {
+  const { DB } = c.env
+  c.header('Cache-Control', 'no-store')
+  try {
+    const result = await DB.prepare("SELECT * FROM contradictions WHERE resolved_at IS NULL ORDER BY detected_at DESC").all()
+    return c.json({ contradictions: result.results || [] })
+  } catch (err) {
+    return c.json(safeError('Contradictions failed')(err), 500)
+  }
+})
+
+// ---- /brain/health — branch health metrics (diminishing returns, saturation)
+app.get('/brain/health', async (c) => {
+  const { DB } = c.env
+  c.header('Cache-Control', 'no-store')
+  try {
+    // Per-branch consumed count, avg rating, last consumed date
+    // Branch = first segment of the dedup_key (e.g. "taz-almunajjid-dabt-nafs" -> "taz")
+    const byBranch = await DB.prepare(`
+      SELECT
+        COALESCE(SUBSTR(dedup_key, 1, INSTR(dedup_key, '-') - 1), 'root') as branch,
+        COUNT(*) as consumed_count,
+        AVG(CASE WHEN user_rating GLOB '[0-9]*' THEN CAST(user_rating AS REAL) ELSE NULL END) as avg_rating,
+        MAX(consumed_date) as last_consumed
+      FROM recommendations
+      WHERE status = 'consumed' AND dedup_key IS NOT NULL AND dedup_key != ''
+      GROUP BY branch
+      HAVING consumed_count > 0
+      ORDER BY consumed_count DESC
+    `).all()
+
+    // Active items by age — flag stale (>30d)
+    const stale = await DB.prepare(`
+      SELECT id, video_title, verified, creator
+      FROM recommendations
+      WHERE status = 'active'
+      AND verified != 'unset'
+      AND julianday('now') - julianday(verified) > 30
+      ORDER BY verified ASC
+    `).all()
+
+    return c.json({
+      byBranch: byBranch.results || [],
+      stale: stale.results || [],
+      stale_count: stale.results?.length || 0
+    })
+  } catch (err) {
+    return c.json(safeError('Health failed')(err), 500)
+  }
+})
+
+// ---- /brain/log — append to update log
+app.post('/brain/log', async (c) => {
+  const { DB } = c.env
+  try {
+    const { kind, summary, details } = await c.req.json<{ kind: string; summary: string; details?: any }>()
+    if (!summary) return c.json({ error: 'summary required' }, 400)
+    await DB.prepare(
+      'INSERT INTO update_log (kind, summary, details_json) VALUES (?, ?, ?)'
+    ).bind(kind || 'system', summary, details ? JSON.stringify(details) : null).run()
+    return c.json({ ok: true })
+  } catch (err) {
+    return c.json(safeError('Log failed')(err), 500)
+  }
+})
+
+// ---- /brain/seed — idempotent bootstrap from JSON (called once or after schema change)
+app.post('/brain/seed', async (c) => {
+  const { DB } = c.env
+  try {
+    const body = await c.req.json<any>()
+    const stmts: D1PreparedStatement[] = []
+
+    // Profile singleton
+    if (body.profile) {
+      const p = body.profile
+      stmts.push(DB.prepare(`
+        INSERT OR REPLACE INTO profile
+        (id, identity_json, mega_priority_json, core_filter, reaction_style_json, quality_rules_json, operational_style_json, patterns_summary_json, recent_signal, last_synced_at)
+        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `).bind(
+        p.identity || null,
+        JSON.stringify(p.mega_priority || []),
+        p.core_filter || null,
+        p.reaction_style || null,
+        p.quality_rules || null,
+        p.operational_style || null,
+        p.patterns_summary || null,
+        p.recent_signal || null
+      ))
+    }
+
+    // Priorities
+    if (Array.isArray(body.priorities)) {
+      for (const [rank, branch_id, label] of body.priorities) {
+        stmts.push(DB.prepare('INSERT OR REPLACE INTO priorities (rank, branch_id, label) VALUES (?, ?, ?)').bind(rank, branch_id, label))
+      }
+    }
+
+    // Tree nodes
+    if (Array.isArray(body.tree_nodes)) {
+      for (const n of body.tree_nodes) {
+        stmts.push(DB.prepare(`
+          INSERT OR REPLACE INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, meta_json, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        `).bind(
+          n.id, n.type || 'branch', n.label || n.id,
+          n.super_category || null, n.parent_id || null,
+          n.status || null, n.round_label || null,
+          n.meta_json || (n.color ? JSON.stringify({ color: n.color, x: n.x, y: n.y, creator: n.creator, video_url: n.video_url, user_rating: n.user_rating, consumed_date: n.consumed_date }) : null)
+        ))
+      }
+    }
+
+    // Mastered
+    if (Array.isArray(body.mastered)) {
+      for (const m of body.mastered) {
+        stmts.push(DB.prepare(`
+          INSERT OR REPLACE INTO mastered (id, kind, label, author, rating, notes, mastered_at, decay_review_at)
+          VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT mastered_at FROM mastered WHERE id = ?), datetime('now')), COALESCE((SELECT decay_review_at FROM mastered WHERE id = ?), datetime('now', '+12 months')))
+        `).bind(m[0], m[1], m[2], m[3] || null, m[4] || null, m[5] || null, m[0], m[0]))
+      }
+    }
+
+    // Blacklist
+    if (Array.isArray(body.blacklist)) {
+      for (const b of body.blacklist) {
+        stmts.push(DB.prepare(`
+          INSERT OR REPLACE INTO blacklist (id, name, work, reason, severity)
+          VALUES (?, ?, ?, ?, ?)
+        `).bind(b[0], b[1], b[2] || null, b[3] || null, b[4] || 3))
+      }
+    }
+
+    // Patterns
+    if (Array.isArray(body.patterns_confirmed)) {
+      for (const p of body.patterns_confirmed) {
+        stmts.push(DB.prepare(`
+          INSERT OR REPLACE INTO patterns (id, description, evidence_json, confirmed_date, strength, notes)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).bind(p[0], p[1], JSON.stringify(p[2] || []), p[3] || null, p[4] || 'confirmed', null))
+      }
+    }
+
+    if (stmts.length === 0) return c.json({ ok: true, count: 0 })
+    // batch in chunks of 50
+    for (let i = 0; i < stmts.length; i += 50) {
+      await DB.batch(stmts.slice(i, i + 50))
+    }
+    return c.json({ ok: true, count: stmts.length })
+  } catch (err) {
+    return c.json(safeError('Seed failed')(err), 500)
   }
 })
 
