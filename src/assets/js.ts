@@ -1,0 +1,2372 @@
+// Taste Map Engine — frontend application. Three workspaces: curate, map, log.
+export const jsBundle = `'use strict';
+// ---------- utils ----------
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const esc = (s) => { if (s == null) return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; };
+const api = async (url, opts) => {
+  const r = await fetch(url, opts ? { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } } : undefined);
+  if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + r.status)); }
+  return r.json();
+};
+const toast = (msg, err) => {
+  const t = document.createElement('div');
+  t.className = 'toast' + (err ? ' t-err' : '');
+  t.textContent = msg;
+  $('#toast-stack').appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 200); }, 2600);
+};
+
+// Undo toast with action callback
+const toastUndo = (msg, onUndo) => {
+  const t = document.createElement('div');
+  t.className = 'toast toast-undo';
+  t.innerHTML = '<span>' + esc(msg) + '</span>';
+  const btn = document.createElement('button');
+  btn.textContent = 'Undo';
+  btn.onclick = () => { t.remove(); onUndo(); };
+  t.appendChild(btn);
+  $('#toast-stack').appendChild(t);
+  const timer = setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 200); }, 4000);
+  t.onclick = (e) => { if (e.target !== btn) { clearTimeout(timer); t.remove(); } };
+};
+
+// Set button loading state
+const setLoading = (btn, loading) => {
+  if (!btn) return;
+  if (loading) {
+    btn.classList.add('loading');
+    btn.dataset.origText = btn.textContent;
+  } else {
+    btn.classList.remove('loading');
+    if (btn.dataset.origText) btn.textContent = btn.dataset.origText;
+  }
+};
+const fmtDate = (d) => {
+  if (!d || d === 'unset') return '';
+  try { const dt = new Date(d); if (isNaN(dt)) return d; return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
+};
+const age = (d) => {
+  if (!d || d === 'unset') return '';
+  const days = Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
+  if (days <= 0) return 'today';
+  if (days === 1) return '1d';
+  if (days < 30) return days + 'd';
+  return Math.floor(days / 30) + 'mo';
+};
+
+// ---------- state ----------
+const state = {
+  ws: 'curate', sub: { curate: 'queue', map: 'canvas', log: 'journal', vault: 'files' },
+  recs: [], recsTotal: 0,
+  brain: { profile: null, tree: null, health: null },
+  learning: [],
+  vault: [],
+  vaultView: 'list',
+  stats: null,
+  updateLog: [],
+  search: '',
+  loaded: { recs: false, brain: false, learning: false, vault: false, stats: false, updateLog: false },
+  selection: new Set(),
+  filters: { content_type: new Set(), rating: new Set(), since: null, has_why: false, creator: '' },
+  focusedRow: 0,
+  paletteOpen: false,
+  paletteHi: 0,
+  keySeq: null,
+  resurfaceCount: 0,
+  branchSort: 'recency',
+  topicFilter: '',
+  heatmapRange: '1Y',
+};
+// ---------- queue drag reorder ----------
+const QUEUE_ORDER_KEY = 'tm-queue-order';
+function getQueueOrder() { try { return JSON.parse(localStorage.getItem(QUEUE_ORDER_KEY) || '[]'); } catch { return []; } }
+function saveQueueOrder(ids) { localStorage.setItem(QUEUE_ORDER_KEY, JSON.stringify(ids)); }
+function applyQueueOrder(items) {
+  const order = getQueueOrder();
+  if (!order.length) return items;
+  const byId = {};
+  items.forEach(r => { byId[r.id] = r; });
+  const ordered = [];
+  order.forEach(id => { if (byId[id]) { ordered.push(byId[id]); delete byId[id]; } });
+  Object.values(byId).forEach(r => ordered.push(r));
+  return ordered;
+}
+
+
+const WS = {
+  curate: {
+    name: 'Curate', sub: 'Videos, articles, and books waiting for your review',
+    views: [['queue', 'Queue'], ['archive', 'Archive'], ['all', 'All'], ['resurfacing', 'Resurface']],
+  },
+  map: {
+    name: 'Map', sub: 'What you know, mapped',
+    views: [['canvas', 'Canvas'], ['branches', 'Branches'], ['radar', 'Radar'], ['profile', 'Profile']],
+  },
+  log: {
+    name: 'Log', sub: 'What you did and produced',
+    views: [['journal', 'Journal'], ['stats', 'Stats']],
+  },
+  vault: {
+    name: 'Vault', sub: 'Your HTML files and PDFs',
+    views: [['files', 'Files']],
+  },
+};
+
+// ---------- data fetching ----------
+async function loadRecs() {
+  try {
+    const j = await api('/recommendations/list?limit=200');
+    state.recs = j.recommendations || [];
+    state.recsTotal = j.total || state.recs.length;
+  } catch (e) {
+    console.warn('recs load failed', e);
+    state.recs = [];
+    state.recsTotal = 0;
+    toast('Failed to load recommendations: ' + e.message, true);
+  }
+  state.loaded.recs = true;
+}
+async function loadBrain() {
+  try {
+    const [p, t, h] = await Promise.all([
+      api('/brain/profile'), api('/brain/tree'), api('/brain/health'),
+    ]);
+    state.brain = { profile: p, tree: t, health: h };
+  } catch (e) { console.warn('brain load failed', e); }
+  state.loaded.brain = true;
+  refreshResurfaceBadge();
+}
+async function loadLearning() {
+  try { const j = await api('/learning/heatmap'); state.learning = j.days || []; } catch { state.learning = []; }
+  state.loaded.learning = true;
+}
+async function loadVault() {
+  try { const j = await api('/html/list'); state.vault = j.files || []; } catch { state.vault = []; }
+  state.loaded.vault = true;
+  const badge = document.getElementById('nav-badge-vault');
+  if (badge) {
+    const count = state.vault.length;
+    if (count > 0) { badge.hidden = false; badge.textContent = count > 99 ? '99+' : String(count); }
+    else { badge.hidden = true; }
+  }
+}
+async function loadStats() {
+  try { state.stats = await api('/stats'); } catch { }
+  state.loaded.stats = true;
+}
+async function loadUpdateLog() {
+  try { const j = await api('/learning/update-log?limit=30'); state.updateLog = j.events || []; } catch { state.updateLog = []; }
+  state.loaded.updateLog = true;
+}
+
+async function refreshResurfaceBadge() {
+  try {
+    const j = await api('/brain/resurfacing');
+    const due = (j.due || []).length;
+    state.resurfaceCount = due;
+    const badge = document.getElementById('nav-badge-curate');
+    if (!badge) return;
+    if (due > 0) { badge.hidden = false; badge.textContent = due > 99 ? '99+' : String(due); }
+    else { badge.hidden = true; }
+  } catch {}
+}
+
+// ---------- shell ----------
+function setWorkspace(ws, sub) {
+  state.ws = ws;
+  if (sub) state.sub[ws] = sub;
+  $$('.nav-btn[data-ws]').forEach(b => b.classList.toggle('active', b.dataset.ws === ws));
+  $('#ws-name').textContent = WS[ws].name;
+  $('#ws-sub').textContent = WS[ws].sub;
+  document.getElementById('workspace').classList.toggle('workspace-vault', ws === 'vault');
+  renderSubnav();
+  renderActions();
+  renderBody();
+  history.replaceState(null, '', '#/' + ws + '/' + state.sub[ws]);
+}
+function renderSubnav() {
+  const nav = $('#ws-subnav');
+  nav.innerHTML = '';
+  const seg = document.createElement('div');
+  seg.className = 'seg';
+  WS[state.ws].views.forEach(([id, label]) => {
+    const b = document.createElement('button');
+    b.className = 'seg-btn' + (state.sub[state.ws] === id ? ' active' : '');
+    b.innerHTML = esc(label) + countBadge(id);
+    b.onclick = () => setWorkspace(state.ws, id);
+    seg.appendChild(b);
+  });
+  nav.appendChild(seg);
+  if (state.ws === 'map' && state.sub.map !== 'profile') {
+    const inp = document.createElement('input');
+    inp.className = 'input'; inp.placeholder = 'Filter\u2026';
+    inp.style.cssText = 'max-width:220px;height:32px;margin-left:auto';
+    inp.value = state.search;
+    inp.oninput = () => { state.search = inp.value; renderBody(); };
+    nav.appendChild(inp);
+  }
+  if (state.ws === 'vault') {
+    const inp = document.createElement('input');
+    inp.className = 'input'; inp.placeholder = 'Filter\u2026';
+    inp.style.cssText = 'max-width:220px;height:32px;margin-left:auto';
+    inp.value = state.search;
+    inp.oninput = () => { state.search = inp.value; renderBody(); };
+    nav.appendChild(inp);
+  }
+}
+function countBadge(view) {
+  const r = state.recs;
+  if (view === 'queue') return ' <span class="seg-count">' + r.filter(x => x.status === 'active').length + '</span>';
+  if (view === 'archive') return ' <span class="seg-count">' + r.filter(x => x.status === 'consumed').length + '</span>';
+  if (view === 'all') return ' <span class="seg-count">' + r.length + '</span>';
+  if (view === 'vault') return ' <span class="seg-count">' + state.vault.length + '</span>';
+  return '';
+}
+function renderActions() {
+  const a = $('#ws-actions');
+  a.innerHTML = '';
+  // topbar search trigger (feature 1)
+  const tb = document.createElement('button');
+  tb.className = 'topbar-search';
+  tb.id = 'tb-search';
+  tb.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg> Search <kbd>⌘K</kbd>';
+  tb.onclick = openPalette;
+  a.appendChild(tb);
+
+  if (state.ws === 'curate') {
+    const refreshBtn = document.createElement('button');
+    refreshBtn.className = 'btn'; refreshBtn.id = 'act-refresh';
+    refreshBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>Refresh';
+    refreshBtn.onclick = () => { refresh(true); };
+    const neu = document.createElement('button');
+    neu.className = 'btn btn-primary'; neu.id = 'act-new';
+    neu.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New entry';
+    neu.onclick = openPushSheet;
+    a.append(refreshBtn, neu);
+  } else if (state.ws === 'vault') {
+    const up = document.createElement('button');
+    up.className = 'btn btn-primary'; up.id = 'act-upload';
+    up.textContent = 'Upload file';
+    up.onclick = openUploadSheet;
+    a.appendChild(up);
+  } else if (state.ws === 'log' && state.sub.log === 'journal') {
+    const lg = document.createElement('button');
+    lg.className = 'btn btn-primary'; lg.id = 'act-log';
+    lg.textContent = 'Log today';
+    lg.onclick = openLogSheet;
+    a.appendChild(lg);
+  }
+}
+function renderBody() {
+  const body = $('#ws-body');
+  body.innerHTML = '';
+  // reset batch bar visibility per view
+  updateBatchBar();
+  const key = state.ws + '.' + state.sub[state.ws];
+  const needsData = {
+    'curate.queue': ['recs'], 'curate.archive': ['recs'], 'curate.all': ['recs'], 'curate.resurfacing': ['brain'],
+    'map.canvas': ['brain'], 'map.branches': ['brain'], 'map.profile': ['brain'], 'map.resurfacing': ['brain'], 'map.radar': ['brain', 'recs'], 'map.tensions': ['brain'], 'map.mega': ['brain'],
+    'log.journal': ['learning', 'recs', 'vault'], 'log.stats': ['stats'],
+    'vault.files': ['vault'],
+  }[key] || [];
+  const missing = needsData.filter(d => !state.loaded[d]);
+  if (missing.length) {
+    body.innerHTML = '<div class="loading-skeleton"><div class="skel skel-row"></div><div class="skel skel-row"></div><div class="skel skel-row"></div></div>';
+    return;
+  }
+  VIEWS[key](body);
+  renderFiltersBar();
+}
+
+// ---------- focus trap (sheets / modals / palette) ----------
+let _prevFocus = null;
+let _trapEl = null;
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+function trapFocus(el) {
+  _prevFocus = document.activeElement;
+  _trapEl = el;
+  const nodes = $$(FOCUSABLE, el);
+  if (nodes[0]) setTimeout(() => nodes[0].focus(), 30);
+}
+function releaseFocus() {
+  _trapEl = null;
+  if (_prevFocus && typeof _prevFocus.focus === 'function') {
+    try { _prevFocus.focus(); } catch {}
+  }
+  _prevFocus = null;
+}
+document.addEventListener('keydown', (e) => {
+  if (!_trapEl || e.key !== 'Tab') return;
+  const nodes = $$(FOCUSABLE, _trapEl).filter(n => n.offsetParent !== null || n === document.activeElement);
+  if (!nodes.length) return;
+  const first = nodes[0], last = nodes[nodes.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+
+// ---------- sheet / modal ----------
+function openSheet(title, bodyEl, footEl) {
+  const sheet = $('#sheet');
+  sheet.innerHTML = '';
+  const head = document.createElement('div');
+  head.className = 'sheet-head';
+  head.innerHTML = '<h2>' + esc(title) + '</h2>';
+  const close = document.createElement('button');
+  close.className = 'btn btn-ghost btn-icon';
+  close.setAttribute('aria-label', 'Close');
+  close.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  close.onclick = closeSheet;
+  head.appendChild(close);
+  sheet.appendChild(head);
+  const body = document.createElement('div');
+  body.className = 'sheet-body';
+  body.appendChild(bodyEl);
+  sheet.appendChild(body);
+  if (footEl) {
+    const foot = document.createElement('div');
+    foot.className = 'sheet-foot';
+    foot.appendChild(footEl);
+    sheet.appendChild(foot);
+  }
+  $('#sheet-backdrop').classList.add('open');
+  sheet.classList.add('open');
+  document.getElementById('workspace')?.setAttribute('inert', '');
+  trapFocus(sheet);
+}
+function closeSheet() {
+  document.getElementById('workspace')?.removeAttribute('inert');
+  $('#sheet-backdrop').classList.remove('open');
+  $('#sheet').classList.remove('open');
+  if (_trapEl === $('#sheet')) releaseFocus();
+}
+$('#sheet-backdrop').onclick = closeSheet;
+
+function openModal(contentEl, wide) {
+  const m = $('#modal');
+  m.className = 'modal' + (wide ? ' modal-wide' : '');
+  m.innerHTML = '';
+  m.appendChild(contentEl);
+  $('#modal-backdrop').classList.add('open');
+  document.getElementById('workspace')?.setAttribute('inert', '');
+  trapFocus(m);
+}
+function closeModal() {
+  document.getElementById('workspace')?.removeAttribute('inert');
+  $('#modal-backdrop').classList.remove('open');
+  if (_trapEl === $('#modal')) releaseFocus();
+}
+$('#modal-backdrop').onclick = (e) => { if (e.target.id === 'modal-backdrop') closeModal(); };
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeSheet(); closeModal(); closePalette(); }
+});
+
+// ---------- sheets ----------
+function field(label, input) {
+  const f = document.createElement('div');
+  f.className = 'field';
+  const l = document.createElement('label');
+  l.textContent = label;
+  f.appendChild(l);
+  f.appendChild(input);
+  return f;
+}
+function input(attrs) {
+  const i = document.createElement('input');
+  i.className = 'input';
+  Object.assign(i, attrs || {});
+  return i;
+}
+function textarea(attrs) {
+  const t = document.createElement('textarea');
+  t.className = 'textarea';
+  Object.assign(t, attrs || {});
+  return t;
+}
+
+function openPushSheet() {
+  const body = document.createElement('div');
+  const title = input({ placeholder: 'Title of the content' });
+  const creator = input({ placeholder: 'Author / channel' });
+  const url = input({ placeholder: 'https://…', type: 'url' });
+  const type = document.createElement('select');
+  type.className = 'select';
+  ['video', 'book', 'article', 'podcast', 'course', 'paper', 'other'].forEach(t => {
+    const o = document.createElement('option'); o.value = t; o.textContent = t[0].toUpperCase() + t.slice(1); type.appendChild(o);
+  });
+  const why = textarea({ placeholder: 'Why does this belong on the map?' });
+  const dedup = input({ placeholder: 'stable-key (optional)' });
+  const bundle = input({ placeholder: 'synergy bundle (optional)' });
+  body.append(
+    field('Title', title),
+    field('Creator', creator),
+    field('URL', url),
+    field('Type', type),
+    field('Why this?', why),
+    field('Dedup key', dedup),
+    field('Synergy bundle', bundle),
+  );
+  // feature 13: blacklist live check
+  const warnSlot = document.createElement('div');
+  body.insertBefore(warnSlot, body.firstChild);
+  const checkBl = async () => {
+    const v = (url.value + ' ' + creator.value).trim();
+    warnSlot.innerHTML = '';
+    if (v.length < 3) return;
+    try {
+      const j = await api('/recommendations/check-blacklist?q=' + encodeURIComponent(v));
+      if (j.matches && j.matches.length) {
+        const w = document.createElement('div');
+        w.className = 'bl-warn';
+        w.innerHTML = '<strong>Blacklist match:</strong> ' + j.matches.slice(0, 2).map(m => '<span class="mono">' + esc(m.name) + '</span>' + (m.work ? ' (' + esc(m.work) + ')' : '')).join(', ');
+        warnSlot.appendChild(w);
+      }
+    } catch {}
+  };
+  url.addEventListener('blur', checkBl);
+  creator.addEventListener('blur', checkBl);
+
+  const foot = document.createElement('div');
+  foot.style.cssText = 'display:flex;gap:8px';
+  const save = document.createElement('button');
+  save.className = 'btn btn-primary';
+  save.textContent = 'Push to queue';
+  save.onclick = async () => {
+    if (!title.value.trim() || !url.value.trim()) return toast('Title and URL are required', true);
+    setLoading(save, true);
+    try {
+      await api('/recommendations/push', {
+        method: 'POST',
+        body: JSON.stringify({
+          video_title: title.value.trim(), creator: creator.value.trim(),
+          content_type: type.value, video_url: url.value.trim(),
+          why_this: why.value.trim(),
+          dedup_key: dedup.value.trim() || undefined,
+          synergy_bundle_id: bundle.value.trim() || undefined,
+          verified: new Date().toISOString().split('T')[0],
+        }),
+      });
+      toast('Pushed to queue');
+      closeSheet();
+      await loadRecs(); renderSubnav(); renderBody();
+    } catch (e) { toast('Push failed: ' + e.message, true); }
+    finally { setLoading(save, false); }
+  };
+  foot.appendChild(save);
+  openSheet('New entry', body, foot);
+}
+
+function openReviewSheet(item, targetStatus) {
+  const body = document.createElement('div');
+  const head = document.createElement('div');
+  head.style.marginBottom = '16px';
+  head.innerHTML = '<div style="font-size:15px;font-weight:600">' + esc(item.video_title) + '</div>' +
+    '<div class="muted" style="font-size:12px;margin-top:2px">' + esc(item.creator || 'Unknown') + '</div>';
+  body.appendChild(head);
+
+  const picker = document.createElement('div');
+  picker.className = 'rating-picker';
+  let rating = (item.user_rating && item.user_rating !== 'unset') ? item.user_rating : '';
+  ['love', 'like', 'meh', 'dislike'].forEach(r => {
+    const b = document.createElement('button');
+    b.className = 'rating-opt' + (rating === r ? ' selected' : '');
+    b.dataset.r = r;
+    b.textContent = r[0].toUpperCase() + r.slice(1);
+    b.onclick = () => {
+      rating = rating === r ? '' : r;
+      $$('.rating-opt', picker).forEach(x => x.classList.toggle('selected', x.dataset.r === rating));
+    };
+    picker.appendChild(b);
+  });
+  body.appendChild(field('Rating', picker));
+
+  const notes = textarea({ placeholder: 'Takeaways, reflections, quotes…' });
+  notes.value = item.user_review || '';
+  body.appendChild(field('Review', notes));
+
+  const foot = document.createElement('div');
+  foot.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+  const save = document.createElement('button');
+  save.className = 'btn btn-primary';
+  save.textContent = targetStatus === 'consumed' ? 'Mark consumed' : targetStatus === 'rejected' ? 'Reject' : 'Save';
+  save.onclick = async () => {
+    setLoading(save, true);
+    try {
+      await api('/recommendations/action', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: item.id, status: targetStatus,
+          user_rating: rating || 'unset', user_review: notes.value.trim(),
+          consumed_date: new Date().toISOString().split('T')[0],
+        }),
+      });
+      const msg = targetStatus === 'consumed' ? 'Logged as consumed' : targetStatus === 'rejected' ? 'Rejected' : 'Saved';
+      toast(msg);
+      closeSheet();
+      await loadRecs(); await loadBrain(); renderSubnav(); renderBody();
+    } catch (e) { toast('Failed: ' + e.message, true); }
+    finally { setLoading(save, false); }
+  };
+  foot.appendChild(save);
+  openSheet(targetStatus === 'consumed' ? 'Consume & review' : targetStatus === 'rejected' ? 'Reject entry' : 'Edit entry', body, foot);
+}
+
+function openLogSheet() {
+  const body = document.createElement('div');
+  const topics = input({ placeholder: 'e.g. behavioral econ, tazkiyah, persuasion' });
+  body.appendChild(field('What did you learn today?', topics));
+  const foot = document.createElement('div');
+  const save = document.createElement('button');
+  save.className = 'btn btn-primary';
+  save.textContent = 'Log';
+  save.onclick = async () => {
+    setLoading(save, true);
+    try {
+      await api('/learning/log', { method: 'POST', body: JSON.stringify({ topics: topics.value.trim(), date: new Date().toISOString().split('T')[0] }) });
+      toast('Logged');
+      closeSheet();
+      await loadLearning(); renderBody();
+    } catch (e) { toast('Failed: ' + e.message, true); }
+    finally { setLoading(save, false); }
+  };
+  foot.appendChild(save);
+  openSheet('Log today', body, foot);
+}
+
+function openUploadSheet() {
+  const body = document.createElement('div');
+  const name = input({ placeholder: 'filename.html' });
+  const code = textarea({ placeholder: 'Paste HTML here…' });
+  code.style.minHeight = '220px';
+  const fileInp = document.createElement('input');
+  fileInp.type = 'file'; fileInp.accept = '.html,.htm,.pdf';
+  fileInp.className = 'input';
+  fileInp.onchange = () => {
+    const f = fileInp.files[0];
+    if (!f) return;
+    if (!name.value) name.value = f.name;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (f.name.endsWith('.pdf')) code.value = '[PDF will be uploaded as base64] ' + f.size + ' bytes';
+      else code.value = reader.result;
+    };
+    if (f.name.endsWith('.pdf')) reader.readAsDataURL(f);
+    else reader.readAsText(f);
+  };
+  body.appendChild(field('File (or paste below)', fileInp));
+  body.appendChild(field('Filename', name));
+  body.appendChild(field('Content', code));
+  const foot = document.createElement('div');
+  const save = document.createElement('button');
+  save.className = 'btn btn-primary';
+  save.textContent = 'Upload';
+  save.onclick = async () => {
+    let content = code.value;
+    const f = fileInp.files[0];
+    if (f && f.name.endsWith('.pdf')) {
+      const dataUrl = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
+      content = String(dataUrl).split(',')[1];
+    }
+    if (!name.value.trim() || !content) return toast('Filename and content required', true);
+    setLoading(save, true);
+    try {
+      await api('/html/upload', { method: 'POST', body: JSON.stringify({ filename: name.value.trim(), content }) });
+      toast('Uploaded');
+      closeSheet();
+      await loadVault(); renderSubnav(); renderBody();
+    } catch (e) { toast('Failed: ' + e.message, true); }
+    finally { setLoading(save, false); }
+  };
+  foot.appendChild(save);
+  openSheet('Upload to vault', body, foot);
+}
+
+// ---------- command palette (feature 1) ----------
+function openPalette() {
+  if (state.paletteOpen) return;
+  state.paletteOpen = true;
+  state.paletteHi = 0;
+  const backdrop = document.getElementById('palette-backdrop');
+  const body = document.getElementById('palette-body');
+  const input = document.getElementById('palette-input');
+  if (!backdrop || !body || !input) return;
+  backdrop.classList.add('open');
+  document.getElementById('workspace')?.setAttribute('inert', '');
+  body.innerHTML = '<div class="palette-empty">Type to search recs, brain nodes, vault files, and patterns</div>';
+  trapFocus(document.getElementById('palette'));
+  setTimeout(() => { input.value = ''; input.focus(); }, 20);
+  let lastResults = { groups: { recs: [], nodes: [], vault: [], patterns: [] } };
+  let timer;
+  const close = () => {
+    state.paletteOpen = false;
+    backdrop.classList.remove('open');
+    input.value = '';
+    if (_trapEl === document.getElementById('palette')) releaseFocus();
+  };
+  const onKey = (e) => {
+    if (!state.paletteOpen) return;
+    const items = $$('.palette-item', body);
+    if (e.key === 'ArrowDown') { e.preventDefault(); state.paletteHi = Math.min(items.length - 1, state.paletteHi + 1); highlight(items); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); state.paletteHi = Math.max(0, state.paletteHi - 1); highlight(items); }
+    else if (e.key === 'Enter') { e.preventDefault(); const it = items[state.paletteHi]; if (it && it._go) it._go(); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); }
+  };
+  const highlight = (items) => { items.forEach((el, i) => el.classList.toggle('highlighted', i === state.paletteHi)); if (items[state.paletteHi]) items[state.paletteHi].scrollIntoView({ block: 'nearest' }); };
+  backdrop.onclick = (e) => { if (e.target === backdrop) close(); };
+  const newOnKey = (e) => onKey(e);
+  input.onkeydown = newOnKey;
+  input.oninput = () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    timer = setTimeout(async () => {
+      if (q.length < 2) { body.innerHTML = '<div class="palette-empty">Type to search recs, brain nodes, vault files, and patterns</div>'; lastResults = { groups: { recs: [], nodes: [], vault: [], patterns: [] } }; return; }
+      try {
+        const r = await api('/search?q=' + encodeURIComponent(q));
+        lastResults = r; renderPaletteResults(r);
+      } catch { body.innerHTML = '<div class="palette-empty">Search failed</div>'; }
+    }, 120);
+  };
+  function renderPaletteResults(r) {
+    let html = '';
+    const groups = [
+      ['Recs', r.groups.recs, 'rec'],
+      ['Tree nodes', r.groups.nodes, 'node'],
+      ['Vault', r.groups.vault, 'vault'],
+      ['Patterns', r.groups.patterns, 'pattern'],
+    ];
+    for (const [title, items, kind] of groups) {
+      if (!items || !items.length) continue;
+      html += '<div class="palette-group"><div class="palette-group-title">' + esc(title) + '</div>';
+      items.forEach((it, i) => {
+        const main = kind === 'rec' ? it.title : kind === 'node' ? (it.label || it.id) : kind === 'vault' ? it.filename : it.description;
+        const sub = kind === 'rec' ? (it.creator || '') : kind === 'node' ? (it.super_category || it.type) : kind === 'vault' ? ((it.created_at || '').slice(0, 10)) : (it.strength || '');
+        const right = kind === 'rec' ? it.status : kind === 'node' ? it.id : '';
+        html += '<div class="palette-item" data-kind="' + kind + '" data-idx="' + i + '"><span class="pi-icon">' +
+          (kind === 'rec' ? '★' : kind === 'node' ? '◇' : kind === 'vault' ? '◫' : '◆') +
+          '</span><span class="pi-title">' + esc(main) + (sub ? ' <span class="muted" style="font-size:11px">— ' + esc(sub) + '</span>' : '') + '</span><span class="pi-meta">' + esc(right) + '</span></div>';
+      });
+      html += '</div>';
+    }
+    if (!html) html = '<div class="palette-empty">No matches</div>';
+    body.innerHTML = html;
+    const items = $$('.palette-item', body);
+    items.forEach(el => {
+      const kind = el.dataset.kind, idx = parseInt(el.dataset.idx);
+      const it = lastResults.groups[kind === 'pattern' ? 'patterns' : kind === 'rec' ? 'recs' : kind === 'node' ? 'nodes' : 'vault'][idx];
+      el._go = () => {
+        close();
+        if (kind === 'rec') { setWorkspace('curate', 'all'); setTimeout(() => { const t = state.recs.find(x => x.id === it.id); if (t) openReviewSheet(t, t.status); }, 80); }
+        else if (kind === 'node') { setWorkspace('map', 'canvas'); setTimeout(() => openNodeSheet(it.id), 80); }
+        else if (kind === 'vault') { setWorkspace('vault', 'files'); }
+        else if (kind === 'pattern') { setWorkspace('map', 'profile'); }
+      };
+      el.onclick = () => el._go && el._go();
+    });
+    state.paletteHi = 0; highlight(items);
+  }
+}
+function closePalette() {
+  if (!state.paletteOpen) return;
+  state.paletteOpen = false;
+  document.getElementById('workspace')?.removeAttribute('inert');
+  const bd = document.getElementById('palette-backdrop');
+  if (bd) bd.classList.remove('open');
+  const input = document.getElementById('palette-input');
+  if (input) input.value = '';
+  if (_trapEl === document.getElementById('palette')) releaseFocus();
+}
+
+// ---------- keymap overlay (feature 4) ----------
+const KEYS = [
+  { keys: ['⌘ K', 'Ctrl K'], desc: 'Open command palette' },
+  { keys: ['?'], desc: 'Show this overlay' },
+  { keys: ['g c', 'g m', 'g l'], desc: 'Go to Curate / Map / Log' },
+  { keys: ['g v'], desc: 'Go to Vault' },
+  { keys: ['1', '2', '3', '4', '5'], desc: 'Switch sub-view' },
+  { keys: ['n'], desc: 'New entry (push sheet)' },
+  { keys: ['j', 'k'], desc: 'Next / prev row' },
+  { keys: ['c'], desc: 'Consume focused row' },
+  { keys: ['x'], desc: 'Reject focused row' },
+  { keys: ['r'], desc: 'Open review for focused' },
+  { keys: ['e'], desc: 'Edit focused row' },
+  { keys: ['/'], desc: 'Focus search' },
+  { keys: ['Esc'], desc: 'Close sheet / modal / palette' },
+];
+function openKeymap() {
+  const c = document.createElement('div');
+  c.innerHTML = '<h2 style="margin-bottom:14px">Keyboard shortcuts</h2>' +
+    '<div class="kbd-table">' + KEYS.map(k =>
+      '<div class="kbd-row"><div class="kbd-keys">' + k.keys.map(x => '<kbd>' + esc(x) + '</kbd>').join('') + '</div><div class="kbd-desc">' + esc(k.desc) + '</div></div>'
+    ).join('') + '</div>';
+  openModal(c, false);
+}
+function getFocusedRow() {
+  const cards = $$('.queue-card, .archive-item, .branch-card, .vault-row');
+  if (!cards.length) return null;
+  return cards[Math.min(state.focusedRow, cards.length - 1)];
+}
+
+// ---------- CURATE views ----------
+const VIEWS = {};
+
+// feature 2: filters bar
+const CONTENT_TYPES = ['video', 'book', 'article', 'podcast', 'paper', 'course', 'other'];
+const RATINGS = ['love', 'like', 'meh', 'dislike'];
+function initFiltersBar() {
+  const bar = document.getElementById('filters-bar');
+  if (!bar) return;
+  bar.addEventListener('change', onFilterChange);
+  bar.addEventListener('click', onFilterClick);
+  bar.addEventListener('input', onFilterInput);
+}
+let _fd;
+function debouncedRender() { clearTimeout(_fd); _fd = setTimeout(renderBody, 120); }
+function onFilterChange(e) {
+  const sel = e.target.closest('[data-f]');
+  if (!sel) return;
+  const f = sel.dataset.f;
+  if (f === 'type') { state.filters.content_type.clear(); if (sel.value) state.filters.content_type.add(sel.value); }
+  else if (f === 'rating') { state.filters.rating.clear(); if (sel.value) state.filters.rating.add(sel.value); }
+  renderBody();
+}
+function onFilterClick(e) {
+  const c = e.target.closest('[data-f]');
+  if (!c || c.tagName === 'SELECT') return;
+  const f = c.dataset.f;
+  if (f === 'since') { state.filters.since = state.filters.since ? null : new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]; }
+  else if (f === 'why') { state.filters.has_why = !state.filters.has_why; }
+  else if (f === 'reset') { state.filters = { content_type: new Set(), rating: new Set(), since: null, has_why: false, creator: '' }; state.search = ''; }
+  renderBody();
+}
+function onFilterInput(e) {
+  const inp = e.target.closest('[data-f]');
+  if (!inp) return;
+  if (inp.dataset.f === 'search') { state.search = inp.value; debouncedRender(); }
+  else if (inp.dataset.f === 'creator') { state.filters.creator = inp.value; debouncedRender(); }
+}
+function renderFiltersBar() {
+  const bar = document.getElementById('filters-bar');
+  if (!bar) return;
+  if (state.ws !== 'curate') { bar.hidden = true; return; }
+  bar.hidden = false;
+  const anyOn = state.filters.content_type.size || state.filters.rating.size || state.filters.since || state.filters.has_why || state.filters.creator;
+  let html = '';
+  html += '<div class="fs-group"><span class="fs-label">Type</span><select class="fs-select" data-f="type">';
+  html += '<option value="">All types</option>';
+  CONTENT_TYPES.forEach(t => {
+    const on = state.filters.content_type.has(t);
+    html += '<option value="' + esc(t) + '"' + (on ? ' selected' : '') + '>' + esc(t) + '</option>';
+  });
+  html += '</select></div>';
+  html += '<div class="fs-group"><span class="fs-label">Rating</span><select class="fs-select" data-f="rating">';
+  html += '<option value="">All ratings</option>';
+  RATINGS.forEach(r => {
+    const on = state.filters.rating.has(r);
+    html += '<option value="' + esc(r) + '"' + (on ? ' selected' : '') + '>' + esc(r) + '</option>';
+  });
+  html += '</select></div>';
+  html += '<span class="fs-toggle ' + (state.filters.since ? 'on' : '') + '" data-f="since"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Last 7d</span>';
+  html += '<span class="fs-toggle ' + (state.filters.has_why ? 'on' : '') + '" data-f="why"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>Notes</span>';
+  html += '<div class="fs-input-wrap"><svg class="fs-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input class="fs-input" data-f="search" placeholder="Filter…" value="' + esc(state.search) + '" /></div>';
+  html += '<input class="fs-input" data-f="creator" placeholder="Creator…" value="' + esc(state.filters.creator) + '" style="min-width:100px" />';
+  if (anyOn) html += '<span class="fs-toggle on" data-f="reset" style="color:var(--rejected)">Clear</span>';
+  bar.innerHTML = html;
+}
+function applyFilters(items) {
+  if (state.filters.content_type.size) items = items.filter(r => state.filters.content_type.has(r.content_type));
+  if (state.filters.rating.size) items = items.filter(r => state.filters.rating.has(r.user_rating));
+  if (state.filters.since) items = items.filter(r => (r.created_at || '').slice(0, 10) >= state.filters.since);
+  if (state.filters.has_why) items = items.filter(r => r.why_this && r.why_this.trim());
+  if (state.filters.creator) items = items.filter(r => (r.creator || '').toLowerCase().includes(state.filters.creator.toLowerCase()));
+  return items;
+}
+
+// feature 3: batch bar
+function updateBatchBar() {
+  const bar = document.getElementById('batch-bar');
+  if (!bar) return;
+  const visible = state.ws === 'curate' && state.sub.curate !== 'archive' && state.selection.size > 0;
+  bar.classList.toggle('open', visible);
+  const c = document.getElementById('batch-count');
+  if (c) c.textContent = state.selection.size + ' selected';
+}
+function toggleSelect(id, checked) {
+  if (checked) state.selection.add(id); else state.selection.delete(id);
+  updateBatchBar();
+}
+
+VIEWS['curate.queue'] = (body) => {
+  const q = state.search.toLowerCase();
+  let items = state.recs.filter(r => r.status === 'active');
+  items = applyFilters(items);
+  if (q) items = items.filter(r => (r.video_title || '').toLowerCase().includes(q) || (r.creator || '').toLowerCase().includes(q) || (r.why_this || '').toLowerCase().includes(q));
+  if (!items.length) {
+    body.innerHTML = '<div class="empty">' +
+      '<svg class="empty-ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>' +
+      '<div class="e-title">Queue is clear</div><div>Nothing waiting for review. Push something new or let the curator pipeline refill it.</div>' +
+      '<button class="btn btn-primary" onclick="window.__new()">New entry</button></div>';
+    window.__new = openPushSheet;
+    return;
+  }
+
+  // Dashboard section above queue cards
+  const dash = document.createElement("div");
+  dash.className = "queue-dashboard";
+
+  // Stat cards
+  const now = Date.now();
+  const dayDiff = (d) => { if (!d || d === "unset") return 999; return Math.floor((now - new Date(d).getTime()) / 86400000); };
+  const curMonth = new Date().toISOString().slice(0, 7);
+  const total = state.recs.length;
+  const waiting = items.length;
+  const monthItems = items.filter(r => r.created_at && r.created_at.startsWith(curMonth)).length;
+  const stale = items.filter(r => r.verified && dayDiff(r.verified) > 7).length;
+
+  const stats = document.createElement("div");
+  stats.className = "queue-stats";
+  const statDefs = [
+    { val: waiting, label: "Waiting", cls: waiting > 0 ? "c-active" : "" },
+    { val: total, label: "Total entries", cls: "" },
+    { val: monthItems, label: "This month", cls: monthItems > 0 ? "c-consumed" : "" },
+    { val: stale, label: "Stale", cls: stale > 0 ? "c-rejected" : "" },
+  ];
+  statDefs.forEach(s => {
+    const b = document.createElement("div");
+    b.className = "queue-stat";
+    b.innerHTML = '<div class="qs-val ' + s.cls + '">' + s.val + '</div><div class="qs-label">' + s.label + '</div>';
+    stats.appendChild(b);
+  });
+  dash.appendChild(stats);
+
+  // Content type chips
+  const typeCounts = {};
+  items.forEach(r => { const t = r.content_type || "other"; typeCounts[t] = (typeCounts[t] || 0) + 1; });
+  const sorted = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
+  if (sorted.length) {
+    const chips = document.createElement("div");
+    chips.className = "queue-types";
+    sorted.forEach(([t, c]) => {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = t + " \u00d7" + c;
+      chips.appendChild(chip);
+    });
+    dash.appendChild(chips);
+  }
+
+  // Stale banner (items > 14 days)
+  const oldItems = items.filter(r => r.verified && dayDiff(r.verified) > 14);
+  if (oldItems.length) {
+    const banner = document.createElement("div");
+    banner.className = "queue-stale-banner";
+    banner.innerHTML = '<strong>' + oldItems.length + ' item' + (oldItems.length > 1 ? "s" : "") + '</strong> waiting 14+ days — consider reviewing or rejecting.';
+    dash.appendChild(banner);
+  }
+
+  body.appendChild(dash);
+  items = applyQueueOrder(items);
+  const wrap = document.createElement('div');
+  wrap.className = 'queue-cards';
+  items.forEach((r, i) => {
+    const card = document.createElement('div');
+    card.className = 'qc-card';
+    card.dataset.fid = r.id;
+    card.style.animation = 'rise 200ms ease backwards';
+    card.style.animationDelay = Math.min(i * 30, 300) + 'ms';
+    card.draggable = true;
+    card.ondragstart = (e) => { e.dataTransfer.setData('text/plain', r.id); card.classList.add('dragging'); };
+    card.ondragend = () => card.classList.remove('dragging');
+    card.ondragover = (e) => { e.preventDefault(); card.classList.add('drag-over'); };
+    card.ondragleave = () => card.classList.remove('drag-over');
+    card.ondrop = (e) => { e.preventDefault(); card.classList.remove('drag-over'); const fromId = e.dataTransfer.getData('text/plain'); if (!fromId || fromId === r.id) return; const cards = [...wrap.children]; const fromIdx = cards.findIndex(c => c.dataset.fid === fromId); const toIdx = cards.findIndex(c => c.dataset.fid === r.id); if (fromIdx < 0 || toIdx < 0) return; const moved = cards[fromIdx]; wrap.insertBefore(moved, fromIdx < toIdx ? card.nextSibling : card); const newOrder = [...wrap.children].map(c => c.dataset.fid); saveQueueOrder(newOrder); };
+    // Row 1: checkbox + dot + body + meta
+    const row1 = document.createElement('div');
+    row1.className = 'qc-row1';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.className = 'chk';
+    cb.checked = state.selection.has(r.id);
+    cb.onclick = (e) => e.stopPropagation();
+    cb.onchange = () => toggleSelect(r.id, cb.checked);
+    const dot = document.createElement('span'); dot.className = 'qc-dot dot-active';
+    const bodyEl = document.createElement('div'); bodyEl.className = 'qc-body';
+    const title = document.createElement('a'); title.className = 'qc-title'; title.href = r.video_url; title.target = '_blank'; title.rel = 'noopener'; title.textContent = r.video_title;
+    const sub = document.createElement('div'); sub.className = 'qc-sub'; sub.textContent = r.creator || '';
+    bodyEl.append(title, sub);
+    const meta = document.createElement('div'); meta.className = 'qc-meta';
+    if (r.content_type) {
+      const typeEl = document.createElement('span'); typeEl.className = 'qc-type'; typeEl.textContent = r.content_type;
+      typeEl.setAttribute('aria-label', 'Type: ' + r.content_type);
+      typeEl.title = 'Type: ' + r.content_type;
+      meta.appendChild(typeEl);
+    }
+    const ageEl = document.createElement('span'); ageEl.className = 'qc-age'; ageEl.textContent = age(r.verified) ? age(r.verified) + ' ago' : '';
+    meta.appendChild(ageEl);
+    row1.append(cb, dot, bodyEl, meta);
+    card.appendChild(row1);
+    // Description
+    if (r.why_this) {
+      const desc = document.createElement('div'); desc.className = 'qc-desc'; desc.textContent = r.why_this;
+      card.appendChild(desc);
+    }
+    // Actions
+    const acts = document.createElement('div'); acts.className = 'qc-actions';
+    const take = document.createElement('button');
+    take.className = 'btn btn-primary';
+    take.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Mark done';
+    take.onclick = () => openReviewSheet(r, 'consumed');
+    const reject = document.createElement('button');
+    reject.className = 'btn btn-ghost btn-danger';
+    reject.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Reject';
+    reject.onclick = () => openReviewSheet(r, 'rejected');
+    acts.append(take, reject);
+    card.appendChild(acts);
+    wrap.appendChild(card);
+  });
+  body.appendChild(wrap);
+};
+
+VIEWS['curate.archive'] = (body) => {
+  const q = state.search.toLowerCase();
+  let items = state.recs.filter(r => r.status === 'consumed');
+  items = applyFilters(items);
+  if (q) items = items.filter(r => (r.video_title || '').toLowerCase().includes(q) || (r.creator || '').toLowerCase().includes(q));
+  items.sort((a, b) => (b.consumed_date || '').localeCompare(a.consumed_date || ''));
+  if (!items.length) {
+    body.innerHTML = '<div class="empty"><svg class="empty-ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg><div class="e-title">Nothing consumed yet</div><div>Consumed items with ratings and reviews land here as your archive.</div></div>';
+    return;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'archive';
+  let lastDay = '';
+  items.forEach(r => {
+    const day = (r.consumed_date || '').slice(0, 10) || 'unknown';
+    if (day !== lastDay) {
+      lastDay = day;
+      const d = document.createElement('div');
+      d.className = 'archive-day';
+      d.innerHTML = '<div class="archive-date">' + esc(fmtDate(day)) + '</div>';
+      wrap.appendChild(d);
+    }
+    const dayEl = wrap.lastChild;
+    const item = document.createElement('div');
+    item.className = 'archive-item';
+    const rating = (r.user_rating && r.user_rating !== 'unset')
+      ? '<span class="rating-tag rating-' + esc(r.user_rating) + '">' + esc(r.user_rating) + '</span>'
+      : '';
+    item.innerHTML =
+      '<span class="dot dot-consumed" style="margin-top:6px"></span>' +
+      '<div>' +
+      '<div class="a-title"><a href="' + esc(r.video_url) + '" target="_blank" rel="noopener">' + esc(r.video_title) + '</a></div>' +
+      '<div class="a-meta">' + esc(r.creator || 'Unknown') + (r.content_type ? ' · ' + esc(r.content_type) : '') + '</div>' +
+      (r.user_review ? '<div class="a-review">' + esc(r.user_review) + '</div>' : '') +
+      '</div>' +
+      '<div>' + rating + '</div>';
+    dayEl.appendChild(item);
+  });
+  body.appendChild(wrap);
+};
+
+VIEWS['curate.all'] = (body) => {
+  const q = state.search.toLowerCase();
+  let items = state.recs.slice();
+  items = applyFilters(items);
+  if (q) items = items.filter(r => (r.video_title || '').toLowerCase().includes(q) || (r.creator || '').toLowerCase().includes(q));
+  if (!items.length) {
+    body.innerHTML = '<div class="empty"><svg class="empty-ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><div class="e-title">No entries</div></div>';
+    return;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'queue';
+  items.forEach((r, i) => {
+    const card = document.createElement('div');
+    card.className = 'queue-card';
+    card.style.animation = 'none';
+    card.dataset.fid = r.id;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.className = 'chk';
+    cb.checked = state.selection.has(r.id);
+    cb.onclick = (e) => e.stopPropagation();
+    cb.onchange = () => toggleSelect(r.id, cb.checked);
+    card.innerHTML =
+      '<span class="dot dot-' + esc(r.status) + ' q-dot"></span>' +
+      '<div class="q-main">' +
+      '<div class="q-title"><a href="' + esc(r.video_url) + '" target="_blank" rel="noopener">' + esc(r.video_title) + '</a></div>' +
+      '<div class="q-meta"><span>' + esc(r.creator || 'Unknown') + '</span>' +
+      (r.content_type ? '<span class="chip">' + esc(r.content_type) + '</span>' : '') +
+      (r.user_rating && r.user_rating !== 'unset' ? '<span class="rating-tag rating-' + esc(r.user_rating) + '">' + esc(r.user_rating) + '</span>' : '') +
+      '</div></div>';
+    const acts = document.createElement('div');
+    acts.className = 'q-actions';
+    const open = document.createElement('a');
+    open.className = 'btn btn-ghost btn-icon';
+    open.href = r.video_url; open.target = '_blank'; open.rel = 'noopener';
+    open.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 17 17 7M8 7h9v9"/></svg>';
+    const edit = document.createElement('button');
+    edit.className = 'btn btn-ghost';
+    edit.textContent = 'Edit';
+    edit.onclick = () => openReviewSheet(r, r.status);
+    acts.append(open, edit);
+    card.insertBefore(cb, card.firstChild);
+    card.appendChild(acts);
+    wrap.appendChild(card);
+  });
+  body.appendChild(wrap);
+};
+
+// feature 5: curate resurfacing
+VIEWS['curate.resurfacing'] = (body) => {
+  const health = state.brain.health;
+  const wrap = document.createElement('div'); wrap.style.maxWidth = '880px';
+  if (health && health.stale && health.stale.length) {
+    const t = document.createElement('div'); t.className = 'sec-title'; t.innerHTML = 'Stale queue items <span class="count">' + health.stale.length + '</span>';
+    wrap.appendChild(t);
+    health.stale.slice(0, 30).forEach(s => {
+      const el = document.createElement('div'); el.className = 'archive-item';
+      el.innerHTML = '<span class="dot dot-active" style="margin-top:6px"></span><div><div class="a-title" style="font-size:13px">' + esc(s.video_title) + '</div><div class="a-meta">' + esc(s.creator || '') + ' · queued ' + esc(fmtDate(s.verified)) + '</div></div><div></div>';
+      wrap.appendChild(el);
+    });
+  }
+  if (health && health.byBranch && health.byBranch.length) {
+    const t = document.createElement('div'); t.className = 'sec-title'; t.innerHTML = 'Branch engagement <span class="count">' + health.byBranch.length + '</span>';
+    wrap.appendChild(t);
+    const max = Math.max(...health.byBranch.map(b => b.consumed_count), 1);
+    health.byBranch.slice(0, 15).forEach(b => {
+      const row = document.createElement('div'); row.className = 'bar-row';
+      row.innerHTML = '<span class="b-label mono">' + esc(b.branch) + '</span><div class="b-track"><div class="b-fill c-consumed" style="width:' + Math.round(b.consumed_count / max * 100) + '%"></div></div><span class="b-count">' + b.consumed_count + '</span>';
+      wrap.appendChild(row);
+    });
+  }
+  if ((!health || !health.stale || !health.stale.length) && (!health || !health.byBranch || !health.byBranch.length)) {
+    wrap.innerHTML = '<div class="empty"><svg class="empty-ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6-8.24"/><path d="M21 3v6h-6"/></svg><div class="e-title">Nothing to resurface</div><div>All branches engaged, no stale items.</div></div>';
+  }
+  body.appendChild(wrap);
+};
+
+// ---------- MAP views ----------
+VIEWS['map.canvas'] = (body) => {
+  const nodes = (state.brain.tree && state.brain.tree.nodes) || [];
+  const withPos = nodes.filter(n => typeof n.x === 'number' && typeof n.y === 'number');
+  if (!withPos.length) {
+    body.innerHTML = '<div class="empty"><svg class="empty-ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg><div class="e-title">No map data</div><div>Seed the tree via the API to see the canvas.</div></div>';
+    return;
+  }
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  withPos.forEach(n => { minX = Math.min(minX, n.x); maxX = Math.max(maxX, n.x); minY = Math.min(minY, n.y); maxY = Math.max(maxY, n.y); });
+  const pad = 300;
+  minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+  const w = maxX - minX, h = maxY - minY;
+
+  const stage = document.createElement('div');
+  stage.className = 'canvas-stage';
+  const inner = document.createElement('div');
+  inner.className = 'canvas-inner';
+  inner.style.width = w + 'px';
+  inner.style.height = h + 'px';
+
+  const byId = {};
+  nodes.forEach(n => { byId[n.id] = n; });
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('class', 'canvas-edges');
+  svg.setAttribute('width', w);
+  svg.setAttribute('height', h);
+  withPos.forEach(n => {
+    if (!n.parent_id || !byId[n.parent_id]) return;
+    const p = byId[n.parent_id];
+    if (typeof p.x !== 'number' || typeof p.y !== 'number') return;
+    const l = document.createElementNS(svgNS, 'line');
+    l.setAttribute('x1', p.x - minX); l.setAttribute('y1', p.y - minY);
+    l.setAttribute('x2', n.x - minX); l.setAttribute('y2', n.y - minY);
+    l.setAttribute('class', 'canvas-edge');
+    svg.appendChild(l);
+  });
+  inner.appendChild(svg);
+
+  withPos.forEach(n => {
+    const el = document.createElement('div');
+    el.className = 'canvas-node cn-' + (n.type || 'leaf') + (n.status ? ' s-' + n.status : '');
+    el.style.left = (n.x - minX) + 'px';
+    el.style.top = (n.y - minY) + 'px';
+    el.textContent = n.label || n.id;
+    el.dataset.nid = n.id;
+    el.tabIndex = 0;
+    el.setAttribute('role', 'button');
+    el.onclick = (e) => { e.stopPropagation(); openNodeSheet(n.id); };
+    el.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openNodeSheet(n.id); } };
+    // Path highlight on hover + keyboard focus (tablet-safe)
+    const highlightPath = () => {
+      $$('.canvas-node', stage).forEach(x => { if (x !== el) x.classList.add('dim'); });
+      el.classList.add('focused');
+      const path = new Set();
+      let cur = n;
+      while (cur) { path.add(cur.id); cur = cur.parent_id ? byId[cur.parent_id] : null; }
+      $$('.canvas-node', stage).forEach(x => {
+        if (!path.has(x.dataset.nid)) x.classList.add('path-dim');
+      });
+    };
+    const clearPath = () => {
+      $$('.canvas-node', stage).forEach(x => { x.classList.remove('dim'); x.classList.remove('path-dim'); });
+      el.classList.remove('focused');
+    };
+    el.addEventListener('mouseenter', highlightPath);
+    el.addEventListener('mouseleave', clearPath);
+    el.addEventListener('focus', highlightPath);
+    el.addEventListener('blur', clearPath);
+    el.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      setWorkspace('curate', 'all');
+      state.search = (n.id || '').split('-')[0];
+      setTimeout(() => { state.search = (n.id || '').split('-')[0]; renderBody(); }, 30);
+    });
+    inner.appendChild(el);
+  });
+
+  stage.appendChild(inner);
+  body.appendChild(stage);
+
+  // feature 7: canvas mini-search
+  const search = document.createElement('input');
+  search.className = 'input canvas-search';
+  search.placeholder = 'Find node…';
+  stage.appendChild(search);
+  const searchResults = document.createElement('div');
+  searchResults.className = 'canvas-search-results';
+  stage.appendChild(searchResults);
+  search.oninput = () => {
+    const q = search.value.toLowerCase().trim();
+    if (q.length < 2) { searchResults.classList.remove('open'); searchResults.innerHTML = ''; return; }
+    const matches = nodes.filter(n => (n.label || n.id || '').toLowerCase().includes(q)).slice(0, 8);
+    if (!matches.length) { searchResults.classList.remove('open'); searchResults.innerHTML = ''; return; }
+    searchResults.classList.add('open');
+    searchResults.innerHTML = matches.map(n =>
+      '<div class="palette-item" data-id="' + esc(n.id) + '"><span class="pi-icon">◇</span><span class="pi-title">' + esc(n.label || n.id) + '</span><span class="pi-meta">' + esc(n.id) + '</span></div>'
+    ).join('');
+    $$('.palette-item', searchResults).forEach(el => {
+      el.onclick = () => { openNodeSheet(el.dataset.id); searchResults.classList.remove('open'); search.value = ''; };
+    });
+  };
+
+  const ctrls = document.createElement('div');
+  ctrls.className = 'canvas-ctrls';
+  ctrls.innerHTML = '<button class="canvas-btn" data-a="in">+</button><button class="canvas-btn" data-a="out">−</button><button class="canvas-btn" data-a="reset">⤢</button>';
+  stage.appendChild(ctrls);
+
+  const fit = () => {
+    const rect = stage.getBoundingClientRect();
+    return Math.min(rect.width / w, rect.height / h, 1.5) * 0.95;
+  };
+  let scale = fit(), tx = 20, ty = 20;
+  const apply = () => { inner.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')'; };
+  const center = () => {
+    const rect = stage.getBoundingClientRect();
+    tx = (rect.width - w * scale) / 2;
+    ty = (rect.height - h * scale) / 2;
+  };
+  center();
+  apply();
+
+  ctrls.querySelector('[data-a="in"]').onclick = () => { scale = Math.min(3, scale * 1.25); apply(); };
+  ctrls.querySelector('[data-a="out"]').onclick = () => { scale = Math.max(0.05, scale / 1.25); apply(); };
+  ctrls.querySelector('[data-a="reset"]').onclick = () => { scale = fit(); center(); apply(); };
+
+  let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.canvas-node') || e.target.closest('.canvas-btn')) return;
+    dragging = true; sx = e.clientX; sy = e.clientY; ox = tx; oy = ty;
+    stage.setPointerCapture(e.pointerId);
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    tx = ox + (e.clientX - sx); ty = oy + (e.clientY - sy);
+    apply();
+  });
+  stage.addEventListener('pointerup', () => { dragging = false; });
+  stage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const d = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const rect = stage.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const newScale = Math.max(0.05, Math.min(3, scale * d));
+    tx = mx - ((mx - tx) / scale) * newScale;
+    ty = my - ((my - ty) / scale) * newScale;
+    scale = newScale;
+    apply();
+  }, { passive: false });
+};
+
+async function openNodeSheet(id) {
+  const body = document.createElement('div');
+  body.innerHTML = '<div class="loading-skeleton"><div class="skel skel-row"></div></div>';
+  openSheet('Loading…', body, null);
+  try {
+    const d = await api('/brain/node/' + encodeURIComponent(id));
+    const n = d.node;
+    const head = $('#sheet .sheet-head h2');
+    if (head) head.textContent = n.label || n.id;
+    body.innerHTML =
+      '<div class="q-meta" style="margin-bottom:14px">' +
+      '<span class="chip chip-accent">' + esc(n.type) + '</span>' +
+      (n.status ? '<span class="chip">' + esc(n.status) + '</span>' : '') +
+      (n.super_category ? '<span class="chip">' + esc(n.super_category.replace('cat-', '')) + '</span>' : '') +
+      '<span class="mono dim">' + esc(n.id) + '</span></div>';
+    if (d.children && d.children.length) {
+      const t = document.createElement('div');
+      t.className = 'sec-title';
+      t.innerHTML = 'Children <span class="count">' + d.children.length + '</span>';
+      body.appendChild(t);
+      d.children.forEach(c => {
+        const el = document.createElement('div');
+        el.className = 'branch-card';
+        el.style.marginBottom = '6px';
+        el.innerHTML = '<div class="bc-id">' + esc(c.id) + '</div><div class="bc-label">' + esc(c.label || c.id) + '</div>';
+        el.onclick = () => openNodeSheet(c.id);
+        body.appendChild(el);
+      });
+    }
+    if (d.related_recs && d.related_recs.length) {
+      const t = document.createElement('div');
+      t.className = 'sec-title';
+      t.innerHTML = 'Recommendations <span class="count">' + d.related_recs.length + '</span>';
+      body.appendChild(t);
+      d.related_recs.forEach(r => {
+        const el = document.createElement('div');
+        el.className = 'archive-item';
+        el.style.padding = '8px 0';
+        el.innerHTML =
+          '<span class="dot dot-' + esc(r.status) + '" style="margin-top:6px"></span>' +
+          '<div><div class="a-title" style="font-size:13px">' + esc(r.video_title || 'Untitled') + '</div>' +
+          '<div class="a-meta">' + esc(r.creator || '') + (r.user_rating && r.user_rating !== 'unset' ? ' · ' + esc(r.user_rating) : '') + '</div></div>' +
+          '<div></div>';
+        body.appendChild(el);
+      });
+    }
+    if ((!d.children || !d.children.length) && (!d.related_recs || !d.related_recs.length)) {
+      const p = document.createElement('div');
+      p.className = 'empty';
+      p.innerHTML = '<div class="e-title">Leaf node</div><div>No children or linked recommendations.</div>';
+      body.appendChild(p);
+    }
+  } catch (e) {
+    body.innerHTML = '<div class="empty">Failed to load node.</div>';
+  }
+}
+
+// feature 14: branches health panel
+VIEWS['map.branches'] = (body) => {
+  const nodes = (state.brain.tree && state.brain.tree.nodes) || [];
+  const branches = nodes.filter(n => n.type === 'branch');
+  const health = (state.brain.health && state.brain.health.byBranch) || [];
+  const mastery = (state.brain.health && state.brain.health.mastery) || [];
+  const hmap = {}; health.forEach(h => { hmap[h.branch] = h; });
+  const mmap = {}; mastery.forEach(m => { mmap[m.branch] = m; });
+  const q = state.search.toLowerCase();
+  let list = branches;
+  if (q) list = list.filter(b => (b.label || '').toLowerCase().includes(q) || b.id.includes(q));
+  if (state.branchSort === 'count') list = list.slice().sort((a, b) => (hmap[b.id] ? hmap[b.id].consumed_count : 0) - (hmap[a.id] ? hmap[a.id].consumed_count : 0));
+  else list = list.slice().sort((a, b) => ((hmap[a.id] && hmap[a.id].last_consumed) || '9999').localeCompare((hmap[b.id] && hmap[b.id].last_consumed) || '9999'));
+  if (!list.length) { body.innerHTML = '<div class="empty"><svg class="empty-ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg><div class="e-title">No branches</div></div>'; return; }
+  const sort = document.createElement('div');
+  sort.className = 'branch-sort';
+  sort.innerHTML = '<button class="btn btn-sm ' + (state.branchSort === 'recency' ? 'btn-primary' : 'btn-ghost') + '" data-sort="recency">By recency</button>' +
+    '<button class="btn btn-sm ' + (state.branchSort === 'count' ? 'btn-primary' : 'btn-ghost') + '" data-sort="count">By consumption</button>';
+  body.appendChild(sort);
+  sort.onclick = (e) => { const b = e.target.closest('[data-sort]'); if (!b) return; state.branchSort = b.dataset.sort; renderBody(); };
+  const byCat = {}; list.forEach(b => { const k = b.super_category || 'other'; (byCat[k] = byCat[k] || []).push(b); });
+  const order = ['cat-faith', 'cat-mind', 'cat-body', 'cat-money', 'cat-life', 'cat-tools'];
+  order.push(...Object.keys(byCat).filter(k => !order.includes(k)));
+  order.forEach(cat => {
+    if (!byCat[cat]) return;
+    const t = document.createElement('div');
+    t.className = 'sec-title';
+    t.textContent = cat.replace('cat-', '');
+    body.appendChild(t);
+    const grid = document.createElement('div'); grid.className = 'branch-list';
+    byCat[cat].forEach(b => {
+      const h = hmap[b.id] || hmap[b.id.split('-')[0]] || null;
+      const m = mmap[b.id] || mmap[b.id.split('-')[0]] || null;
+      const ageDays = h && h.last_consumed ? Math.floor((Date.now() - new Date(h.last_consumed).getTime()) / 86400000) : null;
+      const ageClass = ageDays == null ? '' : ageDays < 30 ? 'fresh' : ageDays < 90 ? 'warm' : 'stale';
+      const ageTxt = ageDays == null ? 'not started' : (ageDays === 0 ? 'today' : ageDays < 30 ? ageDays + 'd' : Math.floor(ageDays / 30) + 'mo');
+      const stale = ageDays != null && ageDays > 60;
+      const masteryPct = m && m.total ? Math.round(m.mastered / m.total * 100) : 0;
+      const el = document.createElement('div');
+      el.className = 'branch-card';
+      el.innerHTML =
+        '<div class="bc-id">' + esc(b.id) + '</div>' +
+        '<div class="bc-label">' + esc(b.label || b.id) + (stale ? '<span class="bc-stale-pulse" title="stale"></span>' : '') + '</div>' +
+        (h ? '<div class="bc-meta">' + h.consumed_count + ' consumed · avg ' + (h.avg_rating ? Number(h.avg_rating).toFixed(1) : '—') + ' · <span class="bc-age ' + ageClass + '">' + ageTxt + '</span></div>' : '<div class="bc-meta">not started</div>') +
+        (m ? '<div class="bc-mastery"><div class="bar-mini"><div class="bar-mini-fill" style="width:' + masteryPct + '%"></div></div><span>' + masteryPct + '% mastery</span></div>' : '');
+      el.onclick = () => openNodeSheet(b.id);
+      grid.appendChild(el);
+    });
+    body.appendChild(grid);
+  });
+};
+
+// feature 6: taste radar
+VIEWS['map.radar'] = (body) => {
+  const nodes = (state.brain.tree && state.brain.tree.nodes) || [];
+  const recs = state.recs;
+  const byCat = {}; nodes.forEach(n => { if (n.super_category) (byCat[n.super_category] = byCat[n.super_category] || []).push(n); });
+  const cats = Object.keys(byCat);
+  if (!cats.length) { body.innerHTML = '<div class="empty"><svg class="empty-ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83M22 12A10 10 0 0 0 12 2v10z"/></svg><div class="e-title">No branches yet</div><div>Seed the tree to see drift analysis.</div></div>'; return; }
+  const last30 = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const rows = cats.map(cat => {
+    const branchIds = byCat[cat].map(n => n.id);
+    const prefix = (id) => branchIds.some(b => id.startsWith(b + '-') || id === b);
+    const consumed = recs.filter(r => r.status === 'consumed' && prefix(r.dedup_key || ''));
+    const recent = recs.filter(r => (r.created_at || '').slice(0, 10) >= last30 && prefix(r.dedup_key || ''));
+    const locked = consumed.filter(r => r.user_rating === 'love' || r.user_rating === 'like');
+    const lockedShare = consumed.length ? locked.length / consumed.length : 0;
+    const recentShare = recent.length ? 1 : 0;
+    const drift = recentShare - lockedShare;
+    return { cat: cat.replace('cat-', ''), drift, locked: lockedShare, recent: recentShare, consumed: consumed.length, recent_n: recent.length };
+  }).sort((a, b) => Math.abs(b.drift) - Math.abs(a.drift));
+  const wrap = document.createElement('div');
+  wrap.style.maxWidth = '880px';
+  wrap.innerHTML = '<div class="muted" style="font-size:12px;margin-bottom:14px">Drift = (recent pushes in branch) − (share of consumed that were love/like). Positive = you are exploring this branch; negative = you have locked in.</div>';
+  rows.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'radar-bar';
+    const mag = Math.min(1, Math.abs(r.drift));
+    const w = Math.round(mag * 50);
+    row.innerHTML =
+      '<span style="font-size:13px;font-weight:500">' + esc(r.cat) + '</span>' +
+      '<div class="radar-track">' +
+      (r.drift > 0
+        ? '<div class="radar-fill-right" style="width:' + w + '%"></div>'
+        : '<div class="radar-fill-left" style="width:' + w + '%"></div>') +
+      '</div>' +
+      '<span class="radar-delta ' + (r.drift > 0 ? 'pos' : r.drift < 0 ? 'neg' : '') + '">' + (r.drift > 0 ? '+' : '') + r.drift.toFixed(2) + '</span>';
+    wrap.appendChild(row);
+  });
+  body.appendChild(wrap);
+};
+
+// feature 12: pattern meter (rewritten cleanly)
+VIEWS['map.profile'] = (body) => {
+  const P = state.brain.profile;
+  if (!P || !P.profile) {
+    body.innerHTML = '<div class="empty"><svg class="empty-ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg><div class="e-title">No profile</div><div>Seed the brain to populate identity, priorities, patterns.</div></div>';
+    return;
+  }
+  const pri = P.priorities || [];
+  const patterns = P.patterns || [];
+  const mastered = P.mastered || [];
+  const blacklist = P.blacklist || [];
+  const wrap = document.createElement('div');
+  wrap.className = 'profile-grid';
+
+  if (P.profile.core_filter || P.profile.identity_json) {
+    const c = document.createElement('div');
+    c.className = 'card';
+    c.innerHTML = '<h3 style="margin-bottom:8px">Core filter</h3><div class="muted" style="font-size:13px;line-height:1.6">' + esc(P.profile.core_filter || P.profile.identity_json || '—') + '</div>';
+    wrap.appendChild(c);
+  }
+
+  if (pri.length) {
+    const c = document.createElement('div');
+    c.className = 'card';
+    let h = '<h3 style="margin-bottom:8px">Priority order</h3><ol class="pri-list">';
+    pri.forEach(p => {
+      h += '<li><span class="pri-rank">#' + p.rank + '</span><span class="pri-id">' + esc(p.branch_id) + '</span><span>' + esc(p.label || '') + '</span></li>';
+    });
+    c.innerHTML = h + '</ol>';
+    wrap.appendChild(c);
+  }
+
+  if (patterns.length) {
+    const c = document.createElement('div');
+    c.className = 'card';
+    let h = '<h3 style="margin-bottom:8px">Patterns <span class="count">' + patterns.length + '</span></h3>';
+    patterns.forEach(p => {
+      h += '<div class="pattern-row"><div class="pattern-head"><span class="strength-tag strength-' + esc(p.strength || 'confirmed') + '">' + esc(p.strength || 'confirmed') + '</span><span class="mono dim" style="font-size:11px">' + esc(p.id) + '</span></div>' +
+        '<div class="pattern-desc">' + esc(p.description) + '</div>' +
+        (p.confirmed_date ? '<div class="pattern-date">' + esc(p.confirmed_date) + '</div>' : '') +
+        '<div class="pattern-actions">' +
+        '<div class="strength-meter">' + ['weak','confirmed','locked'].map(s =>
+          '<button class="pt-btn' + ((p.strength || 'confirmed') === s ? ' pt-active' : '') + '" data-s="' + s + '" data-pid="' + esc(p.id) + '">' + s + '</button>'
+        ).join('') + '</div></div></div>';
+    });
+    c.innerHTML = h;
+    wrap.appendChild(c);
+  }
+
+  if (mastered.length) {
+    const c = document.createElement('div');
+    c.className = 'card';
+    let h = '<h3 style="margin-bottom:8px">Mastered <span class="count">' + mastered.length + '</span></h3>';
+    mastered.slice(0, 10).forEach(m => {
+      h += '<div style="padding:5px 0;border-bottom:1px solid var(--border)"><span class="mono" style="font-size:11px;color:var(--consumed)">' + esc(m.id) + '</span> <span style="font-size:13px">' + esc(m.label) + '</span>' +
+        (m.author ? ' <span class="dim" style="font-size:12px">— ' + esc(m.author) + '</span>' : '') + '</div>';
+    });
+    c.innerHTML = h;
+    wrap.appendChild(c);
+  }
+
+  if (blacklist.length) {
+    const c = document.createElement('div');
+    c.className = 'card';
+    let h = '<h3 style="margin-bottom:8px">Blacklist <span class="count">' + blacklist.length + '</span></h3>';
+    blacklist.slice(0, 10).forEach(b => {
+      h += '<div style="padding:5px 0;border-bottom:1px solid var(--border)"><span style="font-weight:600;font-size:13px">' + esc(b.name) + '</span>' +
+        (b.work ? ' <span class="dim" style="font-size:12px;font-style:italic">— ' + esc(b.work) + '</span>' : '') +
+        (b.reason ? '<div class="dim" style="font-size:11px;margin-top:2px">' + esc(b.reason) + '</div>' : '') + '</div>';
+    });
+    c.innerHTML = h;
+    wrap.appendChild(c);
+  }
+
+  body.appendChild(wrap);
+  body.onclick = async (e) => {
+    const b = e.target.closest('.pt-btn'); if (!b) return;
+    try {
+      await api('/brain/pattern/strength', { method: 'POST', body: JSON.stringify({ id: b.dataset.pid, strength: b.dataset.s }) });
+      toast('Pattern strength: ' + b.dataset.s);
+      await loadBrain();
+      renderBody();
+    } catch (e2) { toast('Failed: ' + e2.message, true); }
+  };
+};
+
+VIEWS['map.resurfacing'] = (body) => {
+  const health = state.brain.health;
+  const wrap = document.createElement('div');
+  wrap.style.maxWidth = '880px';
+
+  if (health && health.stale && health.stale.length) {
+    const t = document.createElement('div');
+    t.className = 'sec-title';
+    t.innerHTML = 'Stale queue items <span class="count">' + health.stale.length + '</span>';
+    wrap.appendChild(t);
+    const sub = document.createElement('div');
+    sub.className = 'muted';
+    sub.style.cssText = 'font-size:12px;margin-bottom:10px';
+    sub.textContent = 'Active items older than 30 days — review or reject them.';
+    wrap.appendChild(sub);
+    health.stale.slice(0, 20).forEach(s => {
+      const el = document.createElement('div');
+      el.className = 'archive-item';
+      el.innerHTML =
+        '<span class="dot dot-active" style="margin-top:6px"></span>' +
+        '<div><div class="a-title" style="font-size:13px">' + esc(s.video_title) + '</div>' +
+        '<div class="a-meta">' + esc(s.creator || '') + ' · queued ' + esc(fmtDate(s.verified)) + '</div></div>' +
+        '<div></div>';
+      wrap.appendChild(el);
+    });
+  }
+
+  if (health && health.byBranch && health.byBranch.length) {
+    const t = document.createElement('div');
+    t.className = 'sec-title';
+    t.innerHTML = 'Branch engagement <span class="count">' + health.byBranch.length + '</span>';
+    wrap.appendChild(t);
+    const max = Math.max(...health.byBranch.map(b => b.consumed_count), 1);
+    health.byBranch.slice(0, 15).forEach(b => {
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      row.innerHTML =
+        '<span class="b-label mono">' + esc(b.branch) + '</span>' +
+        '<div class="b-track"><div class="b-fill c-consumed" style="width:' + Math.round(b.consumed_count / max * 100) + '%"></div></div>' +
+        '<span class="b-count">' + b.consumed_count + '</span>';
+      wrap.appendChild(row);
+    });
+  }
+
+  if ((!health || !health.stale || !health.stale.length) && (!health || !health.byBranch || !health.byBranch.length)) {
+    wrap.innerHTML = '<div class="empty"><svg class="empty-ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6-8.24"/><path d="M21 3v6h-6"/></svg><div class="e-title">Nothing to resurface</div><div>All branches engaged, no stale items.</div></div>';
+  }
+  body.appendChild(wrap);
+};
+
+// feature 8: tensions
+VIEWS['map.tensions'] = async (body) => {
+  body.innerHTML = '<div class="loading-skeleton"><div class="skel skel-row"></div><div class="skel skel-row"></div></div>';
+  let list = [];
+  try { const j = await api('/brain/contradictions'); list = j.contradictions || []; } catch {}
+  if (!list.length) { body.innerHTML = '<div class="empty"><svg class="empty-ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 6 5.5l2-5.5 10 7-4.71 2.14M14 18l-5.5 4 2-7-6-3.5 7-1.5L12 2l3.5 6.5 7 1.5-6 3.5 2 7z"/></svg><div class="e-title">No unresolved tensions</div><div>Conflicting claims across your consumed sources will appear here.</div></div>'; return; }
+  const wrap = document.createElement('div'); wrap.style.maxWidth = '980px';
+  list.forEach(t => {
+    const c = document.createElement('div');
+    c.className = 'tension-card';
+    c.innerHTML =
+      '<div><div class="t-source">' + esc(t.source_a || '—') + '</div><div class="t-meta">A</div></div>' +
+      '<div class="tension-vs">vs</div>' +
+      '<div><div class="t-source">' + esc(t.source_b || '—') + '</div><div class="t-meta">B</div></div>' +
+      '<div><button class="btn btn-sm btn-ghost" data-resolve="' + esc(t.id) + '">Resolve</button></div>' +
+      '<div class="tension-body"><span class="tension-topic">' + esc(t.topic || 'unclear') + '</span> — ' + esc(t.tension || '') + '</div>';
+    wrap.appendChild(c);
+  });
+  body.innerHTML = '';
+  body.appendChild(wrap);
+  body.onclick = async (e) => {
+    const b = e.target.closest('[data-resolve]'); if (!b) return;
+    try {
+      await api('/brain/contradiction/resolve', { method: 'POST', body: JSON.stringify({ id: b.dataset.resolve }) });
+      toast('Resolved');
+      VIEWS['map.tensions'](body);
+    } catch (e2) { toast('Failed: ' + e2.message, true); }
+  };
+};
+
+// feature 15: mega composer
+VIEWS['map.mega'] = (body) => {
+  const P = state.brain.profile && state.brain.profile.profile;
+  const pri = (state.brain.profile && state.brain.profile.priorities) || [];
+  const wrap = document.createElement('div');
+  wrap.style.maxWidth = '720px';
+  const sec1 = document.createElement('div'); sec1.className = 'mega-section';
+  sec1.innerHTML = '<h3>Core filter</h3>';
+  const ta = document.createElement('textarea'); ta.className = 'mega-textarea';
+  ta.value = (P && (P.core_filter || P.identity_json)) || '';
+  // Auto-resize
+  const autoResize = () => { ta.style.height = 'auto'; ta.style.height = Math.max(140, ta.scrollHeight) + 'px'; };
+  ta.addEventListener('input', autoResize);
+  setTimeout(autoResize, 10);
+  sec1.appendChild(ta);
+  const saveBtn = document.createElement('button'); saveBtn.className = 'btn btn-primary'; saveBtn.style.marginTop = '8px'; saveBtn.textContent = 'Save filter';
+  saveBtn.onclick = async () => {
+    try { await api('/brain/profile', { method: 'POST', body: JSON.stringify({ core_filter: ta.value }) }); toast('Saved'); await loadBrain(); } catch (e) { toast('Failed: ' + e.message, true); }
+  };
+  sec1.appendChild(saveBtn);
+  wrap.appendChild(sec1);
+
+  const sec2 = document.createElement('div'); sec2.className = 'mega-section';
+  sec2.innerHTML = '<h3>Priority order <span class="count" id="pri-count">' + pri.length + '</span></h3>';
+  const list = document.createElement('div'); list.id = 'pri-list';
+  pri.forEach((p, i) => {
+    const row = document.createElement('div'); row.className = 'pri-row'; row.draggable = true; row.dataset.idx = String(i);
+    row.innerHTML = '<span class="pri-handle">⋮⋮</span><span class="pri-rank">#' + (i + 1) + '</span><span class="pri-id">' + esc(p.branch_id) + '</span><span style="font-size:12px;color:var(--ink-2)">' + esc(p.label || '') + '</span>';
+    list.appendChild(row);
+  });
+  sec2.appendChild(list);
+  const saveP = document.createElement('button'); saveP.className = 'btn btn-primary'; saveP.style.marginTop = '8px'; saveP.textContent = 'Save order';
+  saveP.onclick = async () => {
+    const items = $$('.pri-row', list).map(r => ({ rank: parseInt(r.querySelector('.pri-rank').textContent.slice(1)), branch_id: r.querySelector('.pri-id').textContent, label: r.lastChild.textContent }));
+    try { await api('/brain/priorities', { method: 'POST', body: JSON.stringify(items) }); toast('Priorities saved'); await loadBrain(); } catch (e) { toast('Failed: ' + e.message, true); }
+  };
+  sec2.appendChild(saveP);
+  wrap.appendChild(sec2);
+  body.appendChild(wrap);
+
+  let dragIdx = null;
+  list.addEventListener('dragstart', (e) => { const r = e.target.closest('.pri-row'); if (!r) return; dragIdx = parseInt(r.dataset.idx); r.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+  list.addEventListener('dragend', () => { $$('.pri-row', list).forEach(r => r.classList.remove('dragging', 'drop-above', 'drop-below')); dragIdx = null; });
+  list.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const r = e.target.closest('.pri-row'); if (!r || dragIdx == null) return;
+    const rect = r.getBoundingClientRect();
+    const above = (e.clientY - rect.top) < rect.height / 2;
+    r.classList.toggle('drop-above', above); r.classList.toggle('drop-below', !above);
+  });
+  list.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const r = e.target.closest('.pri-row'); if (!r || dragIdx == null) return;
+    const above = r.classList.contains('drop-above');
+    const node = list.children[dragIdx];
+    list.removeChild(node);
+    const target = parseInt(r.dataset.idx);
+    const newIdx = above ? target : target + 1;
+    list.insertBefore(node, list.children[newIdx] || null);
+    $$('.pri-row', list).forEach((row, i) => { row.dataset.idx = String(i); row.querySelector('.pri-rank').textContent = '#' + (i + 1); });
+    document.getElementById('pri-count').textContent = list.children.length;
+  });
+};
+
+// ---------- LOG views ----------
+VIEWS['log.journal'] = (body) => {
+  const wrap = document.createElement('div');
+  wrap.style.maxWidth = '880px';
+  const map = {};
+  state.learning.forEach(d => { map[d.date] = d; });
+
+  // topic filter state
+  const activeTopic = state.topicFilter;
+
+  // feature 10: today digest
+  const today = new Date().toISOString().split('T')[0];
+  const todayEntry = map[today] || { count: 0, topics: '' };
+  const todayRecs = state.recs.filter(r => r.status === 'consumed' && (r.consumed_date || '').slice(0, 10) === today);
+  const todayVault = state.vault.filter(v => (v.created_at || '').slice(0, 10) === today);
+  const digest = document.createElement('div');
+  digest.className = 'digest';
+  digest.innerHTML =
+    '<div class="digest-date">' + esc(fmtDate(today)) + '</div>' +
+    '<div class="digest-day">' + esc(new Date(today).toLocaleDateString('en-US', { weekday: 'long' })) + ' · ' + todayEntry.count + ' log' + (todayEntry.count === 1 ? '' : 's') + '</div>' +
+    (todayEntry.topics ? '<div style="display:flex;gap:6px;flex-wrap:wrap">' + todayEntry.topics.split(',').filter(x => x.trim()).map(x => '<span class="chip' + (activeTopic === x.trim() ? ' topic-filter-active' : '') + '" data-topic="' + esc(x.trim()) + '" style="cursor:pointer">' + esc(x.trim()) + '</span>').join('') + '</div>' : '<div class="muted" style="font-size:12px">No topics logged today</div>') +
+    (todayRecs.length ? '<div class="digest-section"><div class="digest-section-title">Consumed today</div>' + todayRecs.slice(0, 3).map(r => '<div class="digest-item"><span class="dot dot-consumed"></span><a href="' + esc(r.video_url) + '" target="_blank" rel="noopener">' + esc(r.video_title) + '</a></div>').join('') + '</div>' : '') +
+    (todayVault.length ? '<div class="digest-section"><div class="digest-section-title">Produced today</div>' + todayVault.slice(0, 3).map(v => '<div class="digest-item"><span class="dot dot-active"></span><a href="/html/download/' + esc(v.id) + '" target="_blank" rel="noopener">' + esc(v.filename) + '</a></div>').join('') + '</div>' : '');
+  wrap.appendChild(digest);
+
+  // Topic filter toggle
+  if (activeTopic) {
+    const filterBar = document.createElement('div');
+    filterBar.className = 'topic-filter-bar';
+    filterBar.innerHTML = '<span class="topic-filter-label">Filtered by:</span><span class="chip topic-filter-active">' + esc(activeTopic) + ' <span style="cursor:pointer;margin-left:4px" data-clear-topic>×</span></span>';
+    wrap.appendChild(filterBar);
+  }
+
+  // Week summary line
+  const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  const weekStartKey = weekStart.toISOString().split('T')[0];
+  const weekItems = state.recs.filter(r => r.status === 'consumed' && (r.consumed_date || '').slice(0, 10) >= weekStartKey);
+  const weekVault = state.vault.filter(v => (v.created_at || '').slice(0, 10) >= weekStartKey);
+  const weekSummary = document.createElement('div');
+  weekSummary.className = 'week-summary';
+  weekSummary.innerHTML = '<span class="week-summary-label">This week</span><span>' + weekItems.length + ' items consumed</span><span>' + weekVault.length + ' vault items produced</span>';
+  wrap.appendChild(weekSummary);
+
+  // Recent vault items (last 3 days)
+  const threeDaysAgo = new Date(); threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+  const threeDaysKey = threeDaysAgo.toISOString().split('T')[0];
+  const recentVault = state.vault.filter(v => (v.created_at || '').slice(0, 10) >= threeDaysKey);
+  if (recentVault.length) {
+    const vaultRow = document.createElement('div');
+    vaultRow.className = 'vault-recent';
+    vaultRow.innerHTML = '<div class="sec-title">Recent vault <span class="count">' + recentVault.length + '</span></div>';
+    const vaultList = document.createElement('div');
+    vaultList.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
+    recentVault.slice(0, 6).forEach(v => {
+      const tag = document.createElement('a');
+      tag.className = 'chip chip-accent';
+      tag.href = '/html/download/' + esc(v.id);
+      tag.target = '_blank';
+      tag.rel = 'noopener';
+      tag.textContent = v.filename.replace(/\.\w+$/, '');
+      vaultList.appendChild(tag);
+    });
+    vaultRow.appendChild(vaultList);
+    wrap.appendChild(vaultRow);
+  }
+
+  const today2 = new Date();
+  const yearAgo = new Date(); yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+  let total = 0, activeDays = 0, maxDay = 0, curStreak = 0, bestStreak = 0;
+  const dates = [];
+  for (let d = new Date(yearAgo); d <= today2; d.setDate(d.getDate() + 1)) {
+    const key = d.toISOString().split('T')[0];
+    const c = (map[key] && map[key].count) || 0;
+    total += c; if (c > 0) activeDays++;
+    maxDay = Math.max(maxDay, c);
+    dates.push({ date: key, count: c });
+  }
+  for (let i = dates.length - 1; i >= 0; i--) { if (dates[i].count > 0) curStreak++; else break; }
+  let run = 0;
+  dates.forEach(d => { if (d.count > 0) { run++; bestStreak = Math.max(bestStreak, run); } else run = 0; });
+
+  // Streak nudge: if today has 0 items, show motivational reminder
+  if (todayEntry.count === 0 && curStreak > 0) {
+    const nudge = document.createElement('div');
+    nudge.className = 'streak-nudge';
+    nudge.innerHTML = '<div class="streak-nudge-text">Keep the streak alive! <span class="mono">' + curStreak + ' day' + (curStreak === 1 ? '' : 's') + '</span> and counting.</div><div class="streak-nudge-sub">Log something today to keep it going.</div>';
+    wrap.appendChild(nudge);
+  }
+
+  const stats = document.createElement('div');
+  stats.className = 'stat-grid';
+  stats.innerHTML =
+    '<div class="stat-block"><div class="s-label">Total items</div><div class="s-value c-consumed">' + total + '</div><div class="s-sub">this year</div></div>' +
+    '<div class="stat-block stat-streak' + (curStreak >= 7 ? ' streak-hot' : '') + '"><div class="s-label">' + (curStreak >= 7 ? '\u2615 ' : '') + 'Current streak</div><div class="s-value c-active">' + curStreak + '</div><div class="s-sub">' + (curStreak >= 7 ? '\ud83d\udd25 ' + curStreak + ' day fire' : curStreak + ' day' + (curStreak === 1 ? '' : 's')) + '</div></div>' +
+    '<div class="stat-block"><div class="s-label">Best streak</div><div class="s-value c-accent">' + bestStreak + '</div><div class="s-sub">days</div></div>' +
+    '<div class="stat-block"><div class="s-label">Active days</div><div class="s-value">' + activeDays + '</div><div class="s-sub">of 365</div></div>';
+  wrap.appendChild(stats);
+
+  // Heatmap with range toggle
+  const hmRange = state.heatmapRange;
+  let hmStart;
+  if (hmRange === '6M') { hmStart = new Date(); hmStart.setMonth(hmStart.getMonth() - 6); }
+  else if (hmRange === '1Y') { hmStart = new Date(); hmStart.setFullYear(hmStart.getFullYear() - 1); }
+  else { hmStart = new Date(yearAgo); }
+
+  const hmWrap = document.createElement('div');
+  hmWrap.className = 'heatmap-wrap';
+
+  // Range toggle
+  const hmControls = document.createElement('div');
+  hmControls.className = 'heatmap-controls';
+  ['6M', '1Y', 'All'].forEach(r => {
+    const btn = document.createElement('button');
+    btn.className = 'seg-btn' + (hmRange === r ? ' active' : '');
+    btn.textContent = r;
+    btn.onclick = () => { state.heatmapRange = r; renderBody(); };
+    hmControls.appendChild(btn);
+  });
+  hmWrap.appendChild(hmControls);
+
+  // Build weeks for the selected range
+  const hmDates = [];
+  for (let d = new Date(hmStart); d <= today2; d.setDate(d.getDate() + 1)) {
+    const key = d.toISOString().split('T')[0];
+    const c = (map[key] && map[key].count) || 0;
+    hmDates.push({ date: key, count: c });
+  }
+  const hmWeeks = [];
+  let hmWeek = [];
+  const hmStartDay = hmStart.getDay();
+  for (let i = 0; i < hmStartDay; i++) hmWeek.push(null);
+  hmDates.forEach(d => {
+    hmWeek.push(d);
+    if (hmWeek.length === 7) { hmWeeks.push(hmWeek); hmWeek = []; }
+  });
+  if (hmWeek.length) hmWeeks.push(hmWeek);
+
+  const hmInner = document.createElement('div');
+  hmInner.style.cssText = 'position:relative;display:inline-block;padding-left:24px';
+  const monthLabels = document.createElement('div');
+  monthLabels.className = 'heatmap-months';
+  let lastMonth = '';
+  hmWeeks.forEach(w => { const first = w.find(d => d); const m = first ? first.date.slice(5,7) : ''; monthLabels.innerHTML += '<span>' + (m !== lastMonth ? ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m)] || '' : '') + '</span>'; lastMonth = m; });
+  hmInner.appendChild(monthLabels);
+  const hm = document.createElement('div');
+  hm.className = 'heatmap';
+  hmWeeks.forEach(w => {
+    const col = document.createElement('div');
+    col.className = 'heatmap-col';
+    w.forEach(day => {
+      const cell = document.createElement('div');
+      cell.className = 'heatmap-cell';
+      if (!day) cell.style.visibility = 'hidden';
+      else {
+        const c = day.count;
+        cell.dataset.count = c;
+        if (c > 0) cell.classList.add(c <= 2 ? 'l1' : c <= 5 ? 'l2' : c <= 9 ? 'l3' : 'l4');
+        const topics = map[day.date] ? (map[day.date].topics || '') : '';
+        cell.title = day.date + ' — ' + c + ' item' + (c === 1 ? '' : 's') + (topics ? ' · ' + topics : '');
+        if (c > 0) cell.onclick = () => openDayModal(day.date);
+      }
+      col.appendChild(cell);
+    });
+    hm.appendChild(col);
+  });
+  hmInner.appendChild(hm);
+  hmWrap.appendChild(hmInner);
+
+  // Heatmap legend
+  const legend = document.createElement('div');
+  legend.className = 'heatmap-legend';
+  legend.innerHTML = '<span>Less</span><span class="hm-legend-cell"></span><span class="hm-legend-cell l1"></span><span class="hm-legend-cell l2"></span><span class="hm-legend-cell l3"></span><span class="hm-legend-cell l4"></span><span>More</span>';
+  hmWrap.appendChild(legend);
+
+  wrap.appendChild(hmWrap);
+
+  const t = document.createElement('div');
+  t.className = 'sec-title';
+  t.innerHTML = 'Recent <span class="count">7d</span>';
+  wrap.appendChild(t);
+  let hasRecent = false;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const key = d.toISOString().split('T')[0];
+    const entry = map[key];
+    if (!entry || !entry.count) continue;
+    if (activeTopic && !entry.topics.split(',').some(x => x.trim() === activeTopic)) continue;
+    hasRecent = true;
+    const el = document.createElement('div');
+    el.className = 'archive-item';
+    const topics = (entry.topics || '').split(',').filter(x => x.trim()).map(x => '<span class="chip' + (activeTopic === x.trim() ? ' topic-filter-active' : '') + '" data-topic="' + esc(x.trim()) + '" style="cursor:pointer">' + esc(x.trim()) + '</span>').join(' ');
+    el.innerHTML =
+      '<span class="dot dot-consumed" style="margin-top:6px"></span>' +
+      '<div><div class="a-title" style="font-size:13px">' + esc(fmtDate(key)) + ' <span class="mono dim">×' + entry.count + '</span></div>' +
+      '<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">' + (topics || '<span class="dim" style="font-size:12px">no topics</span>') + '</div></div>' +
+      '<div></div>';
+    wrap.appendChild(el);
+  }
+  if (!hasRecent) {
+    const e = document.createElement('div');
+    e.className = 'empty';
+    e.innerHTML = '<div class="empty"><svg class="empty-ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><div class="e-title">Nothing logged this week</div><div>Log one topic per day to build the streak.</div></div>';
+    wrap.appendChild(e);
+  }
+
+  // Activity Feed
+  if (state.updateLog.length) {
+    const feedTitle = document.createElement('div');
+    feedTitle.className = 'sec-title';
+    feedTitle.innerHTML = 'Activity <span class="count">' + state.updateLog.length + '</span>';
+    wrap.appendChild(feedTitle);
+    const feed = document.createElement('div');
+    feed.className = 'activity-feed';
+    state.updateLog.slice(0, 20).forEach(ev => {
+      const entry = document.createElement('div');
+      entry.className = 'activity-entry';
+      const kindClass = 'activity-kind-' + (ev.kind || 'system');
+      const kindLabel = ev.kind || 'system';
+      entry.innerHTML =
+        '<span class="activity-dot ' + kindClass + '"></span>' +
+        '<span class="activity-time">' + esc(age(ev.ts)) + '</span>' +
+        '<span class="activity-kind ' + kindClass + '">' + esc(kindLabel) + '</span>' +
+        '<span class="activity-summary">' + esc(ev.summary) + '</span>';
+      if (ev.details_json) {
+        const detailsBtn = document.createElement('button');
+        detailsBtn.className = 'btn btn-ghost btn-sm activity-toggle';
+        detailsBtn.textContent = 'Details';
+        const detailsDiv = document.createElement('div');
+        detailsDiv.className = 'activity-details';
+        detailsDiv.style.display = 'none';
+        try {
+          const parsed = JSON.parse(ev.details_json);
+          detailsDiv.textContent = JSON.stringify(parsed, null, 2);
+        } catch {
+          detailsDiv.textContent = ev.details_json;
+        }
+        detailsBtn.onclick = () => {
+          const isVisible = detailsDiv.style.display !== 'none';
+          detailsDiv.style.display = isVisible ? 'none' : 'block';
+          detailsBtn.textContent = isVisible ? 'Details' : 'Hide';
+        };
+        entry.appendChild(detailsBtn);
+        entry.appendChild(detailsDiv);
+      }
+      feed.appendChild(entry);
+    });
+    wrap.appendChild(feed);
+  }
+
+  // Topic chip click delegation
+  wrap.onclick = (e) => {
+    const chip = e.target.closest('[data-topic]');
+    if (chip) {
+      const topic = chip.dataset.topic;
+      state.topicFilter = state.topicFilter === topic ? '' : topic;
+      renderBody();
+      return;
+    }
+    const clearBtn = e.target.closest('[data-clear-topic]');
+    if (clearBtn) {
+      state.topicFilter = '';
+      renderBody();
+    }
+  };
+
+  body.appendChild(wrap);
+};
+
+async function openDayModal(date) {
+  try {
+    const j = await api('/learning/detail?date=' + date);
+    const day = (j.days || []).find(d => d.date === date);
+    const dayRecs = state.recs.filter(r => r.status === 'consumed' && (r.consumed_date || '').slice(0, 10) === date);
+    const c = document.createElement('div');
+    let html = '<h2 style="margin-bottom:12px">' + esc(fmtDate(date)) + '</h2>' +
+      '<div class="muted" style="margin-bottom:12px">' + (day ? day.count : 0) + ' item' + (day && day.count > 1 ? 's' : '') + ' logged</div>';
+    if (day && day.topics) {
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">' + day.topics.split(',').filter(x => x.trim()).map(x => '<span class="chip">' + esc(x.trim()) + '</span>').join('') + '</div>';
+    } else {
+      html += '<div class="dim" style="margin-bottom:16px">No topics recorded.</div>';
+    }
+    if (dayRecs.length) {
+      html += '<div class="sec-title">Consumed that day <span class="count">' + dayRecs.length + '</span></div>';
+      dayRecs.forEach(r => {
+        const rating = (r.user_rating && r.user_rating !== 'unset') ? '<span class="rating-tag rating-' + esc(r.user_rating) + '">' + esc(r.user_rating) + '</span>' : '';
+        html += '<div class="archive-item" style="padding:8px 0"><span class="dot dot-consumed" style="margin-top:6px"></span>' +
+          '<div style="flex:1;min-width:0"><div class="a-title" style="font-size:13px"><a href="' + esc(r.video_url) + '" target="_blank" rel="noopener">' + esc(r.video_title) + '</a></div>' +
+          '<div class="a-meta">' + esc(r.creator || '') + (r.content_type ? ' · ' + esc(r.content_type) : '') + '</div>' +
+          (r.user_review ? '<div class="a-review">' + esc(r.user_review) + '</div>' : '') +
+          '</div><div>' + rating + '</div></div>';
+      });
+    }
+    c.innerHTML = html;
+    openModal(c);
+  } catch { toast('Failed to load day', true); }
+}
+
+VIEWS['vault.files'] = (body) => {
+  const q = state.search.toLowerCase();
+  let files = state.vault;
+  if (q) files = files.filter(f => f.filename.toLowerCase().includes(q));
+  if (!files.length) {
+    body.innerHTML = '<div class="vault-head"><div class="vault-title">Vault</div></div><div class="empty"><svg class="empty-ill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><div class="e-title">Vault is empty</div><div>Upload HTML artifacts or PDFs — they will show up here, paired by name.</div><button class="btn btn-primary" onclick="window.__up()">Upload file</button></div>';
+    window.__up = openUploadSheet;
+    return;
+  }
+  // Group files by base name (paired HTML+PDF under one card)
+  const groups = {};
+  files.forEach(f => {
+    // Split extension safely without regex backslash issues
+    const dotIdx = f.filename.lastIndexOf('.');
+    const ext = dotIdx > 0 ? f.filename.slice(dotIdx + 1).toLowerCase() : '';
+    const base = dotIdx > 0 ? f.filename.slice(0, dotIdx) : f.filename;
+    const pairBase = base;
+    (groups[pairBase] = groups[pairBase] || {});
+    if (ext === 'html' || ext === 'htm') {
+      if (!groups[pairBase].html || f.created_at > groups[pairBase].html.created_at) groups[pairBase].html = f;
+    } else if (ext === 'pdf') {
+      if (!groups[pairBase].pdf || f.created_at > groups[pairBase].pdf.created_at) groups[pairBase].pdf = f;
+    } else if (ext === 'md' || ext === 'markdown') {
+      groups[pairBase].md = f;
+    } else {
+      (groups[pairBase].other = groups[pairBase].other || []).push(f);
+    }
+  });
+
+  // Helpers
+  function iconType(g) {
+    if (g.md) return 'md';
+    if (g.html) return 'code';
+    if (g.pdf) return 'pdf';
+    return 'file';
+  }
+  function getDesc(g, base) {
+    const src = g.html || g.md;
+    if (src && src.snippet && !src.filename.endsWith('.pdf')) {
+      let t = src.snippet.replace(/<[^>]*>/g, '').trim();
+      // Skip if snippet looks like base64 (PDF content)
+      if (t.length > 10 && !/^[A-Za-z0-9+/=]{40,}$/.test(t.slice(0, 60))) {
+        t = t.slice(0, 300).replace(/ +/g, ' ');
+        return t.length > 120 ? t.slice(0, 117) + '...' : t;
+      }
+    }
+    // Fallback: humanize the filename (no backslash-reliant regex)
+    return base.replace(/[-_]/g, ' ').split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1) : '').join(' ');
+  }
+  function getTags(g) {
+    const tags = [];
+    if (g.pdf) tags.push('PDF');
+    if (g.html) tags.push('HTML');
+    if (g.md) tags.push('Markdown');
+    return tags;
+  }
+
+  // Header with toggle
+  const head = document.createElement('div');
+  head.className = 'vault-head';
+  head.innerHTML =
+    '<div class="vault-title">Vault</div>' +
+    '<div class="vault-toggle">' +
+    '<button class="vault-toggle-btn' + (state.vaultView === 'grid' ? ' active' : '') + '" data-view="grid">' +
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>Grid</button>' +
+    '<button class="vault-toggle-btn' + (state.vaultView === 'list' ? ' active' : '') + '" data-view="list">' +
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="3" x2="14" y2="3"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="13" x2="14" y2="13"/></svg>List</button>' +
+    '</div>';
+  body.appendChild(head);
+  head.querySelectorAll('.vault-toggle-btn').forEach(btn => {
+    btn.onclick = () => { state.vaultView = btn.dataset.view; renderBody(); };
+  });
+
+  if (state.vaultView === 'grid') {
+    const grid = document.createElement('div');
+    grid.className = 'vault-grid';
+    let idx = 0;
+    Object.entries(groups).forEach(([base, g]) => {
+      const type = iconType(g);
+      const desc = getDesc(g, base);
+      const tags = getTags(g);
+      const card = document.createElement('div');
+      card.className = 'vault-card';
+      card.style.animationDelay = (idx * 25) + 'ms';
+      idx++;
+      const tagsHtml = tags.map(t => '<span class="vault-card-tag">' + esc(t) + '</span>').join('');
+      // Download links
+      let dlHtml = '';
+      if (g.html) dlHtml += '<a class="vault-card-download" href="/html/download/' + esc(g.html.id) + '" target="_blank" rel="noopener">HTML</a> ';
+      if (g.pdf) dlHtml += '<a class="vault-card-download" href="/html/download/' + esc(g.pdf.id) + '" target="_blank" rel="noopener">PDF</a>';
+      card.innerHTML =
+        '<div class="vault-card-icon ' + type + '">' + (type === 'md' ? 'Md' : type === 'pdf' ? 'Pdf' : 'Code') + '</div>' +
+        '<div class="vault-card-name">' + esc(base) + '</div>' +
+        '<div class="vault-card-desc">' + esc(desc) + '</div>' +
+        (g.html ? '<div class="vault-card-preview" data-id="' + esc(g.html.id) + '"></div>' : '') +
+        '<div class="vault-card-foot">' +
+        '<div class="vault-card-tags">' + tagsHtml + '</div>' +
+        '<button class="vault-card-del" data-base="' + esc(base) + '">Delete</button>' +
+        '</div>';
+      grid.appendChild(card);
+      // Load preview iframe on hover
+      if (g.html) {
+        card.addEventListener('mouseenter', () => {
+          const preview = card.querySelector('.vault-card-preview');
+          if (preview && !preview.querySelector('iframe')) {
+            const iframe = document.createElement('iframe');
+            iframe.src = '/html/download/' + g.html.id;
+            iframe.loading = 'lazy';
+            iframe.sandbox = 'allow-same-origin';
+            preview.appendChild(iframe);
+          }
+        });
+      }
+    });
+    body.appendChild(grid);
+  } else {
+    // List view
+    const list = document.createElement('div');
+    list.className = 'vault-list-wrap';
+    Object.entries(groups).forEach(([base, g]) => {
+      const row = document.createElement('div');
+      row.className = 'vault-list-row';
+      const date = (g.html && g.html.created_at) || (g.pdf && g.pdf.created_at) || (g.md && g.md.created_at) || '';
+      let actsHtml = '';
+      if (g.pdf) actsHtml += '<a class="btn btn-sm" href="/html/download/' + esc(g.pdf.id) + '" target="_blank" rel="noopener">PDF</a>';
+      else actsHtml += '<span class="btn btn-sm btn-disabled">PDF</span>';
+      if (g.html) actsHtml += '<a class="btn btn-sm" href="/html/download/' + esc(g.html.id) + '" target="_blank" rel="noopener">HTML</a>';
+      else actsHtml += '<span class="btn btn-sm btn-disabled">HTML</span>';
+      actsHtml += '<button class="btn btn-sm btn-ghost btn-danger vault-card-del" data-base="' + esc(base) + '">Delete</button>';
+      row.innerHTML =
+        '<div><div class="vault-list-name">' + esc(base) + '</div><div class="vault-list-meta">' + esc(fmtDate(date)) + '</div></div>' +
+        '<div class="vault-list-actions">' + actsHtml + '</div>';
+      list.appendChild(row);
+    });
+    body.appendChild(list);
+  }
+
+  // Delete with confirmation
+  const doDelete = async (base) => {
+    const g = groups[base];
+    if (!g) return;
+    const toDelete = [];
+    if (g.html) toDelete.push(g.html.id);
+    if (g.pdf) toDelete.push(g.pdf.id);
+    if (g.md) toDelete.push(g.md.id);
+    if (!toDelete.length) return;
+    try {
+      await Promise.all(toDelete.map(id => api('/html/delete', { method: 'POST', body: JSON.stringify({ id }) })));
+      toast('Deleted ' + base);
+      await loadVault(); renderSubnav(); renderBody();
+    } catch (e) { toast('Delete failed: ' + e.message, true); }
+  };
+  body.onclick = (e) => {
+    const delBtn = e.target.closest('.vault-card-del');
+    if (!delBtn) return;
+    const base = delBtn.dataset.base;
+    const g = groups[base];
+    if (!g) return;
+    const files_ = [];
+    if (g.html) files_.push('HTML');
+    if (g.pdf) files_.push('PDF');
+    if (g.md) files_.push('Markdown');
+    const c = document.createElement('div');
+    c.innerHTML = '<h2 style="margin-bottom:12px">Delete &laquo;' + esc(base) + '&raquo;?</h2>' +
+      '<div class="muted" style="margin-bottom:16px">This will permanently delete the ' + files_.join(' and ') + ' file' + (files_.length > 1 ? 's' : '') + '.</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+      '<button class="btn btn-ghost" id="confirm-cancel">Cancel</button>' +
+      '<button class="btn btn-danger" id="confirm-delete">Delete</button></div>';
+    openModal(c);
+    document.getElementById('confirm-cancel').onclick = closeModal;
+    document.getElementById('confirm-delete').onclick = () => { closeModal(); doDelete(base); };
+  };
+};
+
+VIEWS['log.stats'] = (body) => {
+  const S = state.stats;
+  if (!S) {
+    body.innerHTML = '<div class="empty">No stats yet.</div>';
+    return;
+  }
+  const total = S.total || 0;
+  const active = (S.byStatus && S.byStatus.active) || 0;
+  const consumed = (S.byStatus && S.byStatus.consumed) || 0;
+  const rejected = (S.byStatus && S.byStatus.rejected) || 0;
+  const rate = total > 0 ? Math.round(consumed / total * 100) : 0;
+  const wrap = document.createElement('div');
+  wrap.style.maxWidth = '980px';
+
+  // Top stat grid
+  const grid = document.createElement('div');
+  grid.className = 'stat-grid';
+  grid.innerHTML =
+    '<div class="stat-block"><div class="s-label">Total</div><div class="s-value">' + total + '</div><div class="s-sub">all entries</div></div>' +
+    '<div class="stat-block"><div class="s-label">Queue</div><div class="s-value c-active">' + active + '</div><div class="s-sub">waiting</div></div>' +
+    '<div class="stat-block"><div class="s-label">Consumed</div><div class="s-value c-consumed">' + consumed + '</div><div class="s-sub">' + rate + '% of total</div></div>' +
+    '<div class="stat-block"><div class="s-label">Rejected</div><div class="s-value c-rejected">' + rejected + '</div><div class="s-sub">' + Math.round(rejected / Math.max(1, total) * 100) + '%</div></div>';
+  wrap.appendChild(grid);
+
+  // ---------- Trend Comparisons ----------
+  // Weekly trend: this week vs last week
+  const allConsumed = (S.allEntries || []).filter(e => e.status === 'consumed' && e.consumed_date && e.consumed_date !== 'unset');
+  const now = new Date();
+  const thisWeekStart = new Date(now); thisWeekStart.setDate(now.getDate() - now.getDay());
+  const lastWeekStart = new Date(thisWeekStart); lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+  const lastWeekEnd = new Date(thisWeekStart);
+  const thisWeekCount = allConsumed.filter(e => e.consumed_date >= thisWeekStart.toISOString().split('T')[0]).length;
+  const lastWeekCount = allConsumed.filter(e => e.consumed_date >= lastWeekStart.toISOString().split('T')[0] && e.consumed_date < lastWeekEnd.toISOString().split('T')[0]).length;
+  const weekPct = lastWeekCount > 0 ? Math.round((thisWeekCount - lastWeekCount) / lastWeekCount * 100) : 0;
+  const weekArrow = weekPct > 0 ? '↑' : weekPct < 0 ? '↓' : '→';
+  const weekColor = weekPct > 0 ? 'c-consumed' : weekPct < 0 ? 'c-rejected' : '';
+
+  const trendCard = document.createElement('div');
+  trendCard.className = 'trend-card';
+  trendCard.innerHTML =
+    '<div class="chart-title">Weekly trend</div>' +
+    '<div class="trend-row">' +
+    '<div class="trend-stat"><div class="trend-label">This week</div><div class="trend-value ' + weekColor + '">' + thisWeekCount + '</div></div>' +
+    '<div class="trend-stat"><div class="trend-label">Last week</div><div class="trend-value">' + lastWeekCount + '</div></div>' +
+    '<div class="trend-stat"><div class="trend-label">Change</div><div class="trend-value ' + weekColor + '">' + weekArrow + ' ' + Math.abs(weekPct) + '%</div></div>' +
+    '</div>';
+  wrap.appendChild(trendCard);
+
+  // Monthly average (last 6 months)
+  const recentMonths = (S.consumptionByMonth || []).slice(-6);
+  const avgMonth = recentMonths.length > 0 ? Math.round(recentMonths.reduce((a, m) => a + m.c, 0) / recentMonths.length) : 0;
+  const avgCard = document.createElement('div');
+  avgCard.className = 'trend-card';
+  avgCard.innerHTML =
+    '<div class="chart-title">Monthly average</div>' +
+    '<div class="trend-row">' +
+    '<div class="trend-stat"><div class="trend-label">6-month avg</div><div class="trend-value">' + avgMonth + '</div></div>' +
+    '<div class="trend-stat"><div class="trend-label">Months</div><div class="trend-value">' + recentMonths.length + '</div></div>' +
+    '</div>';
+  wrap.appendChild(avgCard);
+
+  // Rating by content type
+  const contentTypeMap = {};
+  allConsumed.forEach(e => {
+    const ct = e.content_type || 'unknown';
+    contentTypeMap[ct] = (contentTypeMap[ct] || 0) + 1;
+  });
+  const contentTypeEntries = Object.entries(contentTypeMap).sort((a, b) => b[1] - a[1]);
+  if (contentTypeEntries.length) {
+    const ctMax = Math.max(...contentTypeEntries.map(([, c]) => c), 1);
+    const ctCard = document.createElement('div');
+    ctCard.className = 'chart-card';
+    ctCard.innerHTML = '<div class="chart-title">Rating by content type</div>';
+    const ctBars = document.createElement('div');
+    ctBars.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+    contentTypeEntries.forEach(([ct, c]) => {
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      row.innerHTML =
+        '<span class="b-label">' + esc(ct) + '</span>' +
+        '<div class="b-track"><div class="b-fill" style="width:' + Math.round(c / ctMax * 100) + '%"></div></div>' +
+        '<span class="b-count">' + c + '</span>';
+      ctBars.appendChild(row);
+    });
+    ctCard.appendChild(ctBars);
+    wrap.appendChild(ctCard);
+  }
+
+  // Rating distribution chart (horizontal stacked bar)
+  if (S.ratingDistribution && S.ratingDistribution.length) {
+    const chart = document.createElement('div');
+    chart.className = 'chart-card';
+    chart.innerHTML = '<div class="chart-title">Rating distribution <span class="count">' + S.ratingDistribution.length + '</span></div>';
+    const bar = document.createElement('div');
+    bar.className = 'rating-dist';
+    const labels = ['love', 'like', 'meh', 'dislike'];
+    const vals = {};
+    S.ratingDistribution.forEach(r => { vals[r.user_rating?.toLowerCase()] = r.c; });
+    const sum = labels.reduce((a, l) => a + (vals[l] || 0), 0);
+    if (sum > 0) {
+      labels.forEach(l => {
+        const c = vals[l] || 0;
+        if (c === 0) return;
+        const seg = document.createElement('div');
+        seg.className = 'rating-seg r-' + l;
+        seg.style.width = Math.round(c / sum * 100) + '%';
+        seg.textContent = c > 1 ? c : '';
+        bar.appendChild(seg);
+      });
+    }
+    chart.appendChild(bar);
+    const leg = document.createElement('div');
+    leg.style.cssText = 'display:flex;gap:12px;margin-top:8px;font-size:11px;color:var(--ink-2)';
+    leg.innerHTML = labels.map(l => '<span style="display:flex;align-items:center;gap:4px"><span class="dot dot-' + l + '" style="width:8px;height:8px;background:var(--' + (l === 'love' ? 'active' : l === 'like' ? 'consumed' : l === 'meh' ? 'ink-3' : 'rejected') + ')"></span>' + l + '</span>').join('');
+    chart.appendChild(leg);
+    wrap.appendChild(chart);
+  }
+
+  // Monthly consumption chart (bars)
+  if (S.consumptionByMonth && S.consumptionByMonth.length) {
+    const chart = document.createElement('div');
+    chart.className = 'chart-card';
+    chart.innerHTML = '<div class="chart-title">Consumption by month</div>';
+    const max = Math.max(...S.consumptionByMonth.map(m => m.c), 1);
+    const bars = document.createElement('div');
+    bars.className = 'month-chart';
+    S.consumptionByMonth.forEach(m => {
+      const b = document.createElement('div');
+      b.className = 'month-bar';
+      const pct = Math.max(2, Math.round(m.c / max * 100));
+      b.style.height = pct + '%';
+      b.innerHTML = '<span class="mb-val">' + m.c + '</span><span class="mb-label">' + esc(m.m) + '</span>';
+      bars.appendChild(b);
+    });
+    chart.appendChild(bars);
+    wrap.appendChild(chart);
+  }
+
+  // Top creators
+  if (S.topCreators && S.topCreators.length) {
+    const chart = document.createElement('div');
+    chart.className = 'chart-card';
+    chart.innerHTML = '<div class="chart-title">Top creators <span class="count">' + S.topCreators.length + '</span></div>';
+    const max = Math.max(...S.topCreators.map(c => c.c), 1);
+    S.topCreators.slice(0, 10).forEach(cr => {
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      row.innerHTML =
+        '<span class="b-label">' + esc(cr.creator) + '</span>' +
+        '<div class="b-track"><div class="b-fill" style="width:' + Math.round(cr.c / max * 100) + '%"></div></div>' +
+        '<span class="b-count">' + cr.c + '</span>';
+      chart.appendChild(row);
+    });
+    wrap.appendChild(chart);
+  }
+
+  // Bundles
+  if (S.bundles && S.bundles.length) {
+    const chart = document.createElement('div');
+    chart.className = 'chart-card';
+    chart.innerHTML = '<div class="chart-title">Synergy bundles <span class="count">' + S.bundles.length + '</span></div>';
+    const chips = document.createElement('div');
+    chips.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
+    S.bundles.forEach(b => {
+      const c = document.createElement('span');
+      c.className = 'chip chip-accent';
+      c.textContent = b.synergy_bundle_id + ' ×' + b.c;
+      chips.appendChild(c);
+    });
+    chart.appendChild(chips);
+    wrap.appendChild(chart);
+  }
+
+  const exp = document.createElement('div');
+  exp.style.cssText = 'margin-top:24px;display:flex;gap:8px';
+  exp.innerHTML = '<a class="btn" href="/recommendations/export">Export JSON</a><a class="btn" href="/recommendations/export?format=md">Export Markdown</a>';
+  wrap.appendChild(exp);
+
+  body.appendChild(wrap);
+};
+
+// ---------- batch bar wiring (feature 3) ----------
+document.getElementById('batch-consumed').onclick = async () => { await batchAct('consumed'); };
+document.getElementById('batch-reject').onclick = async () => { await batchAct('rejected'); };
+document.getElementById('batch-clear').onclick = () => {
+  if (!state.selection.size) return;
+  const n = state.selection.size;
+  if (!confirm('Clear ' + n + ' selected item' + (n === 1 ? '' : 's') + '? This only deselects — nothing is deleted.')) return;
+  state.selection.clear();
+  updateBatchBar();
+  document.querySelectorAll('.chk').forEach(c => c.checked = false);
+  toast('Selection cleared');
+};
+async function batchAct(status) {
+  if (!state.selection.size) return;
+  const ids = [...state.selection];
+  try {
+    setLoading(document.getElementById('batch-' + status), true);
+    await api('/recommendations/action', { method: 'POST', body: JSON.stringify({ ids, status }) });
+    state.selection.clear();
+    updateBatchBar();
+    await loadRecs(); await loadBrain();
+    renderSubnav(); renderBody();
+    const label = status === 'consumed' ? 'Consumed' : 'Rejected';
+    toastUndo(label + ' ' + ids.length + ' items', async () => {
+      try {
+        // Revert: restore original status (best-effort)
+        for (const id of ids) {
+          const orig = state.recs.find(r => r.id === id);
+          if (orig) await api('/recommendations/action', { method: 'POST', body: JSON.stringify({ id, status: 'active' }) });
+        }
+        toast('Undone');
+        await loadRecs(); await loadBrain(); renderSubnav(); renderBody();
+      } catch (e) { toast('Undo failed: ' + e.message, true); }
+    });
+  } catch (e) { toast('Failed: ' + e.message, true); }
+  finally { setLoading(document.getElementById('batch-' + status), false); }
+}
+
+// ---------- FAB (feature 9) — only visible on curate, mobile-primary ----------
+const fab = document.getElementById('fab-new');
+if (fab) {
+  fab.onclick = openPushSheet;
+  const updateFab = () => {
+    fab.style.display = (state.ws === 'curate' && window.innerWidth <= 720) ? 'grid' : 'none';
+  };
+  updateFab();
+  window.addEventListener('resize', updateFab);
+  // Also update when workspace changes
+  const _origSW = setWorkspace;
+  window.setWorkspace = function(ws, sub) {
+    _origSW(ws, sub);
+    updateFab();
+  };
+}
+
+// ---------- theme ----------
+$('#theme-btn').onclick = () => {
+  const cur = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.body.dataset.theme = cur;
+  localStorage.setItem('tm-theme', cur);
+};
+const savedTheme = localStorage.getItem('tm-theme');
+if (savedTheme) document.body.dataset.theme = savedTheme;
+
+// ---------- global key handler (feature 4) ----------
+document.addEventListener('keydown', (e) => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  const inField = tag === 'input' || tag === 'textarea' || tag === 'select';
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); return; }
+  if (inField) return;
+  if (e.key === 'Escape') { state.keySeq = null; return; }
+  if (e.key === '?') { e.preventDefault(); openKeymap(); return; }
+  if (state.keySeq === 'g') {
+    state.keySeq = null;
+    if (e.key === 'c') return setWorkspace('curate');
+    if (e.key === 'm') return setWorkspace('map');
+    if (e.key === 'l') return setWorkspace('log');
+    if (e.key === 'v') return setWorkspace('vault');
+  }
+  if (e.key === 'g' && !state.keySeq) { state.keySeq = 'g'; return; }
+  if (/^[1-9]$/.test(e.key)) {
+    const views = WS[state.ws].views;
+    const i = parseInt(e.key) - 1;
+    if (views[i]) { e.preventDefault(); setWorkspace(state.ws, views[i][0]); return; }
+  }
+  if (e.key === 'n') { e.preventDefault(); openPushSheet(); return; }
+  if (e.key === '/') {
+    e.preventDefault();
+    const inp = document.querySelector('.ws-subnav input.input');
+    if (inp) inp.focus();
+    return;
+  }
+  const cards = $$('.queue-card, .archive-item, .branch-card, .vault-row');
+  if (e.key === 'j') { e.preventDefault(); state.focusedRow = Math.min(cards.length - 1, state.focusedRow + 1); cards.forEach((c, i) => c.classList.toggle('kb-focus', i === state.focusedRow)); }
+  else if (e.key === 'k') { e.preventDefault(); state.focusedRow = Math.max(0, state.focusedRow - 1); cards.forEach((c, i) => c.classList.toggle('kb-focus', i === state.focusedRow)); }
+  else if (e.key === 'c' || e.key === 'x') {
+    const r = getFocusedRow();
+    if (r && r.dataset.fid) {
+      const rec = state.recs.find(x => x.id === r.dataset.fid);
+      if (rec) openReviewSheet(rec, e.key === 'c' ? 'consumed' : 'rejected');
+    }
+  } else if (e.key === 'r' || e.key === 'e') {
+    const r = getFocusedRow();
+    if (r && r.dataset.fid) {
+      const rec = state.recs.find(x => x.id === r.dataset.fid);
+      if (rec) openReviewSheet(rec, rec.status);
+    }
+  }
+});
+
+// ---------- boot ----------
+async function refresh(showMsg) {
+  const ws = state.ws, sub = state.sub[state.ws];
+  const loaders = { recs: loadRecs, brain: loadBrain, learning: loadLearning, vault: loadVault, stats: loadStats, updateLog: loadUpdateLog };
+  const needs = {
+    curate: ['recs', 'brain'], map: ['brain', 'recs'], log: ['learning', 'vault', 'stats', 'recs', 'updateLog'],
+    vault: ['vault'],
+  }[ws] || [];
+  await Promise.all(needs.map(k => loaders[k]()));
+  renderSubnav(); renderBody();
+  if (showMsg) toast('Refreshed');
+}
+
+const h = location.hash.replace(/^#/, '');
+const hash = h.startsWith('/') ? h.slice(1) : h;
+const [hw, hs] = hash.split('/');
+if (WS[hw]) { state.ws = hw; if (hs && WS[hw].views.some(v => v[0] === hs)) state.sub[hw] = hs; }
+else if (!h) { state.ws = 'vault'; state.sub.vault = 'files'; }
+
+$$('.nav-btn[data-ws]').forEach(b => {
+  b.onclick = () => setWorkspace(b.dataset.ws);
+});
+
+loadRecs().then(() => { initFiltersBar(); if (state.ws === 'curate') { renderSubnav(); renderBody(); } });
+loadBrain().then(() => { if (state.ws === 'map') { renderSubnav(); renderBody(); } });
+loadLearning().then(() => { if (state.ws === 'log' && state.sub.log === 'journal') renderBody(); });
+loadVault().then(() => {
+  if (state.ws === 'vault') { renderSubnav(); renderBody(); }
+});
+loadStats().then(() => { if (state.ws === 'log' && state.sub.log === 'stats') renderBody(); });
+loadUpdateLog().then(() => { if (state.ws === 'log' && state.sub.log === 'journal') renderBody(); });
+
+setWorkspace(state.ws, state.sub[state.ws]);
+`;

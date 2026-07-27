@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volatility Is Not Risk — a comprehension engine</title>
+<style>
+  :root{
+    --ink:#171514; --paper:#f6f5f2; --sub:#5c5852; --line:#d8d5cd;
+    --accent:#0f6e63; --accent2:#9c2b2b; --soft:#eceae4; --card:#fffefb;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    font-size:clamp(16px,1.8vw,20px); line-height:1.75; -webkit-font-smoothing:antialiased;
+  }
+  header{
+    padding:48px 24px 28px; max-width:880px; margin:0 auto;
+    border-bottom:2px solid var(--ink);
+  }
+  h1{
+    font-family:ui-sans-serif,system-ui,"Segoe UI",Helvetica,Arial,sans-serif;
+    font-weight:800; letter-spacing:-.02em; line-height:1.05;
+    font-size:clamp(30px,5vw,52px); margin:0 0 12px;
+  }
+  .lede{font-size:1.05em; color:var(--sub); margin:0; max-width:62ch}
+  .byline{font-family:ui-sans-serif,system-ui,sans-serif; font-size:.82em; color:var(--sub); text-transform:uppercase; letter-spacing:.14em; margin-top:18px}
+  main{max-width:880px; margin:0 auto; padding:8px 24px 80px}
+  section{padding:34px 0; border-bottom:1px solid var(--line)}
+  h2{
+    font-family:ui-sans-serif,system-ui,"Segoe UI",Helvetica,Arial,sans-serif;
+    font-weight:750; font-size:clamp(22px,3.4vw,30px); letter-spacing:-.01em;
+    margin:0 0 6px;
+  }
+  h3{font-family:ui-sans-serif,system-ui,sans-serif; font-weight:700; font-size:1.12em; margin:26px 0 4px}
+  p{margin:14px 0; max-width:66ch}
+  .why{font-family:ui-sans-serif,system-ui,sans-serif; font-size:.8em; color:var(--accent); text-transform:uppercase; letter-spacing:.12em; font-weight:700; margin-bottom:2px}
+  strong{font-weight:700}
+  .num{color:var(--accent2); font-weight:700}
+  .term{border-bottom:1.5px dotted var(--accent); cursor:help; color:var(--accent)}
+  .interactive{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px; margin:22px 0; box-shadow:0 1px 0 rgba(0,0,0,.03)}
+  .interactive h3{margin-top:0}
+  label{font-family:ui-sans-serif,system-ui,sans-serif; font-size:.85em; font-weight:600; display:block; margin:14px 0 6px}
+  input[type=range]{width:100%; accent-color:var(--accent)}
+  input[type=number]{font-size:1em; padding:8px 10px; border:1px solid var(--line); border-radius:8px; width:120px; font-family:inherit}
+  .out{font-family:ui-sans-serif,system-ui,sans-serif; font-size:1.5em; font-weight:800; color:var(--accent2); margin:10px 0 0}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  .pill{display:inline-block; padding:4px 12px; border-radius:999px; font-family:ui-sans-serif,system-ui,sans-serif; font-size:.78em; font-weight:700}
+  .pill.vol{background:#dcefe9; color:#0c5a50}
+  .pill.risk{background:#f6dcdb; color:#8a211f}
+  .recall{border-left:4px solid var(--accent); padding:14px 18px; background:var(--soft); border-radius:0 10px 10px 0; margin:18px 0}
+  .recall button{font-family:ui-sans-serif,system-ui,sans-serif; font-weight:700; background:var(--accent); color:#fff; border:0; border-radius:8px; padding:8px 14px; cursor:pointer; margin-top:8px}
+  .recall .ans{display:none; margin-top:10px; color:var(--sub); font-style:italic}
+  .recall .ans.show{display:block}
+  svg{width:100%; height:auto; display:block}
+  .controls{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:10px 0}
+  button.toggle{font-family:ui-sans-serif,system-ui,sans-serif; font-weight:700; border:1px solid var(--line); background:#fff; border-radius:8px; padding:7px 13px; cursor:pointer}
+  button.toggle.on{background:var(--ink); color:#fff; border-color:var(--ink)}
+  .toolbar{position:sticky; top:0; background:var(--paper); border-bottom:1px solid var(--line); padding:10px 24px; display:flex; gap:10px; align-items:center; z-index:5}
+  .toolbar button{font-family:ui-sans-serif,system-ui,sans-serif; font-weight:600; border:1px solid var(--line); background:#fff; border-radius:8px; padding:7px 13px; cursor:pointer}
+  #glossary{position:fixed; inset:0; background:rgba(20,18,16,.5); display:none; z-index:20}
+  #glossary.show{display:block}
+  .gpanel{position:absolute; right:0; top:0; bottom:0; width:min(420px,90vw); background:var(--card); padding:28px 26px; overflow:auto; box-shadow:-8px 0 30px rgba(0,0,0,.2)}
+  .gpanel h2{margin-top:0}
+  .gpanel dt{font-weight:700; font-family:ui-sans-serif,system-ui,sans-serif; margin-top:14px}
+  .gpanel dd{margin:2px 0 0; color:var(--sub); font-size:.94em}
+  .close{position:absolute; top:14px; right:18px; font-size:1.4em; cursor:pointer; border:0; background:none}
+  #progress{position:fixed; top:0; left:0; height:3px; background:var(--accent); width:0; z-index:30; transition:width .1s}
+  .no-print{font-family:ui-sans-serif,system-ui,sans-serif}
+  @media (max-width:1024px){ .grid{grid-template-columns:1fr} main{padding:8px 18px 60px} }
+  @media print{
+    :root{--paper:#fff;--ink:#000;--sub:#222;--line:#bbb;--card:#fff;--soft:#f0f0f0}
+    .toolbar,#glossary,#progress,.no-print{display:none!important}
+    body{font-size:12.5pt; line-height:1.5}
+    section{page-break-inside:avoid; border-bottom:0; padding:14px 0}
+    a{color:#000; text-decoration:underline}
+    @page{size:A4; margin:16mm 14mm}
+  }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<div class="toolbar no-print">
+  <button onclick="window.print()">Print / PDF</button>
+  <button onclick="document.getElementById('glossary').classList.add('show')">Glossary</button>
+  <button onclick="toggleDark()">Theme</button>
+</div>
+
+<header>
+  <h1>Volatility Is Not Risk</h1>
+  <p class="lede">The market wobbles every day and we call it "risk." It isn't. Risk is the thing that ends the game. Confusing the two makes you sell at the bottom and bail right before the recovery — the most expensive mistake in investing.</p>
+  <div class="byline">Behavioral finance · lite-visual study artifact</div>
+</header>
+
+<main>
+  <section>
+    <div class="why">Why this matters</div>
+    <h2>1 · The word everyone gets wrong</h2>
+    <p>Open any brokerage app. The "risk" number it shows you is almost always <strong>volatility</strong> — how much the price jumps around. A stock that swings 3% a day is labelled "high risk." A stock that drifts calmly down 1% a week is labelled "low risk."</p>
+    <p>That labelling is backwards. The swinging stock is <span class="term" data-t="wobble">wobbling</span>. The drifting stock is <span class="term" data-t="bleed">bleeding</span> — quietly moving toward zero. One is uncomfortable. The other is fatal. This artifact separates the two so you can stop panicking at wobbles and start worrying about bleeds.</p>
+    <div class="grid">
+      <div><span class="pill vol">VOLATILITY</span><p style="margin-top:8px">Dispersion of outcomes. The price moves a lot. You feel it. You survive it — <em>if you don't sell</em>.</p></div>
+      <div><span class="pill risk">RISK</span><p style="margin-top:8px">Chance of permanent loss — ruin, default, leverage blow-up. The game ends. No recovery exists.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="why">Build the base</div>
+    <h2>2 · What volatility actually is</h2>
+    <p>Volatility measures <strong>spread</strong>, not direction. Statistically it's the standard deviation of returns. A volatile asset produces a wide range of outcomes: big up days and big down days. A calm asset produces a narrow range.</p>
+    <p>Crucially, volatility says nothing about whether the <em>average</em> outcome is good. A coin that pays +60% / −40% is wildly volatile but has a positive expected value. A savings account that pays 0.1% is barely volatile and will lose to inflation — that tiny, calm bleed <em>is</em> the real risk for a 30-year horizon.</p>
+    <div class="interactive">
+      <h3>The shape of "wobble"</h3>
+      <p style="color:var(--sub);font-size:.92em">A return distribution. Most days cluster near the middle; extreme days are rare. Volatility just controls how <em>wide</em> this bell is.</p>
+      <svg viewBox="0 0 600 220" id="distSvg" aria-label="return distribution"></svg>
+      <label>Volatility (width of the bell): <span id="volLbl">1.0</span>×</label>
+      <input type="range" id="volRange" min="0.4" max="2.4" step="0.1" value="1.0">
+      <p style="font-size:.86em;color:var(--sub)">Widen it: the bell flattens, extreme days get more likely — but the <em>center</em> (your expected return) hasn't moved. You're not losing money by being volatile; you're experiencing a wider range of outcomes.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="why">The core trap</div>
+    <h2>3 · The asymmetry nobody remembers</h2>
+    <p>Here is the single most important math in investing, and almost nobody can do it in their head:</p>
+    <p class="num" style="font-size:1.3em">If you lose 50%, you need a <strong>100% gain</strong> just to break even.</p>
+    <p>Losses hurt linearly in your portfolio but require exponentially larger gains to recover. This is why <strong>avoiding ruin</strong> matters more than chasing the best return. A single −100% ends you. A hundred +10%s don't make up for one −100%.</p>
+    <div class="interactive">
+      <h3>Loss-recovery calculator</h3>
+      <label for="lossIn">How big was the drop? (%)</label>
+      <input type="number" id="lossIn" value="50" min="1" max="95"> %
+      <div class="out" id="gainOut">needs +100% to recover</div>
+      <p style="font-size:.86em;color:var(--sub)">Drag a bigger loss and watch the required gain explode. At −90% you need +900%. This is why a leveraged bet that can go −100% is not "high volatility" — it's a <span class="term" data-t="ruin">ruin</span> bet.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="why">Why volatility feels like risk</div>
+    <h2>4 · Wobble is survivable. Bleed is not.</h2>
+    <p>Your nervous system evolved to treat sudden movement as danger. A portfolio that drops 20% in a week triggers the same panic as a predator. So you sell — and convert a <em>wobble</em> into a <em>realized loss</em>. The volatility didn't hurt you; your reaction to it did.</p>
+    <p>The investor who holds through the wobble is still in the game when it reverts. The investor who is <span class="term" data-t="lever">leveraged</span> or needs the money next month gets forced out at the bottom — that's when volatility <em>becomes</em> risk, because the margin call is a real ruin event.</p>
+    <div class="recall">
+      <strong>Active recall:</strong> Name one situation where high volatility is <em>safe</em>, and one where low volatility is <em>dangerous</em>.
+      <button onclick="this.nextElementSibling.classList.toggle('show')">Reveal</button>
+      <div class="ans">High volatility is safe when you're unleveraged and long-horizon: you can wait it out (e.g. broad index fund in a crash). Low volatility is dangerous when it hides a steady bleed — inflation on cash, a "stable" stock with rotting fundamentals, or a fund whose NAV is propped up by hidden risk that quietly compounds until it doesn't.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="why">The part models miss</div>
+    <h2>5 · Fat tails: why "volatility" underestimates risk</h2>
+    <p>Standard volatility assumes outcomes follow a bell curve — extreme events are vanishingly rare. Reality has <strong>fat tails</strong>: crashes, panics, and melt-ups happen far more often than the bell predicts. The 1987 crash, the 2008 collapse, COVID's −34% month — none of these should exist in a "normal" volatility model.</p>
+    <p>This is the trap: a portfolio can look low-volatility for <em>years</em>, then deliver a loss that the model said was a 1-in-10,000 event. That's not volatility. That's <span class="term" data-t="tail">tail risk</span> — and it's the part that actually ends games.</p>
+    <div class="interactive">
+      <h3>Normal vs fat-tailed</h3>
+      <p style="color:var(--sub);font-size:.92em">Shaded area = probability of an extreme move (beyond 3 units). Fat-tailed worlds carry dramatically more of it.</p>
+      <svg viewBox="0 0 600 220" id="tailSvg" aria-label="tail comparison"></svg>
+      <div class="controls">
+        <button class="toggle on" id="bNorm" onclick="setTail('norm')">Normal (thin tail)</button>
+        <button class="toggle" id="bFat" onclick="setTail('fat')">Fat-tailed (real world)</button>
+      </div>
+      <p style="font-size:.86em;color:var(--sub)" id="tailNote">Thin tail: extreme moves are nearly impossible. Models love this — and get blindsided.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="why">The deep version</div>
+    <h2>6 · Ergodicity: the average lies</h2>
+    <p>A fund advertises "+15% average annual return." Sounds great. But that's the <strong>ensemble average</strong> — what a group of clones would earn if each took one path. <em>You</em> walk one path through time. If one of those paths is a −100% ruin, the average is meaningless to you: you don't experience the average, you experience your single sequence, and a single ruin zeroes you out.</p>
+    <p>This is the <span class="term" data-t="erg">ergodicity</span> problem. When outcomes aren't "ergodic" (when one bad path can end you), maximizing the average return is the wrong goal. <strong>Survival first.</strong> Then compound. The investor who avoids ruin and stays invested beats the brilliant one who occasionally blows up.</p>
+    <div class="recall">
+      <strong>Active recall:</strong> Why can a strategy with a positive average return still ruin an individual investor?
+      <button onclick="this.nextElementSibling.classList.toggle('show')">Reveal</button>
+      <div class="ans">Because the investor lives one time-path, not the average of many. If any single path hits −100%, that clone is wiped out and never recovers — so the ensemble average (which averages in the survivors' gains) is irrelevant to the wiped-out version of you. Non-ergodic systems punish the path, not the mean.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="why">What to do</div>
+    <h2>7 · The mental model to keep</h2>
+    <p>Separate the two questions every time you look at a position:</p>
+    <h3>Is this wobbling, or bleeding?</h3>
+    <p><strong>Wobbling</strong> (high volatility, sound fundamentals, you're unleveraged): do nothing, or even buy. Volatility is the <em>price</em> you're paid for holding through other people's panic.</p>
+    <p><strong>Bleeding</strong> (steady drift to zero, hidden leverage, you'll be forced to sell): that's risk. Cut it, de-lever, or size down so no single path can end you.</p>
+    <p>The goal isn't "low volatility." The goal is <strong>no ruin</strong> plus enough volatility exposure to capture the premium other frightened investors leave on the table.</p>
+  </section>
+
+  <section>
+    <div class="why">Check yourself</div>
+    <h2>8 · Recap quiz</h2>
+    <div class="recall">
+      <strong>Q1:</strong> A stock falls 33%. What gain recovers it?
+      <button onclick="this.nextElementSibling.classList.toggle('show')">Reveal</button>
+      <div class="ans">+50%. (1 → 0.67; 0.67 × 1.5 = 1.005.) The loss is linear, the recovery is not.</div>
+    </div>
+    <div class="recall">
+      <strong>Q2:</strong> Is a savings account "low risk" over 30 years?
+      <button onclick="this.nextElementSibling.classList.toggle('show')">Reveal</button>
+      <div class="ans">Not necessarily. Its volatility is ~0, but inflation is a slow bleed that can quietly cut real purchasing power in half. Low volatility ≠ low risk.</div>
+    </div>
+    <div class="recall">
+      <strong>Q3:</strong> When does volatility itself become real risk?
+      <button onclick="this.nextElementSibling.classList.toggle('show')">Reveal</button>
+      <div class="ans">When you're leveraged or must sell on a schedule — a margin call or forced redemption converts a wobble into a realized ruin. Horizo­n and leverage decide whether volatility is noise or death.</div>
+    </div>
+  </section>
+</main>
+
+<div id="glossary">
+  <div class="gpanel">
+    <button class="close" onclick="document.getElementById('glossary').classList.remove('show')">×</button>
+    <h2>Glossary</h2>
+    <dl>
+      <dt>Wobble</dt><dd>Short-term price swing. Uncomfortable, survivable if you don't sell. = volatility.</dd>
+      <dt>Bleed</dt><dd>Slow steady loss of value (inflation, rotting fundamentals). Quiet, fatal over time.</dd>
+      <dt>Ruin</dt><dd>Permanent loss that ends the game: −100%, default, margin call. No recovery path.</dd>
+      <dt>Leverage</dt><dd>Borrowed money amplifying moves. Turns a wobble into a forced sale at the bottom.</dd>
+      <dt>Tail risk</dt><dd>Probability of extreme events the normal model calls near-impossible. The real danger.</dd>
+      <dt>Ergodicity</dt><dd>Whether the average across many paths equals one path through time. Non-ergodic = the mean lies to you.</dd>
+    </dl>
+  </div>
+</div>
+
+<script>
+// ---- progress bar ----
+const prog=document.getElementById('progress');
+addEventListener('scroll',()=>{const h=document.documentElement;const p=h.scrollTop/(h.scrollHeight-h.clientHeight);prog.style.width=(p*100)+'%'});
+
+// ---- loss/recovery calculator ----
+const lossIn=document.getElementById('lossIn'), gainOut=document.getElementById('gainOut');
+function updGain(){let L=Math.min(95,Math.max(1,parseFloat(lossIn.value)||0));let need=(1/(1-L/100)-1)*100;gainOut.textContent='needs +'+need.toFixed(0)+'% to recover';}
+lossIn.addEventListener('input',updGain); updGain();
+
+// ---- distribution bell ----
+function gauss(x,s){return Math.exp(-x*x/(2*s*s));}
+function drawDist(s){const svg=document.getElementById('distSvg');const W=600,H=200,mid=W/2;let pts='';for(let i=0;i<=W;i+=4){const x=(i-mid)/90;const y=gauss(x,s);const yy=H-10-y*(H-30);pts+=(i===0?'M':'L')+i+','+yy.toFixed(1)+' ';}
+svg.innerHTML='<path d="'+pts+'" fill="none" stroke="#0f6e63" stroke-width="3"/>'+
+'<line x1="'+mid+'" y1="10" x2="'+mid+'" y2="'+(H-10)+'" stroke="#d8d5cd" stroke-dasharray="4 4"/>'+
+'<text x="'+(mid-6)+'" y="24" font-size="11" fill="#5c5852" font-family="sans-serif">expected return</text>';}
+const volRange=document.getElementById('volRange'),volLbl=document.getElementById('volLbl');
+volRange.addEventListener('input',()=>{volLbl.textContent=parseFloat(volRange.value).toFixed(1);drawDist(parseFloat(volRange.value));});
+drawDist(1.0);
+
+// ---- tail comparison ----
+let tailMode='norm';
+function drawTail(mode){const svg=document.getElementById('tailSvg');const W=600,H=200,mid=W/2;let pts='';
+  for(let i=0;i<=W;i+=3){const x=(i-mid)/70;let y= mode==='norm'? gauss(x,1) : 0.55*gauss(x,1)+0.45*gauss(x,0.42)/2.2;
+    const yy=H-10-y*(H-40);pts+=(i===0?'M':'L')+i+','+yy.toFixed(1)+' ';}
+  // shade extreme zone (|x|>3 units => i outside mid±210)
+  const ex=210;
+  svg.innerHTML='<path d="'+pts+'" fill="none" stroke="#9c2b2b" stroke-width="3"/>'+
+  '<rect x="0" y="0" width="'+(mid-ex)+'" height="'+H+'" fill="rgba(156,43,43,.10)"/>'+
+  '<rect x="'+(mid+ex)+'" y="0" width="'+(mid-ex)+'" height="'+H+'" fill="rgba(156,43,43,.10)"/>'+
+  '<text x="14" y="22" font-size="11" fill="#9c2b2b" font-family="sans-serif">extreme zone</text>';}
+function setTail(m){tailMode=m;drawTail(m);document.getElementById('bNorm').classList.toggle('on',m==='norm');document.getElementById('bFat').classList.toggle('on',m==='fat');
+  document.getElementById('tailNote').textContent= m==='norm'?'Thin tail: extreme moves are nearly impossible. Models love this — and get blindsided.':'Fat tail: extreme moves are far more common than the bell predicts. This is where real ruin lives.';}
+setTail('norm');
+
+// ---- glossary terms ----
+const defs={wobble:'Short-term price swing. Uncomfortable, survivable if you don’t sell.',bleed:'Slow steady loss of value (inflation, rotting fundamentals). Quiet, fatal over time.',ruin:'Permanent loss that ends the game: −100%, default, margin call.',lever:'Borrowed money amplifying moves. Turns a wobble into a forced sale.',tail:'Probability of extreme events the normal model calls near-impossible.'};
+document.querySelectorAll('.term').forEach(t=>{t.addEventListener('click',()=>{const k=t.dataset.t;alert((defs[k]||k))});});
+
+// ---- theme ----
+function toggleDark(){document.body.style.background=document.body.style.background==='#15130f'?'':'#15130f';document.body.style.color=document.body.style.color==='#f2efe9'?'':'#f2efe9';document.documentElement.style.setProperty('--paper',document.body.style.background||'#f6f5f2');}
+</script>
+</body>
+</html>
