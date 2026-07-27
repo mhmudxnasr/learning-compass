@@ -1,0 +1,28 @@
+# Build artifacts
+node_modules/
+.wrangler/
+.npm/
+.playwright-cli/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets (if any)
+.env
+.env.local
+.dev.vars
+
+# Local artifacts
+*.log
+debug.html
+dark-patterns-deep-dive.html
+
+# Wrangler configs that may contain account IDs
+.wrangler/

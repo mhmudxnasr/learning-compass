@@ -1,0 +1,18 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch({ headless: true });
+const p = await b.newPage();
+const logs = [];
+p.on('console', msg => logs.push(msg.type() + ': ' + msg.text()));
+p.on('pageerror', err => logs.push('PAGE_ERROR: ' + err.message));
+await p.goto('http://localhost:8787/', { waitUntil: 'networkidle', timeout: 10000 });
+const title = await p.title();
+const bodyText = await p.evaluate(() => document.body.innerText.substring(0, 500));
+const errors = await p.evaluate(() => Array.from(document.querySelectorAll('.empty, .error')).map(e => e.textContent));
+console.log('TITLE:', title);
+console.log('BODY_TEXT:', bodyText);
+console.log('EMPTY/ERROR:', errors);
+console.log('---CONSOLE---');
+logs.forEach(l => console.log(l));
+await p.screenshot({ path: '/tmp/recommendations_site.png', fullPage: true });
+console.log('Screenshot saved');
+await b.close();
