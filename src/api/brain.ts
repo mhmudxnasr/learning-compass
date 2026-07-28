@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { Bindings, Recommendation, safeError, isNonEmptyStr, isValidLength, VALID_LOG_KINDS } from '../lib'
+import { cached } from '../cache'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -43,57 +44,68 @@ app.get('/node/:id', async (c) => {
   }
 })
 
-// ---- /brain/profile — full profile snapshot
+// ---- /brain/profile — full profile snapshot (cached 30s TTL)
 app.get('/profile', async (c) => {
   const { DB } = c.env
   c.header('Cache-Control', 'no-store')
   const recentLimit = Math.min(Math.max(parseInt(c.req.query('recent_limit') || '10'), 1), 50)
   try {
-    const profile = await DB.prepare('SELECT * FROM profile WHERE id = 1').first()
-    const priorities = await DB.prepare('SELECT * FROM priorities ORDER BY rank ASC').all()
-    const mastered = await DB.prepare('SELECT * FROM mastered ORDER BY mastered_at DESC').all()
-    const blacklist = await DB.prepare('SELECT * FROM blacklist ORDER BY severity ASC, added_at DESC').all()
-    const patterns = await DB.prepare("SELECT * FROM patterns ORDER BY CASE strength WHEN 'locked' THEN 0 WHEN 'confirmed' THEN 1 ELSE 2 END, confirmed_date DESC").all()
-    const recent = await DB.prepare('SELECT * FROM update_log ORDER BY id DESC LIMIT ?').bind(recentLimit).all()
-    return c.json({
-      profile: profile || null,
-      priorities: priorities.results || [],
-      mastered: mastered.results || [],
-      blacklist: blacklist.results || [],
-      patterns: patterns.results || [],
-      recent: recent.results || []
+    const data = await cached('brain.profile.' + recentLimit, 30000, async () => {
+      const [profile, priorities, mastered, blacklist, patterns, recent] = await Promise.all([
+        DB.prepare('SELECT * FROM profile WHERE id = 1').first(),
+        DB.prepare('SELECT * FROM priorities ORDER BY rank ASC').all(),
+        DB.prepare('SELECT * FROM mastered ORDER BY mastered_at DESC').all(),
+        DB.prepare('SELECT * FROM blacklist ORDER BY severity ASC, added_at DESC').all(),
+        DB.prepare("SELECT * FROM patterns ORDER BY CASE strength WHEN 'locked' THEN 0 WHEN 'confirmed' THEN 1 ELSE 2 END, confirmed_date DESC").all(),
+        DB.prepare('SELECT * FROM update_log ORDER BY id DESC LIMIT ?').bind(recentLimit).all(),
+      ])
+      return {
+        profile: profile || null,
+        priorities: priorities.results || [],
+        mastered: mastered.results || [],
+        blacklist: blacklist.results || [],
+        patterns: patterns.results || [],
+        recent: recent.results || [],
+      }
     })
+    return c.json(data)
   } catch (err) {
     return c.json(safeError('Profile failed')(err), 500)
   }
 })
 
-// ---- /brain/tree — full tree nodes with positions
+// ---- /brain/tree — full tree nodes with positions (cached 60s TTL)
 app.get('/tree', async (c) => {
   const { DB } = c.env
   c.header('Cache-Control', 'no-store')
   const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '100'), 1), 500)
   const offset = Math.max(parseInt(c.req.query('offset') || '0'), 0)
   try {
-    const result = await DB.prepare('SELECT id, type, label, status, super_category, parent_id, meta_json FROM tree_nodes ORDER BY id LIMIT ? OFFSET ?').bind(limit, offset).all()
-    const nodes = (result.results || []).map((r: any) => {
-      let x: number | null = null, y: number | null = null
-      try { if (r.meta_json) { const m = JSON.parse(r.meta_json); if (typeof m.x === 'number') x = m.x; if (typeof m.y === 'number') y = m.y } } catch { }
-      return { id: r.id, type: r.type, label: r.label, status: r.status, super_category: r.super_category, parent_id: r.parent_id, x, y }
+    const data = await cached('brain.tree.' + limit + '.' + offset, 60000, async () => {
+      const result = await DB.prepare('SELECT id, type, label, status, super_category, parent_id, meta_json FROM tree_nodes ORDER BY id LIMIT ? OFFSET ?').bind(limit, offset).all()
+      const nodes = (result.results || []).map((r: any) => {
+        let x: number | null = null, y: number | null = null
+        try { if (r.meta_json) { const m = JSON.parse(r.meta_json); if (typeof m.x === 'number') x = m.x; if (typeof m.y === 'number') y = m.y } } catch { }
+        return { id: r.id, type: r.type, label: r.label, status: r.status, super_category: r.super_category, parent_id: r.parent_id, x, y }
+      })
+      return { nodes, count: nodes.length, limit, offset }
     })
-    return c.json({ nodes, count: nodes.length, limit, offset })
+    return c.json(data)
   } catch (err) {
     return c.json(safeError('Tree failed')(err), 500)
   }
 })
 
-// ---- /brain/branches — grouped by super_category
+// ---- /brain/branches — grouped by super_category (cached 60s TTL)
 app.get('/branches', async (c) => {
   const { DB } = c.env
   c.header('Cache-Control', 'no-store')
   try {
-    const result = await DB.prepare("SELECT super_category, status, COUNT(*) as c FROM tree_nodes WHERE type IN ('branch','leaf') GROUP BY super_category, status").all()
-    return c.json({ groups: result.results || [] })
+    const data = await cached('brain.branches', 60000, async () => {
+      const result = await DB.prepare("SELECT super_category, status, COUNT(*) as c FROM tree_nodes WHERE type IN ('branch','leaf') GROUP BY super_category, status").all()
+      return { groups: result.results || [] }
+    })
+    return c.json(data)
   } catch (err) {
     return c.json(safeError('Branches failed')(err), 500)
   }
@@ -126,11 +138,12 @@ app.get('/contradictions', async (c) => {
   }
 })
 
-// ---- /brain/health — branch health metrics
+// ---- /brain/health — branch health metrics (cached 60s TTL)
 app.get('/health', async (c) => {
   const { DB } = c.env
   c.header('Cache-Control', 'no-store')
   try {
+    const data = await cached('brain.health', 60000, async () => {
     const byBranch = await DB.prepare(`
       SELECT
         COALESCE(SUBSTR(dedup_key, 1, INSTR(dedup_key, '-') - 1), 'root') as branch,
@@ -164,12 +177,14 @@ app.get('/health', async (c) => {
       GROUP BY branch
     `).all()
 
-    return c.json({
+    return {
       byBranch: byBranch.results || [],
       stale: stale.results || [],
       mastery: mastery.results || [],
       stale_count: stale.results?.length || 0
+    }
     })
+    return c.json(data)
   } catch (err) {
     return c.json(safeError('Health failed')(err), 500)
   }
@@ -356,6 +371,25 @@ app.post('/priorities', async (c) => {
     return c.json({ ok: true, count: body.length })
   } catch (err) {
     return c.json(safeError('Priorities update failed')(err), 500)
+  }
+})
+
+// ---- /brain/node — create a new tree node
+app.post('/node', async (c) => {
+  const { DB } = c.env
+  try {
+    const { id, label, type, super_category, parent_id } = await c.req.json<{ id?: string; label: string; type?: string; super_category?: string; parent_id?: string }>()
+    if (!isNonEmptyStr(label, 100)) return c.json({ error: 'label required (max 100 chars)' }, 400)
+    const nodeId = (id && isNonEmptyStr(id, 80)) ? id.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-') : label.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-') + '-' + Date.now().toString(36)
+    const nodeType = type || 'leaf'
+    const cat = super_category || 'mind'
+    const parent = parent_id || 'root'
+    await DB.prepare(
+      'INSERT INTO tree_nodes (id, type, label, status, super_category, parent_id) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(nodeId, nodeType, label.trim(), 'active', cat.startsWith('cat-') ? cat : 'cat-' + cat, parent).run()
+    return c.json({ ok: true, node: { id: nodeId, label: label.trim(), type: nodeType, status: 'active', super_category: 'cat-' + cat, parent_id: parent } })
+  } catch (err) {
+    return c.json(safeError('Create node failed')(err), 500)
   }
 })
 

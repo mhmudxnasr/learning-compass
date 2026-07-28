@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS recommendations (
   verified TEXT,
   status TEXT DEFAULT 'active',
   user_rating TEXT DEFAULT 'unset',
+  user_score REAL,
   user_review TEXT,
   dedup_key TEXT UNIQUE,
   synergy_bundle_id TEXT DEFAULT 'unset',

@@ -7,7 +7,7 @@ A personal knowledge curation system for one user (Mahmood). It tracks content r
 **Product UI** — design SERVES the product. This is a tool used daily, not a marketing surface.
 
 ## Platform
-web (Cloudflare Worker + D1). Desktop-first, must work on tablet (Huawei TGR-W09, ~1024px) and phone.
+web
 
 ## Users
 One user. Reads/reviews on tablet and phone, curates and pushes on desktop. Ambient light varies (light + dark mode both needed).
@@ -30,3 +30,6 @@ Navigation: left sidebar (desktop) / bottom bar (mobile). Sub-views are a segmen
 ## Non-goals
 - Multi-user, auth UI, social features.
 - Replaced in this redesign: 9-tab flat nav, hover-only row actions, modal-for-everything.
+
+## Craft bar
+Linear shell density + Raycast command palette. Not marketing. Not Notion-pastel. Not cream SaaS.

@@ -6,3 +6,6 @@ compatibility_date = "2026-07-27"
 binding = "DB"
 database_name = "recommendations-db"
 database_id = "49c68912-ce6e-4899-8e73-8955a6a21dee"
+
+[triggers]
+crons = ["0 */6 * * *"]

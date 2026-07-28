@@ -55,7 +55,9 @@ app.get('/download/:id', async (c) => {
     return new Response(body, {
       headers: {
         'Content-Type': isPdf ? 'application/pdf' : 'text/html; charset=utf-8',
-        'Content-Disposition': `${isPdf ? 'inline' : 'inline'}; filename="${encodeURIComponent(file.filename)}"`
+        'Content-Disposition': `${isPdf ? 'inline' : 'inline'}; filename="${encodeURIComponent(file.filename)}"`,
+        'X-Frame-Options': 'ALLOWALL',
+        'Access-Control-Allow-Origin': '*'
       }
     })
   } catch (err) {
@@ -99,14 +101,43 @@ app.post('/update/:id', async (c) => {
 app.post('/delete', async (c) => {
   const { DB } = c.env
   try {
-    const { id } = await c.req.json<{ id: string }>()
+    const { id, undo } = await c.req.json<{ id: string; undo?: boolean }>()
     if (!id) return c.json({ error: 'ID required' }, 400)
     if (!isNonEmptyStr(id, 100)) return c.json({ error: 'ID required' }, 400)
-    await DB.prepare('DELETE FROM html_files WHERE id = ?').bind(id).run()
+
+    if (undo) {
+      const row = await DB.prepare('SELECT * FROM html_files WHERE id = ?').bind(id).first<any>()
+      if (!row) return c.json({ error: 'not found' }, 404)
+      await DB.batch([
+        DB.prepare("INSERT OR REPLACE INTO undo_queue (id, table_name, row_id, snapshot_json, expires_at) VALUES (?, 'html_files', ?, ?, datetime('now', '+30 seconds'))")
+          .bind(id, id, JSON.stringify(row)),
+        DB.prepare('DELETE FROM html_files WHERE id = ?').bind(id),
+      ])
+    } else {
+      await DB.prepare('DELETE FROM html_files WHERE id = ?').bind(id).run()
+    }
     return c.json({ ok: true })
   } catch (err) {
     return c.json(safeError('Delete failed')(err), 500)
   }
+})
+
+app.post('/undo', async (c) => {
+  const { DB } = c.env
+  try {
+    const { id } = await c.req.json<{ id: string }>()
+    if (!id) return c.json({ error: 'ID required' }, 400)
+    const row = await DB.prepare("SELECT * FROM undo_queue WHERE id = ? AND expires_at > datetime('now')").bind(id).first<any>()
+    if (!row) return c.json({ error: 'nothing to undo or expired' }, 404)
+
+    if (row.table_name === 'html_files') {
+      const snap = JSON.parse(row.snapshot_json)
+      await DB.prepare('INSERT OR REPLACE INTO html_files (id, filename, content) VALUES (?, ?, ?)')
+        .bind(snap.id, snap.filename, snap.content).run()
+    }
+    await DB.prepare('DELETE FROM undo_queue WHERE id = ?').bind(id).run()
+    return c.json({ ok: true })
+  } catch (err) { return c.json(safeError('Undo failed')(err), 500) }
 })
 
 // GET /html/print/:id — wraps HTML file in A4 print-friendly view
@@ -198,7 +229,7 @@ window.onload = function() {};
 </html>`
 
     return new Response(html, {
-      headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Frame-Options': 'ALLOWALL' }
     })
   } catch (err) {
     console.error('[html/print]', err)
@@ -206,4 +237,39 @@ window.onload = function() {};
   }
 })
 
+/**
+ * POST /html/sync-srs
+ * Parse uploaded HTML study guide and extract Q&A blocks to create flashcards in srs_cards table.
+ */
+app.post('/sync-srs', async (c) => {
+  const { DB } = c.env
+  try {
+    const { html_id, cards } = await c.req.json<{ html_id: string; cards: Array<{ question: string; answer: string; topic?: string }> }>()
+    if (!html_id || !Array.isArray(cards) || cards.length === 0) {
+      return c.json({ error: 'html_id and cards array required' }, 400)
+    }
+
+    const file = await DB.prepare('SELECT filename FROM html_files WHERE id = ?').bind(html_id).first<{ filename: string }>()
+    if (!file) return c.json({ error: 'HTML study guide file not found' }, 404)
+
+    const topic = file.filename.replace(/\.html$/i, '').toLowerCase()
+    let count = 0
+
+    for (const card of cards) {
+      if (!card.question || !card.answer) continue
+      const id = `srs_vault_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+      await DB.prepare(`
+        INSERT INTO srs_cards (id, recommendation_id, question, answer, topic, ease_factor, interval_days, repetitions, due_at)
+        VALUES (?, ?, ?, ?, ?, 2.5, 1, 0, date('now'))
+      `).bind(id, html_id, card.question, card.answer, card.topic || topic).run()
+      count++
+    }
+
+    return c.json({ ok: true, synced_cards: count })
+  } catch (err) {
+    return c.json(safeError('Vault SRS sync failed')(err), 500)
+  }
+})
+
 export default app
+
