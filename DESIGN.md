@@ -1,4 +1,4 @@
-# Scholar’s Instrument — Taste Map Design System
+# Scholar’s Instrument — Learning Compass Design System
 
 ## Register
 

@@ -166,7 +166,7 @@ app.get('/context', async (c) => {
 app.get('/capabilities', (c) => c.json({
   version: '2026-07-29',
   protocol: 'taste-map-agent-http/1',
-  description: 'Complete allow-listed control surface for the Taste Map website.',
+  description: 'Complete allow-listed control surface for the Learning Compass website.',
   authentication: 'Writes require x-api-token when API_TOKEN is configured.',
   safety: ['No arbitrary SQL or outbound proxy.', 'Product validation and invariants remain active.', 'Every agent mutation is audit logged.'],
   capabilities: CAPABILITIES.map(([method, path, description]) => ({ method, path, description })),
@@ -174,7 +174,7 @@ app.get('/capabilities', (c) => c.json({
 
 app.get('/openapi.json', (c) => c.json({
   openapi: '3.1.0',
-  info: { title: 'Taste Map Agent API', version: '2026-07-29' },
+  info: { title: 'Learning Compass Agent API', version: '2026-07-29' },
   servers: [{ url: new URL(c.req.url).origin }],
   paths: CAPABILITIES.reduce<Record<string, Record<string, unknown>>>((paths, [method, path, description]) => {
     const operation = method.toLowerCase()
@@ -280,7 +280,7 @@ app.get('/tools', (c) => {
       },
       {
         name: 'site_request',
-        description: 'Execute one allow-listed Taste Map website API operation. Use list_capabilities first when unsure. Product validation, queue limits, SRS approval rules, and audit logging remain active.',
+        description: 'Execute one allow-listed Learning Compass website API operation. Use list_capabilities first when unsure. Product validation, queue limits, SRS approval rules, and audit logging remain active.',
         parameters: {
           type: 'object',
           properties: {

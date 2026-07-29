@@ -1,8 +1,8 @@
-# Taste Map — Project Context
+# Learning Compass — Project Context
 
 ## Purpose
 
-Taste Map is Mahmood's private learning operating system. It turns scattered sources into a disciplined learning loop:
+Learning Compass is Mahmood's private learning operating system. It turns scattered sources into a disciplined learning loop:
 
 **capture → curate → consume externally → reflect → extract notes → review → update the knowledge map → resurface**
 
@@ -87,7 +87,7 @@ Cloudflare rejects Python's default User-Agent.
 
 “Visual lite” and “lite visual” mean the `lite-visual` skill:
 
-1. Capture the source in Taste Map.
+1. Capture the source in Learning Compass.
 2. Produce a high-quality tablet/print-friendly HTML companion.
 3. Produce the matching PDF companion.
 4. Upload both to R2 through `/artifacts` with one `pair_id`, roles `html` and `pdf`, and source/recommendation metadata.

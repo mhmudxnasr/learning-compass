@@ -1,6 +1,6 @@
-# Taste Map
+# Learning Compass
 
-Taste Map is Mahmood’s private learning operating system. D1 is canonical; Obsidian is an archive copy for extracted notes.
+Learning Compass is Mahmood’s private learning operating system. D1 is canonical; Obsidian is an archive copy for extracted notes.
 
 ## Core loop
 

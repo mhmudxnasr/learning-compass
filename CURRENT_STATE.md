@@ -1,4 +1,4 @@
-# Taste Map — Current State
+# Learning Compass — Current State
 
 Update this file whenever a milestone is completed, a contract changes, a deployment occurs, or a new blocker is discovered. Keep only current facts; remove resolved or superseded entries instead of accumulating a diary.
 
@@ -7,6 +7,7 @@ Update this file whenever a milestone is completed, a contract changes, a deploy
 
 ## Working Baseline
 
+- The product and repository are named Learning Compass; legacy worker, storage, protocol, cron, and Hermes identifiers remain stable for compatibility.
 - Vite/Preact/TypeScript client and Hono Worker build successfully.
 - The destination registry has 28 purposeful routes; overlapping infrastructure-oriented tabs were removed and all route contracts agree.
 - Mobile shell/navigation tests pass.

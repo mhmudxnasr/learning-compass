@@ -1,5 +1,5 @@
 -- ============================================================
--- TASTE MAP ENGINE — canonical brain tables
+-- LEARNING COMPASS ENGINE — canonical brain tables
 -- Adds: profile, tree nodes, tree edges, patterns, blacklist,
 --        mastered, priorities, update log, leaf notes
 -- ============================================================
@@ -168,4 +168,3 @@ CREATE TABLE IF NOT EXISTS kv_store (
   key TEXT PRIMARY KEY,
   value TEXT
 );
-

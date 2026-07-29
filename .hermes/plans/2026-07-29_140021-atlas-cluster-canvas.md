@@ -160,7 +160,7 @@
 
 ### Task 7: Apply the Scholar’s Instrument visual system
 
-**Objective:** Make Atlas immersive while remaining consistent with the rest of Taste Map.
+**Objective:** Make Atlas immersive while remaining consistent with the rest of Learning Compass.
 
 **Files:**
 - Modify: `client/src/styles.css`

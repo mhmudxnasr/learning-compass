@@ -83,7 +83,7 @@ function Shell({ route, children, onCapture, onSearch, onMore }: { route: Destin
   const setRail = () => setCollapsed((value) => { localStorage.setItem('tm-rail', value ? 'open' : 'collapsed'); return !value })
   return <div class={`app-shell ${collapsed ? 'rail-collapsed' : ''}`}>
     <aside class="rail">
-      <button class="brand" onClick={setRail} title="Toggle navigation"><span class="brand-mark">TM</span><span class="brand-name">Taste Map</span></button>
+      <button class="brand" onClick={setRail} title="Toggle navigation"><span class="brand-mark">LC</span><span class="brand-name">Learning Compass</span></button>
       <nav class="rail-nav" aria-label="Workspaces">
         {workspaceOrder.filter((item) => item !== 'settings').map((workspace) => {
           const first = destinations.find((item) => item.workspace === workspace)!
@@ -494,7 +494,7 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
     ...(groups.vault || []).map((item: any) => ({ group: 'Files', title: item.filename, detail: formatDate(item.created_at), target: 'vault.files' })),
     ...(groups.patterns || []).map((item: any) => ({ group: 'Patterns', title: item.description || item.id, detail: item.strength, target: 'settings.profile' })),
   ].slice(0, 16)
-  return <dialog ref={ref} class="command-dialog" onClose={onClose}><div class="command-input"><Icon name="search" /><input aria-label="Search Taste Map" autoFocus value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="Search sources, notes, files, branches, or pages…" /><kbd>Esc</kbd></div><div class="command-results">{pages.map((item) => <button onClick={() => { go(item); onClose() }}><span>{workspaceLabels[item.workspace]}</span><strong>{item.title}</strong><small>{item.purpose}</small></button>)}{query.trim().length >= 2 && cloud.loading && <div class="command-message">Searching your library…</div>}{cloudResults.map((item) => <button onClick={() => { go(destinations.find((destination) => destination.key === item.target)!); onClose() }}><span>{item.group}</span><strong>{item.title}</strong><small>{item.detail}</small></button>)}{query.trim().length >= 2 && !cloud.loading && !pages.length && !cloudResults.length && <div class="command-message">No matches found.</div>}</div></dialog>
+  return <dialog ref={ref} class="command-dialog" onClose={onClose}><div class="command-input"><Icon name="search" /><input aria-label="Search Learning Compass" autoFocus value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="Search sources, notes, files, branches, or pages…" /><kbd>Esc</kbd></div><div class="command-results">{pages.map((item) => <button onClick={() => { go(item); onClose() }}><span>{workspaceLabels[item.workspace]}</span><strong>{item.title}</strong><small>{item.purpose}</small></button>)}{query.trim().length >= 2 && cloud.loading && <div class="command-message">Searching your library…</div>}{cloudResults.map((item) => <button onClick={() => { go(destinations.find((destination) => destination.key === item.target)!); onClose() }}><span>{item.group}</span><strong>{item.title}</strong><small>{item.detail}</small></button>)}{query.trim().length >= 2 && !cloud.loading && !pages.length && !cloudResults.length && <div class="command-message">No matches found.</div>}</div></dialog>
 }
 
 function MobileMore({ open, route, onClose, onSearch, onCapture }: { open: boolean; route: Destination; onClose: () => void; onSearch: () => void; onCapture: () => void }) {

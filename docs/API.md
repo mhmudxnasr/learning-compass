@@ -1,4 +1,4 @@
-# Taste Map API
+# Learning Compass API
 
 ## Canonical read models
 

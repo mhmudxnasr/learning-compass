@@ -1,8 +1,8 @@
-# RSS and Atom feeds in Taste Map
+# RSS and Atom feeds in Learning Compass
 
 ## What this feature does
 
-Taste Map can subscribe to RSS 2.0 and Atom feeds and place their articles in the unlimited Inbox. Feed articles follow the same workflow as every other capture:
+Learning Compass can subscribe to RSS 2.0 and Atom feeds and place their articles in the unlimited Inbox. Feed articles follow the same workflow as every other capture:
 
 ```text
 feed → Inbox → triage → Queue (optional) → external reading → session → reflection
@@ -14,14 +14,14 @@ Feed imports never bypass Inbox triage and never add directly to the five-item Q
 
 1. Open **Curate → RSS Feed** (Queue is the first Curate destination; RSS Feed is next).
 2. Under **Web feeds**, paste an RSS or Atom URL and select **Subscribe**.
-3. Taste Map reads the feed and imports up to 20 current entries.
+3. Learning Compass reads the feed and imports up to 20 current entries.
 4. Select **Check now** whenever you want a manual refresh.
 5. Use **Queue** on individual articles only after deciding they deserve one of the five active slots.
-6. Select **Remove** to unsubscribe. Existing captures stay in Taste Map.
+6. Select **Remove** to unsubscribe. Existing captures stay in Learning Compass.
 
 Enabled feeds are also checked automatically by the Worker every six hours.
 
-This guide is stored in Vault as a Markdown artifact. Open it from **Vault → Files → Read**; Taste Map renders Markdown files as a readable document instead of exposing the raw file.
+This guide is stored in Vault as a Markdown artifact. Open it from **Vault → Files → Read**; Learning Compass renders Markdown files as a readable document instead of exposing the raw file.
 
 ## What gets stored
 

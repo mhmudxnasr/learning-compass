@@ -1,4 +1,4 @@
-# Taste Map
+# Learning Compass
 
 Private learning operating system on Cloudflare Workers, Hono, D1, R2, and a Vite/Preact client.
 

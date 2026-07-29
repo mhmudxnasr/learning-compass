@@ -1,17 +1,17 @@
-# Taste Map Agent Test Prompts
+# Learning Compass Agent Test Prompts
 
 Use these prompts with Hermes, Claude Code, Codex, or another connected agent. Replace the URL with the deployed Worker URL when needed.
 
 Set context once:
 
 ```text
-Inspect the Taste Map agent API. First call GET /agent/capabilities and GET /agent/context. Use x-agent-name: test-agent. Do not guess routes or use arbitrary SQL.
+Inspect the Learning Compass agent API. First call GET /agent/capabilities and GET /agent/context. Use x-agent-name: test-agent. Do not guess routes or use arbitrary SQL.
 ```
 
 ## Discovery and reads
 
 ```text
-List every operation available through the Taste Map agent API. Group them into reads, creates, edits, deletes, processing, analytics, and jobs.
+List every operation available through the Learning Compass agent API. Group them into reads, creates, edits, deletes, processing, analytics, and jobs.
 ```
 
 ```text

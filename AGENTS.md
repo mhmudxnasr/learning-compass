@@ -1,4 +1,4 @@
-# AGENTS.md — Taste Map
+# AGENTS.md — Learning Compass
 
 This is Mahmood's private, single-user learning operating system. Work autonomously, keep responses concise, and leave the repository in a verified state.
 
@@ -11,7 +11,7 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 
 ## Product Invariants
 
-- Product: **Taste Map**. Visual language: **Scholar's Instrument**.
+- Product: **Learning Compass**. Visual language: **Scholar's Instrument**.
 - Loop: capture → curate → consume externally → reflect → notes → review → map update → resurface.
 - D1 is canonical. R2 stores large artifacts. Obsidian is an archive/export for extracted notes only.
 - Every capture, including Telegram and share-target input, enters the unlimited Inbox.

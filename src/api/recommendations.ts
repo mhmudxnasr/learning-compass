@@ -382,7 +382,7 @@ app.get('/export', async (c) => {
         `| ${i.video_title} | ${i.creator || ''} | ${i.video_url} | ${i.why_this || ''} | ${i.status} | ${i.user_rating || ''} | ${i.user_review || ''} | ${i.synergy_bundle_id || ''} |`
       ).join('\n')
       return new Response(header + '\n' + rows, {
-        headers: { 'Content-Type': 'text/markdown; charset=utf-8', 'Content-Disposition': 'attachment; filename="taste-map-export.md"' }
+        headers: { 'Content-Type': 'text/markdown; charset=utf-8', 'Content-Disposition': 'attachment; filename="learning-compass-export.md"' }
       })
     }
     return c.json({ exported_at: new Date().toISOString(), total: items.length, limit, offset, recommendations: items })

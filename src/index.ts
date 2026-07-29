@@ -183,8 +183,8 @@ app.get('/manifest.json', (c) => {
   c.header('Content-Type', 'application/manifest+json; charset=utf-8')
   c.header('Cache-Control', 'public, max-age=86400')
   return c.json({
-    name: 'Taste Map',
-    short_name: 'Taste Map',
+    name: 'Learning Compass',
+    short_name: 'Learning Compass',
     start_url: '/',
     display: 'standalone',
     background_color: '#f6f6f3',
