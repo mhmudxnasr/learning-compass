@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS recommendations (
   dedup_key TEXT UNIQUE,
   synergy_bundle_id TEXT DEFAULT 'unset',
   consumed_date TEXT,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS html_files (

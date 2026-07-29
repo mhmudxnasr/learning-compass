@@ -1,35 +1,31 @@
-# PRODUCT.md — Taste Map Engine
+# Taste Map
 
-## What it is
-A personal knowledge curation system for one user (Mahmood). It tracks content recommendations across a queue lifecycle, maps his knowledge domains as a tree, and logs daily learning.
-
-## Register
-**Product UI** — design SERVES the product. This is a tool used daily, not a marketing surface.
-
-## Platform
-web
-
-## Users
-One user. Reads/reviews on tablet and phone, curates and pushes on desktop. Ambient light varies (light + dark mode both needed).
+Taste Map is Mahmood’s private learning operating system. D1 is canonical; Obsidian is an archive copy for extracted notes.
 
 ## Core loop
-1. AI/pipeline pushes recommendations → they land in the **Queue**.
-2. User consumes content, rates it (love/like/meh/dislike), writes a review → moves to **Archive**.
-3. Consumption updates the taste profile → the **Map** reflects branch health, resurfacing needs, patterns.
-4. Daily learning is logged in the **Journal**; produced artifacts (HTML study guides, PDFs) live in the **Vault**.
 
-## Interaction concept: Three Workspaces
-| Workspace | Intent | Contents |
-|---|---|---|
-| **Curate** | "What should I watch/read next? What did I think of it?" | Queue, Archive, All |
-| **Map** | "What does my knowledge look like? What's neglected?" | Canvas, Branches, Profile, Resurfacing |
-| **Log** | "What did I do today? What have I produced?" | Journal, Vault, Stats |
+Capture a strong source → curate a five-item queue → consume externally → return to reflect → extract a structured note → approve recall cards → review → update the Atlas → resurface what matters.
 
-Navigation: left sidebar (desktop) / bottom bar (mobile). Sub-views are a segmented control inside each workspace. Hash routing: `#/curate`, `#/map`, `#/log`.
+Manual captures, share targets, Telegram links, and subscribed RSS/Atom entries all land in the unlimited Inbox. Web feeds refresh every six hours and never bypass triage or the five-item Queue limit. Archive keeps a pinned RSS/Atom shelf above the manual archive so feed volume never buries finished sources.
 
-## Non-goals
-- Multi-user, auth UI, social features.
-- Replaced in this redesign: 9-tab flat nav, hover-only row actions, modal-for-everything.
+## Workspaces
 
-## Craft bar
-Linear shell density + Raycast command palette. Not marketing. Not Notion-pastel. Not cream SaaS.
+Today, Curate, Map, Learn, Vault, Insights, and Settings contain 28 purposeful destinations. Curate opens on Queue first, with RSS Feed beside it for subscriptions and triage. Overlapping infrastructure-oriented views are merged into workflow pages that expose all relevant cloud data. The desktop shell uses a collapsible rail; mobile keeps Today, Curate, Learn, and More in primary navigation.
+
+## User context
+
+Single user in Egypt. Desktop is for curation and synthesis; tablet/phone are for capture, external consumption, reflection, and review. UI is English. Notes support English and Egyptian Arabic with per-block direction.
+
+## Intelligence rules
+
+- Active queue target is five, with an explicit override.
+- Feedback processing is explicit and never auto-recommends.
+- Strong ratings create editable SRS drafts.
+- Invisible AI may enrich, rank, classify, and explain; profile/map changes remain reviewable.
+- Real source URLs stay recommendations; owned PDFs/HTML/transcripts stay artifacts.
+
+## Product register
+
+Scholar’s Instrument: neutral, typographic, precise, calm for learning, compact for management, immersive only inside the Atlas. No card soup, metric rings, gradients, glass, or decorative SaaS dashboard patterns.
+
+Atlas opens as a sparse constellation of major R1 branches. Pan, zoom, search, and progressive expansion reveal deeper rounds without overwhelming the overview; restrained cluster colors support orientation.

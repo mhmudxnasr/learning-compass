@@ -11,7 +11,7 @@ const app = new Hono<{ Bindings: Bindings }>()
  */
 app.post('/suggest', async (c) => {
   const { DB } = c.env
-  const key = (c.env as any).GOOGLE_API_KEY
+  const key = c.env.GOOGLE_API_KEY
 
   if (!key) return c.json({ error: 'GOOGLE_API_KEY not configured' }, 503)
 

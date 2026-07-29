@@ -13,16 +13,21 @@ import agentApi from './api/agent'
 import tasteApi from './api/taste'
 import suggestApi from './api/suggest'
 import syncApi from './api/sync'
-
-import { htmlShell } from './shell'
-import { cssBundle } from './assets/css'
-import { jsBundle } from './assets/js'
-import { normalizeYouTubeUrl, deriveDedupKey, isNonEmptyStr, isValidUrl } from './lib'
+import homeApi from './api/home'
+import captureApi from './api/capture'
+import productApi from './api/product'
+import jobsApi from './api/jobs'
+import intelligenceApi from './api/intelligence'
+import dashboardApi from './api/dashboard'
+import artifactsApi from './api/artifacts'
+import { normalizeYouTubeUrl, isValidUrl } from './lib'
+import { createInboxCapture } from './services/capture'
+import { syncAllFeeds } from './services/rss'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
 const RATE_LIMIT_WINDOW = 60000
-const RATE_LIMIT_MAX_READS = 100
+const RATE_LIMIT_MAX_READS = 300
 const RATE_LIMIT_MAX_WRITES = 20
 const rateLimitStore = new Map<string, { reads: number[]; writes: number[] }>()
 
@@ -68,20 +73,20 @@ app.use('/*', async (c, next) => {
   const status = c.res.status
   const ua = c.req.header('user-agent') || '-'
   const ip = getClientIp(c)
-  console.log(JSON.stringify({ ts: new Date().toISOString(), level: 'info', msg: 'request', method, path, status, duration, ip, ua, requestId }))
+  if (status >= 400 || duration >= 1000) {
+    console.warn(JSON.stringify({ ts: new Date().toISOString(), level: status >= 500 ? 'error' : 'warn', msg: 'request', method, path, status, duration, ip, ua, requestId }))
+  }
 })
 
-app.use('/*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'OPTIONS'] }))
+app.use('/*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] }))
 
 app.use('/*', async (c, next) => {
   await next()
   if (c.req.method === 'GET' || c.req.method === 'HEAD') {
     const path = new URL(c.req.url).pathname
-    const skip = path === '/html/list' || path === '/stats' || path === '/recommendations/list' || path.startsWith('/static/')
     const already = c.res.headers.get('Cache-Control')
-    if (!skip && !already) {
-      c.res.headers.set('Cache-Control', 'public, max-age=60, s-maxage=300')
-    }
+    const isAsset = path === '/' || path === '/ui' || path === '/manifest.json' || path === '/sw.js' || path.startsWith('/assets/')
+    if (!isAsset && !already) c.res.headers.set('Cache-Control', 'no-store')
   }
 })
 
@@ -100,6 +105,8 @@ app.use('/*', async (c, next) => {
 app.use('/*', async (c, next) => {
   const method = c.req.method.toUpperCase()
   if (method === 'GET' || method === 'OPTIONS' || method === 'HEAD') {
+    const path = new URL(c.req.url).pathname
+    if (path === '/' || path === '/sw.js' || path.startsWith('/assets/')) return next()
     const ip = getClientIp(c)
     const { allowed, retryAfter } = checkRateLimit(ip, false)
     if (!allowed) {
@@ -146,29 +153,30 @@ app.route('/ai', enhanceApi)
 app.route('/agent', agentApi)
 app.route('/ai', suggestApi)
 app.route('/sync', syncApi)
+app.route('/home', homeApi)
+app.route('/capture', captureApi)
+app.route('/agent/jobs', jobsApi)
+app.route('/dashboard', dashboardApi)
+app.route('/artifacts', artifactsApi)
+app.route('/', intelligenceApi)
+app.route('/', productApi)
 
 app.get('/health', (c) => c.json({ ok: true, now: new Date().toISOString() }))
 
-app.get('/', (c) => {
-  c.header('Cache-Control', 'no-cache, no-store, must-revalidate')
-  return c.html(htmlShell)
+app.get('/', async (c) => {
+  const asset = await c.env.ASSETS.fetch(c.req.raw)
+  const headers = new Headers(asset.headers)
+  headers.set('Cache-Control', 'no-cache, no-store, must-revalidate')
+  return new Response(asset.body, { status: asset.status, headers })
 })
-app.get('/ui', (c) => {
-  c.header('Cache-Control', 'no-cache, no-store, must-revalidate')
-  return c.html(htmlShell)
+app.get('/ui', async (c) => {
+  const asset = await c.env.ASSETS.fetch(new Request(new URL('/', c.req.url), c.req.raw))
+  const headers = new Headers(asset.headers)
+  headers.set('Cache-Control', 'no-cache, no-store, must-revalidate')
+  return new Response(asset.body, { status: asset.status, headers })
 })
-
-app.get('/static/app.css', (c) => {
-  c.header('Content-Type', 'text/css; charset=utf-8')
-  c.header('Cache-Control', 'public, max-age=600, must-revalidate')
-  return c.body(cssBundle)
-})
-
-app.get('/static/app.js', (c) => {
-  c.header('Content-Type', 'application/javascript; charset=utf-8')
-  c.header('Cache-Control', 'public, max-age=600, must-revalidate')
-  return c.body(jsBundle)
-})
+app.get('/assets/*', (c) => c.env.ASSETS.fetch(c.req.raw))
+app.get('/favicon.ico', (c) => c.body(null, 204))
 
 // Manifest for PWA
 app.get('/manifest.json', (c) => {
@@ -179,10 +187,10 @@ app.get('/manifest.json', (c) => {
     short_name: 'Taste Map',
     start_url: '/',
     display: 'standalone',
-    background_color: '#16191f',
-    theme_color: '#0d9182',
-    description: 'Personal knowledge curation system',
-    icons: [{ src: '/static/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/static/icon-512.png', sizes: '512x512', type: 'image/png' }],
+    background_color: '#f6f6f3',
+    theme_color: '#4d628c',
+    description: 'Private learning operating system',
+    icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }],
     share_target: {
       action: '/api/share-target',
       method: 'POST',
@@ -192,40 +200,13 @@ app.get('/manifest.json', (c) => {
   })
 })
 
-// Service worker — network-first for navigation (always fresh HTML), cache-first for assets
-app.get('/sw.js', (c) => {
-  c.header('Content-Type', 'application/javascript; charset=utf-8')
-  c.header('Cache-Control', 'public, max-age=86400')
-  c.header('Service-Worker-Allowed', '/')
-  return c.body(`
-const CACHE = 'tastemap-v4'
-const SHELL = ['/','/static/app.css','/static/app.js','https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js']
-self.addEventListener('install', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.map(k => k !== CACHE ? caches.delete(k) : null))).then(() => caches.open(CACHE).then(c => c.addAll(SHELL))).then(() => self.skipWaiting())) })
-self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()) })
-self.addEventListener('fetch', e => {
-  // Network-first for navigation — always fetch fresh HTML from server
-  if (e.request.mode === 'navigate') {
-    e.respondWith(
-      fetch(e.request).then(res => {
-        const clone = res.clone()
-        caches.open(CACHE).then(c => c.put(e.request, clone))
-        return res
-      }).catch(() => caches.match('/'))
-    )
-    return
-  }
-  // Cache-first for everything else (assets with ?v=N versioning)
-  e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request).then(res => {
-      if (res.ok && res.type === 'basic' && !e.request.url.includes('/api/') && !e.request.url.includes('/recommendations/')) {
-        const clone = res.clone()
-        caches.open(CACHE).then(c => c.put(e.request, clone))
-      }
-      return res
-    }).catch(() => caches.match('/')))
-  )
-})
-`)
+app.get('/sw.js', async (c) => {
+  const asset = await c.env.ASSETS.fetch(c.req.raw)
+  const headers = new Headers(asset.headers)
+  headers.set('Content-Type', 'application/javascript; charset=utf-8')
+  headers.set('Cache-Control', 'no-cache, no-store, must-revalidate')
+  headers.set('Service-Worker-Allowed', '/')
+  return new Response(asset.body, { status: asset.status, headers })
 })
 
 // Share target — receives URLs shared from mobile/desktop
@@ -242,16 +223,8 @@ app.post('/api/share-target', async (c) => {
       return c.html('<html><head><meta http-equiv="refresh" content="0;url=/"></head><body>Redirecting…</body></html>')
     }
 
-    const id = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-    const dedup = deriveDedupKey({ video_url: candidateUrl, video_title: title || candidateUrl })
     const vt = title || candidateUrl.split('/').pop()?.replace(/-/g, ' ') || 'Shared item'
-    const ct = candidateUrl.includes('youtube.com') || candidateUrl.includes('youtu.be') ? 'video'
-      : candidateUrl.includes('arxiv.org') ? 'paper' : 'article'
-
-    await DB.prepare(`INSERT INTO recommendations (id, video_title, creator, content_type, video_url, why_this, verified, status, user_rating, user_score, user_review, dedup_key, synergy_bundle_id, consumed_date, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'unset', NULL, NULL, ?, NULL, NULL, datetime('now'))
-      ON CONFLICT(dedup_key) DO UPDATE SET video_title=excluded.video_title, video_url=excluded.video_url, status='active', updated_at=datetime('now')`
-    ).bind(id, vt, null, ct, candidateUrl, null, new Date().toISOString().split('T')[0], dedup).run()
+    await createInboxCapture(DB, { source: candidateUrl, title: vt })
   } catch { /* best effort */ }
   return c.html('<html><head><meta http-equiv="refresh" content="0;url=/"></head><body>Saved. Redirecting…</body></html>')
 })
@@ -277,7 +250,7 @@ app.get('/api/yt/:id', async (c) => {
 // Telegram bot webhook
 app.post('/api/telegram', async (c) => {
   const { DB } = c.env
-  const { TELEGRAM_BOT_TOKEN } = c.env as any
+  const { TELEGRAM_BOT_TOKEN } = c.env
   if (!TELEGRAM_BOT_TOKEN) return c.json({ ok: false }, 403)
   let body: any
   try { body = await c.req.json() } catch { return c.json({ ok: false }, 400) }
@@ -290,18 +263,16 @@ app.post('/api/telegram', async (c) => {
   if (urlMatch) {
     const url = urlMatch[0]
     const label = text.replace(url, '').trim()
-    const id = `tg_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`
-    const dedup = deriveDedupKey({ video_url: url, video_title: label || url })
-    await DB.prepare(`INSERT INTO recommendations (id, video_title, creator, content_type, video_url, why_this, verified, status, user_rating, user_score, user_review, dedup_key, synergy_bundle_id, consumed_date)
-      VALUES (?, ?, NULL, 'article', ?, ?, NULL, 'active', 'unset', NULL, NULL, ?, NULL, NULL)
-      ON CONFLICT(dedup_key) DO UPDATE SET status='active'`
-    ).bind(id, label || url, url, null, dedup).run()
+    const result = await createInboxCapture(DB, { source: url, title: label || undefined })
     await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: `Saved: ${label || url}`, reply_to_message_id: msg.message_id })
+      body: JSON.stringify({ chat_id: chatId, text: result.duplicate ? `Already captured: ${label || url}` : `Saved to Inbox: ${label || url}`, reply_to_message_id: msg.message_id })
     })
   } else if (text === '/queue') {
-    const active = await DB.prepare("SELECT video_title, content_type FROM recommendations WHERE status='active' ORDER BY created_at DESC LIMIT 5").all<any>()
+    const active = await DB.prepare(`SELECT r.video_title,r.content_type
+      FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
+      WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')
+      ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 5`).all<any>()
     const lines = (active.results || []).map((r: any) => `• [${r.content_type || '?'}] ${r.video_title}`)
     await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -316,16 +287,13 @@ app.post('/api/telegram', async (c) => {
   return c.json({ ok: true })
 })
 
-// Scheduled cron: smart resurfacing engine + FTS sync + schema migrations
+// Scheduled cron: smart resurfacing engine + FTS sync
 export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
   const { DB } = env
   const today = new Date().toISOString().split('T')[0]
 
   try {
-    // 0. Schema migrations (idempotent — runs every cron, only adds if missing)
-    try { await DB.prepare("ALTER TABLE srs_cards ADD COLUMN difficulty REAL DEFAULT 5.0").run() } catch { /* already exists */ }
-    try { await DB.prepare("ALTER TABLE srs_cards ADD COLUMN stability REAL DEFAULT 1.0").run() } catch { /* already exists */ }
-    try { await DB.prepare("ALTER TABLE recommendations ADD COLUMN updated_at TEXT").run() } catch { /* already exists */ }
+    await syncAllFeeds(DB)
 
     // 1. Clean expired undo rows
     await DB.prepare("DELETE FROM undo_queue WHERE expires_at < datetime('now')").run()
@@ -334,8 +302,8 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
     const lastSync = await DB.prepare("SELECT value FROM kv_store WHERE key = 'fts_last_sync'").first<any>()
     const lastSyncTs = lastSync?.value || '1970-01-01'
     const changedRecs = await DB.prepare(
-      "SELECT COUNT(*) as c FROM recommendations WHERE created_at > ? OR (consumed_date IS NOT NULL AND consumed_date > ?)"
-    ).bind(lastSyncTs, lastSyncTs).first<{ c: number }>()
+      "SELECT COUNT(*) as c FROM recommendations WHERE created_at > ? OR updated_at > ? OR (consumed_date IS NOT NULL AND consumed_date > ?)"
+    ).bind(lastSyncTs, lastSyncTs, lastSyncTs).first<{ c: number }>()
     const dirty = (changedRecs?.c || 0) > 0
 
     if (dirty) {
@@ -361,7 +329,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
     }
 
     // Update sync timestamp
-    await DB.prepare("INSERT OR REPLACE INTO kv_store (key, value) VALUES ('fts_last_sync', ?)").bind(today).run()
+    await DB.prepare("INSERT OR REPLACE INTO kv_store (key, value) VALUES ('fts_last_sync', ?)").bind(new Date().toISOString()).run()
 
     // 3. Find neglected branches (no consumed items in 30 days)
     const staleBranches = await DB.prepare(`
@@ -376,7 +344,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
       HAVING MAX(consumed_date) < date('now', '-30 days')
     `).all<any>()
 
-    // 4. For each stale branch, find a loved item to resurface
+    // 4. For each stale branch, surface a loved source without silently adding it to Queue.
     for (const b of (staleBranches.results || [])) {
       const branch = b.branch
       if (!branch) continue
@@ -388,31 +356,10 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
       ).bind(branch).all<any>()
       if (!existsResult.results || existsResult.results.length === 0) continue
       const rec = existsResult.results[0]
-      const alreadyActive = await DB.prepare("SELECT id FROM recommendations WHERE dedup_key = (SELECT dedup_key FROM recommendations WHERE id = ?) AND status = 'active'")
-        .bind(rec.id).first()
-      if (alreadyActive) continue
-      const now = new Date().toISOString().split('T')[0]
-      const rId = `resurface_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-      await DB.prepare(`INSERT INTO recommendations (id, video_title, creator, content_type, video_url, why_this, verified, status, user_rating, user_score, user_review, dedup_key, synergy_bundle_id, consumed_date)
-        SELECT ?, video_title, creator, content_type, video_url, 'Resurfaced: ' || (SELECT label FROM tree_nodes WHERE id = ? LIMIT 1) || ' needs love', ?, 'active', 'unset', NULL, NULL, dedup_key || '-res', NULL, NULL
-        FROM recommendations WHERE id = ?`
-      ).bind(rId, branch, now, rec.id).run()
+      await DB.prepare(`INSERT INTO resurfacing (recommendation_id,stage,due_at,notes)
+        SELECT ?,'stale',date('now'),? WHERE NOT EXISTS (SELECT 1 FROM resurfacing WHERE recommendation_id=? AND resolved_at IS NULL)`)
+        .bind(rec.id, `Branch ${branch} has been inactive for 30 days.`, rec.id).run()
     }
-
-    // 5. Check resurfacing schedule — mark due items as active
-    const dueResurface = await DB.prepare(
-      "SELECT recommendation_id FROM resurfacing WHERE due_at <= ? AND resolved_at IS NULL"
-    ).bind(today).all<any>()
-    for (const dr of (dueResurface.results || [])) {
-      const rec = await DB.prepare("SELECT * FROM recommendations WHERE id = ?").bind(dr.recommendation_id).first<any>()
-      if (!rec || rec.status === 'active') continue
-      const rId = `rs_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-      await DB.prepare(`INSERT INTO recommendations (id, video_title, creator, content_type, video_url, why_this, verified, status, user_rating, user_score, user_review, dedup_key, synergy_bundle_id, consumed_date)
-        SELECT ?, video_title, creator, content_type, video_url, 'Scheduled resurface', ?, 'active', 'unset', NULL, NULL, dedup_key || '-rs', NULL, NULL
-        FROM recommendations WHERE id = ?`
-      ).bind(rId, today, rec.id).run()
-    }
-    await DB.prepare(`UPDATE resurfacing SET resolved_at = ? WHERE due_at <= ? AND resolved_at IS NULL`).bind(today, today).run()
   } catch (e) {
     console.error('cron failed', e)
   }

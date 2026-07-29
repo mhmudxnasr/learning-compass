@@ -1,1 +1,0 @@
-This folder contains the built output assets for the worker "recommendations-worker" generated at 2026-07-28T14:21:07.369Z.

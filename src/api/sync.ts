@@ -14,6 +14,7 @@ app.post('/push', async (c) => {
   try { body = await c.req.json() } catch { return c.json({ error: 'Invalid JSON' }, 400) }
 
   const stmts: D1PreparedStatement[] = []
+  const inboxStmts: D1PreparedStatement[] = []
   let count = 0
 
   // Recommendations delta
@@ -33,6 +34,7 @@ app.post('/push', async (c) => {
         rec.status || 'active', rec.user_rating || 'unset', rec.user_score || null,
         rec.user_review || null, rec.dedup_key || rec.id, null, rec.consumed_date || null, now))
       count++
+      inboxStmts.push(DB.prepare(`INSERT OR IGNORE INTO recommendation_meta (recommendation_id,learning_state,source_metadata_json,updated_at) VALUES (?,'inbox',?,datetime('now'))`).bind(rec.id, JSON.stringify({ synced: true })))
     }
   }
 
@@ -95,6 +97,7 @@ app.post('/push', async (c) => {
 
   try {
     for (let i = 0; i < stmts.length; i += 50) await DB.batch(stmts.slice(i, i + 50))
+    for (let i = 0; i < inboxStmts.length; i += 50) await DB.batch(inboxStmts.slice(i, i + 50))
     return c.json({ ok: true, count })
   } catch (err) {
     return c.json(safeError('Sync push failed')(err), 500)

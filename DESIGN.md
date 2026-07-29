@@ -1,41 +1,31 @@
-# DESIGN.md — Taste Map Engine
+# Scholar’s Instrument — Taste Map Design System
 
-## Anchors
-Linear (rail, segmented views, density) · Raycast (⌘K palette) · cool teal restrained.
+## Register
 
-## Color
-- OKLCH. Dark default. Light = true off-white chroma 0 (not cream).
-- Dark bg: oklch(0.14 0.01 250). Surfaces +0.03L steps, hue 250.
-- Accent: oklch(0.72 0.14 195) ≤10% of UI. Light accent: oklch(0.52 0.12 195).
-- Semantic: active amber / consumed green / rejected red / aging amber — dots & badges only.
-- Body text ≥4.5:1. Dark muted floor oklch(0.55+). Light muted floor oklch(0.50+).
+Calm editorial learning surface + precise research instrument. Information hierarchy beats decoration. Containment is used only when it communicates ownership or state.
 
-## Typography
-- Inter + JetBrains Mono.
-- Scale: 12 / 13 / 14 / 16 / 20 / 28. Display max 28px.
-- Letter-spacing display ≥ -0.02em (never tighter than -0.04em).
-- Section titles: sentence-case 13px/600. No default uppercase eyebrows.
-- Data/ids/counts: mono.
+## Tokens
 
-## Spacing
-4 / 8 / 12 / 16 / 24 / 32 / 48
-
-## Radius
-6 controls · 10 cards · 12 sheets. Chips/FAB may pill. Nothing ≥16 on cards.
-
-## Elevation
-- L0 page · L1 surface 1px border no shadow · L2 popover border + shadow blur≤8 OR border alone.
-- NEVER 1px border + blur≥16 on same element.
-
-## Motion
-ease-out-quart cubic-bezier(0.25,1,0.5,1) · 150–250ms · prefers-reduced-motion instant.
+- Light: true neutral background, white surfaces, graphite ink, muted ink-blue accent.
+- Dark: graphite/blue-black background and surfaces, icy ink, the same restrained ink-blue accent.
+- Semantic colors are reserved for status and data.
+- UI/body: IBM Plex Sans + IBM Plex Sans Arabic. Reading: Literata + Arabic fallback. Data: IBM Plex Mono.
+- Controls 8px radius; meaningful panels 10–12px; pills only for compact statuses.
+- Borders and rules are primary structure. Shadows are reserved for dialogs/popovers.
+- Motion is 150–220ms ease-out; no choreographed page loads; reduced motion is instant.
 
 ## Shell
-- Sidebar rail icon+label ≥721px; bottom bar ≤720px.
-- Active nav: accent-tint fill + weight — no side stripe (mobile: inset top shadow).
-- Subnav: segmented control.
-- Review: right sheet desktop / bottom sheet mobile.
-- Loading: skeletons. Empty: one line + one action.
 
-## Banned
-Side-stripe · gradient text · cream body · warm amber brand · uppercase section eyebrows everywhere · border+wide shadow · radius≥16 cards · hover-only actions ≤1024px · spinners in content.
+Collapsible desktop rail. Mobile bottom bar: Today, Curate, Learn, More. Contextual sub-navigation lives below the page heading. ⌘K opens the command palette. Capture is available globally.
+
+## Content
+
+Today prioritizes due work, active sessions, queue pressure, neglected branches, gaps, map changes, and recent output. Notes use Foundation → Case Studies → Exploitation → Defense plus My Notes & Reaction.
+
+## Atlas
+
+Atlas is the immersive exception to compact management layouts. Its default state shows only major R1 branches as freely navigable organic constellations. Deeper rounds expand on demand, unrelated nodes fade during focus, and subtle low-chroma cluster colors aid orientation in both themes. Search, zoom, overview, and selection inspection remain visible alternatives to gestures.
+
+## Bans
+
+No gradients, glassmorphism, metric-ring hero blocks, repeated card grids, side-stripe accents, giant radii, uppercase eyebrow spam, emoji UI, or unrelated fallback views.

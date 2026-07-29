@@ -40,7 +40,7 @@ app.post('/enhance', async (c) => {
     return c.json({ text: localEnhance('', item), source: 'local' })
   }
 
-  const key = (c.env as any).GOOGLE_API_KEY
+  const key = c.env.GOOGLE_API_KEY
   if (key) {
     try {
       const ctx = [
@@ -100,7 +100,7 @@ app.post('/enhance/why', async (c) => {
   const title = (body.video_title || '').trim()
   if (!title) return c.json({ text: '', source: 'empty' })
 
-  const key = (c.env as any).GOOGLE_API_KEY
+  const key = c.env.GOOGLE_API_KEY
   if (!key) return c.json({ text: '', source: 'none' })
 
   const ctx = [

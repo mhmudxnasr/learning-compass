@@ -1,6 +1,13 @@
 import { Hono } from 'hono'
 
-export type Bindings = { DB: D1Database; API_TOKEN?: string }
+export type Bindings = {
+  DB: D1Database
+  ASSETS: Fetcher
+  ARTIFACTS?: R2Bucket
+  API_TOKEN?: string
+  GOOGLE_API_KEY?: string
+  TELEGRAM_BOT_TOKEN?: string
+}
 
 export type Recommendation = {
   id: string

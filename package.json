@@ -2,17 +2,29 @@
   "name": "recommendations-worker",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --test tests/unit/*.test.ts",
+    "test:e2e": "node tests/e2e/routes.mjs",
+    "test": "npm run test:unit && npm run typecheck",
+    "dev": "vite --host 127.0.0.1",
+    "dev:worker": "npm run build && wrangler dev --config wrangler.toml",
+    "deploy": "npm run build && wrangler deploy --config wrangler.toml"
   },
   "dependencies": {
-    "hono": "^4.0.0"
+    "cytoscape": "^3.34.0",
+    "hono": "^4.0.0",
+    "preact": "^10.27.2"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20240208.0",
+    "@cloudflare/workers-types": "^5.20260722.1",
+    "@preact/preset-vite": "^2.10.2",
+    "@types/cytoscape": "^3.21.9",
     "playwright": "^1.62.0",
     "typescript": "^5.3.3",
+    "vite": "^7.1.7",
     "wrangler": "^4.114.0"
   }
 }

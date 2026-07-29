@@ -2,10 +2,19 @@ name = "recommendations-worker"
 main = "src/index.ts"
 compatibility_date = "2026-07-27"
 
+[assets]
+directory = "./dist/client"
+binding = "ASSETS"
+run_worker_first = true
+
 [[d1_databases]]
 binding = "DB"
 database_name = "recommendations-db"
 database_id = "49c68912-ce6e-4899-8e73-8955a6a21dee"
+
+[[r2_buckets]]
+binding = "ARTIFACTS"
+bucket_name = "taste-map-artifacts"
 
 [triggers]
 crons = ["0 */6 * * *"]

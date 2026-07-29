@@ -27,6 +27,7 @@ app.get('/list', async (c) => {
   const rating = c.req.query('rating')
   const creator = c.req.query('creator')
   const since = c.req.query('since')
+  const source = c.req.query('source')
 
   const where: string[] = []
   const bindings: (string | number)[] = []
@@ -53,6 +54,12 @@ app.get('/list', async (c) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) return c.json({ error: 'invalid since date' }, 400)
     where.push('created_at >= ?')
     bindings.push(since)
+  }
+  if (source) {
+    if (source !== 'feed' && source !== 'manual') return c.json({ error: 'invalid source' }, 400)
+    where.push(source === 'feed'
+      ? 'EXISTS (SELECT 1 FROM feed_entries fe WHERE fe.recommendation_id = recommendations.id)'
+      : 'NOT EXISTS (SELECT 1 FROM feed_entries fe WHERE fe.recommendation_id = recommendations.id)')
   }
   if (q) {
     where.push('(video_title LIKE ? OR creator LIKE ? OR why_this LIKE ?)')
@@ -89,6 +96,7 @@ app.post('/push', async (c) => {
   const items = Array.isArray(body) ? body : [body]
   const today = new Date().toISOString().split('T')[0]
   const stmts: D1PreparedStatement[] = []
+  const dedupKeys: string[] = []
 
   try {
     for (const item of items) {
@@ -141,9 +149,14 @@ app.post('/push', async (c) => {
           item.consumed_date || null
         )
       )
+      dedupKeys.push(dedupKey)
     }
     if (stmts.length === 0) return c.json({ ok: true, count: 0 })
     await DB.batch(stmts)
+    for (const dedupKey of dedupKeys) {
+      const row = await DB.prepare(`SELECT id FROM recommendations WHERE dedup_key=?`).bind(dedupKey).first<{ id: string }>()
+      if (row) await DB.prepare(`INSERT OR IGNORE INTO recommendation_meta (recommendation_id,learning_state,source_metadata_json,updated_at) VALUES (?,'inbox',?,datetime('now'))`).bind(row.id, JSON.stringify({ imported: true })).run()
+    }
   } catch (err) {
     return c.json(safeError('Push failed')(err), 500)
   }

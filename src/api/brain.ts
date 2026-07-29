@@ -393,4 +393,30 @@ app.post('/node', async (c) => {
   }
 })
 
+app.put('/node/:id', async (c) => {
+  const body: { label?: string; type?: string; super_category?: string; parent_id?: string; status?: string; meta_json?: string } = await c.req.json().catch(() => ({}))
+  const id = c.req.param('id')
+  const current = await c.env.DB.prepare('SELECT id FROM tree_nodes WHERE id=?').bind(id).first()
+  if (!current) return c.json({ error: 'not found' }, 404)
+  const fields: string[] = [], values: any[] = []
+  for (const key of ['label', 'type', 'super_category', 'parent_id', 'status', 'meta_json'] as const) {
+    if (body[key] !== undefined) { fields.push(`${key}=?`); values.push(body[key]) }
+  }
+  if (!fields.length) return c.json({ ok: true, count: 0 })
+  fields.push("updated_at=datetime('now')")
+  await c.env.DB.prepare(`UPDATE tree_nodes SET ${fields.join(',')} WHERE id=?`).bind(...values, id).run()
+  return c.json({ ok: true })
+})
+
+app.delete('/node/:id', async (c) => {
+  const id = c.req.param('id')
+  if (id === 'root') return c.json({ error: 'root cannot be deleted' }, 400)
+  const node = await c.env.DB.prepare('SELECT type FROM tree_nodes WHERE id=?').bind(id).first<any>()
+  if (!node) return c.json({ error: 'not found' }, 404)
+  const child = await c.env.DB.prepare('SELECT id FROM tree_nodes WHERE parent_id=? LIMIT 1').bind(id).first()
+  if (child) return c.json({ error: 'node_has_children', message: 'Delete or move child nodes first.' }, 409)
+  await c.env.DB.prepare('DELETE FROM tree_nodes WHERE id=?').bind(id).run()
+  return c.json({ ok: true })
+})
+
 export default app

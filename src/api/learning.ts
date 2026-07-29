@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
+import { scheduleReview } from '../domain'
+import { loadSettings } from '../services/settings'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -131,58 +133,17 @@ app.post('/srs/review', async (c) => {
     const card = await DB.prepare("SELECT * FROM srs_cards WHERE id = ?").bind(card_id).first<any>()
     if (!card) return c.json({ error: 'card not found' }, 404)
 
-    let difficulty = card.ease_factor || 5.0
-    let interval = card.interval_days || 1
-    let reps = card.repetitions || 0
-    const grade3 = grade >= 3 // recall success threshold (like SM-2's >= 3)
-
-    // --- FSRS-style computation ---
-    // Difficulty adjustment: success → easier, fail → harder
-    // Bounded [1.3, 10.0] to prevent extreme intervals
-    if (grade3) {
-      // Success: difficulty drifts down slightly (or up for marginal pass)
-      difficulty = difficulty + (0.1 - (5 - grade) * (0.08 + (5 - grade) * 0.02))
-    } else {
-      // Fail: difficulty increases (item is harder than estimated)
-      difficulty = difficulty + (grade - 3) * 0.2 // negative diff → increase
-    }
-    difficulty = Math.max(1.3, Math.min(10.0, difficulty))
-
-    // Stability (interval) update
-    if (grade3) {
-      if (reps === 0) {
-        interval = 1
-      } else if (reps === 1) {
-        interval = 6
-      } else {
-        // FSRS core: S(n) = S(n-1) * difficulty_factor * recall_boost * history_boost
-        const diffFactor = difficulty / 5.0  // >1 = hard (longer), <1 = easy (shorter)
-        const recallBoost = 1 + (grade - 3) * 0.3  // perfect recall = 1.6x, marginal = 1.0x
-        const historyBoost = Math.exp(Math.min(reps * 0.08, 1.0)) // capped at ~2.7x
-        interval = Math.round(Math.max(interval, 1) * diffFactor * recallBoost * historyBoost)
-      }
-      reps += 1
-    } else {
-      // Forget: half-life decay proportional to grade (partial credit for near-misses)
-      const forgetFactor = 0.3 + (grade / 10)  // grade 0 → 0.3x, grade 2 → 0.5x
-      interval = Math.max(1, Math.round(interval * forgetFactor))
-      reps = 0
-    }
-
-    // Cap at reasonable max (5 years)
-    interval = Math.min(interval, 1825)
-
-    const nextDue = new Date()
-    nextDue.setDate(nextDue.getDate() + interval)
-    const nextDueStr = nextDue.toISOString().split('T')[0]
+    const settings = await loadSettings(DB)
+    const next = scheduleReview({ difficulty: Number(card.difficulty ?? card.ease_factor ?? 5), stability: Number(card.stability ?? card.interval_days ?? 1), repetitions: Number(card.repetitions || 0) }, grade, new Date(), settings.learning.retention)
 
     await DB.prepare(`
       UPDATE srs_cards
-      SET ease_factor = ?, interval_days = ?, repetitions = ?, due_at = ?, last_reviewed_at = datetime('now')
+      SET ease_factor = ?, difficulty = ?, stability = ?, interval_days = ?, repetitions = ?, due_at = ?, last_reviewed_at = datetime('now')
       WHERE id = ?
-    `).bind(difficulty, interval, reps, nextDueStr, card_id).run()
+    `).bind(next.difficulty, next.difficulty, next.stability, next.intervalDays, next.repetitions, next.dueAt, card_id).run()
+    await DB.prepare(`INSERT INTO srs_review_events (card_id,grade,previous_state_json,next_state_json) VALUES (?,?,?,?)`).bind(card_id, grade, JSON.stringify(card), JSON.stringify(next)).run()
 
-    return c.json({ ok: true, next_due: nextDueStr, interval_days: interval, ease_factor: difficulty, fsrs: true })
+    return c.json({ ok: true, next_due: next.dueAt, interval_days: next.intervalDays, ease_factor: next.difficulty, fsrs: true })
   } catch (err) {
     return c.json(safeError('SRS review failed')(err), 500)
   }
@@ -230,5 +191,3 @@ app.get('/gaps', async (c) => {
 })
 
 export default app
-
-

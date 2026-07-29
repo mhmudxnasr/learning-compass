@@ -216,8 +216,8 @@ app.get('/print/:id', async (c) => {
 </head>
 <body>
 <div class="print-toolbar no-print">
-  <span>🖨️ ${safeFilename}</span>
-  <button onclick="window.print()">Print / Save PDF</button>
+ <span>🖨️ ${safeFilename}</span>
+ <button onclick="window.print()">Print / Save PDF</button>
 </div>
 <div class="print-content">
 ${file.content}
@@ -272,4 +272,3 @@ app.post('/sync-srs', async (c) => {
 })
 
 export default app
-
