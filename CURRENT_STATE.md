@@ -12,6 +12,7 @@ Update this file whenever a milestone is completed, a contract changes, a deploy
 - The destination registry has 28 purposeful routes; overlapping infrastructure-oriented tabs were removed and all route contracts agree.
 - Mobile shell/navigation tests pass.
 - Unit tests and TypeScript checks pass.
+- GitHub Actions installs Playwright Chromium before running E2E.
 - Scholar's Instrument tokens, desktop rail, mobile navigation, themes, and route-specific surfaces are present.
 - Atlas uses a lazy-loaded, cluster-first spatial canvas with a major-branch overview, progressive expansion, search, filtering, touch navigation, a responsive inspector, and animated branch dragging that carries visible descendants while preserving their positions.
 - The D1 knowledge graph contains 201 nodes; all 190 semantic nodes and parent relationships from the user-selected `Map.canvas` are merged without importing canvas layout or removing Atlas-only nodes.
