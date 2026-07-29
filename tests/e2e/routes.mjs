@@ -1,5 +1,8 @@
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const workspaces = {
   today: ['briefing'],
@@ -11,28 +14,42 @@ const workspaces = {
   settings: ['profile','appearance','learning','curation','data'],
 }
 
-const server = spawn('./node_modules/.bin/wrangler', ['dev', '--config', 'wrangler.toml', '--port', '8787'], {
-  stdio: ['ignore', 'pipe', 'pipe'],
-  detached: false,
-})
-let serverLog = ''
-server.stdout.on('data', (chunk) => { serverLog = (serverLog + chunk).slice(-4000) })
-server.stderr.on('data', (chunk) => { serverLog = (serverLog + chunk).slice(-4000) })
+const wrangler = './node_modules/.bin/wrangler'
+const persistDir = mkdtempSync(join(tmpdir(), 'learning-compass-e2e-'))
+let server
+let browser
 
-for (let attempt = 0; attempt < 60; attempt++) {
-  try {
-    const response = await fetch('http://127.0.0.1:8787/health')
-    if (response.ok) break
-  } catch {}
-  if (attempt === 59) {
-    server.kill('SIGTERM')
-    throw new Error(`Worker did not start:\n${serverLog}`)
-  }
-  await new Promise((resolve) => setTimeout(resolve, 250))
-}
-
-const browser = await chromium.launch()
 try {
+  for (const args of [
+    ['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--file', 'schema.sql'],
+    ['d1', 'migrations', 'apply', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir],
+  ]) {
+    const process = spawn(wrangler, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    let output = ''
+    process.stdout.on('data', (chunk) => { output += chunk })
+    process.stderr.on('data', (chunk) => { output += chunk })
+    const status = await new Promise((resolve) => process.on('close', resolve))
+    if (status !== 0) throw new Error(`D1 setup failed:\n${output}`)
+  }
+
+  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8787'], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: false,
+  })
+  let serverLog = ''
+  server.stdout.on('data', (chunk) => { serverLog = (serverLog + chunk).slice(-4000) })
+  server.stderr.on('data', (chunk) => { serverLog = (serverLog + chunk).slice(-4000) })
+
+  for (let attempt = 0; attempt < 60; attempt++) {
+    try {
+      const response = await fetch('http://127.0.0.1:8787/health')
+      if (response.ok) break
+    } catch {}
+    if (attempt === 59) throw new Error(`Worker did not start:\n${serverLog}`)
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+
+  browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
@@ -87,6 +104,11 @@ if (!page.url().includes('#/vault/')) throw new Error('mobile More did not navig
 
 console.log(`E2E passed: ${count} purposeful destinations, mobile shell, and complete mobile navigation`)
 } finally {
-  await browser.close()
-  server.kill('SIGTERM')
+  await browser?.close()
+  if (server && server.exitCode === null) {
+    const exited = new Promise((resolve) => server.once('exit', resolve))
+    server.kill('SIGTERM')
+    await exited
+  }
+  rmSync(persistDir, { recursive: true, force: true })
 }
