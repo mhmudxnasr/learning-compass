@@ -49,7 +49,18 @@ app.get('/', async (c) => {
     try { return { ...row, metadata: JSON.parse(row.metadata_json || '{}'), metadata_json: undefined, extraction: jobByArtifact.get(row.id) || null } }
     catch { return { ...row, metadata: {}, metadata_json: undefined, extraction: jobByArtifact.get(row.id) || null } }
   })
-  return c.json({ artifacts: [...artifacts, ...(legacy.results || []).map((row: any) => ({ ...row, legacy: true, metadata: {} }))] })
+  const recIds = [...new Set(artifacts.map((a: any) => a.metadata?.recommendation_id).filter(Boolean))]
+  const notebookByRec = new Map<string, string>()
+  if (recIds.length) {
+    const placeholders = recIds.map(() => '?').join(',')
+    const notebooks = await c.env.DB.prepare(`SELECT id, notebook_url FROM recommendations WHERE id IN (${placeholders}) AND notebook_url IS NOT NULL`).bind(...recIds).all<{ id: string; notebook_url: string }>()
+    for (const row of notebooks.results || []) notebookByRec.set(row.id, row.notebook_url)
+  }
+  for (const artifact of artifacts) {
+    const recId = artifact.metadata?.recommendation_id
+    artifact.notebook_url = (recId && notebookByRec.get(recId)) || null
+  }
+  return c.json({ artifacts: [...artifacts, ...(legacy.results || []).map((row: any) => ({ ...row, legacy: true, metadata: {}, notebook_url: null }))] })
 })
 
 app.post('/', async (c) => {

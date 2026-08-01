@@ -20,6 +20,8 @@ import jobsApi from './api/jobs'
 import intelligenceApi from './api/intelligence'
 import dashboardApi from './api/dashboard'
 import artifactsApi from './api/artifacts'
+import discoveryApi from './api/discovery'
+import notebooklmApi from './api/notebooklm'
 import { normalizeYouTubeUrl, isValidUrl } from './lib'
 import { createInboxCapture } from './services/capture'
 import { syncAllFeeds } from './services/rss'
@@ -158,6 +160,8 @@ app.route('/capture', captureApi)
 app.route('/agent/jobs', jobsApi)
 app.route('/dashboard', dashboardApi)
 app.route('/artifacts', artifactsApi)
+app.route('/discovery', discoveryApi)
+app.route('/notebooklm', notebooklmApi)
 app.route('/', intelligenceApi)
 app.route('/', productApi)
 

@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { Bindings, Recommendation, VALID_STATUS, VALID_RATINGS, isValidUrl, isNonEmptyStr, safeError, normalizeRating, deriveDedupKey, normalizeUrlForDedup } from '../lib'
+import { activateWaitingRun } from './discovery'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -173,6 +174,7 @@ app.post('/action', async (c) => {
     user_rating?: string
     user_review?: string
     consumed_date?: string
+    notebook_url?: string
   }
 
   try {
@@ -195,6 +197,9 @@ app.post('/action', async (c) => {
   }
   if (body.user_review && !isNonEmptyStr(body.user_review, 5000)) {
     return c.json({ error: 'review too long' }, 400)
+  }
+  if (body.notebook_url != null && body.notebook_url !== '' && !isValidUrl(body.notebook_url)) {
+    return c.json({ error: 'invalid notebook_url' }, 400)
   }
 
   const ids: string[] = Array.isArray(body.ids) ? body.ids : (body.id ? [body.id] : [])
@@ -228,6 +233,7 @@ app.post('/action', async (c) => {
            user_score = COALESCE(?, user_score),
            user_review = COALESCE(?, user_review),
            consumed_date = COALESCE(?, consumed_date),
+           notebook_url = COALESCE(?, notebook_url),
            updated_at = datetime('now')
        WHERE id = ?`
     ).bind(
@@ -236,6 +242,7 @@ app.post('/action', async (c) => {
       norm.score,
       body.user_review || null,
       consumedDate,
+      body.notebook_url || null,
       id
     ))
     for (let i = 0; i < stmts.length; i += 50) await DB.batch(stmts.slice(i, i + 50))
@@ -273,6 +280,7 @@ app.post('/delete', async (c) => {
     } else {
       await DB.prepare('DELETE FROM recommendations WHERE id = ?').bind(body.id).run()
     }
+    try { await activateWaitingRun(DB) } catch {}
     return c.json({ ok: true })
   } catch (err) { return c.json(safeError('Delete failed')(err), 500) }
 })

@@ -21,7 +21,7 @@ Feed imports never bypass Inbox triage and never add directly to the five-item Q
 
 Enabled feeds are also checked automatically by the Worker every six hours.
 
-This guide is stored in Vault as a Markdown artifact. Open it from **Vault → Files → Read**; Learning Compass renders Markdown files as a readable document instead of exposing the raw file.
+This guide is stored as a Markdown artifact. Open it from **Learn → Files → Read**; Learning Compass renders Markdown files as a readable document instead of exposing the raw file.
 
 ## What gets stored
 

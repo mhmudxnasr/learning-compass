@@ -20,7 +20,7 @@ Collapsible desktop rail. Mobile bottom bar: Today, Curate, Learn, More. Context
 
 ## Content
 
-Today prioritizes due work, active sessions, queue pressure, neglected branches, gaps, map changes, and recent output. Notes use Foundation → Case Studies → Exploitation → Defense plus My Notes & Reaction.
+Today prioritizes due work, queue progress, neglected branches, gaps, map changes, and recent output. Queue owns start, resume, and finish. Discovery provides a dedicated destination for wave exploration, research-quality verification, decision receipts, and Hermes adaptive interview loops. Learn begins with Files and keeps personal Reflections visually distinct from extractor-created Notes. Changes uses a compact current/proposed diff with explicit Approve and Reject actions. Notes use Foundation → Case Studies → Exploitation → Defense plus My Notes & Reaction.
 
 ## Atlas
 

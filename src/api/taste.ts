@@ -61,7 +61,10 @@ app.post('/rerank', async (c) => {
   const { DB } = c.env
   try {
     const active = await DB.prepare("SELECT * FROM recommendations WHERE status = 'active' ORDER BY created_at DESC").all<any>()
-    const vectorsRes = await fetch(new URL('/taste/vector', c.req.url).toString(), { headers: c.req.raw.headers })
+    const headers: Record<string, string> = {}
+    const token = c.req.header('x-api-token')
+    if (token) headers['x-api-token'] = token
+    const vectorsRes = await fetch(new URL('/taste/vector', c.req.url).toString(), { headers })
     const vectorData = await vectorsRes.json<any>()
     const vMap = new Map<string, number>()
     for (const v of (vectorData.vectors || [])) {

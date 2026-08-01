@@ -3,6 +3,9 @@ import { queueDecision } from '../domain'
 import { Bindings, safeError } from '../lib'
 import { createInboxCapture } from '../services/capture'
 import { addFeed, syncAllFeeds, syncFeed } from '../services/rss'
+import { processVisualiseJob } from '../services/visual'
+
+import { activateWaitingRun } from './discovery'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -31,7 +34,7 @@ app.get('/', async (c) => {
 })
 
 app.get('/queue', async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.priority_rank,m.progress_percent FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all()
+  const rows = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.priority_rank,m.progress_percent,m.estimated_minutes,m.tags_json,m.started_at,m.last_opened_at FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all()
   return c.json({ items: rows.results || [], count: rows.results?.length || 0, cap: 5 })
 })
 
@@ -96,13 +99,14 @@ app.delete('/feeds/:id', async (c) => {
 
 app.post('/:id/triage', async (c) => {
   const body: { action?: 'queue' | 'exclude'; override_queue_cap?: boolean } = await c.req.json().catch(() => ({}))
-  const item = await c.env.DB.prepare(`SELECT id FROM recommendations WHERE id=?`).bind(c.req.param('id')).first()
+  const item = await c.env.DB.prepare(`SELECT id,video_url,video_title FROM recommendations WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
   if (body.action === 'exclude') {
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE recommendations SET status='rejected',updated_at=datetime('now') WHERE id=?`).bind(c.req.param('id')),
       c.env.DB.prepare(`UPDATE recommendation_meta SET learning_state='excluded',updated_at=datetime('now') WHERE recommendation_id=?`).bind(c.req.param('id')),
     ])
+    try { await activateWaitingRun(c.env.DB) } catch {}
     return c.json({ ok: true, state: 'excluded' })
   }
   if (body.action !== 'queue') return c.json({ error: 'action must be queue or exclude' }, 400)
@@ -115,6 +119,20 @@ app.post('/:id/triage', async (c) => {
     ON CONFLICT(recommendation_id) DO UPDATE SET learning_state='queued',updated_at=datetime('now')`).bind(c.req.param('id'), body.override_queue_cap === true ? 1 : 0).run()
   if (!result.meta.changes) return c.json({ error: 'queue_full', ...queueDecision(5, false) }, 409)
   return c.json({ ok: true, state: 'queued', ...decision })
+})
+
+app.post('/:id/visualise', async (c) => {
+  const item = await c.env.DB.prepare(`SELECT id,video_url,video_title,creator FROM recommendations WHERE id=? AND status='active'`).bind(c.req.param('id')).first<any>()
+  if (!item) return c.json({ error: 'not found' }, 404)
+  if (!item.video_url) return c.json({ error: 'source link required' }, 400)
+  const jobId = `job_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
+  await c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'visualise_source',?,?)`).bind(jobId, JSON.stringify({ recommendation_id: item.id, source_url: item.video_url, title: item.video_title }), `visualise-queue:${item.id}:${Date.now()}`).run()
+  if (c.executionCtx && typeof c.executionCtx.waitUntil === 'function') {
+    c.executionCtx.waitUntil(processVisualiseJob(c.env, jobId, item))
+  } else {
+    processVisualiseJob(c.env, jobId, item).catch((err) => console.error('[visualise bg error]', err))
+  }
+  return c.json({ ok: true, status: 'queued', job_id: jobId, recommendation_id: item.id }, 202)
 })
 
 app.get('/:id', async (c) => {

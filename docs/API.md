@@ -18,20 +18,44 @@
 - `GET /capture/feeds/:id/entries` — read all imported articles for one feed with pagination.
 - `POST /capture/feeds/sync`, `POST /capture/feeds/:id/sync` — check all feeds or one feed now; scheduled checks run every six hours.
 - `POST /capture/:id/triage` — promote an Inbox item to Queue or exclude it; queue overflow requires explicit override.
-- `POST /artifacts`, `GET /artifacts`, `GET /artifacts/:id` — R2-backed files and metadata. Multipart uploads accept `pair_id`, `role`, `recommendation_id`, `source_url`, `source_title`, `generator`, or a JSON `metadata` field.
+- `POST /artifacts`, `GET /artifacts`, `GET /artifacts/:id` — R2-backed files and metadata. Multipart uploads accept `pair_id`, `role`, `recommendation_id`, `source_url`, `source_title`, `generator`, or a JSON `metadata` field. `GET /artifacts` joins each file's `notebook_url` from the owning recommendation (null when unset) — Learn → Files uses it for the NBLM button.
 - `GET /artifacts/:id/view` — render Markdown artifacts as a safe, readable HTML document.
 - `POST /artifacts/:id/process` — queue an idempotent `extract_notes` Hermes job; a failed extraction is reset to `retry` by the same call.
-- `GET/POST /sessions`, `POST /sessions/start`, `POST /sessions/:id/return` — external handoff lifecycle. Starting an unfinished item resumes its existing session. Returning with `reflection` creates one idempotent linked `kind=reflection` note with five editable sections; pass `complete:true` and `rating` to close the session in the same request.
-- `GET/POST/PUT /notes`, `POST /notes/:id/process` — structured notes and Hermes feedback jobs.
+- `POST /recommendations/action` — update recommendation status, rating, review, consumed date, and optionally register an item-specific `notebook_url`, which Learn → Files exposes as the NBLM button.
+- `GET/POST /sessions`, `POST /sessions/start`, `POST /sessions/:id/return` — hidden external-handoff lifecycle owned by the Queue UI. Starting an unfinished item resumes it. Returning with `reflection` creates one idempotent personal `kind=reflection` note; every completed return queues confirmation-gated feedback analysis, and ratings 7–10 also queue Notes Extractor for a separate source note and recall drafts.
+- `GET/POST/PUT /notes` — personal reflections and separate structured source notes. `POST /notes/:id/process` queues confirmation-gated Taste Mapper analysis for reflections or a full bilingual Notes Extractor re-run for source notes.
 - `GET /srs/drafts`, `PUT /srs/drafts/:id`, `POST /srs/drafts/:id/approve`, `POST /srs/drafts/:id/reject` — editable recall drafts.
+- `GET /learning/srs/cards`, `DELETE /learning/srs/cards/:id` — list or permanently remove approved review cards.
+- `GET /feedback/proposals`, `POST /feedback/proposals/:id/approve`, `POST /feedback/proposals/:id/reject` — list Hermes changes before mutation; approval queues exact application, while rejection leaves profile/map state untouched.
 - Existing `/learning/srs/due`, `/learning/srs/review`, and `/learning/srs/create` remain compatible.
+
+## AI & Curation
+
+- `POST /ai/suggest` — AI-powered recommendation suggestion based on profile context, priorities, neglected branches, and taste vectors.
+- `POST /ai/enhance` — copy-edit or sharpen reflection notes.
+- `POST /ai/enhance/why` — generate rationale for new recommendation candidates.
+
+## Discovery Engine V2
+
+- `GET /discovery/state` — read active run, gate state, candidate decision receipt, active interview, frontier topology, and current `discover_source` job.
+- `GET /discovery/context` — token-efficient context bundle for Hermes containing baseline engine weights, branch evidence, mastered exclusions, and recent learning receipts.
+- `POST /discovery/runs` — create adaptive exploration wave (enforces hard feedback gate across active runs and queue capacity).
+- `POST /discovery/runs/:id/candidates` — batch-store research candidates with research-quality rules enforcement (>= 20 candidates, >= 4 source classes, >= 8 verified sources with verification facts).
+- `POST /discovery/runs/:id/select` — select winner candidate and decision receipt (Contrast Hook); withholds weak results (< 0.60 score or unverified).
+- `POST /discovery/runs/:id/activate` — activate winner to Queue and start linked learning session (or retain as `waiting_for_capacity` if Queue full).
+- `POST /discovery/runs/:id/interview` — record adaptive feedback questions, answers, and unresolved ambiguities.
+- `POST /discovery/runs/:id/resolve` — atomically resolve discovery run (requires completed interview and answered questions, applies evidence-controlled branch evolution, adapts weights, saves learning receipt, and stages skill revisions).
+- `POST /agent/jobs/:id/heartbeat` — renew 5-minute lease on long-running jobs.
+- `GET /discovery/drift-check` — check live contract version, D1 skill revisions, and workflow alignment.
 
 ## Hermes jobs
 
 - `GET /agent/jobs?status=pending` — pending work.
+- `GET /agent/jobs/health` — queue health, status counts, stale leases, and recent failures.
 - `POST /agent/jobs/:id/claim` — lease one job; expired leases are reclaimed automatically.
-- `POST /agent/jobs/:id/complete` — persist structured note/SRS output while its lease is current.
-- `POST /agent/jobs/:id/fail` — retry up to three attempts, then mark failed.
+- `POST /agent/jobs/:id/complete` — persist structured note/SRS output while its lease is current; send the claiming `worker`.
+- `POST /agent/jobs/:id/fail` — retry up to three attempts, then mark failed; send the claiming `worker`.
+- `POST /agent/jobs/:id/heartbeat` — extend a lease only for the claiming `worker`.
 
 ## Agent control protocol
 
@@ -41,6 +65,8 @@
 - `GET /agent/tools` and `POST /agent/tool-call` — function-calling declarations and execution.
 
 Agent mutations reuse product validation, require `x-api-token` when configured, and audit to `agent_logs`. Arbitrary SQL, arbitrary paths, and outbound proxying are not exposed.
+
+`POST /brain/profile` updates any supplied editable profile field: `core_filter`, `mega_priority`, `identity`, `reaction_style_json`, `quality_rules_json`, `operational_style_json`, `patterns_summary_json`, and `recent_signal`. The four `*_json` fields also accept their legacy un-suffixed aliases.
 
 ## Settings and organization
 

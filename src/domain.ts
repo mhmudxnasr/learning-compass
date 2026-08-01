@@ -45,3 +45,100 @@ export function scheduleReview(state: ReviewState, grade: number, now = new Date
   due.setUTCDate(due.getUTCDate() + intervalDays)
   return { difficulty, stability, repetitions, intervalDays, dueAt: due.toISOString().slice(0, 10) }
 }
+
+export const VALID_RECOMMENDATION_MODES = ['note_answer', 'blind_spot_bridge', 'counter_evidence', 'academic_paper', 'auto'] as const
+export type RecommendationMode = typeof VALID_RECOMMENDATION_MODES[number]
+
+export const VALID_ENERGY_LEVELS = ['quick_scan', 'medium_focus', 'deep_focus'] as const
+export type EnergyLevel = typeof VALID_ENERGY_LEVELS[number]
+
+export const VALID_FORMAT_PREFERENCES = ['paper', 'article', 'podcast', 'book', 'video', 'any'] as const
+export type FormatPreference = typeof VALID_FORMAT_PREFERENCES[number]
+
+export function formatNoteAnchors(reflections: Array<{ reflection?: string }>): string[] {
+  return reflections
+    .map((r) => (r.reflection || '').trim())
+    .filter((text) => text.length > 5)
+    .slice(0, 5)
+    .map((text) => (text.length > 180 ? text.slice(0, 180) + '...' : text))
+}
+
+export function selectCurationMode(requestedMode?: string, hasNoteAnchors = false, seed = Date.now()): RecommendationMode {
+  if (requestedMode && (VALID_RECOMMENDATION_MODES as readonly string[]).includes(requestedMode) && requestedMode !== 'auto') {
+    return requestedMode as RecommendationMode
+  }
+  const modes: RecommendationMode[] = ['blind_spot_bridge', 'academic_paper', 'counter_evidence']
+  if (hasNoteAnchors) modes.unshift('note_answer')
+  const index = Math.abs(seed) % modes.length
+  return modes[index]
+}
+
+export function adaptAndNormalizeWeights(
+  currentWeights: Array<{ id: string; dimension: string; baseline_weight: number; current_weight: number; evidence_count: number }>,
+  evidenceDeltas: Record<string, number>
+) {
+  const updated = currentWeights.map((item) => {
+    const delta = evidenceDeltas[item.dimension] || 0
+    let newWeight = item.current_weight + delta
+    const minWeight = item.baseline_weight * 0.8
+    const maxWeight = item.baseline_weight * 1.2
+    newWeight = Math.max(minWeight, Math.min(maxWeight, newWeight))
+    return { ...item, current_weight: newWeight, evidence_count: item.evidence_count + (delta !== 0 ? 1 : 0) }
+  })
+
+  const sum = updated.reduce((acc, item) => acc + item.current_weight, 0)
+  if (sum > 0) {
+    for (const item of updated) {
+      item.current_weight = Math.round((item.current_weight / sum) * 10000) / 10000
+    }
+  }
+  return updated
+}
+
+/**
+ * Computes Dialectic Divergence Score S_dialectic(d) for recommendation candidates.
+ * Formula: S_dialectic(d) = λ * cosSim - (1 - λ) * |cosSim - θ_target| + μ * II_refutation(d)
+ * Enforces orthogonal contrast window (target angle θ_target = 0.25) to avoid near-duplicate confirmation bias and unrelated noise.
+ */
+export function computeDialecticDivergenceScore(
+  cosSim: number,
+  isRefutation: boolean,
+  lambda = 0.4,
+  targetAngle = 0.25,
+  refutationWeight = 0.35,
+): number {
+  const relevanceTerm = lambda * cosSim
+  const divergencePenalty = (1 - lambda) * Math.abs(cosSim - targetAngle)
+  const refutationBonus = isRefutation ? refutationWeight : 0
+  const rawScore = relevanceTerm - divergencePenalty + refutationBonus
+  return Math.round(rawScore * 10000) / 10000
+}
+
+/**
+ * Cleans raw source text (YouTube transcripts, PDF extracts, web articles)
+ * for NotebookLM ingestion. Strips navigation, excessive whitespace, and boilerplate.
+ */
+export function cleanRawSourceText(rawText: string, sourceType: 'youtube' | 'pdf' | 'web' = 'web'): string {
+  if (!rawText) return ''
+  let cleaned = rawText
+
+  if (sourceType === 'youtube') {
+    // Remove standalone timestamp lines like [00:12] or 01:23:45
+    cleaned = cleaned.replace(/^\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*/gm, '')
+  } else if (sourceType === 'pdf') {
+    // Strip page number lines and layout breaks
+    cleaned = cleaned.replace(/^\s*(?:Page\s+\d+|\d+)\s*$/gm, '')
+  } else if (sourceType === 'web') {
+    // Remove HTML tags if present and strip boilerplate UI lines
+    cleaned = cleaned.replace(/<[^>]+>/g, ' ')
+    cleaned = cleaned.replace(/^(?:Cookie Policy|Privacy Policy|Terms of Service|Subscribe|Share this article).*$/gm, '')
+  }
+
+  // Normalize excessive newlines and whitespace
+  return cleaned
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+

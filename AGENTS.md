@@ -18,7 +18,7 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 - Queue normally contains at most five queued/in-progress items; overflow requires an explicit override.
 - Consumption happens at the real source and is tracked through learning sessions.
 - Notes are structured, editable, searchable, and support per-block English/Egyptian-Arabic direction.
-- Ratings of 8–10 create editable SRS drafts; approval is required before Review.
+- Ratings of 7–10 create editable SRS drafts; approval is required before Review.
 - Feedback processing never requests another recommendation automatically.
 - Lite Visual creates one linked HTML+PDF R2 pair. Queue Notes Extractor once from the HTML artifact; the PDF is the reading companion.
 - All destinations in `client/src/destinations.ts` must resolve to a purposeful real view. No generic fallback screens or tabs that expose only infrastructure.
@@ -60,6 +60,30 @@ Active Hermes files:
 - `~/.hermes/memories/MEMORY.md` and `USER.md` only for durable facts
 
 Do not update archived Taste Mapper bundles, Gemini/Antigravity skill copies, or unrelated agent systems.
+
+## Hermes Memory & Domain Rules
+
+Antigravity (AGY) permanently holds and enforces all Hermes memories, user preferences, and filter rules:
+
+- **Tone & Format**: English-first responses for all tasks. Direct, casual, brutally honest tone. ZERO emojis by default. Default to text-only responses; no visual outputs/diagrams unless explicitly requested.
+- **Action Principle**: Decisive execution over discussion ("Fix all that", "do it" = execute immediately).
+- **Reading Companions**: Huawei TGR-W09 tablet (192.168.1.10). Every visual companion generates a linked HTML + PDF pair. PDF typography must be heavy weight (500+ for print), big font size (12.5pt+ body), and dark contrast (#222 min).
+- **Mastered & Consumed Check**: ALWAYS verify `mastered` items and consumed recommendations before proposing/recommending content. NEVER recommend anything already read (e.g., *The 48 Laws of Power*, *Steal Like an Artist*, *Predictably Irrational*, *Thinking Fast and Slow*).
+- **Islamic Content**: ZERO book-derived content (no books, audiobooks, explained books, or book-based lecture series). ONLY pure original lectures/khutbahs/talks by trusted Sunni scholars.
+- **Dopamine & Habit Neuroscience**: Fully mastered. HARD REJECT all "dopamine hits", "break habit loops", or "rewire your brain" content.
+- **Death Content**: Theoretical/philosophical/existential angles only (TMT, Kierkegaard, Becker). HARD REJECT clinical/palliative content (e.g. BJ Miller).
+- **Storytelling**: Real-life/business/brand framing only (Will Storr craft). HARD REJECT fiction/screenwriting framing.
+- **Dark Patterns**: EXCLUDE Harry Brignull framing; follow Mathur/ProPublica deceptive patterns framing.
+- **AI/AGI Curation Rules**: LOVES practical applied AI tools, agent workflows, local LLM pipelines, deterministic tool calling, and workflow integrations (e.g. using Obsidian with Claude Code, NotebookLM, Hermes agent workflows, t3dotgg-style pragmatic dev tools/frameworks). LOVES major AI hardware announcements & model releases from top labs (OpenAI, Anthropic, Google). HARD REJECT theoretical/academic AI papers on low-level model training math/internals (GRPO math, RL training details). Route basic intro guides for tools already used (e.g. OpenCode) to RSS feed only.
+- **Feedback Policy**: NEVER auto-chain feedback processing into a new recommendation. Recommendations happen ONLY on explicit user request.
+
+## Hermes & AGY Inter-Operability
+
+Antigravity (AGY) understands and handles all Hermes capabilities and skills:
+
+1. **Hermes CLI Execution**: AGY can invoke `hermes chat -q "..."` or `hermes -z "..."` directly on behalf of the user.
+2. **Worker API & Job Delegation**: AGY can call the Worker API (`/agent/request`, `/ai/suggest`, `/recommendations/push`, `/capture/:id/triage`), check/claim/process `agent_jobs` background jobs, and trigger Hermes workflows.
+3. **Skill Awareness**: AGY understands `taste-rec`, `taste-mapper`, `taste-enhancer`, `learning-notes-extractor`, `lite-visual`, and `recommendations-worker-ops`, maintaining full synchronicity when modifying code or contracts.
 
 ## Verification
 

@@ -6,10 +6,9 @@ import { join } from 'node:path'
 
 const workspaces = {
   today: ['briefing'],
-  curate: ['inbox','queue','collections','resurfacing','contradictions','archive'],
+  curate: ['queue','discovery','inbox','collections','resurfacing','contradictions','archive'],
   map: ['atlas','branches','coverage','taste'],
-  learn: ['review','sessions','reflections','journal','cards'],
-  vault: ['files','notes','collections'],
+  learn: ['files','reflections','notes','cards','review','changes','journal'],
   insights: ['overview','learning','taste','forecast'],
   settings: ['profile','appearance','learning','curation','data'],
 }
@@ -76,19 +75,71 @@ for (const [workspace, views] of Object.entries(workspaces)) {
 if (count !== 28) throw new Error(`expected 28 routes, checked ${count}`)
 await page.goto('http://127.0.0.1:8787/#/curate/queue', { waitUntil: 'networkidle' })
 const curateNav = await page.locator('.subnav button').allTextContents()
-if (curateNav[0]?.trim() !== 'Queue' || curateNav[1]?.trim() !== 'RSS Feed') throw new Error('Curate navigation order or RSS label is incorrect')
-const [settings, manifest, artifacts, feeds, manualArchive] = await Promise.all([
+if (curateNav[0]?.trim() !== 'Queue' || curateNav[2]?.trim() !== 'RSS Feed') throw new Error('Curate navigation order or RSS label is incorrect')
+await page.goto('http://127.0.0.1:8787/#/learn/files', { waitUntil: 'networkidle' })
+const learnNav = await page.locator('.subnav button').allTextContents()
+if (learnNav[0]?.trim() !== 'Files' || learnNav.includes('Sessions')) throw new Error('Learn navigation order is incorrect')
+const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards] = await Promise.all([
   fetch('http://127.0.0.1:8787/settings').then((response) => response.json()),
   fetch('http://127.0.0.1:8787/manifest.json').then((response) => response.json()),
   fetch('http://127.0.0.1:8787/artifacts').then((response) => response.json()),
   fetch('http://127.0.0.1:8787/capture/feeds').then((response) => response.json()),
   fetch('http://127.0.0.1:8787/recommendations/list?source=manual').then((response) => response.json()),
+  fetch('http://127.0.0.1:8787/feedback/proposals').then((response) => response.json()),
+  fetch('http://127.0.0.1:8787/learning/srs/cards').then((response) => response.json()),
 ])
 if (settings.resolved?.learning?.retention !== 90 || settings.resolved?.learning?.queue_cap !== 5) throw new Error('settings defaults are not resolved')
+if (settings.resolved?.srs_drafts?.minimum_rating !== 7 || settings.resolved?.profile_proposals?.review_required !== true) throw new Error('learning automation defaults are incorrect')
 if (!manifest.icons?.some((icon) => icon.src === '/icon.svg')) throw new Error('manifest is missing the local app icon')
 if (!Array.isArray(artifacts.artifacts)) throw new Error('artifact library contract is invalid')
 if (!Array.isArray(feeds.feeds)) throw new Error('feed subscriptions contract is invalid')
 if (!Array.isArray(manualArchive.recommendations)) throw new Error('manual archive contract is invalid')
+if (!Array.isArray(proposals.proposals)) throw new Error('feedback proposal contract is invalid')
+if (!Array.isArray(cards.cards)) throw new Error('SRS card management contract is invalid')
+
+const requestJson = async (path, options = {}) => {
+  const response = await fetch(`http://127.0.0.1:8787${path}`, { headers: { 'content-type': 'application/json' }, ...options })
+  const body = await response.json()
+  if (!response.ok) throw new Error(`${options.method || 'GET'} ${path} failed: ${JSON.stringify(body)}`)
+  return body
+}
+const captured = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hermes-e2e', title: 'Hermes automation test' }) })
+await requestJson(`/capture/${captured.id}/triage`, { method: 'POST', body: JSON.stringify({ action: 'queue' }) })
+const started = await requestJson('/sessions/start', { method: 'POST', body: JSON.stringify({ recommendation_id: captured.id }) })
+const returned = await requestJson(`/sessions/${started.session_id}/return`, { method: 'POST', body: JSON.stringify({ reflection: 'The mechanism is useful and I will apply it.', rating: 7, complete: true, auto_enqueue: true }) })
+if (returned.status !== 'completed' || !returned.reflection_note_id || !returned.srs_eligible) throw new Error('rating 7 did not close the reflection workflow')
+const claim = async (jobType) => {
+  const job = (await requestJson('/agent/jobs?status=pending')).jobs.find((item) => item.job_type === jobType)
+  if (!job) throw new Error(`missing pending ${jobType} job`)
+  return (await requestJson(`/agent/jobs/${job.id}/claim`, { method: 'POST', body: JSON.stringify({ worker: 'e2e' }) })).job
+}
+const feedbackJob = await claim('process_feedback')
+await requestJson(`/agent/jobs/${feedbackJob.id}/complete`, { method: 'POST', body: JSON.stringify({ worker: 'e2e', proposals: [{ change_type: 'profile_signal', target_label: 'Learning priority', current: 'old', proposed: 'new', evidence: 'The reflection explicitly values the mechanism.', reasoning: 'Positive signal at rating 7.', confidence: 0.9 }] }) })
+const pendingProposal = (await requestJson('/feedback/proposals?status=pending')).proposals[0]
+if (!pendingProposal) throw new Error('feedback job did not persist a pending proposal')
+await requestJson(`/feedback/proposals/${pendingProposal.id}/approve`, { method: 'POST' })
+const applyJob = await claim('apply_feedback_proposal')
+await requestJson(`/agent/jobs/${applyJob.id}/complete`, { method: 'POST', body: JSON.stringify({ worker: 'e2e', applied: true }) })
+const extractJob = await claim('extract_notes')
+await requestJson(`/agent/jobs/${extractJob.id}/complete`, { method: 'POST', body: JSON.stringify({ worker: 'e2e',
+  note: { id: 'e2e_source_note', recommendation_id: captured.id, title: 'Hermes source note', kind: 'guide', source_url: 'https://example.com/hermes-e2e', sections: [
+    { section_key: 'foundation', label: 'Foundation', content: 'A test mechanism. *الفكرة الأساسية إن الميكانيزم ده بيشتغل كده.*' },
+    { section_key: 'case_studies', label: 'Case Studies', content: 'The example shows the mechanism in practice. *المثال موضح الفكرة وهي شغالة على أرض الواقع.*' },
+    { section_key: 'exploitation', label: 'Exploitation', content: 'The weakness is overconfidence. *الثغرة هنا إن الواحد يثق زيادة عن اللزوم.*' },
+    { section_key: 'defense', label: 'Defense', content: 'Check the evidence before acting. *من الآخر راجع الدليل قبل ما تتحرك.*' },
+  ] },
+  srs_drafts: [{ question: 'What is the test mechanism?', answer: 'A test mechanism.', topic: 'Testing' }],
+  reflection: { content: 'Handwritten margin note from page 2.', recommendation_id: captured.id, source_url: 'https://example.com/hermes-e2e' },
+}) })
+const extractedNotes = (await requestJson('/notes')).notes
+if (!extractedNotes.some((note) => note.id === 'e2e_source_note') || !extractedNotes.some((note) => note.kind === 'reflection' && note.sections.some((section) => section.content.includes('Handwritten margin note')))) throw new Error('extractor did not keep source note and handwritten reflection separate')
+const draft = (await requestJson('/srs/drafts')).drafts.find((item) => item.id)
+if (!draft || draft.status !== 'draft') throw new Error('rating 7 did not create an editable card draft')
+await requestJson(`/srs/drafts/${draft.id}/approve`, { method: 'POST' })
+const activeCards = (await requestJson('/learning/srs/cards')).cards
+if (!activeCards.length) throw new Error('approved draft did not become an active card')
+await requestJson(`/learning/srs/cards/${activeCards[0].id}`, { method: 'DELETE' })
+if ((await requestJson('/learning/srs/cards')).cards.some((card) => card.id === activeCards[0].id)) throw new Error('active card deletion failed')
 await page.setViewportSize({ width: 390, height: 844 })
 await page.goto('http://127.0.0.1:8787/#/today/briefing', { waitUntil: 'networkidle' })
 if (!(await page.locator('.mobile-nav').isVisible())) throw new Error('mobile primary navigation is not visible')
@@ -96,11 +147,11 @@ if (await page.locator('.rail').isVisible()) throw new Error('desktop rail remai
 await page.getByRole('button', { name: 'More' }).click()
 const moreDialog = page.locator('.mobile-more-dialog')
 await moreDialog.waitFor({ state: 'visible' })
-for (const workspace of ['Map', 'Vault', 'Insights', 'Settings']) {
+for (const workspace of ['Map', 'Insights', 'Settings']) {
   if (!(await moreDialog.locator('nav button').filter({ hasText: new RegExp(`^${workspace}`) }).isVisible())) throw new Error(`mobile More is missing ${workspace}`)
 }
-await moreDialog.locator('nav button').filter({ hasText: /^Vault/ }).click()
-if (!page.url().includes('#/vault/')) throw new Error('mobile More did not navigate to Vault')
+await moreDialog.locator('nav button').filter({ hasText: /^Map/ }).click()
+if (!page.url().includes('#/map/')) throw new Error('mobile More did not navigate to Map')
 
 console.log(`E2E passed: ${count} purposeful destinations, mobile shell, and complete mobile navigation`)
 } finally {

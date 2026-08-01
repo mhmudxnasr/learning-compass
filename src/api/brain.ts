@@ -51,13 +51,21 @@ app.get('/profile', async (c) => {
   const recentLimit = Math.min(Math.max(parseInt(c.req.query('recent_limit') || '10'), 1), 50)
   try {
     const data = await cached('brain.profile.' + recentLimit, 30000, async () => {
-      const [profile, priorities, mastered, blacklist, patterns, recent] = await Promise.all([
+      const [profile, priorities, mastered, blacklist, patterns, recent, feedSources, srsCards, srsDrafts, sessions, notes, creators, artifactsCount, proposalsCount] = await Promise.all([
         DB.prepare('SELECT * FROM profile WHERE id = 1').first(),
         DB.prepare('SELECT * FROM priorities ORDER BY rank ASC').all(),
         DB.prepare('SELECT * FROM mastered ORDER BY mastered_at DESC').all(),
         DB.prepare('SELECT * FROM blacklist ORDER BY severity ASC, added_at DESC').all(),
         DB.prepare("SELECT * FROM patterns ORDER BY CASE strength WHEN 'locked' THEN 0 WHEN 'confirmed' THEN 1 ELSE 2 END, confirmed_date DESC").all(),
         DB.prepare('SELECT * FROM update_log ORDER BY id DESC LIMIT ?').bind(recentLimit).all(),
+        DB.prepare('SELECT id, title, feed_url, site_url, last_fetched_at, is_active FROM feed_sources ORDER BY is_active DESC, title ASC').all().catch(() => ({ results: [] })),
+        DB.prepare("SELECT COUNT(*) as count FROM srs_cards WHERE status = 'active'").first<{ count: number }>().catch(() => ({ count: 0 })),
+        DB.prepare("SELECT COUNT(*) as count FROM srs_drafts WHERE status = 'draft'").first<{ count: number }>().catch(() => ({ count: 0 })),
+        DB.prepare("SELECT COUNT(*) as total_sessions, SUM(CASE WHEN reflection IS NOT NULL AND reflection != '' THEN 1 ELSE 0 END) as reflections_count FROM learning_sessions").first<{ total_sessions: number; reflections_count: number }>().catch(() => ({ total_sessions: 0, reflections_count: 0 })),
+        DB.prepare("SELECT COUNT(*) as count FROM notes").first<{ count: number }>().catch(() => ({ count: 0 })),
+        DB.prepare("SELECT creator, COUNT(*) as count FROM recommendations WHERE creator IS NOT NULL AND creator != '' GROUP BY creator ORDER BY count DESC LIMIT 10").all().catch(() => ({ results: [] })),
+        DB.prepare("SELECT COUNT(*) as count FROM artifacts").first<{ count: number }>().catch(() => ({ count: 0 })),
+        DB.prepare("SELECT COUNT(*) as count FROM feedback_proposals WHERE status = 'pending'").first<{ count: number }>().catch(() => ({ count: 0 })),
       ])
       return {
         profile: profile || null,
@@ -66,6 +74,23 @@ app.get('/profile', async (c) => {
         blacklist: blacklist.results || [],
         patterns: patterns.results || [],
         recent: recent.results || [],
+        feed_sources: feedSources.results || [],
+        srs_stats: {
+          active_cards: srsCards?.count || 0,
+          pending_drafts: srsDrafts?.count || 0,
+        },
+        activity_stats: {
+          total_sessions: sessions?.total_sessions || 0,
+          reflections_count: sessions?.reflections_count || 0,
+          total_notes: notes?.count || 0,
+        },
+        creator_trust: creators.results || [],
+        infrastructure_stats: {
+          artifacts_count: artifactsCount?.count || 0,
+          pending_proposals_count: proposalsCount?.count || 0,
+          database_name: 'recommendations-db',
+          worker_environment: 'production',
+        },
       }
     })
     return c.json(data)
@@ -336,20 +361,65 @@ app.post('/contradiction/resolve', async (c) => {
   }
 })
 
-// ---- /brain/profile — update core_filter / mega_priority / identity
+// ---- /brain/profile — update editable profile fields
 app.post('/profile', async (c) => {
   const { DB } = c.env
   try {
-    const body = await c.req.json<{ core_filter?: string; mega_priority?: any; identity?: any }>()
+    const body = await c.req.json<{
+      core_filter?: string
+      mega_priority?: any
+      identity?: any
+      reaction_style_json?: any
+      quality_rules_json?: any
+      operational_style_json?: any
+      patterns_summary_json?: any
+      recent_signal?: string
+      reaction_style?: any
+      quality_rules?: any
+      operational_style?: any
+      patterns_summary?: any
+    }>()
     const fields: string[] = []
     const bindings: any[] = []
-    if (typeof body.core_filter === 'string') { fields.push('core_filter = ?'); bindings.push(body.core_filter) }
-    if (body.mega_priority !== undefined) { fields.push('mega_priority_json = ?'); bindings.push(JSON.stringify(body.mega_priority)) }
-    if (body.identity !== undefined) { fields.push('identity_json = ?'); bindings.push(typeof body.identity === 'string' ? body.identity : JSON.stringify(body.identity)) }
+    const serialized = (value: any) => {
+      const result = typeof value === 'string' ? value : JSON.stringify(value)
+      return isValidLength(result, 0, 5000) ? result : null
+    }
+    if (body.core_filter !== undefined) {
+      if (typeof body.core_filter !== 'string' || !isValidLength(body.core_filter, 0, 5000)) return c.json({ error: 'core_filter must be a string of 5000 characters or fewer' }, 400)
+      fields.push('core_filter = ?'); bindings.push(body.core_filter)
+    }
+    if (body.mega_priority !== undefined) {
+      const value = serialized(body.mega_priority)
+      if (value === null) return c.json({ error: 'mega_priority must be 5000 characters or fewer when serialized' }, 400)
+      fields.push('mega_priority_json = ?'); bindings.push(value)
+    }
+    if (body.identity !== undefined) {
+      const value = serialized(body.identity)
+      if (value === null) return c.json({ error: 'identity must be 5000 characters or fewer when serialized' }, 400)
+      fields.push('identity_json = ?'); bindings.push(value)
+    }
+    const jsonFields: Array<[string, string, any]> = [
+      ['reaction_style_json', 'reaction_style', body.reaction_style_json ?? body.reaction_style],
+      ['quality_rules_json', 'quality_rules', body.quality_rules_json ?? body.quality_rules],
+      ['operational_style_json', 'operational_style', body.operational_style_json ?? body.operational_style],
+      ['patterns_summary_json', 'patterns_summary', body.patterns_summary_json ?? body.patterns_summary],
+    ]
+    for (const [column, name, value] of jsonFields) {
+      if (value !== undefined) {
+        const serializedValue = serialized(value)
+        if (serializedValue === null) return c.json({ error: `${name} must be 5000 characters or fewer when serialized` }, 400)
+        fields.push(`${column} = ?`); bindings.push(serializedValue)
+      }
+    }
+    if (body.recent_signal !== undefined) {
+      if (typeof body.recent_signal !== 'string' || !isValidLength(body.recent_signal, 0, 5000)) return c.json({ error: 'recent_signal must be a string of 5000 characters or fewer' }, 400)
+      fields.push('recent_signal = ?'); bindings.push(body.recent_signal)
+    }
     if (fields.length === 0) return c.json({ ok: true, count: 0 })
     fields.push("last_synced_at = datetime('now')")
     await DB.prepare(`UPDATE profile SET ${fields.join(', ')} WHERE id = 1`).bind(...bindings).run()
-    return c.json({ ok: true })
+    return c.json({ ok: true, count: fields.length - 1 })
   } catch (err) {
     return c.json(safeError('Profile update failed')(err), 500)
   }

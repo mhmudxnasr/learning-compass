@@ -1,4 +1,4 @@
-export type WorkspaceKey = 'today' | 'curate' | 'map' | 'learn' | 'vault' | 'insights' | 'settings'
+export type WorkspaceKey = 'today' | 'curate' | 'map' | 'learn' | 'insights' | 'settings'
 export type ViewKind = 'briefing' | 'list' | 'board' | 'graph' | 'study' | 'library' | 'analysis' | 'settings'
 
 export type Destination = {
@@ -18,6 +18,7 @@ export const destinations: Destination[] = [
   ...define('today', [['briefing', 'Briefing', 'Decide what deserves attention today.', 'briefing', '/dashboard/briefing']]),
   ...define('curate', [
     ['queue', 'Queue', 'Choose the five items worth doing next.', 'board', '/capture/queue'],
+    ['discovery', 'Discovery', 'Explore unexpected frontiers and manage discovery interviews.', 'board', '/discovery/state'],
     ['inbox', 'RSS Feed', 'Subscribe, refresh, and triage RSS/Atom articles before the queue.', 'list', '/capture'],
     ['collections', 'Collections', 'Build active thematic learning groups.', 'board', '/collections?scope=curate'],
     ['resurfacing', 'Resurfacing', 'Revisit high-value material at useful intervals.', 'list', '/brain/resurfacing'],
@@ -31,16 +32,14 @@ export const destinations: Destination[] = [
     ['taste', 'Taste', 'See the topics and creators shaping your learning choices.', 'analysis', '/taste/dna'],
   ]),
   ...define('learn', [
+    ['files', 'Files', 'Open PDFs, web companions, and uploaded documents.', 'library', '/artifacts'],
+    ['notebooklm', 'NotebookLM', 'Grounded Master Corpus, studio artifact generator, and zero-hallucination Q&A.', 'library', '/notebooklm/status'],
+    ['reflections', 'Reflections', 'Preserve your own reactions, ratings, and handwritten notes.', 'study', '/notes?kind=reflection'],
+    ['notes', 'Notes', 'Read and edit structured source notes created by Notes Extractor.', 'library', '/notes'],
+    ['cards', 'Cards', 'Edit drafts, manage approved cards, or delete either.', 'study', '/srs/drafts'],
     ['review', 'Review', 'Complete today’s active-recall session.', 'study', '/learning/srs/due'],
-    ['sessions', 'Sessions', 'Resume external learning and close the return loop.', 'study', '/sessions'],
-    ['reflections', 'Reflections', 'Finish reactions before committing them to the brain.', 'study', '/notes?kind=reflection'],
+    ['changes', 'Changes', 'Approve or reject every Hermes profile and map proposal.', 'list', '/feedback/proposals'],
     ['journal', 'Journal', 'Review the chronological record of what changed.', 'list', '/learning/update-log?limit=100'],
-    ['cards', 'Cards', 'Edit drafts and manage the recall collection.', 'study', '/srs/drafts'],
-  ]),
-  ...define('vault', [
-    ['files', 'Files', 'Open every PDF, web companion, and uploaded document.', 'library', '/artifacts'],
-    ['notes', 'Notes', 'Read and edit structured bilingual learning notes.', 'library', '/notes'],
-    ['collections', 'Collections', 'Browse completed knowledge by collection.', 'library', '/collections?scope=vault'],
   ]),
   ...define('insights', [
     ['overview', 'Overview', 'See consumption, ratings, creators, and recent activity.', 'analysis', '/stats'],
@@ -61,8 +60,11 @@ export const mobilePrimary = ['today', 'curate', 'learn', 'more'] as const
 
 export function destinationForPath(path: string): Destination | null {
   const clean = path.replace(/^#?\/?/, '').replace(/\/$/, '')
+  if (clean === 'vault/files') return destinations.find((item) => item.key === 'learn.files') || null
+  if (clean === 'vault/notes') return destinations.find((item) => item.key === 'learn.notes') || null
+  if (clean === 'learn/sessions') return destinations.find((item) => item.key === 'curate.queue') || null
   const [workspace, slug] = clean.split('/')
   return destinations.find((item) => item.workspace === workspace && item.slug === slug) || null
 }
 
-export const workspaceOrder: WorkspaceKey[] = ['today', 'curate', 'map', 'learn', 'vault', 'insights', 'settings']
+export const workspaceOrder: WorkspaceKey[] = ['today', 'curate', 'map', 'learn', 'insights', 'settings']

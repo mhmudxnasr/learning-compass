@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
+import { freeAi } from '../services/ai'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -40,8 +41,7 @@ app.post('/enhance', async (c) => {
     return c.json({ text: localEnhance('', item), source: 'local' })
   }
 
-  const key = c.env.GOOGLE_API_KEY
-  if (key) {
+  {
     try {
       const ctx = [
         title && `Title: ${title}`,
@@ -63,25 +63,8 @@ ${ctx}
 Curator's note:
 ${content}`
 
-      const upstream = await fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=' + encodeURIComponent(key),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: 'You are a strict copy editor. You MAY ONLY tighten and clean up the curator\'s own written words. You are forbidden from inventing content, specifics, or verdicts the curator did not write. If the note is too thin to improve, return it unchanged. Return only the polished note — nothing else.' }] },
-            contents: [{ parts: [{ text: seed }] }],
-            generationConfig: { maxOutputTokens: 1024, temperature: 0.3 },
-          }),
-        }
-      )
-      if (upstream.ok) {
-        const j = await upstream.json<any>()
-        const out = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-        if (out) return c.json({ text: out, source: 'ai' })
-      } else {
-        console.warn('enhance upstream status', upstream.status)
-      }
+      const result = await freeAi(c.env, 'You are a strict copy editor. Use only the curator\'s own words; never invent claims. Return only the polished note.', seed, 1024)
+      if (result) return c.json({ text: result.text, source: 'ai', model: result.model })
     } catch (e) {
       console.warn('enhance upstream failed, falling back', e)
     }
@@ -100,9 +83,6 @@ app.post('/enhance/why', async (c) => {
   const title = (body.video_title || '').trim()
   if (!title) return c.json({ text: '', source: 'empty' })
 
-  const key = c.env.GOOGLE_API_KEY
-  if (!key) return c.json({ text: '', source: 'none' })
-
   const ctx = [
     title && `Title: ${title}`,
     body.creator && `Creator: ${body.creator}`,
@@ -110,23 +90,8 @@ app.post('/enhance/why', async (c) => {
   ].filter(Boolean).join('\n')
 
   try {
-    const upstream = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=' + encodeURIComponent(key),
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: 'You recommend content to a curious autodidact who loves behavioral psych, systems thinking, Islamic philosophy, investing, and persuasive design. Given a title and context, write 1-2 short sentences explaining WHY this content fits their interests. Be specific. No hype words. No emoji.' }] },
-          contents: [{ parts: [{ text: `Context:\n${ctx}\n\nWrite a 1-2 sentence note explaining why this fits the curator's interests. Be specific about what angle or insight it might offer. Return only the note — nothing else.` }] }],
-          generationConfig: { maxOutputTokens: 256, temperature: 0.4 },
-        }),
-      }
-    )
-    if (upstream.ok) {
-      const j = await upstream.json<any>()
-      const out = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-      if (out) return c.json({ text: out, source: 'ai' })
-    }
+    const result = await freeAi(c.env, 'You recommend specific content to a curious autodidact. Return only 1–2 concise sentences explaining fit, with no hype.', `Context:\n${ctx}\n\nExplain why this source fits.`, 256)
+    if (result) return c.json({ text: result.text, source: 'ai', model: result.model })
   } catch { }
   return c.json({ text: '', source: 'none' })
 })

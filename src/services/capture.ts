@@ -1,5 +1,5 @@
-import { deriveDedupKey, isValidUrl } from '../lib'
-import { loadSettings } from './settings'
+import { deriveDedupKey, isValidUrl } from '../lib.js'
+import { loadSettings } from './settings.js'
 
 export type CaptureArtifact = {
   id: string

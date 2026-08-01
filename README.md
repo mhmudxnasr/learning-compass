@@ -16,7 +16,7 @@ capture → curate → consume externally → reflect → extract notes
 3. **Consume:** opening an item starts or resumes a learning session, then hands off to the original source.
 4. **Return:** the user records a five-part reflection and may complete and rate the session in the same action.
 5. **Process:** structured notes are stored in D1. Large source files and generated reading companions live in R2.
-6. **Review:** ratings from 8–10 create editable recall-card drafts. A draft must be approved before entering spaced repetition.
+6. **Review:** ratings from 7–10 automatically queue a separate extracted note and editable recall-card drafts. A draft must be approved before entering spaced repetition.
 7. **Learn from history:** ratings, notes, review events, and map coverage inform future resurfacing and taste analysis.
 
 Feedback never requests another recommendation automatically. Finishing one item should close the loop, not create an endless feed.
@@ -70,7 +70,7 @@ Obsidian is an export target, not a second writable database. It must never over
 client/
   src/app.tsx                 application shell and destination surfaces
   src/api.ts                  browser API and offline helpers
-  src/destinations.ts         canonical registry of all 28 destinations
+  src/destinations.ts         canonical registry of all 27 destinations
   src/features/atlas/         lazy-loaded knowledge graph
 
 src/
@@ -232,7 +232,7 @@ A clean implementation would look like this:
 3. Add `GET/POST/PUT/DELETE /highlights` in `src/api/highlights.ts`.
 4. Mount the route in `src/index.ts`.
 5. Add client methods in `client/src/api.ts`.
-6. Place highlights inside the existing Notes or Sessions workflow unless they justify a distinct user decision.
+6. Place highlights inside the existing Learn → Notes or Reflections workflow unless they justify a distinct user decision.
 7. Add unit tests for validation and API shape.
 8. Extend E2E to cover creating, editing, reloading, and deleting a highlight.
 9. Update `docs/API.md` and `CURRENT_STATE.md`.
@@ -251,7 +251,7 @@ Build only:
 - an unlimited Inbox;
 - a deliberately small Queue;
 - external-source handoff;
-- resumable sessions;
+- resumable Queue handoffs backed by hidden sessions;
 - reflection and completion.
 
 The first success criterion is simple: a captured source can become a completed, reflected learning session without losing state.
@@ -278,7 +278,8 @@ Add offline mutation recovery, large-data tests, bilingual direction handling, r
 - Queue normally contains at most five queued or in-progress items.
 - Consumption happens at the original source.
 - Returning with reflection creates one linked structured reflection.
-- Ratings of 8–10 create editable recall drafts; approval is required before Review.
+- Every reflection produces confirmation-gated Taste Mapper proposals.
+- Ratings of 7–10 automatically create a separate extracted note and editable recall drafts; approval is required before Review.
 - Feedback processing does not request a new recommendation.
 - One Lite Visual source creates one linked HTML/PDF pair and counts as one taste signal.
 - D1 remains canonical; R2 stores large artifacts; Obsidian remains an archive export.

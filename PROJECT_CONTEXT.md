@@ -12,11 +12,14 @@ The product is single-user, English-first, supports bilingual English/Egyptian-A
 
 - **RSS Feed:** the Curate destination for subscriptions and triage; its underlying Inbox remains the unlimited landing place for URL, text, PDF, HTML, video, Telegram, share-target, RSS, and Atom captures. RSS/Atom entries stay grouped in the pinned Archive feed shelf instead of mixing into the manual archive list.
 - **Queue:** five active items by default. Consume/drop before adding, or use an explicit override.
-- **Sessions:** track the handoff to the real external source, progress, return, and completion. Returning with a reflection creates one linked five-section reflection note; `complete:true` closes the session in the same request.
-- **Reflections and notes:** drafts save freely; explicit Finish and Process commits feedback.
-- **SRS:** ratings 8–10 produce 3–5 editable drafts. Only approved drafts become review cards.
+- **Queue and hidden sessions:** Queue owns start, resume, return, and completion. Hidden session records preserve source/reflection linkage without a separate management destination.
+- **Reflections and notes:** reflections preserve only the user's typed or handwritten input. Notes Extractor writes separate complete bilingual English/Egyptian-Arabic source notes covering the whole source; incomplete legacy notes can be re-run from the site.
+- **Feedback proposals:** every reflection/rating produces reviewable Taste Mapper proposals. Profile, pattern, priority, contradiction, and map changes apply only after explicit approval.
+- **SRS:** ratings 7–10 automatically queue Notes Extractor and produce 3–5 editable drafts. Only approved drafts become review cards; drafts and active cards can be deleted.
 - **Knowledge map:** branches, edges, evidence, contradictions, coverage, health, and taste signals.
 - **Resurfacing:** brings useful knowledge back at the right time without auto-chaining recommendations.
+- **NotebookLM grounding:** Hermes uses the dedicated Master Corpus notebook for complete-corpus grounding during explicit recommendation-feedback workflows. Only original source material and Mahmood-authored reflections/feedback enter the corpus; generated translations and Lite Visual companions do not count as his thoughts. Explicit source-specific Studio requests create a fresh per-source notebook, add the link as a Website source, start the artifact without downloading/uploading or waiting, and immediately save the notebook URL on the matching site item.
+- **NotebookLM Q&A speed:** the active NotebookLM skill keeps a local authenticated browser broker warm, automatically reuses compatible investigation sessions, starts fresh on topic changes or low confidence, and caches exact answers for 24 hours using the latest corpus fingerprint.
 
 ## Visual and UX Direction
 
@@ -73,7 +76,7 @@ Obsidian is not bidirectional storage. Do not make an archive copy overwrite D1.
 
 ### Durable jobs
 
-Hermes polls `GET /agent/jobs?status=pending`, claims a lease, runs the appropriate skill, then completes or fails the job. Job keys, leases, retries, and completion writes must remain idempotent.
+Hermes polls `GET /agent/jobs?status=pending`, claims a lease with a stable worker identity, runs the appropriate skill, then heartbeats, completes, or fails the job using that same identity. `GET /agent/jobs/health` exposes queue health. Job keys, leases, retries, and completion writes must remain idempotent.
 
 The local polling script is `~/.hermes/scripts/taste-map-job.py`. Its User-Agent must remain:
 
@@ -100,22 +103,27 @@ The HTML and PDF represent one source and must not count as two taste signals.
 
 - `taste-mapper` processes explicit feedback and proposes profile/map updates.
 - `taste-rec` recommends only when a new recommendation is explicitly requested.
+- Explicit one-item requests use a bounded fast path: one live context preflight, reuse selected runs, parallel research, one complete candidate batch, then immediate selection and activation.
 - `taste-enhancer` audits system quality and cross-layer integrity.
 - Feedback jobs never call `taste-rec` automatically.
+- NotebookLM updates happen only when Hermes is handling explicit feedback on a recommendation; there is no automatic D1 mutation sync.
+
+### Site operations
+
+- `learning-compass-site-operator` is the canonical Hermes control skill for reading, creating, editing, processing, triaging, completing, and removing site data across every destination. It uses `/agent/capabilities` and `/agent/request`, reads before writes, verifies after writes, and uses the Cloudflare-compatible Hermes User-Agent.
 
 ## Purposeful Destinations
 
 The route registry is the executable source of truth:
 
 - Today: 1
-- Curate: 6
+- Curate: 7
 - Map: 4
-- Learn: 5
-- Vault: 3
+- Learn: 7
 - Insights: 4
 - Settings: 5
 
-Total: 28. Every destination must support a real user decision or workflow. Related cloud datasets may be combined when that makes the page more useful; infrastructure implementation details stay out of user-facing copy.
+Total: 28. Queue, Discovery, Inbox, Collections, Resurfacing, Contradictions, and Archive live in Curate. Files, Reflections, extracted Notes, Cards, Review, Changes, and Journal live in Learn. Every destination must support a real user decision or workflow. Related cloud datasets may be combined when that makes the page more useful; infrastructure implementation details stay out of user-facing copy.
 
 ## Data and Migrations
 
@@ -125,6 +133,9 @@ Apply in order:
 2. `migrations/0000_brain.sql`
 3. `migrations/0001_production_rebuild.sql`
 4. `migrations/0002_rss_feeds.sql`
+5. `migrations/0003_feedback_review.sql`
+6. `migrations/0004_discovery_engine.sql`
+7. `migrations/0005_recommendation_notebook_url.sql`
 
 New schema changes require a new numbered idempotent migration. Never hide schema mutation inside cron or request handlers.
 

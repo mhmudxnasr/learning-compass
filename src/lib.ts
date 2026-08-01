@@ -6,6 +6,7 @@ export type Bindings = {
   ARTIFACTS?: R2Bucket
   API_TOKEN?: string
   GOOGLE_API_KEY?: string
+  OPENCODE_ZEN_API_KEY?: string
   TELEGRAM_BOT_TOKEN?: string
 }
 
@@ -24,6 +25,7 @@ export type Recommendation = {
   dedup_key: string
   synergy_bundle_id: string | null
   consumed_date: string | null
+  notebook_url: string | null
   created_at: string
 }
 

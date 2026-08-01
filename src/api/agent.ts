@@ -25,14 +25,15 @@ const CAPABILITIES = [
   ['DELETE', '/capture/feeds/:id', 'Unsubscribe from a web feed without deleting captured articles.'],
   ['GET', '/capture/queue', 'Read the active queue.'],
   ['POST', '/capture/:id/triage', 'Queue or exclude an Inbox item; queue cap is enforced.'],
+  ['POST', '/capture/:id/visualise', 'Ask Hermes to create a Lite Visual HTML/PDF companion for a queued link.'],
   ['GET', '/capture/:id', 'Read one capture.'],
   ['GET', '/recommendations/list', 'Search and filter recommendation history.'],
   ['POST', '/recommendations/push', 'Create or update a recommendation with deduplication.'],
-  ['POST', '/recommendations/action', 'Change status, rating, review, and consumed date.'],
+  ['POST', '/recommendations/action', 'Change status, rating, review, consumed date, or register an item-specific NotebookLM URL.'],
   ['POST', '/recommendations/delete', 'Delete a recommendation.'],
   ['POST', '/recommendations/undo', 'Undo a reversible recommendation deletion.'],
   ['GET', '/brain/profile', 'Read profile, priorities, patterns, blacklist, and audit history.'],
-  ['POST', '/brain/profile', 'Edit the core profile.'],
+  ['POST', '/brain/profile', 'Edit any editable profile field.'],
   ['POST', '/brain/priorities', 'Replace priorities.'],
   ['GET', '/brain/tree', 'Read the knowledge tree.'],
   ['POST', '/brain/node', 'Create a knowledge node.'],
@@ -45,7 +46,7 @@ const CAPABILITIES = [
   ['POST', '/notes', 'Create a structured note.'],
   ['PUT', '/notes/:id', 'Edit a note and its sections.'],
   ['DELETE', '/notes/:id', 'Delete a note and sections.'],
-  ['POST', '/notes/:id/process', 'Queue note feedback processing.'],
+  ['POST', '/notes/:id/process', 'Queue confirmation-gated feedback processing for a personal reflection.'],
   ['GET', '/sessions', 'Read learning sessions.'],
   ['POST', '/sessions/start', 'Start an external learning session.'],
   ['POST', '/sessions/:id/return', 'Return, reflect, and optionally complete a session.'],
@@ -55,6 +56,11 @@ const CAPABILITIES = [
   ['POST', '/srs/drafts/:id/approve', 'Approve an SRS draft into review.'],
   ['POST', '/srs/drafts/:id/reject', 'Reject an SRS draft.'],
   ['DELETE', '/srs/drafts/:id', 'Delete a draft.'],
+  ['GET', '/learning/srs/cards', 'Read every active recall card.'],
+  ['DELETE', '/learning/srs/cards/:id', 'Delete an active recall card.'],
+  ['GET', '/feedback/proposals', 'Read pending and reviewed Hermes change proposals.'],
+  ['POST', '/feedback/proposals/:id/approve', 'Approve a proposed profile or map change for Hermes application.'],
+  ['POST', '/feedback/proposals/:id/reject', 'Reject a proposed profile or map change.'],
   ['GET', '/collections', 'Read collections.'],
   ['POST', '/collections', 'Create a collection.'],
   ['DELETE', '/collections/:id', 'Delete a collection and its item links.'],
@@ -69,9 +75,22 @@ const CAPABILITIES = [
   ['GET', '/dashboard/layout', 'Read dashboard layout.'],
   ['PUT', '/dashboard/layout', 'Edit dashboard layout.'],
   ['GET', '/agent/jobs', 'Read durable jobs.'],
+  ['GET', '/agent/jobs/health', 'Read Hermes job queue health and stale lease counts.'],
   ['POST', '/agent/jobs/:id/claim', 'Claim a leased job.'],
   ['POST', '/agent/jobs/:id/complete', 'Complete a leased job with structured output.'],
   ['POST', '/agent/jobs/:id/fail', 'Fail a leased job with retryable error.'],
+  ['POST', '/agent/jobs/:id/heartbeat', 'Renew long-running discovery job lease.'],
+  ['GET', '/discovery/state', 'Read active discovery, gate state, frontier, and current research job.'],
+  ['GET', '/discovery/context', 'Token-efficient complete engine context for Hermes.'],
+  ['GET', '/discovery/drift-check', 'Audit API, skill version/hash, and active Hermes workflow alignment.'],
+  ['POST', '/discovery/runs', 'Create one research mission after enforcing the hard feedback gate.'],
+  ['POST', '/discovery/runs/:id/candidates', 'Batch-store structured researched candidates.'],
+  ['POST', '/discovery/runs/:id/select', 'Store the winner and decision receipt.'],
+  ['POST', '/discovery/runs/:id/activate', 'Capture through Inbox, promote through normal Queue validation, and start the linked session.'],
+  ['POST', '/discovery/runs/:id/interview', 'Record feedback questions and answers.'],
+  ['POST', '/discovery/runs/:id/resolve', 'Atomically apply resolved evidence, bounded weights, branch mutations, and the learning receipt.'],
+  ['GET', '/discovery/revisions/pending', 'Fetch staged skill revisions for host-side Hermes synchronization.'],
+  ['POST', '/discovery/revisions/:id/confirm', 'Confirm host-side application of a staged skill revision.'],
   ['POST', '/ai/enhance', 'Enhance or repair a recommendation using taste context.'],
   ['POST', '/ai/enhance/why', 'Generate or improve recommendation rationale.'],
   ['GET', '/search', 'Search site content.'],
@@ -114,6 +133,12 @@ app.get('/context', async (c) => {
   let activeQueue: any = { results: [] }
   let neglected: any = { results: [] }
   let gaps: any = { results: [] }
+  let mastered: any = { results: [] }
+  let blindSpots: any = { results: [] }
+  let blacklist: any = { results: [] }
+  let creatorTrust: any = { results: [] }
+  let tasteVectors: any = { results: [] }
+  let reflections: any = { results: [] }
 
   try { profile = await DB.prepare('SELECT identity_json, mega_priority_json, core_filter, reaction_style_json, quality_rules_json, patterns_summary_json FROM profile WHERE id = 1').first<any>() } catch {}
   try { priorities = await DB.prepare('SELECT rank, branch_id, label, rationale FROM priorities ORDER BY rank ASC LIMIT 10').all() } catch {}
@@ -142,11 +167,43 @@ app.get('/context', async (c) => {
       LIMIT 5
     `).all()
   } catch {}
+  try { mastered = await DB.prepare('SELECT id, kind, label, author, rating FROM mastered ORDER BY mastered_at DESC').all() } catch {}
+  try {
+    blindSpots = await DB.prepare(`
+      SELECT n.id, n.label, n.super_category
+      FROM tree_nodes n
+      LEFT JOIN recommendation_meta m ON m.branch_id = n.id
+      LEFT JOIN recommendations r ON r.id = m.recommendation_id AND r.status = 'consumed'
+      WHERE n.type IN ('branch', 'leaf')
+      GROUP BY n.id
+      HAVING COUNT(r.id) = 0
+      LIMIT 15
+    `).all()
+  } catch {}
+  try { blacklist = await DB.prepare('SELECT name, work, reason, severity FROM blacklist ORDER BY severity ASC').all() } catch {}
+  try {
+    creatorTrust = await DB.prepare(`
+      SELECT creator, ROUND(AVG(COALESCE(user_score, CASE user_rating WHEN 'love' THEN 10 WHEN 'like' THEN 8 WHEN 'meh' THEN 5 WHEN 'dislike' THEN 2 END)), 2) as avg_score
+      FROM recommendations
+      WHERE creator IS NOT NULL AND creator != '' AND status = 'consumed'
+      GROUP BY creator
+      ORDER BY avg_score DESC
+      LIMIT 15
+    `).all()
+  } catch {}
+  try { tasteVectors = await DB.prepare('SELECT topic, affinity_score FROM taste_vectors ORDER BY affinity_score DESC LIMIT 15').all() } catch {}
+  try { reflections = await DB.prepare("SELECT reflection FROM learning_sessions WHERE reflection IS NOT NULL AND reflection != '' ORDER BY completed_at DESC LIMIT 5").all() } catch {}
 
   let identityParsed = null
   let patternsParsed = null
   try { if (profile?.identity_json) identityParsed = JSON.parse(profile.identity_json) } catch {}
   try { if (profile?.patterns_summary_json) patternsParsed = JSON.parse(profile.patterns_summary_json) } catch {}
+
+  const noteAnchors = (reflections?.results || [])
+    .map((r: any) => (r.reflection || '').trim())
+    .filter((t: string) => t.length > 5)
+    .slice(0, 5)
+    .map((t: string) => (t.length > 180 ? t.slice(0, 180) + '...' : t))
 
   return c.json({
     timestamp: new Date().toISOString(),
@@ -159,7 +216,13 @@ app.get('/context', async (c) => {
     priorities: priorities?.results || [],
     active_queue: activeQueue?.results || [],
     neglected_branches: neglected?.results || [],
-    learning_gaps: gaps?.results || []
+    learning_gaps: gaps?.results || [],
+    mastered: mastered?.results || [],
+    blind_spots: blindSpots?.results || [],
+    blacklist: blacklist?.results || [],
+    creator_trust: creatorTrust?.results || [],
+    taste_vectors: tasteVectors?.results || [],
+    recent_note_anchors: noteAnchors,
   })
 })
 
@@ -306,7 +369,10 @@ app.post('/tool-call', async (c) => {
     if (!name) return c.json({ error: 'tool name required' }, 400)
 
     if (name === 'get_agent_context') {
-      const res = await fetch(new URL('/agent/context', c.req.url).toString(), { headers: c.req.raw.headers })
+      const headers: Record<string, string> = {}
+      const token = c.req.header('x-api-token')
+      if (token) headers['x-api-token'] = token
+      const res = await fetch(new URL('/agent/context', c.req.url).toString(), { headers })
       return c.json(await res.json())
     }
 
