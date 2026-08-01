@@ -35,7 +35,7 @@ function readRoute() {
 function useRoute() {
   const [route, setRoute] = useState(readRoute)
   useEffect(() => {
-    const change = () => setRoute(readRoute())
+    const change = () => setRoute({ ...readRoute() })
     addEventListener('hashchange', change)
     if (!location.hash) location.hash = '#/today/briefing'
     return () => removeEventListener('hashchange', change)
@@ -141,9 +141,9 @@ function Shell({ route, children, onCapture, onSearch, onMore }: { route: Destin
         <div><div class="workspace-label">{workspaceLabels[route.workspace]}</div><h1>{route.title}</h1><p>{route.purpose}</p></div>
         <button class="primary-action" onClick={onCapture}><Icon name="capture" /> Capture</button>
       </header>
-      <nav class="subnav" aria-label={`${workspaceLabels[route.workspace]} views`}>
+      {workspaceDestinations.length > 1 && <nav class="subnav" aria-label={`${workspaceLabels[route.workspace]} views`}>
         {workspaceDestinations.map((item) => <button class={item.key === route.key ? 'active' : ''} onClick={() => go(item)}>{item.title}</button>)}
-      </nav>
+      </nav>}
       <div class="page-content">{children}</div>
     </main>
     <nav class="mobile-nav">
@@ -159,20 +159,33 @@ function ErrorState({ message }: { message: string }) { return <div class="error
 
 function TodayPage() {
   const { data, error, loading } = useData('/dashboard/briefing')
+  const compass = useData('/compass/pick')
+  const resurfacing = useData('/brain/resurfacing')
+  const [compassWorking, setCompassWorking] = useState(false)
   if (loading) return <Loading />
   if (error) return <ErrorState message={error} />
   const next = data?.next_item
   const signals = [
-    ['Reviews due', data?.due_reviews || 0, 'learn.review'],
+    ['Reviews due', data?.due_reviews || 0, 'learn.recall'],
     ['Queue', data?.queue_count || 0, 'curate.queue'],
-    ['Neglected branches', data?.neglected_count || 0, 'insights.learning'],
-    ['Learning gaps', data?.gap_count || 0, 'map.coverage'],
+    ['Coverage gaps', data?.gap_count || 0, 'map.coverage'],
   ]
   return <div class="today-layout">
+    {compass.error && <div class="error-state"><strong>Compass Pick unavailable.</strong><span>{compass.error}</span></div>}
+    {compass.data?.pick && <section class="module compass-pick-module">
+      <div class="module-head"><h3>The one useful thing</h3><span>{compass.data.pick.strategy}</span></div>
+      <h2>{compass.data.pick.video_title || 'Compass Pick'}</h2>
+      <p>{compass.data.pick.rationale?.why_this || compass.data.pick.why_this || 'Selected from your current learning context.'}</p>
+      <div class="row-actions">
+        {compass.data.pick.status === 'ready' && <button class="primary-action" disabled={compassWorking} onClick={async () => { setCompassWorking(true); const target = window.open('about:blank', '_blank'); try { const result = await api<any>(`/compass/pick/${compass.data.pick.id}/start`, { method: 'POST' }); localStorage.setItem('tm-active-session', JSON.stringify({ id: result.session_id, recommendationId: result.recommendation_id, title: compass.data.pick.video_title, sourceUrl: compass.data.pick.video_url })); if (target) target.location.replace(compass.data.pick.video_url); else location.assign(compass.data.pick.video_url); compass.reload() } catch (error: any) { target?.close(); window.alert(error.message) } finally { setCompassWorking(false) } }}>{compassWorking ? 'Starting…' : 'Start'}</button>}
+        {compass.data.pick.status === 'started' && compass.data.pick.video_url && <a class="focus-button" href={compass.data.pick.video_url} target="_blank" rel="noreferrer">Resume</a>}
+        <button disabled={compassWorking} onClick={async () => { setCompassWorking(true); try { await api(`/compass/pick/${compass.data.pick.id}/feedback`, { method: 'POST', body: JSON.stringify({ outcome: 'declined', reason_tags: ['not_now'] }) }); compass.reload() } catch (error: any) { window.alert(error.message) } finally { setCompassWorking(false) } }}>Not for me</button>
+      </div>
+    </section>}
     <section class="today-lead">
       <div class="date-line">{new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</div>
-      <h2>{data?.next_action === 'review' ? 'Start with recall.' : next ? 'Continue where the signal is strongest.' : 'Clear space for the next useful thing.'}</h2>
-      {next ? <div class="focus-item"><div><span>{next.content_type || 'source'} · {next.creator || 'Unknown creator'}</span><h3>{next.video_title}</h3><p>{next.why_this || 'Ready when you are.'}</p></div><a class="focus-button" href={next.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, next)}>Start externally</a></div> : <Empty title="Your active queue is clear" body="Capture one strong source instead of filling a backlog." />}
+      <h2>{data?.next_action === 'review' && Number(data?.due_reviews || 0) > 0 ? 'Review before new input.' : next ? 'Continue where the signal is strongest.' : 'Clear space for the next useful thing.'}</h2>
+      {data?.next_action === 'review' && Number(data?.due_reviews || 0) > 0 ? <div class="focus-item"><div><span>Recall session</span><h3>{data.due_reviews} review{data.due_reviews === 1 ? '' : 's'} due</h3><p>Clear active recall before starting another source.</p></div><a class="focus-button" href="#/learn/recall">Review now</a></div> : next ? <div class="focus-item"><div><span>{next.content_type || 'source'} · {next.creator || 'Unknown creator'}</span><h3>{next.video_title}</h3><p>{next.why_this || 'Ready when you are.'}</p></div><a class="focus-button" href={next.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, next)}>Start externally</a></div> : <Empty title="Your active queue is clear" body="Capture one strong source instead of filling a backlog." />}
     </section>
     <section class="signal-strip">{signals.map(([label, value, key]) => <button onClick={() => go(destinations.find((item) => item.key === key)!)}><span>{label}</span><strong>{value}</strong></button>)}</section>
     <div class="today-columns">
@@ -180,89 +193,8 @@ function TodayPage() {
       <section class="module"><div class="module-head"><h3>Map pulse</h3><span>{data?.streak || 0} day streak</span></div><p>{data?.recent_signal || 'New profile signals and branch changes will surface here after processing.'}</p></section>
     </div>
     <section class="activity-list"><div class="module-head"><h3>Recent output</h3><button onClick={() => go(destinations.find((item) => item.key === 'learn.notes')!)}>Open notes</button></div>{(data?.recent || []).length ? data.recent.map((item: any) => <div class="activity-row"><span>{item.content_type || 'item'}</span><strong>{item.video_title}</strong><time>{formatDate(item.updated_at || item.created_at)}</time></div>) : <Empty title="No finished work yet" body="Completed notes, reviews, and reading files will collect here." />}</section>
+    {(resurfacing.data?.due || []).length > 0 && <section class="activity-list"><div class="module-head"><h3>Worth revisiting</h3><span>{resurfacing.data.due.length}</span></div>{resurfacing.data.due.slice(0, 5).map((item: any) => <div class="activity-row"><span>Due {formatDate(item.due_at)}</span><strong>{item.video_title || 'Saved source'}</strong>{item.video_url && <a href={item.video_url} target="_blank" rel="noreferrer">Open</a>}</div>)}</section>}
   </div>
-}
-
-function JobMonitor({ job, item, onCancel, onRetry }: { job: any; item: any; onCancel: (id: string) => void; onRetry: (item: any) => void }) {
-  const [elapsed, setElapsed] = useState(0)
-
-  useEffect(() => {
-    if (job.status !== 'running' && job.status !== 'pending') return
-    const startTime = job.created_at ? new Date(job.created_at).getTime() : Date.now()
-    const updateTimer = () => {
-      const diff = Math.max(0, Math.floor((Date.now() - startTime) / 1000))
-      setElapsed(diff)
-    }
-    updateTimer()
-    const timer = setInterval(updateTimer, 1000)
-    return () => clearInterval(timer)
-  }, [job.status, job.created_at])
-
-  const isPending = job.status === 'pending'
-  const isRunning = job.status === 'running'
-  const isCompleted = job.status === 'completed'
-  const isCancelled = job.status === 'cancelled'
-  const isFailed = job.status === 'failed'
-
-  const progressPercent = isCompleted ? 100 : isRunning ? 75 : isPending ? 30 : 0
-
-  return (
-    <details class="job-progress-drawer" open={isRunning || isPending}>
-      <summary class="job-drawer-summary">
-        <div class="job-summary-title">
-          <span class="job-pulse-dot" data-state={job.status} />
-          <strong>
-            {isRunning ? 'Synthesizing Companion...' : isPending ? 'Queued' : isCompleted ? 'Visual Lite Ready' : isCancelled ? 'Job Stopped' : 'Generation Failed'}
-          </strong>
-          {(isRunning || isPending) && (
-            <span class="job-elapsed">{String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}s</span>
-          )}
-        </div>
-        <small>Job: {job.id.slice(0, 18)}</small>
-      </summary>
-
-      <div class="job-drawer-body">
-        <div class="job-bar-track">
-          <div class="job-bar-fill" style={{ width: `${progressPercent}%` }} />
-        </div>
-
-        <ul class="job-timeline">
-          <li class="done">
-            <strong>Stage 1: Enqueued</strong>
-            <small>{formatDate(job.created_at)}</small>
-          </li>
-          <li class={isCompleted ? 'done' : isRunning ? 'active' : isCancelled || isFailed ? 'error' : 'pending'}>
-            <strong>Stage 2: Mining & Opencode AI Synthesis</strong>
-            <small>
-              {isCompleted ? '✓ Source content mined & synthesized via Opencode API' : isRunning ? `⚡ Mining content & generating HTML companion (${elapsed}s elapsed)...` : isCancelled ? '✕ Stopped by user' : isFailed ? '✕ Generation failed' : 'Pending'}
-            </small>
-          </li>
-          <li class={isCompleted ? 'done' : 'pending'}>
-            <strong>Stage 3: Cloud Pair Upload (R2 / Learn Files)</strong>
-            <small>{isCompleted ? '✓ Saved HTML & PDF companion pair to R2 / Learn Files' : 'Pending'}</small>
-          </li>
-        </ul>
-
-        {job.error && <div class="job-error-msg">Error: {job.error}</div>}
-
-        <div class="job-drawer-actions">
-          {(isPending || isRunning) && (
-            <button class="danger-button" onClick={() => onCancel(job.id)}>
-              Stop / Cancel Job
-            </button>
-          )}
-          {isCompleted && (
-            <button class="primary-action" onClick={() => window.location.hash = '#/learn/files'}>
-              Open in Files (Learn → Files) →
-            </button>
-          )}
-          {(isCancelled || isFailed) && (
-            <button onClick={() => onRetry(item)}>Retry Visual Lite</button>
-          )}
-        </div>
-      </div>
-    </details>
-  )
 }
 
 function formatQueueMeta(item: any): string {
@@ -323,7 +255,6 @@ function formatSmartHook(item: any): string {
 
 function QueuePage() {
   const { data, error, loading } = useData('/capture/queue')
-  const [record, setRecord] = useState<any>(null)
 
   if (loading) return <Loading />
   if (error) return <ErrorState message={error} />
@@ -357,7 +288,7 @@ function QueuePage() {
               </div>
 
               <div class="row-actions">
-                <button onClick={async () => { try { setRecord(await api<any>(`/capture/${item.id}/record`)) } catch (error: any) { window.alert(error.message) } }}>Record</button>
+                <button onClick={() => { location.hash = `#/learn/notes?source=${encodeURIComponent(item.id)}` }}>Record</button>
                 <a class="primary-action" href={item.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, item)}>
                   {isInProgress ? 'Resume' : 'Start'}
                 </a>
@@ -367,17 +298,8 @@ function QueuePage() {
         })}
         {Array.from({ length: Math.max(0, 5 - items.length) }).map(() => <div class="queue-slot">Available slot</div>)}
       </div>
-      {record && <SourceRecordDialog record={record} onClose={() => setRecord(null)} />}
     </div>
   )
-}
-
-function SourceRecordDialog({ record, onClose }: { record: any; onClose: () => void }) {
-  const item = record.item
-  const latestSession = record.sessions?.[0]
-  const reflections = (record.notes || []).filter((note: any) => note.kind === 'reflection')
-  const sourceNotes = (record.notes || []).filter((note: any) => note.kind !== 'reflection')
-  return <div class="record-drawer-backdrop" role="presentation" onClick={(event) => { if (event.currentTarget === event.target) onClose() }}><aside class="record-drawer" role="dialog" aria-modal="true" aria-label="Source record"><header><div><span class="meta">Source record</span><h2>{item.video_title}</h2><p>{item.creator || item.content_type || 'Saved source'} · {item.learning_state || item.status}</p></div><button onClick={onClose} aria-label="Close source record">×</button></header><div class="record-drawer-links"><a class="primary-action" href={item.video_url} target="_blank" rel="noreferrer">Open original</a><a href="#/learn/reflections" onClick={onClose}>Reflections ({reflections.length})</a><a href="#/learn/notes" onClick={onClose}>Notes ({sourceNotes.length})</a></div><section><div class="section-head"><h3>Learning status</h3><span>{item.progress_percent || 0}%</span></div><p>{latestSession ? `${latestSession.status} session · ${formatDate(latestSession.started_at)}` : 'No learning session started yet.'}</p>{item.outcome && <p class="record-muted">Outcome: {item.outcome.outcome_status} · score {item.outcome.actual_score ?? 'not rated'}</p>}</section><section><div class="section-head"><h3>Artifacts</h3><span>{record.artifacts?.length || 0}</span></div>{record.artifacts?.length ? record.artifacts.map((file: any) => <a class="record-line" href={`/artifacts/${file.id}`} target="_blank" rel="noreferrer"><strong>{file.filename}</strong><span>{file.media_type}</span></a>) : <p class="record-muted">No companion files yet.</p>}</section><section><div class="section-head"><h3>Recall</h3><span>{record.srs?.cards?.length || 0} active</span></div><p>{record.srs?.drafts?.length || 0} editable drafts · {record.srs?.cards?.length || 0} approved cards</p></section></aside></div>
 }
 
 function InboxPage() {
@@ -388,8 +310,6 @@ function InboxPage() {
   const [feedUrl, setFeedUrl] = useState('')
   const [feedStatus, setFeedStatus] = useState('')
   const [feedWorking, setFeedWorking] = useState(false)
-  const [suggestion, setSuggestion] = useState<any>(null)
-  const [suggestStatus, setSuggestStatus] = useState('')
   if (loading || feedsState.loading) return <Loading />
   if (error || feedsState.error) return <ErrorState message={error || feedsState.error} />
   const items = data?.items || []
@@ -408,7 +328,7 @@ function InboxPage() {
   const syncFeeds = async () => {
     setFeedWorking(true); setFeedStatus('Checking feeds…')
     try {
-      const result = await api<any>('/capture/feeds/sync', { method: 'POST' })
+      const result = await api<any>('/capture/feeds/sync', { method: 'POST', body: JSON.stringify({ limit: 5 }) })
       setFeedStatus(`${result.imported} new ${result.imported === 1 ? 'article' : 'articles'}${result.errors.length ? ` · ${result.errors.length} failed` : ''}`)
       feedsState.reload(); reload()
     } catch (feedError: any) { setFeedStatus(feedError.message) }
@@ -420,20 +340,11 @@ function InboxPage() {
     catch (feedError: any) { setFeedStatus(feedError.message) }
     finally { setFeedWorking(false) }
   }
-  const getRecommendation = async () => {
-    setSuggestStatus('Finding a fit…')
-    try {
-      const result = await api<any>('/ai/suggest', { method: 'POST' })
-      setSuggestion(result.suggestion)
-      setSuggestStatus('')
-    } catch (suggestErr: any) { setSuggestStatus(suggestErr.message) }
-  }
   return <div class="inbox-view">
     <section class="feed-manager">
       <div class="feed-manager-head">
-        <div><h2>RSS &amp; Atom feeds</h2><p>New articles arrive automatically every six hours, or generate an AI recommendation.</p></div>
+        <div><h2>RSS &amp; Atom feeds</h2><p>New articles arrive automatically every six hours. Triage only what deserves a queue slot.</p></div>
         <div class="feed-head-actions">
-          <button type="button" class="ai-suggest-btn" disabled={!!suggestStatus} onClick={getRecommendation}>{suggestStatus || 'Get AI recommendation'}</button>
           <button type="button" disabled={feedWorking || !feeds.length} onClick={syncFeeds}>Check now</button>
         </div>
       </div>
@@ -441,26 +352,6 @@ function InboxPage() {
       {feeds.length > 0 && <div class="feed-list">{feeds.map((feed: any) => <div><span><strong>{feed.title}</strong><small>{feed.entry_count || 0} seen · {feed.last_checked_at ? `checked ${formatDate(feed.last_checked_at)}` : 'not checked yet'}</small>{feed.last_error && <small class="feed-error">{feed.last_error}</small>}</span><button type="button" disabled={feedWorking} onClick={() => removeFeed(feed)}>Remove</button></div>)}</div>}
       {feedStatus && <output class="feed-status">{feedStatus}</output>}
     </section>
-    {suggestion && <div class="suggestion-card">
-      <div class="suggestion-body">
-        <span class="meta">AI recommendation · {suggestion.content_type || 'source'}</span>
-        <h3>{suggestion.title}</h3>
-        <p>{suggestion.why_this}</p>
-        {suggestion.creator && <span class="suggestion-creator">Creator: {suggestion.creator}</span>}
-      </div>
-      <div class="suggestion-actions">
-        <button class="primary-action" onClick={async () => {
-          setSuggestStatus('Adding to Inbox…')
-          try {
-            await api('/capture', { method: 'POST', body: JSON.stringify({ source: suggestion.url, title: suggestion.title }) })
-            setSuggestion(null)
-            setSuggestStatus('Added to Inbox')
-            reload()
-          } catch (error: any) { setSuggestStatus(error.message) }
-        }}>Add to Inbox</button>
-        <button class="secondary" onClick={() => setSuggestion(null)}>Dismiss</button>
-      </div>
-    </div>}
     <div class="inbox-summary"><strong>{items.length} waiting</strong><span>Promote only what deserves one of five active queue slots.</span></div>
     {blocked && <div class="queue-warning"><span>{blocked.error || 'Queue full. Finish an active item or make this a deliberate override.'}</span>{!blocked.error && <button onClick={() => triage(blocked, 'queue', true)}>Add anyway</button>}</div>}
     {items.length ? <div class="record-list">{items.map((item: any, index: number) => <article><span class="record-number">{String(index + 1).padStart(2, '0')}</span><div><span class="meta">{item.feed_title ? `rss · ${item.feed_title}` : item.content_type || 'source'}</span><h3>{item.video_title}</h3><p>{item.why_this || item.video_url}</p></div><div class="row-actions"><button disabled={working === item.id} onClick={() => triage(item, 'exclude')}>Exclude</button><button class="primary-action" disabled={working === item.id} onClick={() => triage(item, 'queue')}>Queue</button></div></article>)}</div> : <Empty title="Inbox clear" body="New captures and feed articles land here for a quick fit check before they earn a queue slot." />}
@@ -489,15 +380,6 @@ function CollectionsPage({ scope }: { scope: 'curate' }) {
   </div>
 }
 
-function ResurfacingPage() {
-  const { data, error, loading } = useData('/brain/resurfacing')
-  if (loading) return <Loading />
-  if (error) return <ErrorState message={error} />
-  const items = data?.due || []
-  if (!items.length) return <Empty title="Nothing needs revisiting today" body="Useful sources will return here when enough time has passed." />
-  return <div class="source-list">{items.map((item: any) => <article><div><span class="meta">Due {formatDate(item.due_at)}</span><h2>{item.video_title || 'Saved source'}</h2><p>{item.creator || item.reason || 'Ready for another look.'}</p></div>{item.video_url && <a href={item.video_url} target="_blank" rel="noreferrer">Open source</a>}</article>)}</div>
-}
-
 function ContradictionsPage() {
   const { data, error, loading, reload } = useData('/brain/contradictions')
   const [working, setWorking] = useState('')
@@ -524,22 +406,65 @@ function ArchivePage() {
   const feeds = feedsState.data?.feeds || []
   const feedCount = feeds.reduce((sum: number, feed: any) => sum + Number(feed.entry_count || 0), 0)
   const inbox = destinations.find((item) => item.key === 'curate.inbox')!
-  return <div class="archive-page"><section class="archive-rss"><div class="archive-rss-head"><div><span class="meta">Pinned · RSS / Atom</span><h2>Feed reading</h2><p>{feedCount ? `${feedCount} captured ${feedCount === 1 ? 'article' : 'articles'} kept here, outside the main archive.` : 'Subscribe to a feed in Inbox and its articles will stay grouped here.'}</p></div><button onClick={() => go(inbox)}>Open Inbox</button></div>{feeds.length ? <div class="archive-rss-list">{feeds.map((feed: any) => <div><strong>{feed.title}</strong><span>{feed.entry_count || 0} captured · {feed.last_checked_at ? `checked ${formatDate(feed.last_checked_at)}` : 'not checked yet'}</span></div>)}</div> : <div class="archive-rss-empty">No subscribed feeds yet.</div>}</section><div class="filter-bar"><label>Status<select value={filter} onChange={(event) => setFilter((event.target as HTMLSelectElement).value)}><option value="all">All</option><option value="consumed">Completed</option><option value="rejected">Excluded</option><option value="active">Saved</option></select></label><span>{data?.total || 0} non-feed sources</span></div>{items.length ? <div class="source-list">{items.map((item: any) => <article><div><span class="meta">{item.content_type || 'source'} · {item.status}</span><h2>{item.video_title}</h2><p>{item.user_review || item.why_this || item.creator || 'No reaction recorded.'}</p></div>{item.video_url && <a href={item.video_url} target="_blank" rel="noreferrer">Open</a>}</article>)}</div> : <Empty title="No matching sources" body="Try another status filter." />}</div>
+  return <div class="archive-page"><section class="archive-rss"><div class="archive-rss-head"><div><span class="meta">Pinned · RSS / Atom</span><h2>Feed reading</h2><p>{feedCount ? `${feedCount} captured ${feedCount === 1 ? 'article' : 'articles'} kept here, outside the main archive.` : 'Subscribe to a feed in Inbox and its articles will stay grouped here.'}</p></div><button onClick={() => go(inbox)}>Open Inbox</button></div>{feeds.length ? <div class="archive-rss-list">{feeds.map((feed: any) => <div><strong>{feed.title}</strong><span>{feed.entry_count || 0} captured · {feed.last_checked_at ? `checked ${formatDate(feed.last_checked_at)}` : 'not checked yet'}</span></div>)}</div> : <div class="archive-rss-empty">No subscribed feeds yet.</div>}</section><div class="filter-bar"><label>Status<select value={filter} onChange={(event) => setFilter((event.target as HTMLSelectElement).value)}><option value="all">All</option><option value="consumed">Completed</option><option value="rejected">Excluded</option><option value="active">Saved</option></select></label><span>{data?.total || 0} non-feed sources</span></div>{items.length ? <div class="source-list">{items.map((item: any) => <article><div><span class="meta">{item.content_type || 'source'} · {item.status}</span><h2>{item.video_title}</h2><p>{item.user_review || item.why_this || item.creator || 'No reaction recorded.'}</p></div>{item.video_url && <a href={item.video_url} target="_blank" rel="noreferrer">Open</a>}</article>)}</div> : <Empty title="No matching sources" body="Try another status filter." />}<details class="legacy-discovery"><summary>Legacy Discovery archive</summary><p>Older research runs remain available here for reference. New recommendations appear as one Compass Pick on Today.</p><Suspense fallback={<Loading />}><DiscoveryPage /></Suspense></details></div>
 }
 
-function NotesPage({ kind }: { kind: 'reflection' | 'source' }) {
-  const { data, error, loading, reload } = useData(kind === 'reflection' ? '/notes?kind=reflection' : '/notes')
-  const [selected, setSelected] = useState<any>(null)
+function SourceRecordPage({ record, onBack, onReload }: { record: any; onBack: () => void; onReload: () => void }) {
+  const item = record.item || {}
+  const reflection = (record.notes || []).find((note: any) => note.kind === 'reflection')
+  const extracted = (record.notes || []).find((note: any) => note.kind !== 'reflection')
+  const [feedback, setFeedback] = useState(reflection?.sections?.find((section: any) => section.section_key === 'reaction')?.content || item.user_review || '')
+  const [sourceNote, setSourceNote] = useState(extracted)
   const [status, setStatus] = useState('')
-  if (loading) return <Loading />
-  if (error) return <ErrorState message={error} />
-  const notes = (data?.notes || []).filter((note: any) => kind === 'reflection' ? note.kind === 'reflection' : note.kind !== 'reflection')
-  if (!notes.length) return <Empty title={kind === 'reflection' ? 'No reflections yet' : 'No extracted notes yet'} body={kind === 'reflection' ? 'Finish a queued source or scan handwritten PDF notes to preserve your reaction here.' : 'Ratings of 7 or higher automatically send the source to Notes Extractor.'} />
-  const note = selected || notes[0]
-  const updateSection = (key: string, content: string) => setSelected((current: any) => ({ ...(current || note), sections: (current || note).sections.map((section: any) => section.section_key === key ? { ...section, content } : section) }))
-  const save = async () => { setStatus('Saving…'); try { await api(`/notes/${note.id}`, { method: 'PUT', body: JSON.stringify({ title: note.title, sections: note.sections }) }); setStatus('Saved'); reload(); return true } catch (saveError: any) { setStatus(saveError.message); return false } }
-  const finish = async () => { if (await save()) { setStatus('Queueing note processing…'); try { await api(`/notes/${note.id}/process`, { method: 'POST' }); setStatus('Processing queued') } catch (finishError: any) { setStatus(finishError.message) } } }
-  return <div class="notes-layout"><aside>{notes.map((item: any) => <button class={item.id === note.id ? 'active' : ''} onClick={() => { setSelected(item); setStatus('') }}><strong>{item.title}</strong><span>{kind === 'reflection' ? 'Your reflection' : 'Extractor note'} · {formatDate(item.updated_at)}</span></button>)}</aside><article class="note-document"><div class="note-kicker">{kind === 'reflection' ? 'Your words' : note.branch_id || 'Structured source note'}</div><input aria-label="Note title" class="note-title-input" value={note.title} onInput={(event) => setSelected({ ...note, title: (event.target as HTMLInputElement).value })} /><p class="note-source">{note.source_url ? <a href={note.source_url} target="_blank" rel="noreferrer">Open original source</a> : 'No source link attached'}</p>{(note.sections || []).map((section: any) => <section dir={section.direction || 'auto'}><h3>{section.label}</h3><textarea aria-label={section.label} class="note-editor" value={section.content} onInput={(event) => updateSection(section.section_key, (event.target as HTMLTextAreaElement).value)} /></section>)}<div class="note-actions"><button disabled={status === 'Saving…'} onClick={save}>Save draft</button><button class="primary-action" disabled={status === 'Saving…' || status === 'Queueing note processing…'} onClick={finish}>{kind === 'reflection' ? 'Analyze changes' : 'Re-run full bilingual extraction'}</button></div>{status && <output class="note-status">{status}</output>}</article></div>
+  const saveNote = async (note: any, content?: string) => {
+    if (!note) return
+    const sections = (note.sections || []).map((section: any) => section.section_key === 'reaction' && content !== undefined ? { ...section, content } : section)
+    setStatus('Saving…')
+    try { await api(`/notes/${note.id}`, { method: 'PUT', body: JSON.stringify({ title: note.title, sections }) }); setStatus('Saved') }
+    catch (error: any) { setStatus(error.message) }
+  }
+  const saveFeedback = async () => {
+    if (!feedback.trim()) return
+    setStatus('Saving feedback…')
+    try {
+      await api('/feedback/record', { method: 'POST', body: JSON.stringify({ recommendation_id: item.id, feedback, rating: item.user_score, complete: item.learning_state === 'completed' || item.status === 'consumed' }) })
+      setStatus('Feedback saved'); onReload()
+    } catch (error: any) { setStatus(error.message) }
+  }
+  return <div class="source-record-page">
+    <button class="back-link" onClick={onBack}>← All notes</button>
+    <header class="source-record-head"><div><span class="meta">Source record</span><h2>{item.video_title || reflection?.title || extracted?.title || 'Learning source'}</h2><p>{item.creator || item.content_type || 'Source'} · {item.learning_state || item.status || 'saved'}</p></div><div class="row-actions">{item.notebook_url && <a href={item.notebook_url} target="_blank" rel="noreferrer">Open NotebookLM</a>}{item.video_url && <a class="primary-action" href={item.video_url} target="_blank" rel="noreferrer">Open original</a>}</div></header>
+    <section class="record-section"><div class="section-head"><h3>My Feedback</h3><span>{item.user_score != null ? `${item.user_score}/10` : 'Not rated'}</span></div><textarea class="note-editor feedback-editor" value={feedback} onInput={(event) => setFeedback((event.target as HTMLTextAreaElement).value)} placeholder="Your exact reaction is preserved here." /><div class="row-actions"><button onClick={saveFeedback} disabled={!feedback.trim()}>Save feedback</button></div></section>
+    <section class="record-section"><div class="section-head"><h3>Extracted note</h3><span>{extracted?.status || 'Not created'}</span></div>{sourceNote ? <>{(sourceNote.sections || []).map((section: any) => <div dir={section.direction || 'auto'}><h4>{section.label}</h4><textarea class="note-editor" value={section.content} onInput={(event) => setSourceNote({ ...sourceNote, sections: sourceNote.sections.map((current: any) => current.section_key === section.section_key ? { ...current, content: (event.target as HTMLTextAreaElement).value } : current) })} /></div>)}<div class="row-actions"><button onClick={() => saveNote(sourceNote)}>Save extracted note</button></div></> : <p class="record-muted">A completed rating of 7–10 creates a bilingual source note and editable recall drafts.</p>}</section>
+    <section class="record-section"><div class="section-head"><h3>Recall</h3><span>{record.srs?.cards?.length || 0} active</span></div><p>{record.srs?.drafts?.length || 0} editable drafts · {record.srs?.cards?.length || 0} approved cards</p></section>
+    <section class="record-section"><div class="section-head"><h3>Files</h3><span>{record.artifacts?.length || 0}</span></div>{record.artifacts?.length ? record.artifacts.map((file: any) => <a class="record-line" href={`/artifacts/${file.id}`} target="_blank" rel="noreferrer"><strong>{file.filename}</strong><span>{file.media_type}{file.notebook_url ? ' · Open NotebookLM' : ''}</span></a>) : <p class="record-muted">No companion files yet.</p>}</section>
+    {record.proposals?.length ? <section class="record-section"><div class="section-head"><h3>Suggested profile changes</h3><span>{record.proposals.length}</span></div><p>Review these suggestions in Activity before they affect your profile.</p><a href="#/learn/activity">Open Activity</a></section> : null}
+    <section class="record-section"><div class="section-head"><h3>Session history</h3><span>{record.sessions?.length || 0}</span></div>{record.sessions?.map((session: any) => <div class="record-line"><strong>{session.status} session</strong><span>{formatDate(session.started_at)}{session.completed_at ? ` → ${formatDate(session.completed_at)}` : ''}</span></div>)}</section>
+    {status && <output class="note-status">{status}</output>}
+  </div>
+}
+
+function NotesPage() {
+  const { data, error, loading } = useData('/notes')
+  const [query, setQuery] = useState('')
+  const sourceMatch = location.href.match(/[?&]source=([^&]+)/)
+  const sourceId = sourceMatch ? decodeURIComponent(sourceMatch[1]) : ''
+  const recordState = useData(sourceId ? `/capture/${sourceId}/record` : undefined)
+  if (loading || recordState.loading) return <Loading />
+  if (error || recordState.error) return <ErrorState message={error || recordState.error} />
+  if (sourceId && recordState.data) return <SourceRecordPage record={recordState.data} onBack={() => { location.hash = '#/learn/notes' }} onReload={recordState.reload} />
+  const notes = data?.notes || []
+  const groups = new Map<string, any>()
+  for (const note of notes) {
+    const key = note.recommendation_id || note.id
+    const current = groups.get(key) || { id: note.recommendation_id, title: note.title, notes: [] }
+    current.notes.push(note)
+    if (note.kind === 'reflection') current.title = note.title
+    groups.set(key, current)
+  }
+  if (!groups.size) return <Empty title="No source records yet" body="Finish a source or give Hermes feedback to create one clean learning record here." />
+  const visible = [...groups.values()].filter((group: any) => !query.trim() || group.title.toLowerCase().includes(query.trim().toLowerCase()))
+  return <div><label class="page-search">Search source notes<input value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="Title" /></label><div class="source-list notes-source-list">{visible.map((group: any) => <button class="source-record-link" onClick={() => { if (group.id) location.hash = `#/learn/notes?source=${encodeURIComponent(group.id)}` }}><div><span class="meta">{group.notes.some((note: any) => note.kind === 'reflection') ? 'Feedback saved' : 'Extracted note'}</span><h2>{group.title}</h2><p>{group.notes.length} linked note{group.notes.length === 1 ? '' : 's'} · open the complete source record</p></div><span>Open →</span></button>)}</div>{!visible.length && <Empty title="No matching source" body="Try a shorter title." />}</div>
 }
 
 function ReviewPage() {
@@ -568,12 +493,11 @@ function CardsPage() {
   const drafts = (draftsState.data?.drafts || []).filter((draft: any) => draft.status === 'draft')
   const cards = cardsState.data?.cards || []
   const refresh = () => { draftsState.reload(); cardsState.reload() }
-  const act = async (draft: any, action: 'save' | 'approve' | 'reject' | 'delete') => {
+  const act = async (draft: any, action: 'save' | 'approve' | 'reject') => {
     const value = editing?.id === draft.id ? editing : draft
-    setStatus(action === 'approve' ? 'Approving…' : action === 'delete' ? 'Deleting…' : action === 'reject' ? 'Discarding…' : 'Saving…')
+    setStatus(action === 'approve' ? 'Approving…' : action === 'reject' ? 'Discarding…' : 'Saving…')
     try {
-      if (action === 'delete') await api(`/srs/drafts/${draft.id}`, { method: 'DELETE' })
-      else if (action === 'save') await api(`/srs/drafts/${draft.id}`, { method: 'PUT', body: JSON.stringify(value) })
+      if (action === 'save') await api(`/srs/drafts/${draft.id}`, { method: 'PUT', body: JSON.stringify(value) })
       else {
         if (editing?.id === draft.id) await api(`/srs/drafts/${draft.id}`, { method: 'PUT', body: JSON.stringify(value) })
         await api(`/srs/drafts/${draft.id}/${action}`, { method: 'POST' })
@@ -586,12 +510,22 @@ function CardsPage() {
     try { await api(`/learning/srs/cards/${card.id}`, { method: 'DELETE' }); setStatus(''); cardsState.reload() }
     catch (error: any) { setStatus(error.message) }
   }
+  const bulk = async (action: 'approve' | 'reject') => {
+    if (!window.confirm(`${action === 'approve' ? 'Approve' : 'Discard'} all ${drafts.length} drafts?`)) return
+    setStatus(action === 'approve' ? 'Approving drafts…' : 'Discarding drafts…')
+    try { await Promise.all(drafts.map((draft: any) => api(`/srs/drafts/${draft.id}/${action}`, { method: 'POST' }))); setStatus(''); refresh() }
+    catch (error: any) { setStatus(error.message); refresh() }
+  }
   if (!drafts.length && !cards.length) return <Empty title="No recall cards yet" body="Ratings of 7 or higher create editable drafts here before anything enters Review." />
-  return <div class="drafts-view">{drafts.length > 0 && <><div class="drafts-intro"><strong>{drafts.length} drafts awaiting judgment</strong><span>Edit, delete, or approve only prompts worth remembering.</span></div>{drafts.map((draft: any) => { const value = editing?.id === draft.id ? editing : draft; return <article class="draft-card"><div class="draft-meta"><span>{draft.topic || 'General'}</span><small>{formatDate(draft.created_at)}</small></div><label>Question<textarea value={value.question} onFocus={() => setEditing({ ...draft })} onInput={(event) => setEditing({ ...value, question: (event.target as HTMLTextAreaElement).value })} /></label><label>Answer<textarea value={value.answer} onFocus={() => setEditing({ ...draft })} onInput={(event) => setEditing({ ...value, answer: (event.target as HTMLTextAreaElement).value })} /></label><div class="draft-actions"><button class="danger-action" onClick={() => act(draft, 'delete')}>Delete</button><button onClick={() => act(draft, 'reject')}>Discard</button>{editing?.id === draft.id && <button onClick={() => act(draft, 'save')}>Save draft</button>}<button class="primary-action" disabled={!value.question.trim() || !value.answer.trim()} onClick={() => act(draft, 'approve')}>Approve for Review</button></div></article> })}</>}{cards.length > 0 && <section class="active-cards"><div class="drafts-intro"><strong>{cards.length} approved cards</strong><span>These participate in Review until you delete them.</span></div>{cards.map((card: any) => <article><div><span class="meta">{card.topic || 'Recall'} · due {formatDate(card.due_at)}</span><h3>{card.question}</h3><p>{card.answer}</p></div><button class="danger-action" onClick={() => deleteCard(card)}>Delete</button></article>)}</section>}{status && <output class="sticky-status">{status}</output>}</div>
+  return <div class="drafts-view">{drafts.length > 0 && <><div class="drafts-intro"><div><strong>{drafts.length} drafts awaiting judgment</strong><span>Edit, discard, or approve only prompts worth remembering.</span></div><div class="row-actions"><button onClick={() => bulk('reject')}>Discard all</button><button class="primary-action" onClick={() => bulk('approve')}>Approve all</button></div></div>{drafts.map((draft: any) => { const value = editing?.id === draft.id ? editing : draft; return <article class="draft-card"><div class="draft-meta"><span>{draft.topic || 'General'}</span><small>{formatDate(draft.created_at)}</small></div><label>Question<textarea value={value.question} onFocus={() => setEditing({ ...draft })} onInput={(event) => setEditing({ ...value, question: (event.target as HTMLTextAreaElement).value })} /></label><label>Answer<textarea value={value.answer} onFocus={() => setEditing({ ...draft })} onInput={(event) => setEditing({ ...value, answer: (event.target as HTMLTextAreaElement).value })} /></label><div class="draft-actions"><button onClick={() => act(draft, 'reject')}>Discard draft</button>{editing?.id === draft.id && <button onClick={() => act(draft, 'save')}>Save draft</button>}<button class="primary-action" disabled={!value.question.trim() || !value.answer.trim()} onClick={() => act(draft, 'approve')}>Approve for Review</button></div></article> })}</>}{cards.length > 0 && <section class="active-cards"><div class="drafts-intro"><strong>{cards.length} approved cards</strong><span>These participate in Review until you delete them.</span></div>{cards.map((card: any) => <article><div><span class="meta">{card.topic || 'Recall'} · due {formatDate(card.due_at)}</span><h3>{card.question}</h3><p>{card.answer}</p></div><button class="danger-action" onClick={() => deleteCard(card)}>Delete</button></article>)}</section>}{status && <output class="sticky-status">{status}</output>}</div>
+}
+
+function RecallPage() {
+  return <div class="combined-view"><section><div class="section-head"><h2>Today’s recall</h2><span>Review</span></div><ReviewPage /></section><section><div class="section-head"><h2>Manage recall</h2><span>Drafts and cards</span></div><CardsPage /></section></div>
 }
 
 function ChangesPage() {
-  const { data, error, loading, reload } = useData('/feedback/proposals')
+  const { data, error, loading, reload } = useData('/feedback/proposals?status=pending')
   const [working, setWorking] = useState('')
   const [status, setStatus] = useState('')
   if (loading) return <Loading />
@@ -604,7 +538,11 @@ function ChangesPage() {
     finally { setWorking('') }
   }
   if (!proposals.length) return <Empty title="No proposed changes yet" body="Hermes must list every profile or map change here before anything can be applied." />
-  return <div class="proposal-list">{proposals.map((proposal: any) => <article><div class="proposal-head"><div><span class="meta">{labelize(proposal.change_type)}</span><h2>{proposal.target_label}</h2></div><span class={`state state-${proposal.status}`}>{proposal.status}</span></div><div class="proposal-diff"><div><small>Current</small><pre>{proposal.current == null ? 'Not set' : JSON.stringify(proposal.current, null, 2)}</pre></div><div><small>Proposed</small><pre>{JSON.stringify(proposal.proposed, null, 2)}</pre></div></div>{proposal.evidence && <p><strong>Evidence:</strong> {proposal.evidence}</p>}{proposal.reasoning && <p><strong>Why:</strong> {proposal.reasoning}</p>}<small>Confidence {Math.round(Number(proposal.confidence || 0) * 100)}%</small>{proposal.status === 'pending' && <div class="proposal-actions"><button disabled={working === proposal.id} onClick={() => decide(proposal, 'reject')}>Reject</button><button class="primary-action" disabled={working === proposal.id} onClick={() => decide(proposal, 'approve')}>Approve change</button></div>}</article>)}{status && <output class="sticky-status">{status}</output>}</div>
+  return <div class="proposal-list">{proposals.map((proposal: any) => <article><div class="proposal-head"><div><span class="meta">{labelize(proposal.change_type)}</span><h2>{proposal.target_label}</h2>{proposal.video_title && <a href={`#/learn/notes?source=${encodeURIComponent(proposal.recommendation_id)}`}>{proposal.video_title}</a>}</div><span class={`state state-${proposal.status}`}>{proposal.status}</span></div><div class="proposal-diff"><div><small>Current</small><pre>{proposal.current == null ? 'Not set' : JSON.stringify(proposal.current, null, 2)}</pre></div><div><small>Proposed</small><pre>{JSON.stringify(proposal.proposed, null, 2)}</pre></div></div>{proposal.evidence && <p><strong>Evidence:</strong> {proposal.evidence}</p>}{proposal.reasoning && <p><strong>Why:</strong> {proposal.reasoning}</p>}<small>Confidence {Math.round(Number(proposal.confidence || 0) * 100)}%</small><div class="proposal-actions"><button disabled={working === proposal.id} onClick={() => decide(proposal, 'reject')}>Reject</button><button class="primary-action" disabled={working === proposal.id} onClick={() => decide(proposal, 'approve')}>Approve change</button></div></article>)}{status && <output class="sticky-status">{status}</output>}</div>
+}
+
+function ActivityPage() {
+  return <div class="combined-view"><section><div class="section-head"><h2>Pending changes</h2><span>Approve or reject</span></div><ChangesPage /></section><section><div class="section-head"><h2>History</h2><span>What changed</span></div><JournalPage /></section></div>
 }
 
 function artifactKind(pair: any) {
@@ -618,106 +556,6 @@ function artifactKind(pair: any) {
   if (pair.primary.media_type?.includes('pdf')) return 'Document'
   if (pair.markdown) return 'Notes'
   return pair.metadata?.source_url ? 'Web file' : 'Uploaded file'
-}
-
-function NotebookLMPage() {
-  const { data, error, loading, reload } = useData('/notebooklm/status') as any
-  const [selectedType, setSelectedType] = useState('audio')
-  const [customPrompt, setCustomPrompt] = useState('')
-
-  if (loading) return <Loading />
-  if (error) return <ErrorState message={error} />
-
-  const cliCommand = `python scripts/run.py generate_studio.py --type ${selectedType} --notebook-url "${data?.notebook_url || ''}"${customPrompt ? ` --prompt "${customPrompt}"` : ''}`
-
-  return (
-    <div class="notebooklm-page">
-      <div class="notebooklm-hero">
-        <div class="notebooklm-hero-head">
-          <div class="notebooklm-title-group">
-            <div class="notebooklm-badges">
-              <span class="notebooklm-badge">NotebookLM Pro</span>
-              <span class={`notebooklm-badge ${data?.broker?.grounding_status === 'grounded' ? 'success' : ''}`}>{data?.broker?.grounding_status || 'offline'} grounding</span>
-            </div>
-            <h1>{data?.name || 'Mahmood — Complete Knowledge Corpus'}</h1>
-            <p>Grounded zero-hallucination source-of-truth knowledge brain for Learning Compass</p>
-          </div>
-          <div class="row-actions">
-            <a href={data?.notebook_url} target="_blank" rel="noopener noreferrer" class="primary-action">
-              Open in NotebookLM Pro ↗
-            </a>
-          </div>
-        </div>
-
-        <div class="notebooklm-stats-strip">
-          <div>
-            <span>Mastered Items</span>
-            <strong>{data?.stats?.mastered_items_synced || 0}</strong>
-          </div>
-          <div>
-            <span>Reflections</span>
-            <strong>{data?.stats?.user_reflections_synced || 0}</strong>
-          </div>
-          <div>
-            <span>Tree Nodes</span>
-            <strong>{data?.stats?.taste_tree_nodes || 0}</strong>
-          </div>
-          <div>
-            <span>Clean Sources</span>
-            <strong>{data?.stats?.raw_sources_cleaned || 0}</strong>
-          </div>
-        </div>
-
-        <div class="notebooklm-meta-bar">
-          <div><strong>Persona Role:</strong> {data?.persona_role}</div>
-          <div><strong>Verification Engine:</strong> {data?.verification_engine}</div>
-          <div><strong>Sync Mode:</strong> Hermes Feedback Handoff</div>
-        </div>
-        <div class="notebooklm-broker">
-          <div><strong>Broker:</strong> {data?.broker?.status || 'offline'} · session {data?.broker?.session_id || 'not connected'}</div>
-          <div><strong>Last heartbeat:</strong> {data?.broker?.last_heartbeat_at ? formatDate(data.broker.last_heartbeat_at) : 'none received'}</div>
-          <div><strong>Grounding:</strong> {data?.broker?.grounding_status || 'offline'}{data?.broker?.fallback_reason ? ` · ${data.broker.fallback_reason}` : ''}</div>
-          <div><strong>Recoveries:</strong> {data?.broker?.recovery_count || 0}</div>
-          <button class="secondary-action" onClick={async () => { try { await api('/notebooklm/recover', { method: 'POST', body: JSON.stringify({ reason: 'Manual recovery requested from Learning Compass UI' }) }); reload() } catch (e: any) { window.alert(e.message) } }}>Request fresh session</button>
-        </div>
-      </div>
-
-      <div class="studio-workbench">
-        <div>
-          <h2>On-Demand Studio Generation Workbench</h2>
-          <p>Select an artifact type and optional prompt focus. Hermes chat handles execution on demand.</p>
-        </div>
-
-        <div class="studio-grid">
-          {data?.supported_studio_types?.map((item: any) => (
-            <button
-              key={item.type}
-              class={`studio-tile ${selectedType === item.type ? 'active' : ''}`}
-              onClick={() => setSelectedType(item.type)}
-            >
-              <strong>{item.label}</strong>
-              <span>{item.description}</span>
-            </button>
-          ))}
-        </div>
-
-        <div class="inline-create" style="max-width: none; border-bottom: 0; padding: 0;">
-          <label>Custom Prompt Focus (Optional)</label>
-          <input
-            type="text"
-            placeholder="e.g. Focus on psychological buffers and empirical studies. Use blue theme."
-            value={customPrompt}
-            onInput={(e) => setCustomPrompt((e.target as HTMLInputElement).value)}
-          />
-        </div>
-
-        <div class="cli-command-box">
-          <small>Command for Hermes Chat Execution:</small>
-          <code>{cliCommand}</code>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 function ArtifactsPage() {
@@ -1815,15 +1653,11 @@ Never:
         <strong>{pairs.length} {pairs.length === 1 ? 'source' : 'sources'}</strong>
         <span>Reading files and companions stay together.</span>
       </div>
-      <button type="button" class="copy-skill-btn" onClick={copySkill}>
-        Copy skill prompt
-      </button>
     </div>
     <div class="artifact-table">{pairs.map((pair) => {
       const title = pair.metadata.source_title || pair.primary.filename?.replace(/\.(html?|pdf|md)$/i, '') || 'Untitled file'
       const href = (file: any) => file.legacy ? `/html/download/${file.id}` : /markdown|text\/plain/i.test(file.media_type || '') || /\.md$/i.test(file.filename || '') ? `/artifacts/${file.id}/view` : `/artifacts/${file.id}`
-      const extraction = pair.html?.extraction
-      return <article><div class="artifact-kind"><span>{artifactKind(pair)}</span><small>{formatDate(pair.primary.created_at)}</small></div><div class="artifact-copy"><h3>{title}</h3><p>{pair.metadata.source_url || `${pair.files.length} ${pair.files.length === 1 ? 'file' : 'linked files'}`}</p>{extraction && <small class={`artifact-extraction state-${extraction.status}`}>{extraction.status === 'failed' ? extraction.error || 'Extraction failed' : `Extraction ${extraction.status}`}</small>}</div><div class="artifact-actions">{pair.metadata.source_url && <a href={pair.metadata.source_url} target="_blank" rel="noreferrer">Original</a>}{pair.html && <a class="primary-action" href={href(pair.html)} target="_blank" rel="noreferrer">Read</a>}{pair.markdown && !pair.html && <a class="primary-action" href={href(pair.markdown)} target="_blank" rel="noreferrer">Read</a>}{pair.pdf && <a href={href(pair.pdf)} target="_blank" rel="noreferrer">PDF</a>}{pair.html && extraction?.status !== 'completed' && <button disabled={working === pair.html.id} onClick={() => process(pair.html)}>{extraction?.status === 'failed' ? 'Retry extraction' : 'Extract notes'}</button>}{pair.notebookUrl && <a class="nblm-link" href={pair.notebookUrl} target="_blank" rel="noreferrer">NBLM</a>}{pair.files.length > 0 && <button class="artifact-remove" disabled={working === pair.id} onClick={() => remove(pair)}>Remove</button>}</div></article>
+      return <article><div class="artifact-kind"><span>{artifactKind(pair)}</span><small>{formatDate(pair.primary.created_at)}</small></div><div class="artifact-copy"><h3>{title}</h3><p>{pair.metadata.source_url || `${pair.files.length} ${pair.files.length === 1 ? 'file' : 'linked files'}`}</p></div><div class="artifact-actions">{pair.metadata.source_url && <a href={pair.metadata.source_url} target="_blank" rel="noreferrer">Original</a>}{pair.html && <a class="primary-action" href={href(pair.html)} target="_blank" rel="noreferrer">Read</a>}{pair.markdown && !pair.html && <a class="primary-action" href={href(pair.markdown)} target="_blank" rel="noreferrer">Read</a>}{pair.pdf && <a href={href(pair.pdf)} target="_blank" rel="noreferrer">PDF</a>}{pair.notebookUrl && <a class="nblm-link" href={pair.notebookUrl} target="_blank" rel="noreferrer">NBLM</a>}{pair.files.length > 0 && <button class="artifact-remove" disabled={working === pair.id} onClick={() => remove(pair)}>Remove</button>}</div></article>
     })}</div>{status && <output class="sticky-status">{status}</output>}
   </div>
 }
@@ -1835,17 +1669,6 @@ function JournalPage() {
   const events = data?.events || []
   if (!events.length) return <Empty title="No learning history yet" body="Completed sessions, ratings, notes, and map changes will form a timeline here." />
   return <div class="timeline">{events.map((event: any) => <article><time>{formatDate(event.ts)}</time><div><span class="meta">{labelize(event.kind || 'update')}</span><h2>{event.summary || 'Learning updated'}</h2></div></article>)}</div>
-}
-
-function BranchesPage() {
-  const { data, error, loading } = useData('/brain/tree?limit=500')
-  const [query, setQuery] = useState('')
-  if (loading) return <Loading />
-  if (error) return <ErrorState message={error} />
-  const nodes = (data?.nodes || []).filter((node: any) => !query || `${node.label} ${node.super_category}`.toLowerCase().includes(query.toLowerCase()))
-  const groups = new Map<string, any[]>()
-  for (const node of nodes) groups.set(node.super_category || 'Uncategorized', [...(groups.get(node.super_category || 'Uncategorized') || []), node])
-  return <div class="branches-page"><label class="page-search">Search branches<input value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="Topic or domain" /></label>{groups.size ? [...groups].map(([group, items]) => <section class="branch-group"><div class="section-head"><h2>{group}</h2><span>{items.length} nodes</span></div><div>{items.map((node) => <article><span class="node-depth">{node.type}</span><strong>{node.label || node.id}</strong><span class={`state state-${node.status || 'active'}`}>{node.status || 'active'}</span></article>)}</div></section>) : <Empty title="No matching branches" body="Try a broader search." />}</div>
 }
 
 function CoveragePage({ insight = false }: { insight?: boolean }) {
@@ -1887,6 +1710,10 @@ function ForecastPage() {
   return <div class="forecast-page"><div class="summary-strip"><div><strong>{data?.due_next_7_days || 0}</strong><span>Due in 7 days</span></div><div><strong>{data?.due_next_30_days || 0}</strong><span>Due in 30 days</span></div><div><strong>{data?.total_cards || 0}</strong><span>Recall cards</span></div><div><strong>{data?.mapped_topics || 0}</strong><span>Mapped topics</span></div></div><section class="forecast-guidance"><h2>{data?.due_next_7_days ? 'A review wave is approaching.' : 'Your near-term review load is clear.'}</h2><p>{data?.due_next_7_days ? `Plan for ${data.due_next_7_days} recall prompts over the next seven days.` : 'New reviews will appear after strong learning sessions create and approve recall prompts.'}</p></section></div>
 }
 
+function OverviewPage() {
+  return <div class="combined-view"><InsightsOverviewPage /><ForecastPage /></div>
+}
+
 function HermesMemoryPage() {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('active')
@@ -1907,19 +1734,13 @@ function HermesPage() {
   if (loading) return <Loading />
   if (error) return <ErrorState message={error} />
   const quality = data?.quality || {}
-  const jobs = data?.jobs || {}
-  const replay = async (id: string) => { try { await api(`/agent/jobs/${id}/replay`, { method: 'POST' }); reload() } catch (e: any) { window.alert(e.message) } }
-  const acknowledge = async (id: string) => { try { await api(`/agent/alerts/${id}/ack`, { method: 'POST' }); reload() } catch (e: any) { window.alert(e.message) } }
-  const recalibrate = async () => { try { const result = await api<any>('/analytics/hermes/recalibrate', { method: 'POST' }); window.alert(`Recalibrated from ${result.sample_size} rated outcomes.`); reload() } catch (e: any) { window.alert(e.message) } }
-  const evaluate = async () => { try { const result = await api<any>('/analytics/hermes/evaluate', { method: 'POST' }); window.alert(`Created ${result.proposals?.length || 0} review proposals.`); reload(); weekly.reload() } catch (e: any) { window.alert(e.message) } }
-  const backfill = async () => { try { const result = await api<any>('/analytics/hermes/backfill', { method: 'POST', body: JSON.stringify({ dry_run: false }) }); window.alert(`Backfill complete: ${Object.values(result.inserted || {}).reduce((a: number, b: any) => a + Number(b || 0), 0)} records written.`); reload() } catch (e: any) { window.alert(e.message) } }
+  const recalibrate = async () => { if (!window.confirm('Recalibrate Hermes weights from rated outcomes?')) return; try { const result = await api<any>('/analytics/hermes/recalibrate', { method: 'POST' }); window.alert(`Recalibrated from ${result.sample_size} rated outcomes.`); reload() } catch (e: any) { window.alert(e.message) } }
+  const evaluate = async () => { if (!window.confirm('Create reviewable Hermes proposals from the evaluator?')) return; try { const result = await api<any>('/analytics/hermes/evaluate', { method: 'POST' }); window.alert(`Created ${result.proposals?.length || 0} review proposals.`); reload(); weekly.reload() } catch (e: any) { window.alert(e.message) } }
+  const backfill = async () => { if (!window.confirm('Run the intelligence backfill now? It writes derived records but does not change approved taste rules.')) return; try { const result = await api<any>('/analytics/hermes/backfill', { method: 'POST', body: JSON.stringify({ dry_run: false }) }); window.alert(`Backfill complete: ${Object.values(result.inserted || {}).reduce((a: number, b: any) => a + Number(b || 0), 0)} records written.`); reload() } catch (e: any) { window.alert(e.message) } }
   return <div class="hermes-page">
-    <div class="page-actions"><span>Live operational readout · {formatDate(data?.checked_at)}</span><div><button class="secondary-action" onClick={evaluate}>Create evaluator proposals</button> <button class="secondary-action" onClick={backfill}>Run intelligence backfill</button> <button class="secondary-action" onClick={recalibrate}>Recalibrate weights</button> <button class="secondary-action" onClick={reload}>Refresh</button></div></div>
-    <div class="summary-strip"><div><strong>{quality.total || 0}</strong><span>Recommendation outcomes</span></div><div><strong>{quality.completion_rate == null ? '—' : `${quality.completion_rate}%`}</strong><span>Consumed after activation</span></div><div><strong>{quality.prediction_error == null ? '—' : quality.prediction_error}</strong><span>Prediction error</span></div><div><strong>{jobs.dead_letters || 0}</strong><span>Dead-lettered jobs</span></div></div>
-    <section><div class="section-head"><h2>Queue reliability</h2><span>{jobs.stale_running || 0} stale leases</span></div><div class="compact-list"><article><strong>Pending</strong><span>{jobs.statuses?.pending || 0}</span></article><article><strong>Running</strong><span>{jobs.statuses?.running || 0}</span></article><article><strong>Delayed retries</strong><span>{jobs.delayed_retries || 0}</span></article><article><strong>Failed in recent history</strong><span>{jobs.recent_failures?.length || 0}</span></article></div></section>
+    <div class="page-actions"><span>Learning intelligence · {formatDate(data?.checked_at)}</span><div><button class="secondary-action" onClick={evaluate}>Create evaluator proposals</button> <button class="secondary-action" onClick={backfill}>Refresh derived insights</button> <button class="secondary-action" onClick={recalibrate}>Recalibrate weights</button> <button class="secondary-action" onClick={reload}>Refresh</button></div></div>
+    <div class="summary-strip"><div><strong>{quality.total || 0}</strong><span>Recommendation outcomes</span></div><div><strong>{quality.completion_rate == null ? '—' : `${quality.completion_rate}%`}</strong><span>Consumed after activation</span></div><div><strong>{quality.prediction_error == null ? '—' : quality.prediction_error}</strong><span>Prediction error</span></div><div><strong>{data?.memory?.active || 0}</strong><span>Active memories</span></div></div>
     <div class="two-column-data"><section><div class="section-head"><h2>Engine evidence</h2><span>Bounded weights</span></div><div class="compact-list">{(data?.engine_weights || []).map((item: any) => <article key={item.dimension}><strong>{labelize(item.dimension)}</strong><span>{Math.round(Number(item.current_weight || 0) * 100)}% · {item.evidence_count || 0} signals</span></article>)}</div></section><section><div class="section-head"><h2>Outcome by format</h2><span>Actual ratings</span></div><div class="compact-list">{(quality.by_format || []).map((item: any) => <article key={item.format}><strong>{labelize(item.format)}</strong><span>{item.consumed || 0}/{item.total || 0} consumed · {item.average_actual ?? '—'} average</span></article>)}</div></section></div>
-    <section><div class="section-head"><h2>Open alerts</h2><span>{data?.alerts?.length || 0}</span></div>{data?.alerts?.length ? <div class="compact-list">{data.alerts.map((item: any) => <article key={item.id}><div><strong>{item.title}</strong><span>{item.body}</span></div><button class="secondary-action" onClick={() => acknowledge(item.id)}>Acknowledge</button></article>)}</div> : <Empty title="No open alerts" body="Hermes has no unacknowledged operational failures." />}</section>
-    <section><div class="section-head"><h2>Recoverable failures</h2><span>Replay from here</span></div>{jobs.recent_failures?.length ? <div class="compact-list">{jobs.recent_failures.map((item: any) => <article key={item.id}><div><strong>{item.job_type}</strong><span>{item.error || 'No error detail'} · attempt {item.attempts}</span></div><button class="secondary-action" onClick={() => replay(item.id)}>Replay</button></article>)}</div> : <Empty title="No failed jobs" body="The durable queue is clear." />}</section>
     <section><div class="section-head"><h2>Memory ledger</h2><span>{data?.memory?.active || 0} active entries</span></div><div class="compact-list">{(data?.memory?.entries || []).map((item: any) => <article key={`${item.memory_kind}-${item.status}`}><strong>{labelize(item.memory_kind)}</strong><span>{item.status} · {item.count} entries</span></article>)}</div></section>
     <section><div class="section-head"><h2>Weekly evaluator</h2><span>{weekly.data?.period?.since ? `${formatDate(weekly.data.period.since)} → ${formatDate(weekly.data.period.until)}` : 'Loading'}</span></div>{weekly.error ? <ErrorState message={weekly.error} /> : <div class="compact-list"><article><strong>Accuracy</strong><span>{weekly.data?.accuracy?.completion_rate == null ? '—' : `${weekly.data.accuracy.completion_rate}% completion`} · error {weekly.data?.accuracy?.prediction_error ?? '—'}</span></article><article><strong>Abandoned sources</strong><span>{(weekly.data?.abandoned_sources || []).map((item: any) => `${item.source_class}: ${item.count}`).join(' · ') || 'None recorded'}</span></article><article><strong>Taste drift</strong><span>{(weekly.data?.taste_drift || []).map((item: any) => `${labelize(item.branch)} ${item.change > 0 ? '+' : ''}${item.change}`).join(' · ') || 'Not enough ratings'}</span></article></div>}</section>
     {Number(data?.pending_proposals || 0) > 0 && <p class="settings-status">{data.pending_proposals} Hermes change proposals still require approval in Learn → Changes.</p>}
@@ -1971,6 +1792,7 @@ function SettingsPage({ route }: { route: Destination }) {
   const [enrichCapture, setEnrichCapture] = useState(true)
   const [saved, setSaved] = useState('')
   const [offline, setOffline] = useState<any[]>([])
+  const [profileDraft, setProfileDraft] = useState<any>(null)
   const profile = useData(route.slug === 'profile' ? '/brain/profile' : undefined)
   const settings = useData('/settings')
   const refreshOffline = () => listOfflineMutations().then(setOffline)
@@ -1984,26 +1806,33 @@ function SettingsPage({ route }: { route: Destination }) {
     localStorage.setItem('tm-theme', resolved.appearance.theme); localStorage.setItem('tm-density', resolved.appearance.density)
     applyTheme(resolved.appearance.theme); document.documentElement.dataset.density = resolved.appearance.density
   }, [settings.data?.resolved])
+  useEffect(() => {
+    if (!profile.data?.profile) return
+    setProfileDraft({ identity: profile.data.profile.identity_json || '', core_filter: profile.data.profile.core_filter || '', quality_rules_json: profile.data.profile.quality_rules_json || '', operational_style_json: profile.data.profile.operational_style_json || '' })
+  }, [profile.data?.profile])
   const persist = async (key: string, value: unknown) => { setSaved('Saving…'); try { await api(`/settings/${key}`, { method: 'PUT', body: JSON.stringify(value) }); setSaved('Saved'); setTimeout(() => setSaved(''), 1400) } catch (error: any) { setSaved(error.message) } }
   const changeTheme = (value: string) => { setTheme(value); localStorage.setItem('tm-theme', value); applyTheme(value); persist('appearance', { theme: value, density }) }
   const changeDensity = (value: string) => { setDensity(value); localStorage.setItem('tm-density', value); document.documentElement.dataset.density = value; persist('appearance', { theme, density: value }) }
-  return <div class="settings-page"><section><h2>{route.title}</h2><p>{route.purpose}</p>
+  const compactRule = (value: string) => value?.length > 260 ? `${value.slice(0, 257)}…` : value || 'Not set'
+  const saveProfile = async () => { if (!profileDraft) return; setSaved('Saving profile…'); try { await api('/brain/profile', { method: 'POST', body: JSON.stringify(profileDraft) }); setSaved('Profile saved'); profile.reload() } catch (error: any) { setSaved(error.message) } }
+  return <div class="settings-page"><section>
     {route.slug === 'profile' && <>{profile.loading ? <Loading /> : profile.error ? <ErrorState message={profile.error} /> : <div class="profile-dashboard">
-      <div class="setting-row"><div><strong>Identity & matrix</strong><span>Personal background, location, and hardware setup.</span></div><span class="setting-value">{profile.data?.profile?.identity_json || 'Not set'}</span></div>
-      <div class="setting-row"><div><strong>Core curation filter</strong><span>Primary criteria required for new content.</span></div><span class="setting-value">{profile.data?.profile?.core_filter || 'Not set'}</span></div>
-      <div class="setting-row"><div><strong>Quality & verification rules</strong><span>Source verification protocol and content boundaries.</span></div><span class="setting-value">{profile.data?.profile?.quality_rules_json || 'Not set'}</span></div>
-      <div class="setting-row"><div><strong>Operational style</strong><span>Interaction preference and communication rules.</span></div><span class="setting-value">{profile.data?.profile?.operational_style_json || 'Not set'}</span></div>
+      <div class="setting-row profile-rule"><div><strong>Identity & context</strong><span>Personal background and learning context.</span></div><span class="setting-value">{compactRule(profile.data?.profile?.identity_json)}</span></div>
+      <div class="setting-row profile-rule"><div><strong>Core curation filter</strong><span>Primary criteria required for new content.</span></div><span class="setting-value">{compactRule(profile.data?.profile?.core_filter)}</span></div>
+      <div class="setting-row profile-rule"><div><strong>Quality & verification rules</strong><span>Source verification protocol and content boundaries.</span></div><span class="setting-value">{compactRule(profile.data?.profile?.quality_rules_json)}</span></div>
+      <div class="setting-row profile-rule"><div><strong>Operational style</strong><span>Interaction preference and communication rules.</span></div><span class="setting-value">{compactRule(profile.data?.profile?.operational_style_json)}</span></div>
       <div class="setting-row"><div><strong>Recent signal</strong><span>Latest approved learning signal and updates.</span></div><span class="setting-value">{profile.data?.profile?.recent_signal || 'No recent signal'}</span></div>
+      {profileDraft && <details class="profile-editor"><summary>Edit profile rules</summary><label>Identity<textarea value={profileDraft.identity} onInput={(event) => setProfileDraft({ ...profileDraft, identity: (event.target as HTMLTextAreaElement).value })} /></label><label>Core curation filter<textarea value={profileDraft.core_filter} onInput={(event) => setProfileDraft({ ...profileDraft, core_filter: (event.target as HTMLTextAreaElement).value })} /></label><label>Quality rules<textarea value={profileDraft.quality_rules_json} onInput={(event) => setProfileDraft({ ...profileDraft, quality_rules_json: (event.target as HTMLTextAreaElement).value })} /></label><label>Operational style<textarea value={profileDraft.operational_style_json} onInput={(event) => setProfileDraft({ ...profileDraft, operational_style_json: (event.target as HTMLTextAreaElement).value })} /></label><button class="primary-action" onClick={saveProfile}>Save profile rules</button></details>}
 
-      <div class="setting-section"><div class="section-head"><h3>Mega priority topics</h3><span>{(profile.data?.profile?.mega_priority_json ? JSON.parse(profile.data.profile.mega_priority_json).length : 0)}</span></div><p class="setting-value">{profile.data?.profile?.mega_priority_json || '[]'}</p></div>
+      <div class="setting-section"><div class="section-head"><h3>Priority focus</h3><span>{(profile.data?.profile?.mega_priority_json ? JSON.parse(profile.data.profile.mega_priority_json).length : 0)}</span></div><p class="setting-value">{profile.data?.profile?.mega_priority_json ? 'Priority topics configured.' : 'No priority topics recorded.'}</p></div>
 
       <div class="setting-section"><div class="section-head"><h3>Priorities</h3><span>{profile.data?.priorities?.length || 0}</span></div><div class="compact-list">{(profile.data?.priorities || []).map((item: any) => <article><strong>{item.label || item.topic || item.id}</strong><span>Rank {item.rank}</span></article>)}</div></div>
 
-      <div class="setting-section"><div class="section-head"><h3>Mastered knowledge & frameworks</h3><span>{profile.data?.mastered?.length || 0}</span></div>{profile.data?.mastered?.length ? <div class="compact-list">{profile.data.mastered.map((item: any) => <article><strong>{item.label || item.id}</strong><span>{item.author ? `by ${item.author}` : 'Mastered'} • {item.rating || '10/10'}</span></article>)}</div> : <p>No mastered topics recorded.</p>}</div>
+      <details class="setting-section profile-group"><summary>Mastered knowledge &amp; frameworks <span>{profile.data?.mastered?.length || 0}</span></summary>{profile.data?.mastered?.length ? <div class="compact-list">{profile.data.mastered.map((item: any) => <article><strong>{item.label || item.id}</strong><span>{item.author ? `by ${item.author}` : 'Mastered'} • {item.rating || '10/10'}</span></article>)}</div> : <p>No mastered topics recorded.</p>}</details>
 
-      <div class="setting-section"><div class="section-head"><h3>Excluded creators and works</h3><span>{profile.data?.blacklist?.length || 0}</span></div>{profile.data?.blacklist?.length ? <div class="compact-list">{profile.data.blacklist.map((item: any) => <article><strong>{item.name || item.id} {item.work ? `(${item.work})` : ''}</strong><span>{item.reason || `Severity ${item.severity}`}</span></article>)}</div> : <p>No exclusions recorded.</p>}</div>
+      <details class="setting-section profile-group"><summary>Excluded creators and works <span>{profile.data?.blacklist?.length || 0}</span></summary>{profile.data?.blacklist?.length ? <div class="compact-list">{profile.data.blacklist.map((item: any) => <article><strong>{item.name || item.id} {item.work ? `(${item.work})` : ''}</strong><span>{item.reason || `Severity ${item.severity}`}</span></article>)}</div> : <p>No exclusions recorded.</p>}</details>
 
-      <div class="setting-section"><div class="section-head"><h3>Learning patterns & heuristics</h3><span>{profile.data?.patterns?.length || 0}</span></div>{profile.data?.patterns?.length ? <div class="compact-list">{profile.data.patterns.map((item: any) => <article><strong>{item.description || item.id}</strong><span>{item.strength}</span></article>)}</div> : <p>No confirmed patterns yet.</p>}</div>
+      <details class="setting-section profile-group"><summary>Learning patterns &amp; heuristics <span>{profile.data?.patterns?.length || 0}</span></summary>{profile.data?.patterns?.length ? <div class="compact-list">{profile.data.patterns.map((item: any) => <article><strong>{item.description || item.id}</strong><span>{item.strength}</span></article>)}</div> : <p>No confirmed patterns yet.</p>}</details>
 
       <div class="setting-section"><div class="section-head"><h3>Monitored RSS feeds & strategic news</h3><span>{profile.data?.feed_sources?.length || 0}</span></div>{profile.data?.feed_sources?.length ? <div class="compact-list">{profile.data.feed_sources.map((item: any) => <article><strong>{item.title}</strong><span>{item.is_active ? 'Active' : 'Paused'} • {item.site_url || item.feed_url}</span></article>)}</div> : <p>No active feed sources.</p>}</div>
 
@@ -2017,16 +1846,8 @@ function SettingsPage({ route }: { route: Destination }) {
         <article><strong>Pending SRS drafts</strong><span>{profile.data?.srs_stats?.pending_drafts || 0}</span></article>
       </div></div>
 
-      <div class="setting-section"><div class="section-head"><h3>Cloudflare & infrastructure state</h3><span>{profile.data?.infrastructure_stats?.database_name || 'D1'}</span></div><div class="compact-list">
-        <article><strong>Database</strong><span>recommendations-db (D1)</span></article>
-        <article><strong>Artifacts stored</strong><span>{profile.data?.infrastructure_stats?.artifacts_count || 0} (R2)</span></article>
-        <article><strong>Pending proposals</strong><span>{profile.data?.infrastructure_stats?.pending_proposals_count || 0}</span></article>
-        <article><strong>Environment</strong><span>{profile.data?.infrastructure_stats?.worker_environment || 'production'}</span></article>
-      </div></div>
     </div>}</>}
-    {route.slug === 'appearance' && <><div class="setting-row"><div><strong>Theme</strong><span>Follow the device unless you choose an override.</span></div><select value={theme} onChange={(event) => changeTheme((event.target as HTMLSelectElement).value)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></div><div class="setting-row"><div><strong>Density</strong><span>Balanced for daily use; compact when managing large libraries.</span></div><select value={density} onChange={(event) => changeDensity((event.target as HTMLSelectElement).value)}><option value="balanced">Balanced</option><option value="compact">Compact</option></select></div></>}
-    {route.slug === 'learning' && <><div class="setting-row"><div><strong>Active queue</strong><span>Five deliberate items; Inbox remains unlimited.</span></div><span class="setting-value">5 slots</span></div><label class="setting-row"><div><strong>Review target</strong><span>Used to adjust future recall intervals.</span></div><select value={retention} onChange={(event) => { const value = Number((event.target as HTMLSelectElement).value); setRetention(value); persist('learning', { retention: value, queue_cap: 5 }) }}><option value="85">85%</option><option value="90">90%</option><option value="95">95%</option></select></label><div class="setting-row"><div><strong>Rating 7+ notes and cards</strong><span>Notes Extractor always runs after a completed rating of 7 or higher.</span></div><span class="setting-value">Automatic</span></div></>}
-    {route.slug === 'curation' && <><label class="setting-row"><div><strong>Enrich new captures</strong><span>Queue enrichment only when enabled.</span></div><input type="checkbox" checked={enrichCapture} onChange={(event) => { const enabled = (event.target as HTMLInputElement).checked; setEnrichCapture(enabled); persist('ai_curation', { enrich_capture: enabled }) }} /></label><div class="setting-row"><div><strong>Hermes change confirmation</strong><span>Every taste, profile, pattern, and map change requires approval.</span></div><span class="setting-value">Required</span></div><div class="setting-row"><div><strong>Automatic recommendations</strong><span>Finishing one source does not automatically add another.</span></div><span class="setting-value">Off</span></div></>}
+    {route.slug === 'preferences' && <><div class="setting-section"><h3>Appearance</h3><div class="setting-row"><div><strong>Theme</strong><span>Follow the device unless you choose an override.</span></div><select value={theme} onChange={(event) => changeTheme((event.target as HTMLSelectElement).value)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></div><div class="setting-row"><div><strong>Density</strong><span>Balanced for daily use; compact when managing large libraries.</span></div><select value={density} onChange={(event) => changeDensity((event.target as HTMLSelectElement).value)}><option value="balanced">Balanced</option><option value="compact">Compact</option></select></div></div><div class="setting-section"><h3>Learning</h3><div class="setting-row"><div><strong>Active queue</strong><span>Five deliberate items; Inbox remains unlimited.</span></div><span class="setting-value">5 slots</span></div><label class="setting-row"><div><strong>Review target</strong><span>Used to adjust future recall intervals.</span></div><select value={retention} onChange={(event) => { const value = Number((event.target as HTMLSelectElement).value); setRetention(value); persist('learning', { retention: value, queue_cap: 5 }) }}><option value="85">85%</option><option value="90">90%</option><option value="95">95%</option></select></label><div class="setting-row"><div><strong>Rating 7+ notes and cards</strong><span>Notes Extractor runs after a completed rating of 7 or higher.</span></div><span class="setting-value">Automatic</span></div></div><div class="setting-section"><h3>Curation</h3><label class="setting-row"><div><strong>Enrich new captures</strong><span>Queue enrichment only when enabled.</span></div><input type="checkbox" checked={enrichCapture} onChange={(event) => { const enabled = (event.target as HTMLInputElement).checked; setEnrichCapture(enabled); persist('ai_curation', { enrich_capture: enabled }) }} /></label><div class="setting-row"><div><strong>Hermes change confirmation</strong><span>Every taste, profile, pattern, and map change requires approval.</span></div><span class="setting-value">Required</span></div><div class="setting-row"><div><strong>Automatic recommendations</strong><span>Finishing one source does not automatically add another.</span></div><span class="setting-value">Off</span></div></div></>}
     {route.slug === 'data' && <><div class="setting-row"><div><strong>Cloud library</strong><span>Your sources, notes, ratings, map, and files are available.</span></div><span class="status">Connected</span></div><div class="setting-row"><div><strong>Offline changes</strong><span>{offline.length ? `${offline.length} waiting · conflicts stay visible until you resolve them.` : 'No pending local changes.'}</span></div><button class="secondary-action" onClick={() => flushOfflineMutations().then(() => refreshOffline().then(() => setSaved('Sync complete')))}>Sync now</button></div>{offline.length > 0 && <div class="offline-mutation-list">{offline.map((item) => <div class="offline-mutation" key={item.id}><span><strong>{item.state || 'pending'}</strong><small>{item.method} {item.url} · {item.error || 'Waiting to sync'}</small></span><div>{(item.state === 'conflict' || item.state === 'failed') && <button onClick={() => resolveOfflineMutation(item.id, 'retry').then(refreshOffline)}>Retry</button>}<button onClick={() => resolveOfflineMutation(item.id, 'discard').then(refreshOffline)}>Discard</button></div></div>)}</div>}<ReminderControls /><div class="setting-row"><div><strong>Export source library</strong><span>Download your recommendation history as a portable file.</span></div><a class="secondary-action" href="/recommendations/export">Download export</a></div><div class="setting-row"><div><strong>Saved preferences</strong><span>{Object.keys(settings.data?.settings || {}).length} preference groups stored.</span></div><span class="setting-value">{settings.error ? 'Unavailable' : 'Up to date'}</span></div></>}
     {saved && <output class="settings-status">{saved}</output>}
   </section></div>
@@ -2036,29 +1857,17 @@ function View({ route }: { route: Destination }) {
   if (route.key === 'today.briefing') return <TodayPage />
   if (route.key === 'curate.inbox') return <InboxPage />
   if (route.key === 'curate.queue') return <QueuePage />
-  if (route.key === 'curate.discovery') return <Suspense fallback={<div class="empty-state">Loading Discovery Engine…</div>}><DiscoveryPage /></Suspense>
   if (route.key === 'curate.collections') return <CollectionsPage scope="curate" />
-  if (route.key === 'curate.resurfacing') return <ResurfacingPage />
-  if (route.key === 'curate.contradictions') return <ContradictionsPage />
   if (route.key === 'curate.archive') return <ArchivePage />
   if (route.key === 'map.atlas') return <Suspense fallback={<div class="atlas-loading"><div /><span>Preparing spatial canvas…</span></div>}><AtlasPage /></Suspense>
-  if (route.key === 'map.branches') return <BranchesPage />
-  if (route.key === 'map.coverage') return <CoveragePage />
-  if (route.key === 'map.taste') return <TastePage />
+  if (route.key === 'map.coverage') return <div class="combined-view"><CoveragePage /><ContradictionsPage /></div>
   if (route.key === 'learn.files') return <ArtifactsPage />
-  if (route.key === 'learn.notebooklm') return <NotebookLMPage />
-  if (route.key === 'learn.reflections') return <NotesPage kind="reflection" />
-  if (route.key === 'learn.notes') return <NotesPage kind="source" />
-  if (route.key === 'learn.cards') return <CardsPage />
-  if (route.key === 'learn.review') return <ReviewPage />
-  if (route.key === 'learn.changes') return <ChangesPage />
-  if (route.key === 'learn.journal') return <JournalPage />
-  if (route.key === 'insights.overview') return <InsightsOverviewPage />
-  if (route.key === 'insights.learning') return <CoveragePage insight />
+  if (route.key === 'learn.notes') return <NotesPage />
+  if (route.key === 'learn.recall') return <RecallPage />
+  if (route.key === 'learn.activity') return <ActivityPage />
+  if (route.key === 'insights.overview') return <OverviewPage />
   if (route.key === 'insights.taste') return <TastePage insight />
-  if (route.key === 'insights.forecast') return <ForecastPage />
-  if (route.key === 'insights.hermes') return <HermesPage />
-  if (route.key === 'insights.memory') return <HermesMemoryPage />
+  if (route.key === 'insights.hermes') return <div class="combined-view"><HermesPage /><HermesMemoryPage /></div>
   if (route.workspace === 'settings') return <SettingsPage route={route} />
   return <Empty title="View unavailable" body="This destination is not part of the current workspace." />
 }

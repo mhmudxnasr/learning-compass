@@ -10,10 +10,10 @@ The product is single-user, English-first, supports bilingual English/Egyptian-A
 
 ## Product Model
 
-- **RSS Feed:** the Curate destination for subscriptions and triage; its underlying Inbox remains the unlimited landing place for URL, text, PDF, HTML, video, Telegram, share-target, RSS, and Atom captures. RSS/Atom entries stay grouped in the pinned Archive feed shelf instead of mixing into the manual archive list.
+- **Inbox:** the Curate destination for subscriptions, captures, and triage; it remains the unlimited landing place for URL, text, PDF, HTML, video, Telegram, share-target, RSS, and Atom captures. RSS/Atom entries stay grouped in the pinned Archive feed shelf instead of mixing into the manual archive list. Manual **Check now** imports at most five latest entries per feed.
 - **Queue:** five active items by default. Consume/drop before adding, or use an explicit override.
 - **Queue and hidden sessions:** Queue owns start, resume, return, and completion. Hidden session records preserve source/reflection linkage without a separate management destination.
-- **Reflections and notes:** reflections preserve only the user's typed or handwritten input. Notes Extractor writes separate complete bilingual English/Egyptian-Arabic source notes covering the whole source; incomplete legacy notes can be re-run from the site.
+- **Source notes:** one source-centric Notes record presents the user's exact typed or handwritten feedback alongside the separate complete bilingual English/Egyptian-Arabic source note; incomplete legacy notes can be re-run from the site.
 - **Feedback proposals:** every reflection/rating produces reviewable Taste Mapper proposals. Profile, pattern, priority, contradiction, and map changes apply only after explicit approval.
 - **SRS:** ratings 7–10 automatically queue Notes Extractor and produce 3–5 editable drafts. Only approved drafts become review cards; drafts and active cards can be deleted.
 - **Knowledge map:** branches, edges, evidence, contradictions, coverage, health, and taste signals.
@@ -42,7 +42,7 @@ Preact client ──HTTP──> Hono Worker ──> D1 (canonical structured sta
                               │
                               ├──────> R2 (PDF/HTML/transcript artifacts)
                               │
-Hermes cron <── /agent/jobs ──┘
+Hermes explicit workflow <── /agent/jobs ──┘
     │
     ├── learning-notes-extractor
     ├── taste-mapper
@@ -76,9 +76,9 @@ Obsidian is not bidirectional storage. Do not make an archive copy overwrite D1.
 
 ### Durable jobs
 
-Hermes polls `GET /agent/jobs?status=pending`, claims a lease with a stable worker identity, runs the appropriate skill, then heartbeats, completes, or fails the job using that same identity. `GET /agent/jobs/health` exposes queue health. Job keys, leases, retries, and completion writes must remain idempotent.
+Hermes handles durable work only inside an explicit Learning Compass workflow. It claims the exact work created by that request, runs the specialist, then completes or fails it using the same stable identity. There is no automatic host poller, and internal job state is not exposed in the site UI. Job keys, leases, retries, and completion writes remain idempotent.
 
-The local polling script is `~/.hermes/scripts/taste-map-job.py`. Its User-Agent must remain:
+The retained manual runner is `~/.hermes/scripts/taste-map-job.py`. Its User-Agent must remain:
 
 ```text
 Mozilla/5.0 (compatible; HermesCron/1.0)
@@ -103,7 +103,7 @@ The HTML and PDF represent one source and must not count as two taste signals.
 
 - `taste-mapper` processes explicit feedback and proposes profile/map updates.
 - `taste-rec` recommends only when a new recommendation is explicitly requested.
-- Explicit one-item requests use a bounded fast path: one live context preflight, reuse selected runs, parallel research, one complete candidate batch, then immediate selection and activation.
+- Explicit one-item requests use the Personal Bayesian Cascade: submit 3 candidates first, expand only after Worker abstention up to 8, expose one server-scored pick, and wait for explicit Start and feedback. `/discovery` and `/ai/suggest` are compatibility/archive paths.
 - `taste-enhancer` audits system quality and cross-layer integrity.
 - Feedback jobs never call `taste-rec` automatically.
 - NotebookLM updates happen only when Hermes is handling explicit feedback on a recommendation; there is no automatic D1 mutation sync.
@@ -118,13 +118,13 @@ The HTML and PDF represent one source and must not count as two taste signals.
 The route registry is the executable source of truth:
 
 - Today: 1
-- Curate: 7
-- Map: 4
-- Learn: 7
-- Insights: 6
-- Settings: 5
+- Curate: 4
+- Map: 2
+- Learn: 4
+- Insights: 3
+- Settings: 3
 
-Total: 31. Queue, Discovery, Inbox, Collections, Resurfacing, Contradictions, and Archive live in Curate. Files, Reflections, extracted Notes, Cards, Review, Changes, and Journal live in Learn. Hermes operations and Memory Review live in Insights. Every destination must support a real user decision or workflow. Related cloud datasets may be combined when that makes the page more useful; infrastructure implementation details stay out of user-facing copy.
+Total: 17. Inbox, Queue, Collections, and Archive live in Curate. Atlas and Coverage live in Map. Files, source-centric Notes, Recall, and Activity live in Learn. Overview, Taste, and Hermes live in Insights. Every destination must support a real user decision or workflow. Related cloud datasets may be combined when that makes the page more useful; infrastructure implementation details stay out of user-facing copy.
 
 ## Data and Migrations
 
@@ -139,6 +139,8 @@ Apply in order:
 7. `migrations/0005_recommendation_notebook_url.sql`
 8. `migrations/0006_hermes_upgrade.sql`
 9. `migrations/0007_sync_notifications.sql`
+10. `migrations/0008_compass_cascade.sql`
+11. `migrations/0009_proposal_dedup.sql`
 
 New schema changes require a new numbered idempotent migration. Never hide schema mutation inside cron or request handlers.
 

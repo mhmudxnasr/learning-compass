@@ -70,7 +70,7 @@ Obsidian is an export target, not a second writable database. It must never over
 client/
   src/app.tsx                 application shell and destination surfaces
   src/api.ts                  browser API and offline helpers
-  src/destinations.ts         canonical registry of all 27 destinations
+  src/destinations.ts         canonical registry of all 17 destinations
   src/features/atlas/         lazy-loaded knowledge graph
 
 src/
@@ -148,7 +148,7 @@ Never commit `.dev.vars`, `.env`, private keys, or API tokens.
 | Command | Purpose |
 |---|---|
 | `npm run dev` | Run the Vite client only |
-| `npm run dev:worker` | Build the client and run the complete Worker locally |
+| `npm run dev:worker` | Apply the base schema and local migrations, build the client, and run the complete Worker locally |
 | `npm test` | Run unit tests and TypeScript checks |
 | `npm run build` | Create the production client bundle |
 | `npm run test:e2e` | Create a fresh temporary D1 database and test all destinations in Chromium |
@@ -232,7 +232,7 @@ A clean implementation would look like this:
 3. Add `GET/POST/PUT/DELETE /highlights` in `src/api/highlights.ts`.
 4. Mount the route in `src/index.ts`.
 5. Add client methods in `client/src/api.ts`.
-6. Place highlights inside the existing Learn → Notes or Reflections workflow unless they justify a distinct user decision.
+6. Place highlights inside the canonical Learn → Notes source record unless they justify a distinct user decision.
 7. Add unit tests for validation and API shape.
 8. Extend E2E to cover creating, editing, reloading, and deleting a highlight.
 9. Update `docs/API.md` and `CURRENT_STATE.md`.
@@ -279,7 +279,7 @@ Add offline mutation recovery, large-data tests, bilingual direction handling, r
 - Consumption happens at the original source.
 - Returning with reflection creates one linked structured reflection.
 - Every reflection produces confirmation-gated Taste Mapper proposals.
-- Ratings of 7–10 automatically create a separate extracted note and editable recall drafts; approval is required before Review.
+- Ratings of 7–10 automatically create a separate extracted note and editable recall drafts; approval is required before Recall.
 - Feedback processing does not request a new recommendation.
 - One Lite Visual source creates one linked HTML/PDF pair and counts as one taste signal.
 - D1 remains canonical; R2 stores large artifacts; Obsidian remains an archive export.

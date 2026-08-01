@@ -7,11 +7,11 @@ import { join } from 'node:path'
 
 const workspaces = {
   today: ['briefing'],
-  curate: ['queue','discovery','inbox','collections','resurfacing','contradictions','archive'],
-  map: ['atlas','branches','coverage','taste'],
-  learn: ['files','notebooklm','reflections','notes','cards','review','changes','journal'],
-  insights: ['overview','learning','taste','forecast','hermes','memory'],
-  settings: ['profile','appearance','learning','curation','data'],
+  curate: ['queue','inbox','collections','archive'],
+  map: ['atlas','coverage'],
+  learn: ['files','notes','recall','activity'],
+  insights: ['overview','taste','hermes'],
+  settings: ['profile','preferences','data'],
 }
 
 const wrangler = './node_modules/.bin/wrangler'
@@ -88,13 +88,13 @@ for (const [workspace, views] of Object.entries(workspaces)) {
   }
 }
 
-if (count !== 31) throw new Error(`expected 31 routes, checked ${count}`)
+if (count !== 17) throw new Error(`expected 17 routes, checked ${count}`)
 await page.goto(`${baseUrl}/#/curate/queue`, { waitUntil: 'networkidle' })
 const curateNav = await page.locator('.subnav button').allTextContents()
-if (curateNav[0]?.trim() !== 'Queue' || curateNav[2]?.trim() !== 'RSS Feed') throw new Error('Curate navigation order or RSS label is incorrect')
-await page.goto(`${baseUrl}/#/learn/files`, { waitUntil: 'networkidle' })
+if (curateNav[0]?.trim() !== 'Queue' || curateNav[1]?.trim() !== 'Inbox') throw new Error('Curate navigation order or Inbox label is incorrect')
+await page.goto(`${baseUrl}/#/learn/notes`, { waitUntil: 'networkidle' })
 const learnNav = await page.locator('.subnav button').allTextContents()
-if (learnNav[0]?.trim() !== 'Files' || learnNav.includes('Sessions')) throw new Error('Learn navigation order is incorrect')
+if (learnNav[0]?.trim() !== 'Files' || learnNav.includes('NotebookLM') || learnNav.includes('Reflections')) throw new Error('Learn navigation order is incorrect')
 const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards] = await Promise.all([
   fetch(`${baseUrl}/settings`).then((response) => response.json()),
   fetch(`${baseUrl}/manifest.json`).then((response) => response.json()),
@@ -120,16 +120,19 @@ const requestJson = async (path, options = {}) => {
   return body
 }
 const captured = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hermes-e2e', title: 'Hermes automation test' }) })
+const preRecord = await requestJson(`/capture/${captured.id}/record`)
+if (!preRecord.item) throw new Error('source record API did not return the captured source')
 await requestJson(`/capture/${captured.id}/triage`, { method: 'POST', body: JSON.stringify({ action: 'queue' }) })
-await page.goto(`${baseUrl}/#/curate/queue`, { waitUntil: 'networkidle' })
-await page.getByRole('button', { name: 'Record' }).first().click()
-const recordDrawer = page.locator('.record-drawer')
-await recordDrawer.getByRole('heading', { name: 'Learning status' }).waitFor()
-if (!await recordDrawer.isVisible()) throw new Error('source record drawer did not link the learning loop')
-await page.getByRole('button', { name: 'Close source record' }).click()
+await page.goto(`${baseUrl}/#/learn/notes?source=${captured.id}`, { waitUntil: 'networkidle' })
+if (!await page.locator('.source-record-page').isVisible()) throw new Error(`canonical source record did not open: ${await page.locator('.page-content').innerText()}`)
+if (!await page.getByRole('heading', { name: 'My Feedback' }).isVisible()) throw new Error('source record is missing feedback section')
 const started = await requestJson('/sessions/start', { method: 'POST', body: JSON.stringify({ recommendation_id: captured.id }) })
 const returned = await requestJson(`/sessions/${started.session_id}/return`, { method: 'POST', body: JSON.stringify({ reflection: 'The mechanism is useful and I will apply it.', rating: 7, complete: true, auto_enqueue: true }) })
 if (returned.status !== 'completed' || !returned.reflection_note_id || !returned.srs_eligible) throw new Error('rating 7 did not close the reflection workflow')
+const sourceRecord = await requestJson(`/capture/${captured.id}/record`)
+if (!sourceRecord.notes.some((note) => note.kind === 'reflection' && note.sections.some((section) => section.content.includes('The mechanism is useful')))) throw new Error('source record did not return the exact reflection')
+const initialJobs = (await requestJson('/agent/jobs?status=pending')).jobs.filter((job) => job.payload.recommendation_id === captured.id)
+if (initialJobs.filter((job) => job.job_type === 'process_feedback').length !== 1 || initialJobs.filter((job) => job.job_type === 'extract_notes').length !== 1) throw new Error('rating 7 did not queue exactly one feedback and extraction job')
 const claim = async (jobType) => {
   const job = (await requestJson('/agent/jobs?status=pending')).jobs.find((item) => item.job_type === jobType)
   if (!job) throw new Error(`missing pending ${jobType} job`)
@@ -140,8 +143,9 @@ await requestJson(`/agent/jobs/${feedbackJob.id}/complete`, { method: 'POST', bo
 const pendingProposal = (await requestJson('/feedback/proposals?status=pending')).proposals[0]
 if (!pendingProposal) throw new Error('feedback job did not persist a pending proposal')
 await requestJson(`/feedback/proposals/${pendingProposal.id}/approve`, { method: 'POST' })
-const applyJob = await claim('apply_feedback_proposal')
-await requestJson(`/agent/jobs/${applyJob.id}/complete`, { method: 'POST', body: JSON.stringify({ worker: 'e2e', applied: true }) })
+const appliedProposal = (await requestJson('/feedback/proposals')).proposals.find((proposal) => proposal.id === pendingProposal.id)
+if (appliedProposal?.status !== 'applied') throw new Error('Activity did not apply the approved proposal directly')
+if ((await requestJson('/agent/jobs?status=pending')).jobs.some((job) => job.job_type === 'apply_feedback_proposal')) throw new Error('proposal approval created a redundant application job')
 const extractJob = await claim('extract_notes')
 await requestJson(`/agent/jobs/${extractJob.id}/complete`, { method: 'POST', body: JSON.stringify({ worker: 'e2e',
   note: { id: 'e2e_source_note', recommendation_id: captured.id, title: 'Hermes source note', kind: 'guide', source_url: 'https://example.com/hermes-e2e', sections: [
@@ -162,6 +166,21 @@ const activeCards = (await requestJson('/learning/srs/cards')).cards
 if (!activeCards.length) throw new Error('approved draft did not become an active card')
 await requestJson(`/learning/srs/cards/${activeCards[0].id}`, { method: 'DELETE' })
 if ((await requestJson('/learning/srs/cards')).cards.some((card) => card.id === activeCards[0].id)) throw new Error('active card deletion failed')
+const lower = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/lower-rating', title: 'Lower rating test' }) })
+const lowerSession = await requestJson('/sessions/start', { method: 'POST', body: JSON.stringify({ recommendation_id: lower.id }) })
+await requestJson(`/sessions/${lowerSession.session_id}/return`, { method: 'POST', body: JSON.stringify({ reflection: 'Useful context but not worth extracting.', rating: 5, complete: true, auto_enqueue: true }) })
+const lowerJobs = (await requestJson('/agent/jobs?status=pending')).jobs.filter((job) => job.payload.recommendation_id === lower.id)
+if (lowerJobs.filter((job) => job.job_type === 'process_feedback').length !== 1 || lowerJobs.some((job) => job.job_type === 'extract_notes')) throw new Error('lower rating feedback/extraction gate is incorrect')
+const progress = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/in-progress-feedback', title: 'In-progress feedback test' }) })
+const progressSession = await requestJson('/sessions/start', { method: 'POST', body: JSON.stringify({ recommendation_id: progress.id }) })
+const progressReturn = await requestJson(`/sessions/${progressSession.session_id}/return`, { method: 'POST', body: JSON.stringify({ reflection: 'I am still reading, but this point matters.', complete: false }) })
+if (progressReturn.status !== 'returned') throw new Error('in-progress feedback incorrectly completed the source')
+const progressJobs = (await requestJson('/agent/jobs?status=pending')).jobs.filter((job) => job.payload.recommendation_id === progress.id)
+if (progressJobs.filter((job) => job.job_type === 'process_feedback').length !== 1 || progressJobs.some((job) => job.job_type === 'extract_notes')) throw new Error('in-progress feedback did not queue analysis cleanly')
+const atomicFeedback = await requestJson('/feedback/record', { method: 'POST', body: JSON.stringify({ source_url: 'https://example.com/atomic-feedback', title: 'Atomic feedback test', feedback: 'Preserve these exact words.', rating: 8 }) })
+if (atomicFeedback.preserved_feedback !== 'Preserve these exact words.' || atomicFeedback.completion_state !== 'completed' || !atomicFeedback.feedback_job || !atomicFeedback.extraction_job || !atomicFeedback.source_page.includes(atomicFeedback.source.id)) throw new Error('atomic feedback receipt is incomplete')
+const atomicRecord = await requestJson(`/capture/${atomicFeedback.source.id}/record`)
+if (!atomicRecord.notes.some((note) => note.kind === 'reflection' && note.sections.some((section) => section.content === 'Preserve these exact words.'))) throw new Error('atomic feedback did not preserve exact words')
 await page.setViewportSize({ width: 390, height: 844 })
 await page.goto(`${baseUrl}/#/today/briefing`, { waitUntil: 'networkidle' })
 if (!(await page.locator('.mobile-nav').isVisible())) throw new Error('mobile primary navigation is not visible')

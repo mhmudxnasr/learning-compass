@@ -6,6 +6,7 @@ const hasArabic = (value: string) => /[\u0600-\u06ff]/.test(value)
 const hasLatin = (value: string) => /[A-Za-z]/.test(value)
 const sqliteTime = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString().slice(0, 19).replace('T', ' ')
 const workerFrom = (c: any, body: any) => String(body?.worker || c.req.header('x-hermes-worker') || '').trim().slice(0, 120)
+const proposalFingerprint = (recommendationId: unknown, noteId: unknown, proposal: any) => [recommendationId || '', noteId || '', proposal.change_type || '', proposal.target_label || '', JSON.stringify(proposal.proposed)].join('|').toLowerCase().replace(/\s+/g, ' ').slice(0, 1800)
 
 app.get('/', async (c) => {
   const status = c.req.query('status') || 'pending'
@@ -144,7 +145,7 @@ app.post('/:id/complete', async (c) => {
     }
     for (const proposal of body.proposals || []) {
       if (!proposal.change_type || !proposal.target_label || proposal.proposed === undefined) return c.json({ error: 'proposal requires change_type, target_label, and proposed' }, 400)
-      statements.push(DB.prepare(`INSERT INTO feedback_proposals (id,recommendation_id,note_id,job_id,change_type,target_label,current_json,proposed_json,evidence,reasoning,confidence) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).bind(
+      statements.push(DB.prepare(`INSERT OR IGNORE INTO feedback_proposals (id,recommendation_id,note_id,job_id,change_type,target_label,current_json,proposed_json,evidence,reasoning,confidence,fingerprint) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
         proposal.id || `proposal_${crypto.randomUUID()}`,
         payload.recommendation_id || null,
         payload.note_id || null,
@@ -156,6 +157,7 @@ app.post('/:id/complete', async (c) => {
         String(proposal.evidence || '').slice(0, 4000) || null,
         String(proposal.reasoning || '').slice(0, 4000) || null,
         Math.max(0, Math.min(1, Number(proposal.confidence ?? 0.5))),
+        proposalFingerprint(payload.recommendation_id, payload.note_id, proposal),
       ))
     }
     if (job.job_type === 'apply_feedback_proposal' && payload.proposal_id) {

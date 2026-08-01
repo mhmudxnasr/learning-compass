@@ -12,10 +12,10 @@ Feed imports never bypass Inbox triage and never add directly to the five-item Q
 
 ## Use it in the site
 
-1. Open **Curate → RSS Feed** (Queue is the first Curate destination; RSS Feed is next).
+1. Open **Curate → Inbox** and use its **RSS & Atom feeds** section.
 2. Under **Web feeds**, paste an RSS or Atom URL and select **Subscribe**.
 3. Learning Compass reads the feed and imports up to 20 current entries.
-4. Select **Check now** whenever you want a manual refresh.
+4. Select **Check now** whenever you want a manual refresh. It imports at most five latest entries per feed.
 5. Use **Queue** on individual articles only after deciding they deserve one of the five active slots.
 6. Select **Remove** to unsubscribe. Existing captures stay in Learning Compass.
 
@@ -39,9 +39,9 @@ Base URL: `https://recommendations-worker.mhmudnasr30.workers.dev`
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | GET | `/capture/feeds` | List subscriptions and imported-entry counts |
-| POST | `/capture/feeds` | Subscribe to `{ "url": "https://…" }` and import current entries |
-| POST | `/capture/feeds/sync` | Refresh every enabled feed |
-| POST | `/capture/feeds/:id/sync` | Refresh one feed |
+| POST | `/capture/feeds` | Subscribe to `{ "url": "https://…", "limit": 1..20 }` and import current entries; limit is optional |
+| POST | `/capture/feeds/sync` | Refresh every enabled feed; optional `{ "limit": 1..20 }` caps each feed |
+| POST | `/capture/feeds/:id/sync` | Refresh one feed; optional `{ "limit": 1..20 }` |
 | GET | `/capture/feeds/:id/entries?limit=200&offset=0` | Read imported history for one feed |
 | DELETE | `/capture/feeds/:id` | Unsubscribe without deleting captures |
 | GET | `/capture` | Read feed articles still waiting in Inbox |
@@ -54,7 +54,7 @@ Writes require `x-api-token` when `API_TOKEN` is configured. Agent clients shoul
 - Only HTTP and HTTPS feed URLs are accepted.
 - Local, loopback, private-network, and unsafe redirect targets are rejected.
 - Each feed response is capped at 2 MB.
-- Each check imports at most 20 entries per feed.
+- Subscription and scheduled checks import at most 20 entries per feed. Inbox **Check now** imports at most five per feed.
 - Conditional `ETag` and `Last-Modified` headers reduce unnecessary downloads.
 - Feed errors are recorded on the subscription and do not stop other feeds.
 - Feed articles stay in Inbox until the user explicitly triages them.

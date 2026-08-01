@@ -28,6 +28,7 @@ import { syncAllFeeds } from './services/rss'
 import notificationsApi from './api/notifications'
 import { deliverScheduledReminders } from './api/notifications'
 import { createHermesEvaluatorProposals } from './services/hermes-intelligence'
+import compassApi from './api/compass'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -187,6 +188,7 @@ app.route('/agent/jobs', jobsApi)
 app.route('/dashboard', dashboardApi)
 app.route('/artifacts', artifactsApi)
 app.route('/discovery', discoveryApi)
+app.route('/compass', compassApi)
 app.route('/notebooklm', notebooklmApi)
 app.route('/notifications', notificationsApi)
 app.route('/', intelligenceApi)

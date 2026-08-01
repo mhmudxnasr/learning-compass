@@ -20,7 +20,7 @@ Collapsible desktop rail. Mobile bottom bar: Today, Curate, Learn, More. Context
 
 ## Content
 
-Today prioritizes due work, queue progress, neglected branches, gaps, map changes, and recent output. Queue owns start, resume, and finish. Discovery provides a dedicated destination for wave exploration, research-quality verification, decision receipts, and Hermes adaptive interview loops. Learn begins with Files and keeps personal Reflections visually distinct from extractor-created Notes. Changes uses a compact current/proposed diff with explicit Approve and Reject actions. Notes use Foundation → Case Studies → Exploitation → Defense plus My Notes & Reaction.
+Today prioritizes due work, queue progress, actionable coverage gaps, resurfacing, and recent output. Queue owns start, resume, and finish. Legacy Discovery is available inside Archive while new recommendations appear as one Compass Pick on Today. Learn begins with Files and uses one source-centric Notes record that presents personal feedback before extractor-created Notes. Activity shows only pending proposals with explicit Approve and Reject actions; reviewed changes belong to history. Internal jobs never appear in the user interface. Notes use Foundation → Case Studies → Exploitation → Defense plus My Notes & Reaction.
 
 ## Atlas
 

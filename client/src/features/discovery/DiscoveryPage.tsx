@@ -153,6 +153,17 @@ export default function DiscoveryPage() {
     )
   }
 
+  return (
+    <div class="page-content discovery-page">
+      <section class="discovery-card">
+        <span class="meta">LEGACY DISCOVERY ARCHIVE</span>
+        <h2 style={{ font: '600 24px/1.2 var(--font-reading)', margin: '4px 0 0' }}>Recommendation research now lives behind one Compass Pick.</h2>
+        <p>New recommendations start from Today. The system searches adaptively, stops when confidence is sufficient, and can abstain instead of filling the queue with candidates.</p>
+        <a class="primary-action" href="#/today/briefing">Open Today</a>
+      </section>
+    </div>
+  )
+
   const gate = state?.gate_state
   const activeRun = state?.active_run
   const candidate = state?.selected_candidate

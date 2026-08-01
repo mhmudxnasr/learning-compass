@@ -10,7 +10,7 @@ Manual captures, share targets, Telegram links, and subscribed RSS/Atom entries 
 
 ## Workspaces
 
-Today, Curate, Map, Learn, Insights, and Settings contain 28 purposeful destinations. Curate includes Queue, Discovery, Inbox, Collections, Resurfacing, Contradictions, and Archive. Discovery Engine V2 guides self-improving wave research, adaptive feedback interviews, and evidence-controlled branch evolution. Learn contains Files, personal Reflections, extracted Notes, Cards, Review, proposed Changes, and Journal. The desktop shell uses a collapsible rail; mobile keeps Today, Curate, Learn, and More in primary navigation.
+Today, Curate, Map, Learn, Insights, and Settings contain 17 purposeful destinations. Curate includes Inbox, Queue, Collections, and Archive. Map includes Atlas and Coverage. Learn includes Files, source-centric Notes, Recall, and Activity. Insights includes Overview, Taste, and Hermes. Legacy Discovery remains inside Archive; mobile keeps Today, Curate, Learn, and More in primary navigation.
 
 ## User context
 

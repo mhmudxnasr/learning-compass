@@ -48,10 +48,11 @@ async function fetchFeed(url: string, conditional?: { etag?: string | null; last
   return { unchanged: false as const, response, parsed: parseFeed(xml, currentUrl) }
 }
 
-async function importEntries(DB: D1Database, feed: FeedSource, parsed: ParsedFeed) {
+async function importEntries(DB: D1Database, feed: FeedSource, parsed: ParsedFeed, maxEntries = parsed.entries.length) {
   let imported = 0
   let duplicates = 0
-  for (const entry of parsed.entries) {
+  const entries = parsed.entries.slice(0, maxEntries)
+  for (const entry of entries) {
     const seen = await DB.prepare('SELECT 1 FROM feed_entries WHERE feed_id=? AND guid=?').bind(feed.id, entry.guid).first()
     if (seen) { duplicates++; continue }
     const capture = await createInboxCapture(DB, { source: entry.url, title: entry.title })
@@ -67,10 +68,10 @@ async function importEntries(DB: D1Database, feed: FeedSource, parsed: ParsedFee
     if (capture.duplicate) duplicates++
     else imported++
   }
-  return { imported, duplicates, found: parsed.entries.length }
+  return { imported, duplicates, found: entries.length }
 }
 
-export async function addFeed(DB: D1Database, rawUrl: string) {
+export async function addFeed(DB: D1Database, rawUrl: string, maxEntries?: number) {
   const feedUrl = validateFeedUrl(rawUrl.trim())
   const existing = await DB.prepare('SELECT id FROM feed_sources WHERE feed_url=?').bind(feedUrl).first<{ id: string }>()
   if (existing) throw new Error('This feed is already subscribed')
@@ -87,18 +88,18 @@ export async function addFeed(DB: D1Database, rawUrl: string) {
     fetched.response.headers.get('last-modified'),
   ).run()
   const feed = { id, feed_url: feedUrl, title: fetched.parsed.title, site_url: fetched.parsed.siteUrl, etag: null, last_modified: null }
-  const result = await importEntries(DB, feed, fetched.parsed)
+  const result = await importEntries(DB, feed, fetched.parsed, maxEntries)
   return { feed: { ...feed, last_checked_at: new Date().toISOString(), last_error: null }, ...result }
 }
 
-export async function syncFeed(DB: D1Database, feed: FeedSource) {
+export async function syncFeed(DB: D1Database, feed: FeedSource, maxEntries?: number) {
   try {
     const fetched = await fetchFeed(feed.feed_url, { etag: feed.etag, lastModified: feed.last_modified })
     if (fetched.unchanged) {
       await DB.prepare(`UPDATE feed_sources SET last_checked_at=datetime('now'),last_success_at=datetime('now'),last_error=NULL,updated_at=datetime('now') WHERE id=?`).bind(feed.id).run()
       return { feedId: feed.id, imported: 0, duplicates: 0, found: 0, unchanged: true }
     }
-    const result = await importEntries(DB, feed, fetched.parsed)
+    const result = await importEntries(DB, feed, fetched.parsed, maxEntries)
     await DB.prepare(`UPDATE feed_sources SET title=?,site_url=?,etag=?,last_modified=?,last_checked_at=datetime('now'),last_success_at=datetime('now'),last_error=NULL,updated_at=datetime('now') WHERE id=?`).bind(
       fetched.parsed.title,
       fetched.parsed.siteUrl,
@@ -114,11 +115,11 @@ export async function syncFeed(DB: D1Database, feed: FeedSource) {
   }
 }
 
-export async function syncAllFeeds(DB: D1Database) {
+export async function syncAllFeeds(DB: D1Database, maxEntriesPerFeed?: number) {
   const rows = await DB.prepare(`SELECT id,feed_url,title,site_url,etag,last_modified FROM feed_sources WHERE enabled=1 ORDER BY COALESCE(last_checked_at,'') LIMIT 50`).all<FeedSource>()
   const results = []
   for (const feed of rows.results || []) {
-    try { results.push(await syncFeed(DB, feed)) }
+    try { results.push(await syncFeed(DB, feed, maxEntriesPerFeed)) }
     catch (error) { results.push({ feedId: feed.id, error: error instanceof Error ? error.message : 'Feed check failed' }) }
   }
   return results

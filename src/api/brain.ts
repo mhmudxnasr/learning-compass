@@ -59,11 +59,11 @@ app.get('/profile', async (c) => {
         DB.prepare("SELECT * FROM patterns ORDER BY CASE strength WHEN 'locked' THEN 0 WHEN 'confirmed' THEN 1 ELSE 2 END, confirmed_date DESC").all(),
         DB.prepare('SELECT * FROM update_log ORDER BY id DESC LIMIT ?').bind(recentLimit).all(),
         DB.prepare('SELECT id, title, feed_url, site_url, last_fetched_at, is_active FROM feed_sources ORDER BY is_active DESC, title ASC').all().catch(() => ({ results: [] })),
-        DB.prepare("SELECT COUNT(*) as count FROM srs_cards WHERE status = 'active'").first<{ count: number }>().catch(() => ({ count: 0 })),
+        DB.prepare("SELECT COUNT(*) as count FROM srs_cards").first<{ count: number }>().catch(() => ({ count: 0 })),
         DB.prepare("SELECT COUNT(*) as count FROM srs_drafts WHERE status = 'draft'").first<{ count: number }>().catch(() => ({ count: 0 })),
         DB.prepare("SELECT COUNT(*) as total_sessions, SUM(CASE WHEN reflection IS NOT NULL AND reflection != '' THEN 1 ELSE 0 END) as reflections_count FROM learning_sessions").first<{ total_sessions: number; reflections_count: number }>().catch(() => ({ total_sessions: 0, reflections_count: 0 })),
         DB.prepare("SELECT COUNT(*) as count FROM notes").first<{ count: number }>().catch(() => ({ count: 0 })),
-        DB.prepare("SELECT creator, COUNT(*) as count FROM recommendations WHERE creator IS NOT NULL AND creator != '' GROUP BY creator ORDER BY count DESC LIMIT 10").all().catch(() => ({ results: [] })),
+        DB.prepare("SELECT creator, COUNT(*) as count FROM recommendations WHERE creator IS NOT NULL AND creator != '' AND status='consumed' GROUP BY creator ORDER BY count DESC LIMIT 10").all().catch(() => ({ results: [] })),
         DB.prepare("SELECT COUNT(*) as count FROM artifacts").first<{ count: number }>().catch(() => ({ count: 0 })),
         DB.prepare("SELECT COUNT(*) as count FROM feedback_proposals WHERE status = 'pending'").first<{ count: number }>().catch(() => ({ count: 0 })),
       ])
@@ -72,7 +72,7 @@ app.get('/profile', async (c) => {
         priorities: priorities.results || [],
         mastered: mastered.results || [],
         blacklist: blacklist.results || [],
-        patterns: patterns.results || [],
+        patterns: (patterns.results || []).filter((item: any, index: number, rows: any[]) => rows.findIndex((candidate: any) => String(candidate.description || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === String(item.description || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()) === index),
         recent: recent.results || [],
         feed_sources: feedSources.results || [],
         srs_stats: {

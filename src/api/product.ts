@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { Bindings, normalizeRating, safeError } from '../lib'
 import { defaultSettings, loadSettings } from '../services/settings'
+import { createInboxCapture } from '../services/capture'
 import { activateWaitingRun } from './discovery'
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -27,6 +28,61 @@ app.post('/sessions/start', async (c) => {
   ])
   return c.json({ ok: true, session_id: sessionId }, 201)
 })
+app.post('/feedback/record', async (c) => {
+  type FeedbackBody = { recommendation_id?: string; source_url?: string; title?: string; feedback?: string; rating?: number | string; complete?: boolean }
+  const body: FeedbackBody = await c.req.json<FeedbackBody>().catch(() => ({} as FeedbackBody))
+  const feedback = String(body.feedback || '').trim().slice(0, 10000)
+  if (!feedback) return c.json({ error: 'feedback required' }, 400)
+  const rating = normalizeRating(body.rating)
+  const complete = body.complete === true || rating.score !== null
+  let recommendation = body.recommendation_id
+    ? await c.env.DB.prepare(`SELECT * FROM recommendations WHERE id=?`).bind(body.recommendation_id).first<any>()
+    : null
+  if (!recommendation && body.source_url) recommendation = await c.env.DB.prepare(`SELECT * FROM recommendations WHERE video_url=? ORDER BY updated_at DESC LIMIT 1`).bind(body.source_url.trim()).first<any>()
+  if (!recommendation && body.title) recommendation = await c.env.DB.prepare(`SELECT * FROM recommendations WHERE video_title=? ORDER BY updated_at DESC LIMIT 1`).bind(body.title.trim()).first<any>()
+  if (!recommendation) {
+    const source = body.source_url?.trim() || body.title?.trim()
+    if (!source) return c.json({ error: 'recommendation_id, source_url, or exact title required' }, 400)
+    const captured = await createInboxCapture(c.env.DB, { source, title: body.title })
+    recommendation = await c.env.DB.prepare(`SELECT * FROM recommendations WHERE id=?`).bind(captured.id).first<any>()
+  }
+  if (!recommendation) return c.json({ error: 'source could not be resolved' }, 404)
+
+  let session = await c.env.DB.prepare(`SELECT * FROM learning_sessions WHERE recommendation_id=? ORDER BY CASE WHEN status IN ('active','returned') THEN 0 ELSE 1 END, started_at DESC LIMIT 1`).bind(recommendation.id).first<any>()
+  const sessionId = session?.id || id('session')
+  const reflectionNote = await c.env.DB.prepare(`SELECT id,revision FROM notes WHERE recommendation_id=? AND kind='reflection' ORDER BY updated_at DESC LIMIT 1`).bind(recommendation.id).first<{ id: string; revision: number }>()
+  const reflectionNoteId = reflectionNote?.id || `reflection_${recommendation.id}`
+  const revision = Number(reflectionNote?.revision || 0) + 1
+  const feedbackJobId = id('job')
+  const extractionJobId = complete && Number(rating.score || 0) >= 7 ? id('job') : null
+  const statements: D1PreparedStatement[] = []
+  if (!session) statements.push(c.env.DB.prepare(`INSERT INTO learning_sessions (id,recommendation_id,intent,status,returned_at,completed_at,reflection) VALUES (?,?,? ,?,datetime('now'),CASE WHEN ? THEN datetime('now') ELSE NULL END,?)`).bind(sessionId, recommendation.id, 'Feedback recorded through Hermes', complete ? 'completed' : 'returned', complete ? 1 : 0, feedback))
+  else statements.push(c.env.DB.prepare(`UPDATE learning_sessions SET reflection=?,returned_at=datetime('now'),status=?,completed_at=CASE WHEN ? THEN COALESCE(completed_at,datetime('now')) ELSE completed_at END WHERE id=?`).bind(feedback, complete ? 'completed' : 'returned', complete ? 1 : 0, sessionId))
+  if (!reflectionNote) {
+    statements.push(c.env.DB.prepare(`INSERT INTO notes (id,recommendation_id,title,kind,source_url,status,revision) VALUES (?,?,?,?,?,'draft',1)`).bind(reflectionNoteId, recommendation.id, recommendation.video_title || body.title || 'Learning reflection', 'reflection', recommendation.video_url || body.source_url || null))
+    for (const [position, [sectionKey, label, content]] of [['reaction', 'Reaction', feedback], ['foundation', 'Foundation', ''], ['case_studies', 'Case Studies', ''], ['exploitation', 'Exploitation', ''], ['defense', 'Defense', '']].entries()) statements.push(c.env.DB.prepare(`INSERT INTO note_sections (id,note_id,section_key,label,content,direction,position) VALUES (?,?,?,?,?,'auto',?)`).bind(`${reflectionNoteId}_${sectionKey}`, reflectionNoteId, sectionKey, label, content, position))
+  } else {
+    statements.push(c.env.DB.prepare(`UPDATE notes SET revision=?,updated_at=datetime('now') WHERE id=?`).bind(revision, reflectionNoteId))
+    statements.push(c.env.DB.prepare(`UPDATE note_sections SET content=?,updated_at=datetime('now') WHERE note_id=? AND section_key='reaction'`).bind(feedback, reflectionNoteId))
+  }
+  statements.push(c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,progress_percent,last_opened_at,updated_at) VALUES (?,?,?,datetime('now'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET learning_state=excluded.learning_state,progress_percent=excluded.progress_percent,last_opened_at=datetime('now'),updated_at=datetime('now')`).bind(recommendation.id, complete ? 'completed' : 'in_progress', complete ? 100 : 50))
+  statements.push(c.env.DB.prepare(`UPDATE recommendations SET status=CASE WHEN ? THEN 'consumed' ELSE status END,consumed_date=CASE WHEN ? THEN COALESCE(consumed_date,date('now')) ELSE consumed_date END,user_rating=COALESCE(?,user_rating),user_score=COALESCE(?,user_score),user_review=?,updated_at=datetime('now') WHERE id=?`).bind(complete ? 1 : 0, complete ? 1 : 0, rating.rating, rating.score, feedback, recommendation.id))
+  if (complete) statements.push(c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,actual_score,outcome_status,consumed_at,evaluated_at) VALUES (?,?,?,?,?,'consumed',date('now'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET actual_score=COALESCE(excluded.actual_score,recommendation_outcomes.actual_score),outcome_status='consumed',consumed_at=COALESCE(recommendation_outcomes.consumed_at,excluded.consumed_at),evaluated_at=datetime('now')`).bind(`outcome_${recommendation.id}`, recommendation.id, recommendation.creator || null, recommendation.content_type || null, rating.score))
+  statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'process_feedback',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(feedbackJobId, JSON.stringify({ recommendation_id: recommendation.id, session_id: sessionId, note_id: reflectionNoteId, reflection: feedback, rating: rating.score, review_required: true }), `feedback:${reflectionNoteId}:${revision}`))
+  if (extractionJobId) statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'extract_notes',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(extractionJobId, JSON.stringify({ recommendation_id: recommendation.id, session_id: sessionId, reflection_note_id: reflectionNoteId, reflection: feedback, rating: rating.score, source_url: recommendation.video_url || body.source_url || null }), `extract:${reflectionNoteId}:${revision}`))
+  await c.env.DB.batch(statements)
+  return c.json({
+    ok: true,
+    source: { id: recommendation.id, title: recommendation.video_title, url: recommendation.video_url },
+    preserved_feedback: feedback,
+    rating: rating.score,
+    completion_state: complete ? 'completed' : 'in_progress',
+    feedback_job: feedbackJobId,
+    extraction_job: extractionJobId,
+    extraction_skip_reason: extractionJobId ? null : complete ? 'rating_below_7' : 'source_not_completed',
+    source_page: `/#/learn/notes?source=${encodeURIComponent(recommendation.id)}`,
+  })
+})
 app.post('/sessions/:id/return', async (c) => {
   const body: { reflection?: string; complete?: boolean; rating?: number | string; auto_enqueue?: boolean } = await c.req.json<{ reflection?: string; complete?: boolean; rating?: number | string; auto_enqueue?: boolean }>().catch(() => ({}))
   const session = await c.env.DB.prepare(`SELECT s.*, r.video_title, r.video_url, r.creator, r.content_type FROM learning_sessions s LEFT JOIN recommendations r ON r.id=s.recommendation_id WHERE s.id=?`).bind(c.req.param('id')).first<any>()
@@ -41,7 +97,7 @@ app.post('/sessions/:id/return', async (c) => {
     c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,progress_percent,last_opened_at,updated_at) VALUES (?,?,?,datetime('now'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET learning_state=excluded.learning_state,progress_percent=excluded.progress_percent,last_opened_at=datetime('now'),updated_at=datetime('now')`).bind(session.recommendation_id, body.complete ? 'completed' : 'in_progress', body.complete ? 100 : 50),
   ]
   if (reflection && session.recommendation_id) {
-    const existingNote = await c.env.DB.prepare(`SELECT id FROM notes WHERE recommendation_id=? AND kind='reflection' ORDER BY updated_at DESC LIMIT 1`).bind(session.recommendation_id).first<{ id: string }>()
+    const existingNote = await c.env.DB.prepare(`SELECT id,revision FROM notes WHERE recommendation_id=? AND kind='reflection' ORDER BY updated_at DESC LIMIT 1`).bind(session.recommendation_id).first<{ id: string; revision: number }>()
     reflectionNoteId = existingNote?.id || `reflection_${session.recommendation_id}`
     if (!existingNote) {
       reflectionNoteCreated = true
@@ -56,6 +112,9 @@ app.post('/sessions/:id/return', async (c) => {
       for (const [position, [sectionKey, label, content]] of sections.entries()) {
         statements.push(c.env.DB.prepare(`INSERT OR IGNORE INTO note_sections (id,note_id,section_key,label,content,direction,position) VALUES (?,?,?,?,?,?,?)`).bind(`${reflectionNoteId}_${sectionKey}`, reflectionNoteId, sectionKey, label, content, 'auto', position))
       }
+    } else {
+      statements.push(c.env.DB.prepare(`UPDATE note_sections SET content=?,updated_at=datetime('now') WHERE note_id=? AND section_key='reaction'`).bind(reflection, reflectionNoteId))
+      statements.push(c.env.DB.prepare(`UPDATE notes SET revision=revision+1,updated_at=datetime('now') WHERE id=?`).bind(reflectionNoteId))
     }
   }
   if (body.complete) statements.push(c.env.DB.prepare(`UPDATE recommendations SET status='consumed',consumed_date=date('now'),user_rating=?,user_score=?,user_review=?,updated_at=datetime('now') WHERE id=?`).bind(rating.rating, rating.score, reflection || null, session.recommendation_id))
@@ -79,6 +138,9 @@ app.post('/sessions/:id/return', async (c) => {
         }), `session-extract:${session.id}`))
       }
     }
+  } else if (reflection && reflectionNoteId) {
+    const revision = Number((await c.env.DB.prepare(`SELECT revision FROM notes WHERE id=?`).bind(reflectionNoteId).first<{ revision: number }>())?.revision || 0) + (reflectionNoteCreated ? 0 : 1)
+    statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'process_feedback',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(id('job'), JSON.stringify({ recommendation_id: session.recommendation_id, session_id: session.id, note_id: reflectionNoteId, reflection, rating: rating.score, review_required: true, source: 'in_progress_reflection' }), `feedback:${reflectionNoteId}:${Math.max(1, revision)}`))
   }
   await c.env.DB.batch(statements)
   if (body.complete) {
@@ -213,8 +275,8 @@ app.delete('/srs/drafts/:id', async (c) => {
 app.get('/feedback/proposals', async (c) => {
   const status = c.req.query('status')
   const rows = status
-    ? await c.env.DB.prepare(`SELECT * FROM feedback_proposals WHERE status=? ORDER BY created_at DESC LIMIT 200`).bind(status).all<any>()
-    : await c.env.DB.prepare(`SELECT * FROM feedback_proposals ORDER BY created_at DESC LIMIT 200`).all<any>()
+    ? await c.env.DB.prepare(`SELECT fp.*,r.video_title FROM feedback_proposals fp LEFT JOIN recommendations r ON r.id=fp.recommendation_id WHERE fp.status=? ORDER BY fp.created_at DESC LIMIT 200`).bind(status).all<any>()
+    : await c.env.DB.prepare(`SELECT fp.*,r.video_title FROM feedback_proposals fp LEFT JOIN recommendations r ON r.id=fp.recommendation_id ORDER BY fp.created_at DESC LIMIT 200`).all<any>()
   return c.json({
     proposals: (rows.results || []).map((row) => ({
       ...row,
@@ -228,22 +290,12 @@ app.get('/feedback/proposals', async (c) => {
 app.post('/feedback/proposals/:id/approve', async (c) => {
   const proposal = await c.env.DB.prepare(`SELECT * FROM feedback_proposals WHERE id=? AND status='pending'`).bind(c.req.param('id')).first<any>()
   if (!proposal) return c.json({ error: 'pending proposal not found' }, 404)
-  const jobId = id('job')
   let proposed: any = null
   try { proposed = JSON.parse(proposal.proposed_json) } catch { proposed = proposal.proposed_json }
   const proposedText = typeof proposed === 'string' ? proposed : JSON.stringify(proposed)
 
   const statements: D1PreparedStatement[] = [
-    c.env.DB.prepare(`UPDATE feedback_proposals SET status='approved',reviewed_at=datetime('now'),applied_at=datetime('now') WHERE id=? AND status='pending'`).bind(proposal.id),
-    c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'apply_feedback_proposal',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(jobId, JSON.stringify({
-      proposal_id: proposal.id,
-      change_type: proposal.change_type,
-      target_label: proposal.target_label,
-      current: proposal.current_json ? JSON.parse(proposal.current_json) : null,
-      proposed,
-      evidence: proposal.evidence,
-      reasoning: proposal.reasoning,
-    }), `apply-proposal:${proposal.id}`),
+    c.env.DB.prepare(`UPDATE feedback_proposals SET status='applied',reviewed_at=datetime('now'),applied_at=datetime('now') WHERE id=? AND status='pending'`).bind(proposal.id),
   ]
 
   if (proposal.change_type === 'profile_signal' || proposal.change_type === 'profile_update') {
@@ -261,7 +313,7 @@ app.post('/feedback/proposals/:id/approve', async (c) => {
   statements.push(c.env.DB.prepare(`INSERT INTO update_log (kind, summary, details_json) VALUES ('profile', ?, ?)`).bind(`Approved proposal: ${proposal.target_label}`, JSON.stringify({ proposal_id: proposal.id, change_type: proposal.change_type, proposed })))
 
   await c.env.DB.batch(statements)
-  return c.json({ ok: true, status: 'approved', applied_immediately: true, job_id: jobId })
+  return c.json({ ok: true, status: 'applied', applied_immediately: true })
 })
 app.post('/feedback/proposals/:id/reject', async (c) => {
   const result = await c.env.DB.prepare(`UPDATE feedback_proposals SET status='rejected',reviewed_at=datetime('now') WHERE id=? AND status='pending'`).bind(c.req.param('id')).run()

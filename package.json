@@ -12,7 +12,7 @@
     "verify:migrations": "node scripts/rehearse-migrations.mjs",
     "test": "npm run test:unit && npm run typecheck",
     "dev": "vite --host 127.0.0.1",
-    "dev:worker": "npm run build && wrangler dev --config wrangler.toml",
+    "dev:worker": "wrangler d1 execute recommendations-db --local --config wrangler.toml --file schema.sql && wrangler d1 migrations apply recommendations-db --local --config wrangler.toml && npm run build && wrangler dev --config wrangler.toml",
     "deploy": "npm run build && wrangler deploy --config wrangler.toml"
   },
   "dependencies": {

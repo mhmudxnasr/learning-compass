@@ -41,8 +41,9 @@ export async function createHermesEvaluatorProposals(db: DBLike, now = new Date(
     const id = `eval_${report.period.since.slice(0, 10)}_${candidate.label.replace(/[^a-z0-9]+/gi, '_').slice(0, 100)}`
     const existing = await first(db, `SELECT id FROM feedback_proposals WHERE id=?`, id)
     if (existing) continue
-    await db.prepare(`INSERT INTO feedback_proposals (id,change_type,target_label,current_json,proposed_json,evidence,reasoning,confidence,status) VALUES (?,?,?,?,?,?,?,?, 'pending')`)
-      .bind(id, 'evaluator_signal', candidate.label, '{}', JSON.stringify(candidate.proposed), JSON.stringify(report), candidate.reason, 0.65).run()
+    const fingerprint = ['', '', 'evaluator_signal', candidate.label, JSON.stringify(candidate.proposed)].join('|').toLowerCase().replace(/\s+/g, ' ').slice(0, 1800)
+    await db.prepare(`INSERT OR IGNORE INTO feedback_proposals (id,change_type,target_label,current_json,proposed_json,evidence,reasoning,confidence,status,fingerprint) VALUES (?,?,?,?,?,?,?,?, 'pending',?)`)
+      .bind(id, 'evaluator_signal', candidate.label, '{}', JSON.stringify(candidate.proposed), JSON.stringify(report), candidate.reason, 0.65, fingerprint).run()
     proposals.push({ id, target_label: candidate.label, reasoning: candidate.reason })
   }
   if (proposals.length) await db.prepare(`INSERT INTO update_log (kind,summary,details_json) VALUES ('system',?,?)`).bind(`Hermes evaluator created ${proposals.length} review proposals`, JSON.stringify({ period: report.period, proposals })).run()

@@ -18,42 +18,28 @@ export const destinations: Destination[] = [
   ...define('today', [['briefing', 'Briefing', 'Decide what deserves attention today.', 'briefing', '/dashboard/briefing']]),
   ...define('curate', [
     ['queue', 'Queue', 'Choose the five items worth doing next.', 'board', '/capture/queue'],
-    ['discovery', 'Discovery', 'Explore unexpected frontiers and manage discovery interviews.', 'board', '/discovery/state'],
-    ['inbox', 'RSS Feed', 'Subscribe, refresh, and triage RSS/Atom articles before the queue.', 'list', '/capture'],
+    ['inbox', 'Inbox', 'Capture, subscribe, refresh, and triage sources before the queue.', 'list', '/capture'],
     ['collections', 'Collections', 'Build active thematic learning groups.', 'board', '/collections?scope=curate'],
-    ['resurfacing', 'Resurfacing', 'Revisit high-value material at useful intervals.', 'list', '/brain/resurfacing'],
-    ['contradictions', 'Contradictions', 'Resolve competing claims instead of hiding them.', 'list', '/brain/contradictions'],
     ['archive', 'Archive', 'Find completed, excluded, and saved sources while RSS stays pinned above.', 'list', '/recommendations/list?limit=200&source=manual'],
   ]),
   ...define('map', [
     ['atlas', 'Atlas', 'Explore the living topology of your knowledge.', 'graph', '/knowledge/graph'],
-    ['branches', 'Branches', 'Browse the hierarchy and health of every knowledge branch.', 'list', '/brain/tree?limit=500'],
-    ['coverage', 'Coverage', 'Find healthy, growing, neglected, and uncovered areas.', 'analysis', '/learning/health'],
-    ['taste', 'Taste', 'See the topics and creators shaping your learning choices.', 'analysis', '/taste/dna'],
+    ['coverage', 'Coverage', 'Find healthy, growing, neglected, and competing areas.', 'analysis', '/learning/health'],
   ]),
   ...define('learn', [
     ['files', 'Files', 'Open PDFs, web companions, and uploaded documents.', 'library', '/artifacts'],
-    ['notebooklm', 'NotebookLM', 'Grounded Master Corpus, studio artifact generator, and zero-hallucination Q&A.', 'library', '/notebooklm/status'],
-    ['reflections', 'Reflections', 'Preserve your own reactions, ratings, and handwritten notes.', 'study', '/notes?kind=reflection'],
-    ['notes', 'Notes', 'Read and edit structured source notes created by Notes Extractor.', 'library', '/notes'],
-    ['cards', 'Cards', 'Edit drafts, manage approved cards, or delete either.', 'study', '/srs/drafts'],
-    ['review', 'Review', 'Complete today’s active-recall session.', 'study', '/learning/srs/due'],
-    ['changes', 'Changes', 'Approve or reject every Hermes profile and map proposal.', 'list', '/feedback/proposals'],
-    ['journal', 'Journal', 'Review the chronological record of what changed.', 'list', '/learning/update-log?limit=100'],
+    ['notes', 'Notes', 'Open one source record with your feedback and extracted learning notes.', 'library', '/notes'],
+    ['recall', 'Recall', 'Review due cards and approve or edit future recall prompts.', 'study', '/learning/srs/due'],
+    ['activity', 'Activity', 'Review Hermes proposals and the history of what changed.', 'list', '/feedback/proposals'],
   ]),
   ...define('insights', [
-    ['overview', 'Overview', 'See consumption, ratings, creators, and recent activity.', 'analysis', '/stats'],
-    ['learning', 'Learning', 'Review branch health, gaps, and learning activity.', 'analysis', '/learning/health'],
+    ['overview', 'Overview', 'See consumption, ratings, review load, and recent activity.', 'analysis', '/stats'],
     ['taste', 'Taste', 'Understand preference changes and creator performance.', 'analysis', '/taste/dna'],
-    ['forecast', 'Forecast', 'Estimate upcoming review load and mastery progress.', 'analysis', '/analytics/forecast'],
-    ['hermes', 'Hermes', 'Inspect agent reliability, recommendation quality, memory, and review gates.', 'analysis', '/analytics/hermes'],
-    ['memory', 'Memory Review', 'Search Hermes memories, inspect evidence, and approve their use.', 'analysis', '/agent/memory'],
+    ['hermes', 'Hermes', 'Review recommendation quality, learned memory, and approval gates.', 'analysis', '/analytics/hermes'],
   ]),
   ...define('settings', [
     ['profile', 'Profile', 'Review priorities, exclusions, and learning patterns.', 'settings', '/brain/profile'],
-    ['appearance', 'Appearance', 'Choose theme, density, and dashboard behavior.', 'settings', '/settings'],
-    ['learning', 'Learning', 'Configure goals, review defaults, and queue discipline.', 'settings', '/settings'],
-    ['curation', 'Curation', 'Control background enrichment and recommendation rules.', 'settings', '/settings'],
+    ['preferences', 'Preferences', 'Configure appearance, learning defaults, and curation behavior.', 'settings', '/settings'],
     ['data', 'Data', 'Export your library and check synchronization.', 'settings', '/settings'],
   ]),
 ]
@@ -61,11 +47,31 @@ export const destinations: Destination[] = [
 export const mobilePrimary = ['today', 'curate', 'learn', 'more'] as const
 
 export function destinationForPath(path: string): Destination | null {
-  const clean = path.replace(/^#?\/?/, '').replace(/\/$/, '')
+  const clean = path.replace(/^#?\/?/, '').replace(/\/$/, '').split('?')[0]
   if (clean === 'vault/files') return destinations.find((item) => item.key === 'learn.files') || null
   if (clean === 'vault/notes') return destinations.find((item) => item.key === 'learn.notes') || null
   if (clean === 'learn/sessions') return destinations.find((item) => item.key === 'curate.queue') || null
-  const [workspace, slug] = clean.split('/')
+  const aliases: Record<string, string> = {
+    'curate/discovery': 'curate/archive',
+    'curate/resurfacing': 'today/briefing',
+    'curate/contradictions': 'map/coverage',
+    'map/branches': 'map/atlas',
+    'map/taste': 'insights/taste',
+    'learn/notebooklm': 'learn/files',
+    'learn/reflections': 'learn/notes',
+    'learn/cards': 'learn/recall',
+    'learn/review': 'learn/recall',
+    'learn/changes': 'learn/activity',
+    'learn/journal': 'learn/activity',
+    'insights/learning': 'map/coverage',
+    'insights/forecast': 'insights/overview',
+    'insights/memory': 'insights/hermes',
+    'settings/appearance': 'settings/preferences',
+    'settings/learning': 'settings/preferences',
+    'settings/curation': 'settings/preferences',
+  }
+  const canonical = aliases[clean] || clean
+  const [workspace, slug] = canonical.split('/')
   return destinations.find((item) => item.workspace === workspace && item.slug === slug) || null
 }
 

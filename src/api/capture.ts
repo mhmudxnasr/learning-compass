@@ -9,6 +9,12 @@ import { activateWaitingRun } from './discovery'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
+const feedImportLimit = (value: unknown) => {
+  if (value === undefined) return undefined
+  const limit = Number(value)
+  return Number.isFinite(limit) ? Math.min(Math.max(Math.floor(limit), 1), 20) : null
+}
+
 app.post('/', async (c) => {
   const { DB } = c.env
   try {
@@ -61,9 +67,11 @@ app.get('/feeds/:id/entries', async (c) => {
 
 app.post('/feeds', async (c) => {
   try {
-    const body = await c.req.json<{ url?: string }>()
+    const body = await c.req.json<{ url?: string; limit?: number }>()
     if (!body.url?.trim()) return c.json({ error: 'feed URL required' }, 400)
-    return c.json({ ok: true, ...(await addFeed(c.env.DB, body.url)) }, 201)
+    const limit = feedImportLimit(body.limit)
+    if (limit === null) return c.json({ error: 'limit must be a number from 1 to 20' }, 400)
+    return c.json({ ok: true, ...(await addFeed(c.env.DB, body.url, limit)) }, 201)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not subscribe to feed'
     return c.json({ error: message }, /already subscribed/.test(message) ? 409 : 400)
@@ -71,7 +79,10 @@ app.post('/feeds', async (c) => {
 })
 
 app.post('/feeds/sync', async (c) => {
-  const results = await syncAllFeeds(c.env.DB)
+  const body: { limit?: number } = await c.req.json<{ limit?: number }>().catch(() => ({}))
+  const limit = feedImportLimit(body.limit)
+  if (limit === null) return c.json({ error: 'limit must be a number from 1 to 20' }, 400)
+  const results = await syncAllFeeds(c.env.DB, limit)
   return c.json({
     ok: true,
     imported: results.reduce((sum, item: any) => sum + (item.imported || 0), 0),
@@ -83,7 +94,10 @@ app.post('/feeds/sync', async (c) => {
 app.post('/feeds/:id/sync', async (c) => {
   const feed = await c.env.DB.prepare(`SELECT id,feed_url,title,site_url,etag,last_modified FROM feed_sources WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!feed) return c.json({ error: 'feed not found' }, 404)
-  try { return c.json({ ok: true, ...(await syncFeed(c.env.DB, feed)) }) }
+  const body: { limit?: number } = await c.req.json<{ limit?: number }>().catch(() => ({}))
+  const limit = feedImportLimit(body.limit)
+  if (limit === null) return c.json({ error: 'limit must be a number from 1 to 20' }, 400)
+  try { return c.json({ ok: true, ...(await syncFeed(c.env.DB, feed, limit)) }) }
   catch (error) { return c.json({ error: error instanceof Error ? error.message : 'Feed check failed' }, 400) }
 })
 
@@ -149,19 +163,25 @@ app.get('/:id/record', async (c) => {
   const item = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.tags_json,m.source_metadata_json,m.progress_percent,m.estimated_minutes
     FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?`).bind(recommendationId).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
-  const [sessions, notes, artifacts, drafts, cards, outcome, memories] = await Promise.all([
+  const [sessions, notes, sections, artifacts, drafts, cards, outcome, memories, proposals, jobs] = await Promise.all([
     c.env.DB.prepare(`SELECT id,status,intent,reflection,started_at,returned_at,completed_at,duration_seconds FROM learning_sessions WHERE recommendation_id=? ORDER BY started_at DESC`).bind(recommendationId).all<any>(),
-    c.env.DB.prepare(`SELECT n.id,n.title,n.kind,n.status,n.revision,n.source_url,n.source_artifact_id,n.updated_at,
-      (SELECT COUNT(*) FROM note_sections s WHERE s.note_id=n.id AND TRIM(s.content)!='') section_count
+    c.env.DB.prepare(`SELECT n.id,n.recommendation_id,n.title,n.kind,n.status,n.revision,n.source_url,n.source_artifact_id,n.updated_at
       FROM notes n WHERE n.recommendation_id=? ORDER BY n.updated_at DESC`).bind(recommendationId).all<any>(),
-    c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.r2_key,a.metadata_json,a.created_at FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=? ORDER BY a.created_at DESC`).bind(recommendationId).all<any>(),
+    c.env.DB.prepare(`SELECT s.note_id,s.section_key,s.label,s.content,s.direction,s.position FROM note_sections s JOIN notes n ON n.id=s.note_id WHERE n.recommendation_id=? ORDER BY s.note_id,s.position`).bind(recommendationId).all<any>(),
+    c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.r2_key,a.metadata_json,a.created_at,r.notebook_url FROM artifacts a LEFT JOIN recommendations r ON r.id=json_extract(a.metadata_json,'$.recommendation_id') WHERE json_extract(a.metadata_json,'$.recommendation_id')=? ORDER BY a.created_at DESC`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT id,question,answer,topic,status,created_at FROM srs_drafts WHERE recommendation_id=? ORDER BY created_at DESC`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT id,question,answer,topic,due_at,repetitions,interval_days,ease_factor FROM srs_cards WHERE recommendation_id=? ORDER BY due_at`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT * FROM recommendation_outcomes WHERE recommendation_id=?`).bind(recommendationId).first<any>(),
     c.env.DB.prepare(`SELECT id,memory_key,memory_kind,value_json,confidence,source,status,evidence_json,updated_at FROM hermes_memory WHERE evidence_json LIKE ? ORDER BY updated_at DESC`).bind(`%${recommendationId}%`).all<any>(),
+    c.env.DB.prepare(`SELECT id,status,change_type,target_label,current_json,proposed_json,evidence,reasoning,confidence,created_at,applied_at FROM feedback_proposals WHERE recommendation_id=? ORDER BY created_at DESC`).bind(recommendationId).all<any>(),
+    c.env.DB.prepare(`SELECT id,job_type,status,error,created_at,updated_at,result_json FROM agent_jobs WHERE json_extract(payload_json,'$.recommendation_id')=? ORDER BY created_at DESC`).bind(recommendationId).all<any>(),
   ])
+  const noteSections = new Map<string, any[]>()
+  for (const section of sections.results || []) noteSections.set(section.note_id, [...(noteSections.get(section.note_id) || []), section])
+  const noteRows = (notes.results || []).map((note: any) => ({ ...note, sections: noteSections.get(note.id) || [] }))
+  const parseJson = (value: string | null) => { try { return value ? JSON.parse(value) : null } catch { return null } }
   const memoryInfluences = (memories.results || []).map((row: any) => { let evidence: any[] = []; try { evidence = JSON.parse(row.evidence_json || '[]') } catch {}; return { ...row, value: (() => { try { return JSON.parse(row.value_json || 'null') } catch { return null } })(), evidence: evidence.filter((item) => item.recommendation_id === recommendationId), value_json: undefined, evidence_json: undefined } })
-  return c.json({ item, sessions: sessions.results || [], notes: notes.results || [], artifacts: artifacts.results || [], srs: { drafts: drafts.results || [], cards: cards.results || [] }, outcome: outcome || null, memory_influences: memoryInfluences })
+  return c.json({ item, sessions: sessions.results || [], notes: noteRows, artifacts: artifacts.results || [], srs: { drafts: drafts.results || [], cards: cards.results || [] }, outcome: outcome || null, memory_influences: memoryInfluences, proposals: (proposals.results || []).map((proposal: any) => ({ ...proposal, current: parseJson(proposal.current_json), proposed: parseJson(proposal.proposed_json), current_json: undefined, proposed_json: undefined })), jobs: (jobs.results || []).map((job: any) => ({ ...job, result: parseJson(job.result_json), result_json: undefined })) })
 })
 
 export default app

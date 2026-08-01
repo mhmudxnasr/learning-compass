@@ -15,37 +15,43 @@
 - `GET /analytics/hermes/weekly` — return the last-seven-day quality, creator, format, abandonment, and taste-drift report.
 - `POST /analytics/hermes/evaluate` — create reviewable feedback proposals from weekly evidence; it never mutates profile or map state directly.
 - `POST /analytics/hermes/backfill` — inspect missing SRS cards, outcomes, taste vectors, creator trust, and contradiction candidates. Defaults to dry-run; send `{ "dry_run": false }` only after reviewing the returned counts.
-- `GET /capture/:id/record` — one source record linking the source, session, reflections, extracted notes, artifacts, recall, and measured outcome.
+- `GET /capture/:id/record` — canonical source record linking the source, exact feedback and note sections, session history, proposals, artifacts, recall, memory influence, and measured outcome. Processing metadata remains available to agents but is not exposed as a user-facing destination.
 
 ## Capture and learning
 
 - `POST /capture`, `GET /capture`, `GET /capture/:id` — universal capture, Inbox, and enrichment status.
-- `GET/POST /capture/feeds`, `DELETE /capture/feeds/:id` — list, subscribe to, and remove RSS/Atom sources. Subscribing imports up to 20 current entries into Inbox.
+- `GET/POST /capture/feeds`, `DELETE /capture/feeds/:id` — list, subscribe to, and remove RSS/Atom sources. Subscribing imports up to 20 current entries into Inbox; optional `{ "limit": 1..20 }` caps the initial import.
 - `GET /capture/feeds/:id/entries` — read all imported articles for one feed with pagination.
-- `POST /capture/feeds/sync`, `POST /capture/feeds/:id/sync` — check all feeds or one feed now; scheduled checks run every six hours.
+- `POST /capture/feeds/sync`, `POST /capture/feeds/:id/sync` — check all feeds or one feed now; optional `{ "limit": 1..20 }` caps entries imported per feed. Inbox **Check now** uses 5. Scheduled checks run every six hours without this manual cap.
 - `POST /capture/:id/triage` — promote an Inbox item to Queue or exclude it; queue overflow requires explicit override.
 - `POST /artifacts`, `GET /artifacts`, `GET /artifacts/:id` — R2-backed files and metadata. Multipart uploads accept `pair_id`, `role`, `recommendation_id`, `source_url`, `source_title`, `generator`, or a JSON `metadata` field. `GET /artifacts` joins each file's `notebook_url` from the owning recommendation (null when unset) — Learn → Files uses it for the NBLM button.
 - `GET /artifacts/:id/view` — render Markdown artifacts as a safe, readable HTML document.
 - `POST /artifacts/:id/process` — queue an idempotent `extract_notes` Hermes job; a failed extraction is reset to `retry` by the same call.
 - `POST /recommendations/action` — update recommendation status, rating, review, consumed date, and optionally register an item-specific `notebook_url`, which Learn → Files exposes as the NBLM button.
 - `GET/POST /sessions`, `POST /sessions/start`, `POST /sessions/:id/return` — hidden external-handoff lifecycle owned by the Queue UI. Starting an unfinished item resumes it. Returning with `reflection` creates one idempotent personal `kind=reflection` note. A completed return with `auto_enqueue:true` queues the idempotent feedback analysis; ratings 7–10 additionally queue Notes Extractor for a separate source note and recall drafts.
-- `GET/POST/PUT /notes` — personal reflections and separate structured source notes. `POST /notes/:id/process` queues confirmation-gated Taste Mapper analysis for reflections or a full bilingual Notes Extractor re-run for source notes.
+- `GET/POST/PUT /notes` — personal feedback and separate structured source notes presented together by the source-centric Notes UI. `POST /notes/:id/process` queues confirmation-gated Taste Mapper analysis for feedback or a full bilingual Notes Extractor re-run for source notes.
 - `GET /srs/drafts`, `PUT /srs/drafts/:id`, `POST /srs/drafts/:id/approve`, `POST /srs/drafts/:id/reject` — editable recall drafts.
 - `GET /learning/srs/cards`, `DELETE /learning/srs/cards/:id` — list or permanently remove approved review cards.
-- `GET /feedback/proposals`, `POST /feedback/proposals/:id/approve`, `POST /feedback/proposals/:id/reject` — list Hermes changes before mutation; approval queues exact application, while rejection leaves profile/map state untouched.
+- `POST /feedback/record` — the canonical feedback write. Resolve by ID, exact URL, or exact title; capture an untracked source; preserve feedback verbatim; update rating/completion; create idempotent analysis/extraction work; and return the exact source receipt.
+- `GET /feedback/proposals`, `POST /feedback/proposals/:id/approve`, `POST /feedback/proposals/:id/reject` — list Hermes changes before mutation; Activity applies an approved change exactly once, while rejection leaves profile/map state untouched.
 - Existing `/learning/srs/due`, `/learning/srs/review`, and `/learning/srs/create` remain compatible.
 
 ## AI & Curation
 
-- `POST /ai/suggest` — AI-powered recommendation suggestion based on profile context, priorities, neglected branches, and taste vectors.
+- `GET /compass/pick` — the single unresolved Personal Bayesian Cascade pick.
+- `POST /compass/picks` — submit 3–8 researched candidates; the Worker owns scoring, confidence, and abstention.
+- `POST /compass/pick/:id/start` — move the one pick into the normal Queue and start its session.
+- `POST /compass/pick/:id/feedback` — record explicit outcome, score, reason tags, and reflection.
+
+- `POST /ai/suggest` — legacy compatibility endpoint; new recommendation requests use `/compass/picks`.
 - `POST /ai/enhance` — copy-edit or sharpen reflection notes.
 - `POST /ai/enhance/why` — generate rationale for new recommendation candidates.
 
-## Discovery Engine V2
+## Legacy Discovery Engine V2
 
 - `GET /discovery/state` — read active run, gate state, candidate decision receipt, active interview, frontier topology, and current `discover_source` job.
 - `GET /discovery/context` — token-efficient context bundle for Hermes containing baseline engine weights, branch evidence, mastered exclusions, and recent learning receipts.
-- `POST /discovery/runs` — create adaptive exploration wave (enforces hard feedback gate across active runs and queue capacity).
+- `POST /discovery/runs` — legacy research archive; new recommendations must use `/compass/picks`.
 - `POST /discovery/runs/:id/candidates` — batch-store research candidates with research-quality rules enforcement (>= 20 candidates, >= 4 source classes, >= 8 verified sources with verification facts).
 - `POST /discovery/runs/:id/select` — select winner candidate and decision receipt (Contrast Hook); withholds weak results (< 0.60 score or unverified).
 - `POST /discovery/runs/:id/activate` — activate winner to Queue and start linked learning session (or retain as `waiting_for_capacity` if Queue full).
