@@ -172,6 +172,8 @@ export async function activateWaitingRun(DB: D1Database, targetRunId?: string) {
     DB.prepare(`UPDATE recommendations SET status = 'active', updated_at = datetime('now') WHERE id = ?`).bind(capture.id),
     DB.prepare(`INSERT INTO learning_sessions (id, recommendation_id, status, intent, started_at) VALUES (?, ?, 'active', ?, datetime('now'))`)
       .bind(sessionId, capture.id, `Explore discovery frontier: ${candidate.title}`),
+    DB.prepare(`INSERT OR REPLACE INTO recommendation_outcomes (id,recommendation_id,discovery_run_id,source_class,format,creator,branch_id,predicted_score,predicted_confidence,predicted_components_json,outcome_status) VALUES (?,?,?,?,?,?,?,?,?,?,'active')`)
+      .bind(`outcome_${capture.id}`, capture.id, run.id, candidate.source_class || null, candidate.format || null, candidate.creator || null, run.selected_branch_id || 'general', Number(candidate.total_score || 0), receipt?.confidence == null ? null : Number(receipt.confidence), JSON.stringify(candidate.score_components || candidate.score_components_json || {})),
   ])
 
   return {
@@ -363,6 +365,18 @@ app.post('/runs/:id/candidates', async (c) => {
 
     const existingCandidatesRows = await DB.prepare(`SELECT * FROM discovery_candidates WHERE run_id = ?`).bind(runId).all<any>()
     const allCandidates = [...(existingCandidatesRows.results || []), ...body.candidates]
+
+    const allowedSourceClasses = new Set(['paper', 'essay', 'podcast', 'book', 'talk', 'tool', 'article'])
+    const seenUrls = new Set<string>()
+    const duplicateUrls: string[] = []
+    for (const cand of allCandidates) {
+      const canonical = String(cand.canonical_url || '').trim().replace(/\/$/, '')
+      if (!/^https?:\/\/[^\s]+$/i.test(canonical)) return c.json({ error: 'quality_rule_violation', message: `Candidate "${cand.title || 'untitled'}" has an invalid canonical_url.` }, 400)
+      if (!allowedSourceClasses.has(String(cand.source_class || ''))) return c.json({ error: 'quality_rule_violation', message: `Unsupported source class: ${cand.source_class}` }, 400)
+      if (seenUrls.has(canonical)) duplicateUrls.push(canonical)
+      seenUrls.add(canonical)
+    }
+    if (duplicateUrls.length) return c.json({ error: 'quality_rule_violation', message: 'Every candidate must have a unique canonical URL.', duplicate_urls: [...new Set(duplicateUrls)] }, 400)
 
     const totalCount = allCandidates.length
     const sourceClasses = new Set(allCandidates.map((cand: any) => cand.source_class))

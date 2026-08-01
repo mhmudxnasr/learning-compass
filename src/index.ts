@@ -25,6 +25,9 @@ import notebooklmApi from './api/notebooklm'
 import { normalizeYouTubeUrl, isValidUrl } from './lib'
 import { createInboxCapture } from './services/capture'
 import { syncAllFeeds } from './services/rss'
+import notificationsApi from './api/notifications'
+import { deliverScheduledReminders } from './api/notifications'
+import { createHermesEvaluatorProposals } from './services/hermes-intelligence'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -138,6 +141,29 @@ app.use('/*', async (c, next) => {
   return next()
 })
 
+// Browser/offline writes carry a stable mutation id. Cache successful responses so a
+// reconnect or timeout retry cannot create duplicate captures, sessions, or notes.
+app.use('/*', async (c, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) return next()
+  const mutationId = c.req.header('x-client-mutation-id')?.trim()
+  if (!mutationId || mutationId.length > 120 || !c.env.DB) return next()
+  const endpoint = new URL(c.req.url).pathname
+  const existing = await c.env.DB.prepare('SELECT method,endpoint,status_code,response_json FROM sync_mutations WHERE mutation_id=?').bind(mutationId).first<any>()
+  if (existing) {
+    if (existing.method !== c.req.method || existing.endpoint !== endpoint) return c.json({ error: 'mutation_id_reused_for_different_operation' }, 409)
+    try { return c.json(JSON.parse(existing.response_json), existing.status_code as any) } catch { return c.json({ error: 'cached mutation response unavailable' }, 409) }
+  }
+  await next()
+  if (c.res.status < 200 || c.res.status >= 300) return
+  try {
+    const body = await c.res.clone().text()
+    if (body.length <= 64000) {
+      await c.env.DB.prepare('INSERT OR IGNORE INTO sync_mutations (mutation_id,method,endpoint,status_code,response_json) VALUES (?,?,?,?,?)')
+        .bind(mutationId, c.req.method, endpoint, c.res.status, body || '{}').run()
+    }
+  } catch { /* response caching must never break the product request */ }
+})
+
 app.use('/*', (c, next) => {
   c.res.headers.set('X-Content-Type-Options', 'nosniff')
   c.res.headers.set('X-Frame-Options', 'DENY')
@@ -162,6 +188,7 @@ app.route('/dashboard', dashboardApi)
 app.route('/artifacts', artifactsApi)
 app.route('/discovery', discoveryApi)
 app.route('/notebooklm', notebooklmApi)
+app.route('/notifications', notificationsApi)
 app.route('/', intelligenceApi)
 app.route('/', productApi)
 
@@ -298,6 +325,18 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
   try {
     await syncAllFeeds(DB)
+    await deliverScheduledReminders(env)
+
+    // Weekly evaluator is idempotent and creates proposals only; it never mutates taste directly.
+    const currentDate = new Date()
+    const weekStart = new Date(currentDate)
+    weekStart.setUTCDate(currentDate.getUTCDate() - ((currentDate.getUTCDay() + 6) % 7))
+    const weekKey = weekStart.toISOString().slice(0, 10)
+    const evaluatorState = await DB.prepare("SELECT value FROM kv_store WHERE key='hermes.evaluator.last_run'").first<any>()
+    if (evaluatorState?.value !== weekKey) {
+      await createHermesEvaluatorProposals(DB)
+      await DB.prepare("INSERT OR REPLACE INTO kv_store (key,value) VALUES ('hermes.evaluator.last_run',?)").bind(weekKey).run()
+    }
 
     // 1. Clean expired undo rows
     await DB.prepare("DELETE FROM undo_queue WHERE expires_at < datetime('now')").run()

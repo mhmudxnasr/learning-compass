@@ -2,6 +2,20 @@ const CACHE = 'taste-map-scholar-v3'
 const DATA_CACHE = 'taste-map-data-v2'
 self.addEventListener('install', (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.add('/')).then(() => self.skipWaiting())))
 self.addEventListener('activate', (event) => event.waitUntil(Promise.all([self.clients.claim(), caches.keys().then((keys) => Promise.all(keys.filter((key) => ![CACHE, DATA_CACHE].includes(key)).map((key) => caches.delete(key))))])))
+self.addEventListener('push', (event) => {
+  let payload = { title: 'Learning Compass', body: 'A learning review is ready.' }
+  try { if (event.data) payload = { ...payload, ...event.data.json() } } catch { /* use the safe default */ }
+  event.waitUntil(self.registration.showNotification(payload.title, { body: payload.body, icon: '/icon.svg', data: { url: '/#/today/briefing' } }))
+})
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+    const target = event.notification.data?.url || '/#/today/briefing'
+    const existing = windows.find((client) => 'focus' in client)
+    if (existing) { existing.navigate(target); return existing.focus() }
+    return clients.openWindow(target)
+  }))
+})
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
   const url = new URL(event.request.url)

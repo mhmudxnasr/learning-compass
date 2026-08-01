@@ -3,9 +3,9 @@ import test from 'node:test'
 
 import { destinations, destinationForPath, mobilePrimary } from '../../client/src/destinations.ts'
 
-test('the product exposes exactly twenty-nine distinct destinations', () => {
-  assert.equal(destinations.length, 29)
-  assert.equal(new Set(destinations.map((item) => item.key)).size, 29)
+test('the product exposes exactly thirty-one distinct destinations', () => {
+  assert.equal(destinations.length, 31)
+  assert.equal(new Set(destinations.map((item) => item.key)).size, 31)
   assert.ok(destinations.every((item) => item.title && item.purpose && item.kind))
 })
 

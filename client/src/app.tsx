@@ -1,7 +1,7 @@
 import { ComponentChildren } from 'preact'
 import { lazy, Suspense } from 'preact/compat'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { api, flushOfflineMutations, formatDate, labelize, queueOfflineMutation } from './api'
+import { api, flushOfflineMutations, formatDate, labelize, listOfflineMutations, queueOfflineMutation, resolveOfflineMutation } from './api'
 import { Destination, destinationForPath, destinations, workspaceOrder, WorkspaceKey } from './destinations'
 
 const AtlasPage = lazy(() => import('./features/atlas/AtlasPage'))
@@ -323,6 +323,7 @@ function formatSmartHook(item: any): string {
 
 function QueuePage() {
   const { data, error, loading } = useData('/capture/queue')
+  const [record, setRecord] = useState<any>(null)
 
   if (loading) return <Loading />
   if (error) return <ErrorState message={error} />
@@ -356,6 +357,7 @@ function QueuePage() {
               </div>
 
               <div class="row-actions">
+                <button onClick={async () => { try { setRecord(await api<any>(`/capture/${item.id}/record`)) } catch (error: any) { window.alert(error.message) } }}>Record</button>
                 <a class="primary-action" href={item.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, item)}>
                   {isInProgress ? 'Resume' : 'Start'}
                 </a>
@@ -365,8 +367,17 @@ function QueuePage() {
         })}
         {Array.from({ length: Math.max(0, 5 - items.length) }).map(() => <div class="queue-slot">Available slot</div>)}
       </div>
+      {record && <SourceRecordDialog record={record} onClose={() => setRecord(null)} />}
     </div>
   )
+}
+
+function SourceRecordDialog({ record, onClose }: { record: any; onClose: () => void }) {
+  const item = record.item
+  const latestSession = record.sessions?.[0]
+  const reflections = (record.notes || []).filter((note: any) => note.kind === 'reflection')
+  const sourceNotes = (record.notes || []).filter((note: any) => note.kind !== 'reflection')
+  return <div class="record-drawer-backdrop" role="presentation" onClick={(event) => { if (event.currentTarget === event.target) onClose() }}><aside class="record-drawer" role="dialog" aria-modal="true" aria-label="Source record"><header><div><span class="meta">Source record</span><h2>{item.video_title}</h2><p>{item.creator || item.content_type || 'Saved source'} · {item.learning_state || item.status}</p></div><button onClick={onClose} aria-label="Close source record">×</button></header><div class="record-drawer-links"><a class="primary-action" href={item.video_url} target="_blank" rel="noreferrer">Open original</a><a href="#/learn/reflections" onClick={onClose}>Reflections ({reflections.length})</a><a href="#/learn/notes" onClick={onClose}>Notes ({sourceNotes.length})</a></div><section><div class="section-head"><h3>Learning status</h3><span>{item.progress_percent || 0}%</span></div><p>{latestSession ? `${latestSession.status} session · ${formatDate(latestSession.started_at)}` : 'No learning session started yet.'}</p>{item.outcome && <p class="record-muted">Outcome: {item.outcome.outcome_status} · score {item.outcome.actual_score ?? 'not rated'}</p>}</section><section><div class="section-head"><h3>Artifacts</h3><span>{record.artifacts?.length || 0}</span></div>{record.artifacts?.length ? record.artifacts.map((file: any) => <a class="record-line" href={`/artifacts/${file.id}`} target="_blank" rel="noreferrer"><strong>{file.filename}</strong><span>{file.media_type}</span></a>) : <p class="record-muted">No companion files yet.</p>}</section><section><div class="section-head"><h3>Recall</h3><span>{record.srs?.cards?.length || 0} active</span></div><p>{record.srs?.drafts?.length || 0} editable drafts · {record.srs?.cards?.length || 0} approved cards</p></section></aside></div>
 }
 
 function InboxPage() {
@@ -610,7 +621,7 @@ function artifactKind(pair: any) {
 }
 
 function NotebookLMPage() {
-  const { data, error, loading } = useData('/notebooklm/status') as any
+  const { data, error, loading, reload } = useData('/notebooklm/status') as any
   const [selectedType, setSelectedType] = useState('audio')
   const [customPrompt, setCustomPrompt] = useState('')
 
@@ -626,7 +637,7 @@ function NotebookLMPage() {
           <div class="notebooklm-title-group">
             <div class="notebooklm-badges">
               <span class="notebooklm-badge">NotebookLM Pro</span>
-              <span class="notebooklm-badge success">Master Corpus Active</span>
+              <span class={`notebooklm-badge ${data?.broker?.grounding_status === 'grounded' ? 'success' : ''}`}>{data?.broker?.grounding_status || 'offline'} grounding</span>
             </div>
             <h1>{data?.name || 'Mahmood — Complete Knowledge Corpus'}</h1>
             <p>Grounded zero-hallucination source-of-truth knowledge brain for Learning Compass</p>
@@ -661,6 +672,13 @@ function NotebookLMPage() {
           <div><strong>Persona Role:</strong> {data?.persona_role}</div>
           <div><strong>Verification Engine:</strong> {data?.verification_engine}</div>
           <div><strong>Sync Mode:</strong> Hermes Feedback Handoff</div>
+        </div>
+        <div class="notebooklm-broker">
+          <div><strong>Broker:</strong> {data?.broker?.status || 'offline'} · session {data?.broker?.session_id || 'not connected'}</div>
+          <div><strong>Last heartbeat:</strong> {data?.broker?.last_heartbeat_at ? formatDate(data.broker.last_heartbeat_at) : 'none received'}</div>
+          <div><strong>Grounding:</strong> {data?.broker?.grounding_status || 'offline'}{data?.broker?.fallback_reason ? ` · ${data.broker.fallback_reason}` : ''}</div>
+          <div><strong>Recoveries:</strong> {data?.broker?.recovery_count || 0}</div>
+          <button class="secondary-action" onClick={async () => { try { await api('/notebooklm/recover', { method: 'POST', body: JSON.stringify({ reason: 'Manual recovery requested from Learning Compass UI' }) }); reload() } catch (e: any) { window.alert(e.message) } }}>Request fresh session</button>
         </div>
       </div>
 
@@ -1869,14 +1887,94 @@ function ForecastPage() {
   return <div class="forecast-page"><div class="summary-strip"><div><strong>{data?.due_next_7_days || 0}</strong><span>Due in 7 days</span></div><div><strong>{data?.due_next_30_days || 0}</strong><span>Due in 30 days</span></div><div><strong>{data?.total_cards || 0}</strong><span>Recall cards</span></div><div><strong>{data?.mapped_topics || 0}</strong><span>Mapped topics</span></div></div><section class="forecast-guidance"><h2>{data?.due_next_7_days ? 'A review wave is approaching.' : 'Your near-term review load is clear.'}</h2><p>{data?.due_next_7_days ? `Plan for ${data.due_next_7_days} recall prompts over the next seven days.` : 'New reviews will appear after strong learning sessions create and approve recall prompts.'}</p></section></div>
 }
 
+function HermesMemoryPage() {
+  const [query, setQuery] = useState('')
+  const [status, setStatus] = useState('active')
+  const endpoint = `/agent/memory?status=${encodeURIComponent(status)}${query ? `&q=${encodeURIComponent(query)}` : ''}`
+  const { data, error, loading, reload } = useData(endpoint)
+  const act = async (id: string, action: string) => { try { await api(`/agent/memory/${id}/${action}`, { method: 'POST' }); reload() } catch (e: any) { window.alert(e.message) } }
+  if (loading) return <Loading />
+  if (error) return <ErrorState message={error} />
+  return <div class="hermes-page memory-review-page">
+    <div class="filter-bar"><label>Search <input value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="memory key, source, or value" /></label><label>Status <select value={status} onChange={(event) => setStatus((event.target as HTMLSelectElement).value)}><option value="active">Active</option><option value="approved">Approved</option><option value="all">All</option><option value="expired">Expired</option><option value="rejected">Rejected</option><option value="superseded">Superseded</option></select></label></div>
+    <section><div class="section-head"><h2>Hermes memory review</h2><span>{data?.memories?.length || 0} entries</span></div>{data?.memories?.length ? <div class="memory-list">{data.memories.map((item: any) => <article class="memory-card" key={item.id}><div class="memory-card-head"><div><strong>{item.memory_key}</strong><span>{labelize(item.memory_kind)} · {item.status} · confidence {Math.round(Number(item.confidence || 0) * 100)}%</span></div><div class="row-actions">{item.status === 'active' && <button class="secondary-action" onClick={() => act(item.id, 'approve')}>Approve</button>}{['active', 'approved'].includes(item.status) && <button class="secondary-action" onClick={() => act(item.id, 'expire')}>Expire</button>}{item.status === 'active' && <button class="secondary-action" onClick={() => api(`/agent/memory/${item.id}/resolve`, { method: 'POST', body: JSON.stringify({ status: 'rejected' }) }).then(reload)}>Reject</button>}</div></div><p>{typeof item.value === 'string' ? item.value : JSON.stringify(item.value)}</p><small>Source: {item.source}</small>{item.evidence?.length ? <div class="memory-evidence"><strong>Evidence and recommendation influence</strong>{item.evidence.map((e: any, index: number) => <div key={index}>{e.recommendation_id ? <a href={`#/curate/queue?record=${e.recommendation_id}`}>{e.recommendation_id}</a> : 'Evidence'}{e.reason ? ` · ${e.reason}` : ''}{e.quote ? ` · “${e.quote}”` : ''}</div>)}</div> : <small>No linked recommendation evidence recorded.</small>}</article>)}</div> : <Empty title="No memories match" body="Try another status or search term." />}</section>
+  </div>
+}
+
+function HermesPage() {
+  const { data, error, loading, reload } = useData('/analytics/hermes')
+  const weekly = useData('/analytics/hermes/weekly')
+  if (loading) return <Loading />
+  if (error) return <ErrorState message={error} />
+  const quality = data?.quality || {}
+  const jobs = data?.jobs || {}
+  const replay = async (id: string) => { try { await api(`/agent/jobs/${id}/replay`, { method: 'POST' }); reload() } catch (e: any) { window.alert(e.message) } }
+  const acknowledge = async (id: string) => { try { await api(`/agent/alerts/${id}/ack`, { method: 'POST' }); reload() } catch (e: any) { window.alert(e.message) } }
+  const recalibrate = async () => { try { const result = await api<any>('/analytics/hermes/recalibrate', { method: 'POST' }); window.alert(`Recalibrated from ${result.sample_size} rated outcomes.`); reload() } catch (e: any) { window.alert(e.message) } }
+  const evaluate = async () => { try { const result = await api<any>('/analytics/hermes/evaluate', { method: 'POST' }); window.alert(`Created ${result.proposals?.length || 0} review proposals.`); reload(); weekly.reload() } catch (e: any) { window.alert(e.message) } }
+  const backfill = async () => { try { const result = await api<any>('/analytics/hermes/backfill', { method: 'POST', body: JSON.stringify({ dry_run: false }) }); window.alert(`Backfill complete: ${Object.values(result.inserted || {}).reduce((a: number, b: any) => a + Number(b || 0), 0)} records written.`); reload() } catch (e: any) { window.alert(e.message) } }
+  return <div class="hermes-page">
+    <div class="page-actions"><span>Live operational readout · {formatDate(data?.checked_at)}</span><div><button class="secondary-action" onClick={evaluate}>Create evaluator proposals</button> <button class="secondary-action" onClick={backfill}>Run intelligence backfill</button> <button class="secondary-action" onClick={recalibrate}>Recalibrate weights</button> <button class="secondary-action" onClick={reload}>Refresh</button></div></div>
+    <div class="summary-strip"><div><strong>{quality.total || 0}</strong><span>Recommendation outcomes</span></div><div><strong>{quality.completion_rate == null ? '—' : `${quality.completion_rate}%`}</strong><span>Consumed after activation</span></div><div><strong>{quality.prediction_error == null ? '—' : quality.prediction_error}</strong><span>Prediction error</span></div><div><strong>{jobs.dead_letters || 0}</strong><span>Dead-lettered jobs</span></div></div>
+    <section><div class="section-head"><h2>Queue reliability</h2><span>{jobs.stale_running || 0} stale leases</span></div><div class="compact-list"><article><strong>Pending</strong><span>{jobs.statuses?.pending || 0}</span></article><article><strong>Running</strong><span>{jobs.statuses?.running || 0}</span></article><article><strong>Delayed retries</strong><span>{jobs.delayed_retries || 0}</span></article><article><strong>Failed in recent history</strong><span>{jobs.recent_failures?.length || 0}</span></article></div></section>
+    <div class="two-column-data"><section><div class="section-head"><h2>Engine evidence</h2><span>Bounded weights</span></div><div class="compact-list">{(data?.engine_weights || []).map((item: any) => <article key={item.dimension}><strong>{labelize(item.dimension)}</strong><span>{Math.round(Number(item.current_weight || 0) * 100)}% · {item.evidence_count || 0} signals</span></article>)}</div></section><section><div class="section-head"><h2>Outcome by format</h2><span>Actual ratings</span></div><div class="compact-list">{(quality.by_format || []).map((item: any) => <article key={item.format}><strong>{labelize(item.format)}</strong><span>{item.consumed || 0}/{item.total || 0} consumed · {item.average_actual ?? '—'} average</span></article>)}</div></section></div>
+    <section><div class="section-head"><h2>Open alerts</h2><span>{data?.alerts?.length || 0}</span></div>{data?.alerts?.length ? <div class="compact-list">{data.alerts.map((item: any) => <article key={item.id}><div><strong>{item.title}</strong><span>{item.body}</span></div><button class="secondary-action" onClick={() => acknowledge(item.id)}>Acknowledge</button></article>)}</div> : <Empty title="No open alerts" body="Hermes has no unacknowledged operational failures." />}</section>
+    <section><div class="section-head"><h2>Recoverable failures</h2><span>Replay from here</span></div>{jobs.recent_failures?.length ? <div class="compact-list">{jobs.recent_failures.map((item: any) => <article key={item.id}><div><strong>{item.job_type}</strong><span>{item.error || 'No error detail'} · attempt {item.attempts}</span></div><button class="secondary-action" onClick={() => replay(item.id)}>Replay</button></article>)}</div> : <Empty title="No failed jobs" body="The durable queue is clear." />}</section>
+    <section><div class="section-head"><h2>Memory ledger</h2><span>{data?.memory?.active || 0} active entries</span></div><div class="compact-list">{(data?.memory?.entries || []).map((item: any) => <article key={`${item.memory_kind}-${item.status}`}><strong>{labelize(item.memory_kind)}</strong><span>{item.status} · {item.count} entries</span></article>)}</div></section>
+    <section><div class="section-head"><h2>Weekly evaluator</h2><span>{weekly.data?.period?.since ? `${formatDate(weekly.data.period.since)} → ${formatDate(weekly.data.period.until)}` : 'Loading'}</span></div>{weekly.error ? <ErrorState message={weekly.error} /> : <div class="compact-list"><article><strong>Accuracy</strong><span>{weekly.data?.accuracy?.completion_rate == null ? '—' : `${weekly.data.accuracy.completion_rate}% completion`} · error {weekly.data?.accuracy?.prediction_error ?? '—'}</span></article><article><strong>Abandoned sources</strong><span>{(weekly.data?.abandoned_sources || []).map((item: any) => `${item.source_class}: ${item.count}`).join(' · ') || 'None recorded'}</span></article><article><strong>Taste drift</strong><span>{(weekly.data?.taste_drift || []).map((item: any) => `${labelize(item.branch)} ${item.change > 0 ? '+' : ''}${item.change}`).join(' · ') || 'Not enough ratings'}</span></article></div>}</section>
+    {Number(data?.pending_proposals || 0) > 0 && <p class="settings-status">{data.pending_proposals} Hermes change proposals still require approval in Learn → Changes.</p>}
+  </div>
+}
+
+function ReminderControls() {
+  const { data, error, loading, reload } = useData('/notifications')
+  const [chatId, setChatId] = useState('')
+  const [status, setStatus] = useState('')
+  useEffect(() => { if (data?.telegram?.chat_id) setChatId(String(data.telegram.chat_id)) }, [data?.telegram?.chat_id])
+  if (loading) return <Loading />
+  if (error) return <ErrorState message={error} />
+  const enableBrowser = async () => {
+    setStatus('Enabling browser reminders…')
+    try {
+      if ('Notification' in window && Notification.permission !== 'granted') {
+        const permission = await Notification.requestPermission()
+        if (permission !== 'granted') throw new Error('Browser notification permission was not granted.')
+      }
+      const vapid = await api<any>('/notifications/vapid')
+      let endpoint = `browser://${crypto.randomUUID()}`
+      let keys: Record<string, string> = {}
+      if (vapid.public_key && 'serviceWorker' in navigator && 'PushManager' in window) {
+        const registration = await navigator.serviceWorker.ready
+        const decoded = Uint8Array.from(atob(vapid.public_key.replace(/-/g, '+').replace(/_/g, '/') + '=='), (char) => char.charCodeAt(0))
+        const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: decoded })
+        endpoint = subscription.endpoint
+        keys = subscription.toJSON().keys || {}
+      }
+      await api('/notifications/push/subscribe', { method: 'POST', body: JSON.stringify({ endpoint, keys }) })
+      await api('/notifications/test', { method: 'POST', body: JSON.stringify({ channel: 'browser' }) })
+      setStatus(vapid.configured ? 'Browser push enabled and test queued.' : 'Browser reminders enabled for this device; configure VAPID keys for closed-app delivery.')
+      reload()
+    } catch (error: any) { setStatus(error.message) }
+  }
+  const saveTelegram = async () => {
+    setStatus('Saving Telegram controls…')
+    try { await api('/notifications/telegram', { method: 'POST', body: JSON.stringify({ chat_id: chatId, enabled: Boolean(chatId.trim()) }) }); if (chatId.trim()) await api('/notifications/test', { method: 'POST', body: JSON.stringify({ channel: 'telegram' }) }); setStatus(chatId.trim() ? 'Telegram enabled; test sent.' : 'Telegram reminders disabled.'); reload() }
+    catch (error: any) { setStatus(error.message) }
+  }
+  return <section class="reminder-controls"><div class="section-head"><h2>Reminder delivery</h2><span>{(data?.deliveries || []).length} recent deliveries</span></div><div class="setting-row"><div><strong>Browser reminders</strong><span>{data?.browser?.enabled ? 'Enabled on this device.' : 'Due-review reminders for this device.'}</span></div><button class="secondary-action" onClick={enableBrowser}>{data?.browser?.enabled ? 'Send test' : 'Enable'}</button></div><div class="setting-row"><label><strong>Telegram chat ID</strong><span>Use @userinfobot or your bot chat to find this value.</span></label><input class="reminder-chat-input" value={chatId} onInput={(event) => setChatId((event.target as HTMLInputElement).value)} placeholder="e.g. 123456789" /><button class="secondary-action" onClick={saveTelegram}>{data?.telegram?.enabled ? 'Update' : 'Enable'}</button></div>{(data?.deliveries || []).slice(0, 5).map((delivery: any) => <div class="delivery-row" key={delivery.id}><span>{delivery.channel} · {delivery.event_kind}</span><strong class={`delivery-${delivery.status}`}>{delivery.status}</strong><small>{delivery.error || formatDate(delivery.attempted_at)}</small></div>)}{status && <output class="settings-status">{status}</output>}</section>
+}
+
 function SettingsPage({ route }: { route: Destination }) {
   const [theme, setTheme] = useState(localStorage.getItem('tm-theme') || 'system')
   const [density, setDensity] = useState(localStorage.getItem('tm-density') || 'balanced')
   const [retention, setRetention] = useState(90)
   const [enrichCapture, setEnrichCapture] = useState(true)
   const [saved, setSaved] = useState('')
+  const [offline, setOffline] = useState<any[]>([])
   const profile = useData(route.slug === 'profile' ? '/brain/profile' : undefined)
   const settings = useData('/settings')
+  const refreshOffline = () => listOfflineMutations().then(setOffline)
+  useEffect(() => { refreshOffline() }, [])
   useEffect(() => {
     const resolved = settings.data?.resolved
     if (!resolved) return
@@ -1929,7 +2027,7 @@ function SettingsPage({ route }: { route: Destination }) {
     {route.slug === 'appearance' && <><div class="setting-row"><div><strong>Theme</strong><span>Follow the device unless you choose an override.</span></div><select value={theme} onChange={(event) => changeTheme((event.target as HTMLSelectElement).value)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></div><div class="setting-row"><div><strong>Density</strong><span>Balanced for daily use; compact when managing large libraries.</span></div><select value={density} onChange={(event) => changeDensity((event.target as HTMLSelectElement).value)}><option value="balanced">Balanced</option><option value="compact">Compact</option></select></div></>}
     {route.slug === 'learning' && <><div class="setting-row"><div><strong>Active queue</strong><span>Five deliberate items; Inbox remains unlimited.</span></div><span class="setting-value">5 slots</span></div><label class="setting-row"><div><strong>Review target</strong><span>Used to adjust future recall intervals.</span></div><select value={retention} onChange={(event) => { const value = Number((event.target as HTMLSelectElement).value); setRetention(value); persist('learning', { retention: value, queue_cap: 5 }) }}><option value="85">85%</option><option value="90">90%</option><option value="95">95%</option></select></label><div class="setting-row"><div><strong>Rating 7+ notes and cards</strong><span>Notes Extractor always runs after a completed rating of 7 or higher.</span></div><span class="setting-value">Automatic</span></div></>}
     {route.slug === 'curation' && <><label class="setting-row"><div><strong>Enrich new captures</strong><span>Queue enrichment only when enabled.</span></div><input type="checkbox" checked={enrichCapture} onChange={(event) => { const enabled = (event.target as HTMLInputElement).checked; setEnrichCapture(enabled); persist('ai_curation', { enrich_capture: enabled }) }} /></label><div class="setting-row"><div><strong>Hermes change confirmation</strong><span>Every taste, profile, pattern, and map change requires approval.</span></div><span class="setting-value">Required</span></div><div class="setting-row"><div><strong>Automatic recommendations</strong><span>Finishing one source does not automatically add another.</span></div><span class="setting-value">Off</span></div></>}
-    {route.slug === 'data' && <><div class="setting-row"><div><strong>Cloud library</strong><span>Your sources, notes, ratings, map, and files are available.</span></div><span class="status">Connected</span></div><div class="setting-row"><div><strong>Offline changes</strong><span>Send changes saved while this device was disconnected.</span></div><button class="secondary-action" onClick={() => flushOfflineMutations().then(() => setSaved('All offline changes synced'))}>Sync now</button></div><div class="setting-row"><div><strong>Export source library</strong><span>Download your recommendation history as a portable file.</span></div><a class="secondary-action" href="/recommendations/export">Download export</a></div><div class="setting-row"><div><strong>Saved preferences</strong><span>{Object.keys(settings.data?.settings || {}).length} preference groups stored.</span></div><span class="setting-value">{settings.error ? 'Unavailable' : 'Up to date'}</span></div></>}
+    {route.slug === 'data' && <><div class="setting-row"><div><strong>Cloud library</strong><span>Your sources, notes, ratings, map, and files are available.</span></div><span class="status">Connected</span></div><div class="setting-row"><div><strong>Offline changes</strong><span>{offline.length ? `${offline.length} waiting · conflicts stay visible until you resolve them.` : 'No pending local changes.'}</span></div><button class="secondary-action" onClick={() => flushOfflineMutations().then(() => refreshOffline().then(() => setSaved('Sync complete')))}>Sync now</button></div>{offline.length > 0 && <div class="offline-mutation-list">{offline.map((item) => <div class="offline-mutation" key={item.id}><span><strong>{item.state || 'pending'}</strong><small>{item.method} {item.url} · {item.error || 'Waiting to sync'}</small></span><div>{(item.state === 'conflict' || item.state === 'failed') && <button onClick={() => resolveOfflineMutation(item.id, 'retry').then(refreshOffline)}>Retry</button>}<button onClick={() => resolveOfflineMutation(item.id, 'discard').then(refreshOffline)}>Discard</button></div></div>)}</div>}<ReminderControls /><div class="setting-row"><div><strong>Export source library</strong><span>Download your recommendation history as a portable file.</span></div><a class="secondary-action" href="/recommendations/export">Download export</a></div><div class="setting-row"><div><strong>Saved preferences</strong><span>{Object.keys(settings.data?.settings || {}).length} preference groups stored.</span></div><span class="setting-value">{settings.error ? 'Unavailable' : 'Up to date'}</span></div></>}
     {saved && <output class="settings-status">{saved}</output>}
   </section></div>
 }
@@ -1959,6 +2057,8 @@ function View({ route }: { route: Destination }) {
   if (route.key === 'insights.learning') return <CoveragePage insight />
   if (route.key === 'insights.taste') return <TastePage insight />
   if (route.key === 'insights.forecast') return <ForecastPage />
+  if (route.key === 'insights.hermes') return <HermesPage />
+  if (route.key === 'insights.memory') return <HermesMemoryPage />
   if (route.workspace === 'settings') return <SettingsPage route={route} />
   return <Empty title="View unavailable" body="This destination is not part of the current workspace." />
 }
@@ -1970,7 +2070,7 @@ function CaptureDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const [file, setFile] = useState<File | null>(null)
   const [artifactId, setArtifactId] = useState('')
   useEffect(() => { if (open) ref.current?.showModal(); else ref.current?.close() }, [open])
-  const submit = async (event?: Event) => { event?.preventDefault(); setStatus('Capturing…'); try { let uploadedId = artifactId; if (file && !uploadedId) { const form = new FormData(); form.append('file', file); const response = await fetch('/artifacts', { method: 'POST', body: form }); const uploaded = await response.json() as { id?: string; error?: string }; if (!response.ok || !uploaded.id) throw new Error(uploaded.error || 'Upload failed'); uploadedId = uploaded.id; setArtifactId(uploadedId) } const result = await api<any>('/capture', { method: 'POST', body: JSON.stringify({ source: file?.name || source, artifact_id: uploadedId || undefined }) }); setStatus(result.duplicate ? 'Already captured — opened the existing item.' : 'Captured to Inbox for triage.'); setSource(''); setFile(null); setArtifactId('') } catch (error: any) { if (!navigator.onLine && !file) { await queueOfflineMutation('/capture', { method: 'POST', body: JSON.stringify({ source }) }); setStatus('Saved offline. It will sync when you reconnect.') } else setStatus(error.message) } }
+  const submit = async (event?: Event) => { event?.preventDefault(); setStatus('Capturing…'); try { let uploadedId = artifactId; if (file && !uploadedId) { const form = new FormData(); form.append('file', file); const response = await fetch('/artifacts', { method: 'POST', body: form }); const uploaded = await response.json() as { id?: string; error?: string }; if (!response.ok || !uploaded.id) throw new Error(uploaded.error || 'Upload failed'); uploadedId = uploaded.id; setArtifactId(uploadedId) } const result = await api<any>('/capture', { method: 'POST', body: JSON.stringify({ source: file?.name || source, artifact_id: uploadedId || undefined }) }); setStatus(result.duplicate ? 'Already captured — opened the existing item.' : 'Captured to Inbox for triage.'); setSource(''); setFile(null); setArtifactId('') } catch (error: any) { if (!navigator.onLine && !file && !error?.offlineQueued) { await queueOfflineMutation('/capture', { method: 'POST', body: JSON.stringify({ source }) }); setStatus('Saved offline. It will sync when you reconnect.') } else setStatus(error.message) } }
   return <dialog ref={ref} class="capture-dialog" onClose={onClose}><form onSubmit={submit}><div class="dialog-head"><div><span>Quick capture</span><h2>Save something worth returning to.</h2></div><button type="button" onClick={onClose}>Close</button></div><label>URL, text, or source reference<textarea value={source} onInput={(event) => setSource((event.target as HTMLTextAreaElement).value)} placeholder="Paste a link, text, video, or document reference…" required={!file} /></label><label>Or upload a PDF/HTML<input type="file" accept=".pdf,.html,.htm,text/html,application/pdf" onChange={(event) => { setFile((event.target as HTMLInputElement).files?.[0] || null); setArtifactId('') }} /></label><p>Background enrichment adds useful details. You decide whether it earns a queue slot.</p><div class="dialog-actions"><button class="primary-action" type="submit">Add to Inbox</button></div>{status && <output>{status}</output>}</form></dialog>
 }
 
@@ -2009,7 +2109,7 @@ function ReturnDialog({ session, onClose, onComplete }: { session: ActiveSession
   const submit = async (complete: boolean) => {
     setStatus(complete ? 'Finishing and processing…' : 'Saving your place…')
     try {
-      await api(`/sessions/${session.id}/return`, { method: 'POST', body: JSON.stringify({ reflection, rating: rating ? Number(rating) : undefined, complete }) })
+      await api(`/sessions/${session.id}/return`, { method: 'POST', body: JSON.stringify({ reflection, rating: rating ? Number(rating) : undefined, complete, auto_enqueue: complete }) })
       if (complete) { localStorage.removeItem('tm-active-session'); onComplete() } else onClose()
       return true
     } catch (error: any) { setStatus(error.message); return false }

@@ -2,6 +2,20 @@
 
 Use these prompts with Hermes, Claude Code, Codex, or another connected agent. Replace the URL with the deployed Worker URL when needed.
 
+## Procedure routing
+
+```text
+Load learning-compass-operating-system. I finished [TITLE] and my exact reflection is: [REFLECTION]. Rating: [1-10]. Resolve the exact live source, preserve the reflection verbatim, complete the linked session, queue feedback, verify the reflection note and queued job, then stop at reviewable proposals. Do not recommend anything or apply any proposal.
+```
+
+```text
+Load learning-compass-operating-system. I am still working through [TITLE]. Save this reflection exactly: [REFLECTION]. Do not mark the source complete. Queue the explicit feedback analysis, verify it, and do not recommend anything.
+```
+
+```text
+Load learning-compass-operating-system. Capture [URL] titled [TITLE]. Keep it in Inbox, verify the capture, and do not triage, recommend, extract notes, or create a job unless I explicitly request it.
+```
+
 Set context once:
 
 ```text

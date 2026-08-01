@@ -252,6 +252,18 @@ app.post('/action', async (c) => {
       for (const id of ids) {
         try { await scheduleResurfacing(DB, id) } catch (e) { console.warn('resurface sched failed', e) }
         try { await detectContradiction(DB, id) } catch (e) { console.warn('contradiction detect failed', e) }
+        try {
+          const item = await DB.prepare(`SELECT r.creator,r.content_type,m.branch_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?`).bind(id).first<any>()
+          await DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,branch_id,actual_score,outcome_status,consumed_at,evaluated_at) VALUES (?,?,?,?,?,?, 'consumed', ?, datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET actual_score=COALESCE(excluded.actual_score,recommendation_outcomes.actual_score),outcome_status='consumed',consumed_at=excluded.consumed_at,evaluated_at=datetime('now')`)
+            .bind(`outcome_${id}`, id, item?.creator || null, item?.content_type || null, item?.branch_id || null, norm.score, consumedDate).run()
+        } catch (e) { console.warn('quality ledger failed', e) }
+      }
+    }
+    if (body.status === 'rejected') {
+      for (const id of ids) {
+        await DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,branch_id,outcome_status,evaluated_at)
+          SELECT ?,r.id,r.creator,r.content_type,m.branch_id,'rejected',datetime('now') FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?
+          ON CONFLICT(recommendation_id) DO UPDATE SET outcome_status='rejected',evaluated_at=datetime('now')`).bind(`outcome_${id}`, id).run()
       }
     }
   } catch (err) {

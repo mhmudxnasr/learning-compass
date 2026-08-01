@@ -105,6 +105,9 @@ app.post('/:id/triage', async (c) => {
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE recommendations SET status='rejected',updated_at=datetime('now') WHERE id=?`).bind(c.req.param('id')),
       c.env.DB.prepare(`UPDATE recommendation_meta SET learning_state='excluded',updated_at=datetime('now') WHERE recommendation_id=?`).bind(c.req.param('id')),
+      c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,branch_id,outcome_status,evaluated_at)
+        SELECT ?,r.id,r.creator,r.content_type,m.branch_id,'rejected',datetime('now') FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?
+        ON CONFLICT(recommendation_id) DO UPDATE SET outcome_status='rejected',evaluated_at=datetime('now')`).bind(`outcome_${c.req.param('id')}`, c.req.param('id')),
     ])
     try { await activateWaitingRun(c.env.DB) } catch {}
     return c.json({ ok: true, state: 'excluded' })
@@ -139,6 +142,26 @@ app.get('/:id', async (c) => {
   const row = await c.env.DB.prepare(`SELECT r.*, m.learning_state, m.branch_id, m.tags_json, m.source_metadata_json
     FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?`).bind(c.req.param('id')).first()
   return row ? c.json({ item: row }) : c.json({ error: 'not found' }, 404)
+})
+
+app.get('/:id/record', async (c) => {
+  const recommendationId = c.req.param('id')
+  const item = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.tags_json,m.source_metadata_json,m.progress_percent,m.estimated_minutes
+    FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?`).bind(recommendationId).first<any>()
+  if (!item) return c.json({ error: 'not found' }, 404)
+  const [sessions, notes, artifacts, drafts, cards, outcome, memories] = await Promise.all([
+    c.env.DB.prepare(`SELECT id,status,intent,reflection,started_at,returned_at,completed_at,duration_seconds FROM learning_sessions WHERE recommendation_id=? ORDER BY started_at DESC`).bind(recommendationId).all<any>(),
+    c.env.DB.prepare(`SELECT n.id,n.title,n.kind,n.status,n.revision,n.source_url,n.source_artifact_id,n.updated_at,
+      (SELECT COUNT(*) FROM note_sections s WHERE s.note_id=n.id AND TRIM(s.content)!='') section_count
+      FROM notes n WHERE n.recommendation_id=? ORDER BY n.updated_at DESC`).bind(recommendationId).all<any>(),
+    c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.r2_key,a.metadata_json,a.created_at FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=? ORDER BY a.created_at DESC`).bind(recommendationId).all<any>(),
+    c.env.DB.prepare(`SELECT id,question,answer,topic,status,created_at FROM srs_drafts WHERE recommendation_id=? ORDER BY created_at DESC`).bind(recommendationId).all<any>(),
+    c.env.DB.prepare(`SELECT id,question,answer,topic,due_at,repetitions,interval_days,ease_factor FROM srs_cards WHERE recommendation_id=? ORDER BY due_at`).bind(recommendationId).all<any>(),
+    c.env.DB.prepare(`SELECT * FROM recommendation_outcomes WHERE recommendation_id=?`).bind(recommendationId).first<any>(),
+    c.env.DB.prepare(`SELECT id,memory_key,memory_kind,value_json,confidence,source,status,evidence_json,updated_at FROM hermes_memory WHERE evidence_json LIKE ? ORDER BY updated_at DESC`).bind(`%${recommendationId}%`).all<any>(),
+  ])
+  const memoryInfluences = (memories.results || []).map((row: any) => { let evidence: any[] = []; try { evidence = JSON.parse(row.evidence_json || '[]') } catch {}; return { ...row, value: (() => { try { return JSON.parse(row.value_json || 'null') } catch { return null } })(), evidence: evidence.filter((item) => item.recommendation_id === recommendationId), value_json: undefined, evidence_json: undefined } })
+  return c.json({ item, sessions: sessions.results || [], notes: notes.results || [], artifacts: artifacts.results || [], srs: { drafts: drafts.results || [], cards: cards.results || [] }, outcome: outcome || null, memory_influences: memoryInfluences })
 })
 
 export default app

@@ -10,6 +10,12 @@
 - `GET /learning/health` — branch health.
 - `GET /taste/dna` — vectors, decay, ratings, diversity, and momentum.
 - `GET /analytics/heatmaps`, `/analytics/forecast`, `/analytics/taste-drift`, `/analytics/creator-trust`.
+- `GET /analytics/hermes` — compact Hermes operations, recommendation quality, memory, alert, and engine evidence read model.
+- `POST /analytics/hermes/recalibrate` — apply a slow, bounded engine-weight update from at least five rated discovery outcomes.
+- `GET /analytics/hermes/weekly` — return the last-seven-day quality, creator, format, abandonment, and taste-drift report.
+- `POST /analytics/hermes/evaluate` — create reviewable feedback proposals from weekly evidence; it never mutates profile or map state directly.
+- `POST /analytics/hermes/backfill` — inspect missing SRS cards, outcomes, taste vectors, creator trust, and contradiction candidates. Defaults to dry-run; send `{ "dry_run": false }` only after reviewing the returned counts.
+- `GET /capture/:id/record` — one source record linking the source, session, reflections, extracted notes, artifacts, recall, and measured outcome.
 
 ## Capture and learning
 
@@ -22,7 +28,7 @@
 - `GET /artifacts/:id/view` — render Markdown artifacts as a safe, readable HTML document.
 - `POST /artifacts/:id/process` — queue an idempotent `extract_notes` Hermes job; a failed extraction is reset to `retry` by the same call.
 - `POST /recommendations/action` — update recommendation status, rating, review, consumed date, and optionally register an item-specific `notebook_url`, which Learn → Files exposes as the NBLM button.
-- `GET/POST /sessions`, `POST /sessions/start`, `POST /sessions/:id/return` — hidden external-handoff lifecycle owned by the Queue UI. Starting an unfinished item resumes it. Returning with `reflection` creates one idempotent personal `kind=reflection` note; every completed return queues confirmation-gated feedback analysis, and ratings 7–10 also queue Notes Extractor for a separate source note and recall drafts.
+- `GET/POST /sessions`, `POST /sessions/start`, `POST /sessions/:id/return` — hidden external-handoff lifecycle owned by the Queue UI. Starting an unfinished item resumes it. Returning with `reflection` creates one idempotent personal `kind=reflection` note. A completed return with `auto_enqueue:true` queues the idempotent feedback analysis; ratings 7–10 additionally queue Notes Extractor for a separate source note and recall drafts.
 - `GET/POST/PUT /notes` — personal reflections and separate structured source notes. `POST /notes/:id/process` queues confirmation-gated Taste Mapper analysis for reflections or a full bilingual Notes Extractor re-run for source notes.
 - `GET /srs/drafts`, `PUT /srs/drafts/:id`, `POST /srs/drafts/:id/approve`, `POST /srs/drafts/:id/reject` — editable recall drafts.
 - `GET /learning/srs/cards`, `DELETE /learning/srs/cards/:id` — list or permanently remove approved review cards.
@@ -55,7 +61,21 @@
 - `POST /agent/jobs/:id/claim` — lease one job; expired leases are reclaimed automatically.
 - `POST /agent/jobs/:id/complete` — persist structured note/SRS output while its lease is current; send the claiming `worker`.
 - `POST /agent/jobs/:id/fail` — retry up to three attempts, then mark failed; send the claiming `worker`.
+- `POST /agent/jobs/:id/replay` — reset a failed/dead-lettered job for a clean, auditable replay.
+- `GET/POST /agent/memory` — browse/search or write provenance-backed Hermes memory with evidence and recommendation influence links; durable entries require high confidence, temporary entries expire.
+- `POST /agent/memory/:id/approve`, `/expire` — review memory lifecycle without deleting evidence.
+- `POST /agent/memory/:id/resolve` — supersede or reject an active memory entry.
+- `GET /notebooklm/health` — broker heartbeat, session, grounding, fallback, and stale health state; `POST /notebooklm/health` records a host heartbeat and `POST /notebooklm/recover` records a recovery receipt.
+- `POST /agent/alerts/:id/ack` — acknowledge an operational alert.
 - `POST /agent/jobs/:id/heartbeat` — extend a lease only for the claiming `worker`.
+
+## Offline sync and reminders
+
+- Every browser mutation may carry `x-client-mutation-id`; successful responses are cached in `sync_mutations` for safe retries.
+- `GET /notifications` — browser/Telegram controls and recent delivery history.
+- `GET /notifications/vapid`, `POST /notifications/push/subscribe`, `DELETE /notifications/push/:id` — browser reminder registration and status.
+- `POST /notifications/telegram` — enable or disable Telegram reminders for a chat ID.
+- `POST /notifications/test` — send a test and persist delivered, queued, or failed delivery evidence.
 
 ## Agent control protocol
 

@@ -46,6 +46,8 @@ export const destinations: Destination[] = [
     ['learning', 'Learning', 'Review branch health, gaps, and learning activity.', 'analysis', '/learning/health'],
     ['taste', 'Taste', 'Understand preference changes and creator performance.', 'analysis', '/taste/dna'],
     ['forecast', 'Forecast', 'Estimate upcoming review load and mastery progress.', 'analysis', '/analytics/forecast'],
+    ['hermes', 'Hermes', 'Inspect agent reliability, recommendation quality, memory, and review gates.', 'analysis', '/analytics/hermes'],
+    ['memory', 'Memory Review', 'Search Hermes memories, inspect evidence, and approve their use.', 'analysis', '/agent/memory'],
   ]),
   ...define('settings', [
     ['profile', 'Profile', 'Review priorities, exclusions, and learning patterns.', 'settings', '/brain/profile'],

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS recommendation_outcomes (
   branch_id TEXT,
   predicted_score REAL,
   predicted_confidence REAL,
+  predicted_components_json TEXT DEFAULT '{}',
   actual_score REAL,
   outcome_status TEXT NOT NULL DEFAULT 'active',
   consumed_at TEXT,
@@ -26,7 +27,8 @@ CREATE TABLE IF NOT EXISTS hermes_memory (
   value_json TEXT NOT NULL,
   confidence REAL NOT NULL DEFAULT 0.5,
   source TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active', -- active | superseded | expired | rejected
+  status TEXT NOT NULL DEFAULT 'active', -- active | approved | superseded | expired | rejected
+  evidence_json TEXT NOT NULL DEFAULT '[]',
   supersedes_id TEXT,
   expires_at TEXT,
   created_at TEXT DEFAULT (datetime('now')),
@@ -58,3 +60,12 @@ CREATE TABLE IF NOT EXISTS hermes_alerts (
 );
 CREATE INDEX IF NOT EXISTS idx_hermes_alerts_open ON hermes_alerts(acknowledged_at, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS creator_trust (
+  creator TEXT PRIMARY KEY,
+  total INTEGER NOT NULL DEFAULT 0,
+  average_score REAL,
+  trust_index REAL,
+  last_feedback_at TEXT,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_creator_trust_score ON creator_trust(trust_index DESC);

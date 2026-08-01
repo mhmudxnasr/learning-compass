@@ -3,6 +3,7 @@ import { Bindings, safeError, isNonEmptyStr } from '../lib'
 import { createInboxCapture } from '../services/capture'
 
 const app = new Hono<{ Bindings: Bindings }>()
+const sqliteTime = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString().slice(0, 19).replace('T', ' ')
 
 type AgentMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
@@ -27,6 +28,7 @@ const CAPABILITIES = [
   ['POST', '/capture/:id/triage', 'Queue or exclude an Inbox item; queue cap is enforced.'],
   ['POST', '/capture/:id/visualise', 'Ask Hermes to create a Lite Visual HTML/PDF companion for a queued link.'],
   ['GET', '/capture/:id', 'Read one capture.'],
+  ['GET', '/capture/:id/record', 'Read one source record with session, notes, files, recall, and outcome links.'],
   ['GET', '/recommendations/list', 'Search and filter recommendation history.'],
   ['POST', '/recommendations/push', 'Create or update a recommendation with deduplication.'],
   ['POST', '/recommendations/action', 'Change status, rating, review, consumed date, or register an item-specific NotebookLM URL.'],
@@ -79,7 +81,14 @@ const CAPABILITIES = [
   ['POST', '/agent/jobs/:id/claim', 'Claim a leased job.'],
   ['POST', '/agent/jobs/:id/complete', 'Complete a leased job with structured output.'],
   ['POST', '/agent/jobs/:id/fail', 'Fail a leased job with retryable error.'],
+  ['POST', '/agent/jobs/:id/replay', 'Replay a failed or dead-lettered job from a clean attempt.'],
   ['POST', '/agent/jobs/:id/heartbeat', 'Renew long-running discovery job lease.'],
+  ['GET', '/agent/memory', 'Browse and search Hermes memories with evidence and recommendation influence links.'],
+  ['POST', '/agent/memory', 'Write a guarded Hermes memory entry with provenance and confidence.'],
+  ['POST', '/agent/memory/:id/approve', 'Approve one Hermes memory for active use.'],
+  ['POST', '/agent/memory/:id/expire', 'Expire one Hermes memory.'],
+  ['POST', '/agent/memory/:id/resolve', 'Supersede or reject one Hermes memory entry.'],
+  ['POST', '/agent/alerts/:id/ack', 'Acknowledge one Hermes operational alert.'],
   ['GET', '/discovery/state', 'Read active discovery, gate state, frontier, and current research job.'],
   ['GET', '/discovery/context', 'Token-efficient complete engine context for Hermes.'],
   ['GET', '/discovery/drift-check', 'Audit API, skill version/hash, and active Hermes workflow alignment.'],
@@ -100,6 +109,20 @@ const CAPABILITIES = [
   ['GET', '/analytics/taste-drift', 'Read taste drift analytics.'],
   ['GET', '/analytics/heatmaps', 'Read learning heatmaps.'],
   ['GET', '/analytics/forecast', 'Read forecast analytics.'],
+  ['GET', '/analytics/hermes', 'Read Hermes operations, quality, memory, alerts, and engine metrics.'],
+  ['POST', '/analytics/hermes/recalibrate', 'Apply a slow, evidence-gated recommendation weight recalibration.'],
+  ['GET', '/notifications', 'Read browser and Telegram reminder controls and delivery history.'],
+  ['GET', '/notifications/vapid', 'Read browser push configuration status.'],
+  ['POST', '/notifications/push/subscribe', 'Enable browser reminder delivery for this device.'],
+  ['DELETE', '/notifications/push/:id', 'Disable browser reminder delivery for this device.'],
+  ['POST', '/notifications/telegram', 'Enable or disable Telegram reminder delivery.'],
+  ['POST', '/notifications/test', 'Send and record a reminder delivery test.'],
+  ['GET', '/analytics/hermes/weekly', 'Read the weekly Hermes evaluator report.'],
+  ['POST', '/analytics/hermes/evaluate', 'Create reviewable evaluator proposals from weekly evidence.'],
+  ['POST', '/analytics/hermes/backfill', 'Backfill missing intelligence records without mutating taste silently.'],
+  ['GET', '/notebooklm/health', 'Read NotebookLM broker, grounding, fallback, and session health.'],
+  ['POST', '/notebooklm/health', 'Record a NotebookLM broker heartbeat and grounding result.'],
+  ['POST', '/notebooklm/recover', 'Record a NotebookLM session recovery request.'],
 ] as const
 
 const CAPABILITY_PATTERNS = CAPABILITIES.map(([method, path]) => ({
@@ -224,6 +247,80 @@ app.get('/context', async (c) => {
     taste_vectors: tasteVectors?.results || [],
     recent_note_anchors: noteAnchors,
   })
+})
+
+app.get('/memory', async (c) => {
+  const kind = c.req.query('kind')
+  const requestedStatus = c.req.query('status')
+  const status = requestedStatus || 'active'
+  const q = (c.req.query('q') || '').trim().slice(0, 120)
+  const recommendationId = c.req.query('recommendation_id')
+  await c.env.DB.prepare(`UPDATE hermes_memory SET status='expired',updated_at=datetime('now') WHERE status IN ('active','approved') AND expires_at IS NOT NULL AND expires_at<=datetime('now')`).run()
+  const clauses: string[] = []
+  const binds: any[] = []
+  if (status === 'active' && !requestedStatus) clauses.push("status IN ('active','approved')")
+  else if (status !== 'all') { clauses.push('status=?'); binds.push(status) }
+  if (kind) { clauses.push('memory_kind=?'); binds.push(kind) }
+  if (q) { clauses.push('(memory_key LIKE ? OR source LIKE ? OR value_json LIKE ?)'); binds.push(`%${q}%`, `%${q}%`, `%${q}%`) }
+  if (recommendationId) clauses.push('evidence_json LIKE ?'), binds.push(`%${recommendationId}%`)
+  const query = c.env.DB.prepare(`SELECT * FROM hermes_memory ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY updated_at DESC LIMIT 200`).bind(...binds)
+  const rows = await query.all<any>()
+  const memories = (rows.results || []).map((row: any) => {
+    let value: any = null; let evidence: any[] = []
+    try { value = JSON.parse(row.value_json || 'null') } catch {}
+    try { evidence = JSON.parse(row.evidence_json || '[]') } catch {}
+    return { ...row, value, evidence, value_json: undefined, evidence_json: undefined, influences: evidence.filter((item) => item.recommendation_id) }
+  })
+  return c.json({ memories })
+})
+
+app.post('/memory', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  const memoryKey = String(body.memory_key || '').trim().slice(0, 180)
+  const memoryKind = String(body.memory_kind || '').trim()
+  const source = String(body.source || '').trim().slice(0, 180)
+  const confidence = Math.max(0, Math.min(1, Number(body.confidence ?? 0.5)))
+  if (!memoryKey || !source || body.value === undefined) return c.json({ error: 'memory_key, value, and source are required' }, 400)
+  if (!['durable', 'episodic', 'working', 'rejection', 'hypothesis'].includes(memoryKind)) return c.json({ error: 'invalid memory_kind' }, 400)
+  if (memoryKind === 'durable' && confidence < 0.7) return c.json({ error: 'durable memory requires confidence >= 0.7' }, 400)
+  const existing = await c.env.DB.prepare(`SELECT id FROM hermes_memory WHERE memory_key=? AND status='active' ORDER BY updated_at DESC LIMIT 1`).bind(memoryKey).first<any>()
+  const id = `mem_${crypto.randomUUID()}`
+  const expiry = body.expires_at ? String(body.expires_at).replace('T', ' ').replace('Z', '').slice(0, 19) : (memoryKind === 'working' || memoryKind === 'hypothesis' ? sqliteTime(30 * 86400000) : null)
+  const evidence = Array.isArray(body.evidence) ? body.evidence.slice(0, 20).map((item: any) => ({
+    recommendation_id: item.recommendation_id ? String(item.recommendation_id).slice(0, 120) : undefined,
+    source: item.source ? String(item.source).slice(0, 500) : undefined,
+    quote: item.quote ? String(item.quote).slice(0, 1000) : undefined,
+    reason: item.reason ? String(item.reason).slice(0, 500) : undefined,
+    confidence: item.confidence == null ? undefined : Math.max(0, Math.min(1, Number(item.confidence))),
+  })) : []
+  const statements: D1PreparedStatement[] = []
+  if (existing) statements.push(c.env.DB.prepare(`UPDATE hermes_memory SET status='superseded',updated_at=datetime('now') WHERE id=?`).bind(existing.id))
+  statements.push(c.env.DB.prepare(`INSERT INTO hermes_memory (id,memory_key,memory_kind,value_json,confidence,source,status,supersedes_id,expires_at,evidence_json) VALUES (?,?,?,?,?,?,'active',?,?,?)`)
+    .bind(id, memoryKey, memoryKind, JSON.stringify(body.value).slice(0, 12000), confidence, source, existing?.id || null, expiry, JSON.stringify(evidence).slice(0, 16000)))
+  await c.env.DB.batch(statements)
+  return c.json({ ok: true, id, superseded_id: existing?.id || null, expires_at: expiry }, 201)
+})
+
+app.post('/memory/:id/approve', async (c) => {
+  const result = await c.env.DB.prepare(`UPDATE hermes_memory SET status='approved',updated_at=datetime('now') WHERE id=? AND status IN ('active','approved')`).bind(c.req.param('id')).run()
+  return result.meta.changes ? c.json({ ok: true, status: 'approved' }) : c.json({ error: 'memory not found' }, 404)
+})
+
+app.post('/memory/:id/expire', async (c) => {
+  const result = await c.env.DB.prepare(`UPDATE hermes_memory SET status='expired',updated_at=datetime('now') WHERE id=? AND status IN ('active','approved')`).bind(c.req.param('id')).run()
+  return result.meta.changes ? c.json({ ok: true, status: 'expired' }) : c.json({ error: 'active memory not found' }, 404)
+})
+
+app.post('/memory/:id/resolve', async (c) => {
+  const body: { status?: 'superseded' | 'rejected' } = await c.req.json<{ status?: 'superseded' | 'rejected' }>().catch(() => ({} as { status?: 'superseded' | 'rejected' }))
+  if (!body.status || !['superseded', 'rejected'].includes(body.status)) return c.json({ error: 'status must be superseded or rejected' }, 400)
+  const result = await c.env.DB.prepare(`UPDATE hermes_memory SET status=?,updated_at=datetime('now') WHERE id=? AND status='active'`).bind(body.status, c.req.param('id')).run()
+  return result.meta.changes ? c.json({ ok: true, status: body.status }) : c.json({ error: 'active memory not found' }, 404)
+})
+
+app.post('/alerts/:id/ack', async (c) => {
+  const result = await c.env.DB.prepare(`UPDATE hermes_alerts SET acknowledged_at=datetime('now') WHERE id=? AND acknowledged_at IS NULL`).bind(c.req.param('id')).run()
+  return result.meta.changes ? c.json({ ok: true }) : c.json({ error: 'open alert not found' }, 404)
 })
 
 app.get('/capabilities', (c) => c.json({

@@ -50,20 +50,23 @@ When behavior changes, update its contract in the same task:
 
 Active Hermes files:
 
+- `~/.hermes/skills/workflow/learning-compass-operating-system/SKILL.md`
 - `~/.hermes/skills/workflow/recommendations-worker-ops/SKILL.md`
+- `~/.hermes/skills/workflow/learning-compass-site-operator/SKILL.md`
 - `~/.hermes/skills/taste-mapper/SKILL.md`
 - `~/.hermes/skills/personal/taste-rec/SKILL.md`
 - `~/.hermes/skills/taste-enhancer/SKILL.md`
 - `~/.hermes/skills/learning-notes-extractor/SKILL.md`
 - `~/.hermes/skills/lite-visual/SKILL.md`
-- `~/.hermes/skills/lite-study-guides/SKILL.md` (compatibility alias)
+- `~/.hermes/skills/productivity/rss-feed/SKILL.md`
+- `~/.hermes/skills/notebooklm/SKILL.md`
 - `~/.hermes/memories/MEMORY.md` and `USER.md` only for durable facts
 
 Do not update archived Taste Mapper bundles, Gemini/Antigravity skill copies, or unrelated agent systems.
 
 ## Hermes Memory & Domain Rules
 
-Antigravity (AGY) permanently holds and enforces all Hermes memories, user preferences, and filter rules:
+Learning Compass Hermes permanently holds and enforces these project rules:
 
 - **Tone & Format**: English-first responses for all tasks. Direct, casual, brutally honest tone. ZERO emojis by default. Default to text-only responses; no visual outputs/diagrams unless explicitly requested.
 - **Action Principle**: Decisive execution over discussion ("Fix all that", "do it" = execute immediately).
@@ -82,8 +85,8 @@ Antigravity (AGY) permanently holds and enforces all Hermes memories, user prefe
 Antigravity (AGY) understands and handles all Hermes capabilities and skills:
 
 1. **Hermes CLI Execution**: AGY can invoke `hermes chat -q "..."` or `hermes -z "..."` directly on behalf of the user.
-2. **Worker API & Job Delegation**: AGY can call the Worker API (`/agent/request`, `/ai/suggest`, `/recommendations/push`, `/capture/:id/triage`), check/claim/process `agent_jobs` background jobs, and trigger Hermes workflows.
-3. **Skill Awareness**: AGY understands `taste-rec`, `taste-mapper`, `taste-enhancer`, `learning-notes-extractor`, `lite-visual`, and `recommendations-worker-ops`, maintaining full synchronicity when modifying code or contracts.
+2. **Worker API & Job Delegation**: Hermes can call the Worker API (`/agent/request`, `/capture/:id/triage`), check/claim/process `agent_jobs`, and trigger only Learning Compass workflows.
+3. **Skill Awareness**: `learning-compass-operating-system` routes every request before `taste-rec`, `taste-mapper`, `taste-enhancer`, `learning-notes-extractor`, `lite-visual`, `notebooklm`, `rss-feed`, or `recommendations-worker-ops` runs.
 
 ## Verification
 

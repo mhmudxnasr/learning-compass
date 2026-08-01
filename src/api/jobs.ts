@@ -4,6 +4,7 @@ import { Bindings, safeError } from '../lib'
 const app = new Hono<{ Bindings: Bindings }>()
 const hasArabic = (value: string) => /[\u0600-\u06ff]/.test(value)
 const hasLatin = (value: string) => /[A-Za-z]/.test(value)
+const sqliteTime = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString().slice(0, 19).replace('T', ' ')
 const workerFrom = (c: any, body: any) => String(body?.worker || c.req.header('x-hermes-worker') || '').trim().slice(0, 120)
 
 app.get('/', async (c) => {
@@ -18,11 +19,13 @@ app.get('/active', async (c) => {
 })
 
 app.get('/health', async (c) => {
-  const [counts, stale, oldest, recentFailures] = await Promise.all([
+  const [counts, stale, oldest, recentFailures, delayed, deadLetters] = await Promise.all([
     c.env.DB.prepare(`SELECT status, COUNT(*) AS count FROM agent_jobs GROUP BY status`).all<any>(),
     c.env.DB.prepare(`SELECT COUNT(*) AS count FROM agent_jobs WHERE status='running' AND lease_expires_at < datetime('now')`).first<any>(),
     c.env.DB.prepare(`SELECT MIN(created_at) AS created_at FROM agent_jobs WHERE status IN ('pending','retry')`).first<any>(),
     c.env.DB.prepare(`SELECT COUNT(*) AS count FROM agent_jobs WHERE status='failed' AND datetime(updated_at) >= datetime('now','-24 hours')`).first<any>(),
+    c.env.DB.prepare(`SELECT COUNT(*) AS count FROM agent_job_retries WHERE dead_lettered_at IS NULL AND next_attempt_at > datetime('now')`).first<any>(),
+    c.env.DB.prepare(`SELECT COUNT(*) AS count FROM agent_job_retries WHERE dead_lettered_at IS NOT NULL`).first<any>(),
   ])
   const status: Record<string, number> = {}
   for (const row of counts.results || []) status[row.status] = Number(row.count || 0)
@@ -32,6 +35,8 @@ app.get('/health', async (c) => {
     stale_running: Number(stale?.count || 0),
     oldest_pending: oldest?.created_at || null,
     failed_last_24h: Number(recentFailures?.count || 0),
+    delayed_retries: Number(delayed?.count || 0),
+    dead_letters: Number(deadLetters?.count || 0),
     checked_at: new Date().toISOString(),
   })
 })
@@ -45,9 +50,18 @@ app.get('/:id', async (c) => {
 app.post('/:id/claim', async (c) => {
   const body: { worker?: string } = await c.req.json<{ worker?: string }>().catch(() => ({}))
   const worker = body.worker || 'hermes-taste-map'
-  await c.env.DB.prepare(`UPDATE agent_jobs SET status=CASE WHEN attempts<3 THEN 'retry' ELSE 'failed' END,error='Lease expired',lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE status='running' AND lease_expires_at<datetime('now')`).run()
-  const result = await c.env.DB.prepare(`UPDATE agent_jobs SET status='running',lease_owner=?,lease_expires_at=datetime('now','+5 minutes'),attempts=attempts+1,updated_at=datetime('now') WHERE id=? AND status IN ('pending','retry')`).bind(worker, c.req.param('id')).run()
+  const expired = await c.env.DB.prepare(`SELECT id,attempts FROM agent_jobs WHERE status='running' AND lease_expires_at<datetime('now')`).all<any>()
+  for (const item of expired.results || []) {
+    const terminal = Number(item.attempts || 0) >= 3
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE agent_jobs SET status=?,error='Lease expired',lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=?`).bind(terminal ? 'failed' : 'retry', item.id),
+      c.env.DB.prepare(`INSERT INTO agent_job_retries (job_id,next_attempt_at,retry_count,dead_lettered_at,last_error,updated_at) VALUES (?,?,?,?,?,datetime('now')) ON CONFLICT(job_id) DO UPDATE SET next_attempt_at=excluded.next_attempt_at,retry_count=agent_job_retries.retry_count+1,dead_lettered_at=excluded.dead_lettered_at,last_error=excluded.last_error,updated_at=datetime('now')`).bind(item.id, terminal ? null : sqliteTime(120000), 1, terminal ? sqliteTime() : null, 'Lease expired'),
+    ])
+    if (terminal) await c.env.DB.prepare(`INSERT INTO hermes_alerts (id,kind,severity,title,body,fingerprint) SELECT ?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM hermes_alerts WHERE fingerprint=? AND acknowledged_at IS NULL)`).bind(`alert_${crypto.randomUUID()}`, 'dead_letter', 'critical', 'Hermes job moved to dead letter', `Job ${item.id} exhausted its lease attempts.`, `dead_letter:${item.id}`, `dead_letter:${item.id}`).run()
+  }
+  const result = await c.env.DB.prepare(`UPDATE agent_jobs SET status='running',lease_owner=?,lease_expires_at=datetime('now','+5 minutes'),attempts=attempts+1,updated_at=datetime('now') WHERE id=? AND status IN ('pending','retry') AND (status='pending' OR NOT EXISTS (SELECT 1 FROM agent_job_retries r WHERE r.job_id=agent_jobs.id AND r.dead_lettered_at IS NULL AND r.next_attempt_at IS NOT NULL AND r.next_attempt_at>datetime('now')))`).bind(worker, c.req.param('id')).run()
   if (!result.meta.changes) return c.json({ error: 'job unavailable' }, 409)
+  await c.env.DB.prepare(`INSERT OR IGNORE INTO agent_job_retries (job_id) VALUES (?)`).bind(c.req.param('id')).run()
   const job = await c.env.DB.prepare(`SELECT * FROM agent_jobs WHERE id=?`).bind(c.req.param('id')).first<any>()
   return c.json({ job: { ...job, payload: JSON.parse(job.payload_json || '{}') } })
 })
@@ -157,9 +171,27 @@ app.post('/:id/fail', async (c) => {
   const body: { error?: string; worker?: string } = await c.req.json<{ error?: string; worker?: string }>().catch(() => ({}))
   const worker = workerFrom(c, body)
   if (!worker) return c.json({ error: 'worker identity required' }, 400)
-  const result = await c.env.DB.prepare(`UPDATE agent_jobs SET status=CASE WHEN attempts<3 THEN 'retry' ELSE 'failed' END,error=?,lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=? AND status='running' AND lease_owner=?`).bind((body.error || 'Hermes job failed').slice(0, 1000), c.req.param('id'), worker).run()
+  const error = (body.error || 'Hermes job failed').slice(0, 1000)
+  const job = await c.env.DB.prepare(`SELECT attempts FROM agent_jobs WHERE id=? AND status='running' AND lease_owner=?`).bind(c.req.param('id'), worker).first<any>()
+  if (!job) return c.json({ error: 'job unavailable for failure report' }, 409)
+  const terminal = Number(job.attempts || 0) >= 3
+  const result = await c.env.DB.prepare(`UPDATE agent_jobs SET status=?,error=?,lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=? AND status='running' AND lease_owner=?`).bind(terminal ? 'failed' : 'retry', error, c.req.param('id'), worker).run()
   if (!result.meta.changes) return c.json({ error: 'job unavailable for failure report' }, 409)
+  const delay = Number(job.attempts || 0) <= 1 ? 30 : Number(job.attempts || 0) === 2 ? 120 : 300
+  await c.env.DB.prepare(`INSERT INTO agent_job_retries (job_id,next_attempt_at,retry_count,dead_lettered_at,last_error,updated_at) VALUES (?,?,?,?,?,datetime('now')) ON CONFLICT(job_id) DO UPDATE SET next_attempt_at=excluded.next_attempt_at,retry_count=agent_job_retries.retry_count+1,dead_lettered_at=excluded.dead_lettered_at,last_error=excluded.last_error,updated_at=datetime('now')`).bind(c.req.param('id'), terminal ? null : sqliteTime(delay * 1000), 1, terminal ? sqliteTime() : null, error).run()
+  if (terminal) await c.env.DB.prepare(`INSERT INTO hermes_alerts (id,kind,severity,title,body,fingerprint) SELECT ?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM hermes_alerts WHERE fingerprint=? AND acknowledged_at IS NULL)`).bind(`alert_${crypto.randomUUID()}`, 'dead_letter', 'critical', 'Hermes job failed permanently', `${c.req.param('id')}: ${error}`, `dead_letter:${c.req.param('id')}`, `dead_letter:${c.req.param('id')}`).run()
   return c.json({ ok: true })
+})
+
+app.post('/:id/replay', async (c) => {
+  const job = await c.env.DB.prepare(`SELECT id,status FROM agent_jobs WHERE id=?`).bind(c.req.param('id')).first<any>()
+  if (!job) return c.json({ error: 'job not found' }, 404)
+  if (job.status !== 'failed') return c.json({ error: 'only failed jobs can be replayed' }, 409)
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE agent_jobs SET status='pending',attempts=0,error=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=?`).bind(job.id),
+    c.env.DB.prepare(`INSERT INTO agent_job_retries (job_id,next_attempt_at,retry_count,dead_lettered_at,last_error,updated_at) VALUES (?,NULL,0,NULL,NULL,datetime('now')) ON CONFLICT(job_id) DO UPDATE SET next_attempt_at=NULL,retry_count=0,dead_lettered_at=NULL,last_error=NULL,updated_at=datetime('now')`).bind(job.id),
+  ])
+  return c.json({ ok: true, status: 'pending' })
 })
 
 app.post('/:id/cancel', async (c) => {

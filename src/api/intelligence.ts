@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
-import { computeDecayedAffinity } from '../domain'
-import { Bindings } from '../lib'
+import { adaptAndNormalizeWeights, computeDecayedAffinity } from '../domain'
+import { Bindings, safeError } from '../lib'
+import { backfillHermesIntelligence, createHermesEvaluatorProposals, hermesWeeklyReport } from '../services/hermes-intelligence'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const all = async (statement: D1PreparedStatement) => (await statement.all<any>()).results || []
@@ -61,6 +62,89 @@ app.get('/analytics/forecast', async (c) => {
     c.env.DB.prepare(`SELECT COUNT(*) count FROM tree_nodes WHERE type IN ('branch','leaf')`).first<any>(),
   ])
   return c.json({ due_next_7_days: due7?.count || 0, due_next_30_days: due30?.count || 0, total_cards: cards?.count || 0, mapped_topics: gaps?.count || 0 })
+})
+
+// Hermes control surface: one compact read model for operations, quality, memory, and drift.
+app.get('/analytics/hermes', async (c) => {
+  const { DB } = c.env
+  try {
+    const [jobCounts, stale, retryQueue, deadLetters, quality, qualityByFormat, memory, alerts, failures, weights, proposals] = await Promise.all([
+      DB.prepare(`SELECT status,COUNT(*) count FROM agent_jobs GROUP BY status`).all<any>(),
+      DB.prepare(`SELECT COUNT(*) count FROM agent_jobs WHERE status='running' AND lease_expires_at < datetime('now')`).first<any>(),
+      DB.prepare(`SELECT COUNT(*) count FROM agent_job_retries WHERE dead_lettered_at IS NULL AND next_attempt_at > datetime('now')`).first<any>(),
+      DB.prepare(`SELECT COUNT(*) count FROM agent_job_retries WHERE dead_lettered_at IS NOT NULL`).first<any>(),
+      DB.prepare(`SELECT COUNT(*) total, SUM(CASE WHEN outcome_status='consumed' THEN 1 ELSE 0 END) consumed, SUM(CASE WHEN outcome_status='rejected' THEN 1 ELSE 0 END) rejected, SUM(CASE WHEN outcome_status IN ('deleted','abandoned') THEN 1 ELSE 0 END) abandoned, ROUND(AVG(actual_score),2) average_actual, ROUND(AVG(CASE WHEN predicted_score IS NOT NULL AND actual_score IS NOT NULL THEN ABS(predicted_score-actual_score) END),2) prediction_error FROM recommendation_outcomes`).first<any>(),
+      DB.prepare(`SELECT COALESCE(format,'unknown') format,COUNT(*) total,SUM(CASE WHEN outcome_status='consumed' THEN 1 ELSE 0 END) consumed,SUM(CASE WHEN outcome_status='rejected' THEN 1 ELSE 0 END) rejected,ROUND(AVG(actual_score),2) average_actual,ROUND(AVG(CASE WHEN predicted_score IS NOT NULL AND actual_score IS NOT NULL THEN ABS(predicted_score-actual_score) END),2) prediction_error FROM recommendation_outcomes GROUP BY format ORDER BY total DESC`).all<any>(),
+      DB.prepare(`SELECT memory_kind, status, COUNT(*) count FROM hermes_memory GROUP BY memory_kind,status ORDER BY memory_kind,status`).all<any>(),
+      DB.prepare(`SELECT id,kind,severity,title,body,created_at FROM hermes_alerts WHERE acknowledged_at IS NULL ORDER BY created_at DESC LIMIT 12`).all<any>(),
+      DB.prepare(`SELECT id,job_type,attempts,error,updated_at FROM agent_jobs WHERE status='failed' ORDER BY updated_at DESC LIMIT 12`).all<any>(),
+      DB.prepare(`SELECT dimension,current_weight,baseline_weight,evidence_count,updated_at FROM engine_weights ORDER BY current_weight DESC`).all<any>(),
+      DB.prepare(`SELECT COUNT(*) count FROM feedback_proposals WHERE status='pending'`).first<any>(),
+    ])
+    const statuses: Record<string, number> = {}
+    for (const row of jobCounts.results || []) statuses[row.status] = Number(row.count || 0)
+    return c.json({
+      checked_at: new Date().toISOString(),
+      jobs: { statuses, stale_running: Number(stale?.count || 0), delayed_retries: Number(retryQueue?.count || 0), dead_letters: Number(deadLetters?.count || 0), recent_failures: failures.results || [] },
+      quality: { ...(quality || {}), completion_rate: Number(quality?.consumed || 0) + Number(quality?.rejected || 0) + Number(quality?.abandoned || 0) ? Math.round((Number(quality?.consumed || 0) / (Number(quality?.consumed || 0) + Number(quality?.rejected || 0) + Number(quality?.abandoned || 0))) * 100) : null, abandonment_rate: Number(quality?.total || 0) ? Math.round((Number(quality?.abandoned || 0) / Number(quality.total)) * 100) : null, by_format: qualityByFormat.results || [] },
+      memory: { entries: memory.results || [], active: (memory.results || []).filter((row: any) => row.status === 'active').reduce((sum: number, row: any) => sum + Number(row.count || 0), 0) },
+      alerts: alerts.results || [],
+      engine_weights: weights.results || [],
+      pending_proposals: Number(proposals?.count || 0),
+    })
+  } catch (error) {
+    return c.json(safeError('Hermes analytics failed')(error), 500)
+  }
+})
+
+app.post('/analytics/hermes/recalibrate', async (c) => {
+  const { DB } = c.env
+  try {
+    const outcomes = await DB.prepare(`SELECT actual_score,predicted_components_json FROM recommendation_outcomes WHERE actual_score IS NOT NULL AND predicted_components_json IS NOT NULL AND predicted_components_json!='{}'`).all<any>()
+    const sample = outcomes.results || []
+    if (sample.length < 5) return c.json({ error: 'insufficient_evidence', message: `At least 5 rated discovery outcomes are required; found ${sample.length}.` }, 409)
+    const dimensions = ['frontier_potential', 'info_gain', 'personal_pull', 'real_life_relevance', 'source_quality', 'format_exploration']
+    const deltas: Record<string, number> = {}
+    for (const dimension of dimensions) {
+      let signal = 0
+      for (const row of sample) {
+        let components: any = {}
+        try { components = JSON.parse(row.predicted_components_json || '{}') } catch {}
+        const component = Math.max(0, Math.min(1, Number(components[dimension] ?? 0.5)))
+        signal += component * ((Number(row.actual_score) - 5) / 5)
+      }
+      // Slow, bounded adaptation. The feedback loop must be evidence-led, never twitchy.
+      deltas[dimension] = Math.max(-0.01, Math.min(0.01, (signal / sample.length) * 0.03))
+    }
+    const current = (await DB.prepare(`SELECT id,dimension,baseline_weight,current_weight,evidence_count,audit_history_json FROM engine_weights`).all<any>()).results || []
+    const updated = adaptAndNormalizeWeights(current, deltas)
+    await DB.batch(updated.map((item: any) => {
+      let history: any[] = []
+      try { history = JSON.parse(current.find((row: any) => row.id === item.id)?.audit_history_json || '[]') } catch {}
+      history.push({ source: 'recommendation_outcomes', sample_size: sample.length, delta: deltas[item.dimension], at: new Date().toISOString() })
+      return DB.prepare(`UPDATE engine_weights SET current_weight=?,evidence_count=?,audit_history_json=?,updated_at=datetime('now') WHERE id=?`).bind(item.current_weight, item.evidence_count, JSON.stringify(history.slice(-20)), item.id)
+    }).concat([DB.prepare(`INSERT INTO update_log (kind,summary,details_json) VALUES ('system',?,?)`).bind(`Hermes recalibrated discovery weights from ${sample.length} rated outcomes`, JSON.stringify({ deltas, sample_size: sample.length }))]))
+    return c.json({ ok: true, sample_size: sample.length, deltas, weights: updated })
+  } catch (error) {
+    return c.json(safeError('Hermes recalibration failed')(error), 500)
+  }
+})
+
+app.get('/analytics/hermes/weekly', async (c) => {
+  try { return c.json(await hermesWeeklyReport(c.env.DB)) }
+  catch (error) { return c.json(safeError('Hermes weekly evaluator failed')(error), 500) }
+})
+
+app.post('/analytics/hermes/evaluate', async (c) => {
+  try { return c.json({ ok: true, ...(await createHermesEvaluatorProposals(c.env.DB)) }) }
+  catch (error) { return c.json(safeError('Hermes evaluator failed')(error), 500) }
+})
+
+app.post('/analytics/hermes/backfill', async (c) => {
+  try {
+    const body = await c.req.json<{ dry_run?: boolean }>().catch((): { dry_run?: boolean } => ({}))
+    return c.json({ ok: true, ...(await backfillHermesIntelligence(c.env.DB, body.dry_run !== false)) })
+  } catch (error) { return c.json(safeError('Hermes backfill failed')(error), 500) }
 })
 
 export default app

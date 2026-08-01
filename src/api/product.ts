@@ -29,7 +29,7 @@ app.post('/sessions/start', async (c) => {
 })
 app.post('/sessions/:id/return', async (c) => {
   const body: { reflection?: string; complete?: boolean; rating?: number | string; auto_enqueue?: boolean } = await c.req.json<{ reflection?: string; complete?: boolean; rating?: number | string; auto_enqueue?: boolean }>().catch(() => ({}))
-  const session = await c.env.DB.prepare(`SELECT s.*, r.video_title, r.video_url FROM learning_sessions s LEFT JOIN recommendations r ON r.id=s.recommendation_id WHERE s.id=?`).bind(c.req.param('id')).first<any>()
+  const session = await c.env.DB.prepare(`SELECT s.*, r.video_title, r.video_url, r.creator, r.content_type FROM learning_sessions s LEFT JOIN recommendations r ON r.id=s.recommendation_id WHERE s.id=?`).bind(c.req.param('id')).first<any>()
   if (!session) return c.json({ error: 'session not found' }, 404)
   const reflection = String(body.reflection || '').trim().slice(0, 10000)
   const rating = normalizeRating(body.rating)
@@ -60,6 +60,7 @@ app.post('/sessions/:id/return', async (c) => {
   }
   if (body.complete) statements.push(c.env.DB.prepare(`UPDATE recommendations SET status='consumed',consumed_date=date('now'),user_rating=?,user_score=?,user_review=?,updated_at=datetime('now') WHERE id=?`).bind(rating.rating, rating.score, reflection || null, session.recommendation_id))
   if (body.complete && !wasCompleted && rating.score !== null) statements.push(c.env.DB.prepare(`INSERT INTO rating_events (recommendation_id,rating,score,created_at) VALUES (?,?,?,datetime('now'))`).bind(session.recommendation_id, rating.rating, rating.score))
+  if (body.complete) statements.push(c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,actual_score,outcome_status,consumed_at,evaluated_at) VALUES (?,?,?,?,?,'consumed',date('now'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET actual_score=COALESCE(excluded.actual_score,recommendation_outcomes.actual_score),outcome_status='consumed',consumed_at=excluded.consumed_at,evaluated_at=datetime('now')`).bind(`outcome_${session.recommendation_id}`, session.recommendation_id, session.creator || null, session.content_type || null, rating.score))
   if (body.complete) {
     const isFeedItem = session.recommendation_id ? await c.env.DB.prepare(`SELECT 1 FROM feed_entries WHERE recommendation_id=?`).bind(session.recommendation_id).first() : null
     const settings = await loadSettings(c.env.DB)

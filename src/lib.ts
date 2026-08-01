@@ -8,6 +8,8 @@ export type Bindings = {
   GOOGLE_API_KEY?: string
   OPENCODE_ZEN_API_KEY?: string
   TELEGRAM_BOT_TOKEN?: string
+  VAPID_PUBLIC_KEY?: string
+  VAPID_PRIVATE_KEY?: string
 }
 
 export type Recommendation = {

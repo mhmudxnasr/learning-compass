@@ -8,6 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "node --test tests/unit/*.test.ts",
     "test:e2e": "node tests/e2e/routes.mjs",
+    "verify:hermes": "node scripts/verify-hermes-contract.mjs",
+    "verify:migrations": "node scripts/rehearse-migrations.mjs",
     "test": "npm run test:unit && npm run typecheck",
     "dev": "vite --host 127.0.0.1",
     "dev:worker": "npm run build && wrangler dev --config wrangler.toml",

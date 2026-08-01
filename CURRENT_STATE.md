@@ -2,8 +2,8 @@
 
 Update this file whenever a milestone is completed, a contract changes, a deployment occurs, or a new blocker is discovered. Keep only current facts; remove resolved or superseded entries instead of accumulating a diary.
 
-**Last verified:** 2026-07-31
-**Production Worker version:** `32ab7aee-284c-4820-8066-2254f1a4c73b`
+**Last verified:** 2026-08-01
+**Production Worker version:** `c15c22d3-7560-4550-8d0f-c0707e0c1d78`
 
 
 
@@ -16,7 +16,7 @@ Update this file whenever a milestone is completed, a contract changes, a deploy
 - NotebookLM grounded Q&A and Studio generation use native `notebooklm-mcp` tools (`mcp__notebooklm__*` from `PleasePrompto/notebooklm-mcp@latest`) as the primary engine and `notebooklm-py` (v0.7.3) as the direct Python API & CLI backup engine. Playwright DOM automation has been completely removed.
 - PDF handwriting extraction resolves the NotebookLM notebook registered on each recommendation, with the Master Corpus as fallback.
 - Vite/Preact/TypeScript client and Hono Worker build successfully.
-- The destination registry has 29 purposeful routes; Curate contains Queue, Discovery, RSS Feed (Inbox), Collections, Resurfacing, Contradictions, and Archive. Learn starts with Files, with dedicated NotebookLM (Master Corpus status & Studio workbench), Reflections, Notes, Cards, Review, Changes, and Journal views. Vault and Sessions are removed from the UI.
+- The destination registry has 31 purposeful routes; Curate contains Queue, Discovery, RSS Feed (Inbox), Collections, Resurfacing, Contradictions, and Archive. Learn starts with Files, with dedicated NotebookLM (Master Corpus status & Studio workbench), Reflections, Notes, Cards, Review, Changes, and Journal views. Insights includes Hermes operations and Memory Review. Vault and Sessions are removed from the UI.
 - Recommendation Discovery Engine V2 operates self-improving wave exploration (R1, R2, R3+), 5-10m open-web research contracts, research quality gates (>= 20 candidates across >= 4 source classes with >= 8 verified sources), hard feedback gate, decision receipts (Contrast Hooks), Hermes adaptive feedback interview loops, evidence-controlled branch evolution, bounded weight adaptation, host-side skill revision synchronization, and mathematical **Dialectic Divergence Optimization** ($S_{\text{dialectic}}(d) = \lambda \cos - (1-\lambda)|\cos - \theta_{\text{target}}| + \mu \mathbb{I}_{\text{refutation}}$ with target orthogonal angle $\theta_{\text{target}} = 0.25$).
 
 - Mobile shell/navigation tests pass.
@@ -43,11 +43,23 @@ Update this file whenever a milestone is completed, a contract changes, a deploy
 - Hermes skills and memories describe the current D1/R2 architecture and connected Lite Visual workflow.
 - Hermes cron polls every two minutes and uses the Cloudflare-compatible User-Agent.
 - Hermes job leases now require the claiming worker identity for heartbeat, completion, and failure, and `/agent/jobs/health` exposes queue counts, stale leases, and recent failures.
+- Hermes upgrades now record predicted-versus-actual recommendation outcomes, enforce unique verified discovery URLs, recalibrate engine weights only from five or more rated outcomes with slow bounded deltas, and expose the evidence in Insights → Hermes.
+- Hermes now exposes a weekly evaluator report, reviewable proposal generation, and an explicit dry-run/opt-in intelligence backfill for SRS cards, outcomes, taste vectors, creator trust, and contradiction candidates.
+- Hermes memory is provenance-backed and typed (`durable`, `episodic`, `working`, `rejection`, `hypothesis`); durable entries require confidence, temporary entries expire, and replacement requires explicit supersession.
+- Memory Review supports search, evidence inspection, approval, rejection, and expiry; source records expose recommendation-level memory influence links.
+- NotebookLM broker health now has heartbeat, stale-session, recovery receipt, and explicit grounded/fallback/offline reporting. The Worker does not claim to control the host browser session.
+- Hermes weekly evaluator reports accuracy, abandoned sources, prediction error, best creators/formats, and taste drift; scheduled runs create pending proposals only. Intelligence backfill is idempotent and dry-run by default.
+- Hermes jobs now use delayed retries, dead-letter alerts, and explicit replay; open alerts can be acknowledged from Insights → Hermes.
+- Hermes contract verification is available through `npm run verify:hermes` and checks migration order, route/API registration, docs, and the repository Hermes contract.
+- Each Queue item now opens a linked source record containing its session history, personal reflection, extracted note, companion files, recall drafts/cards, and measured outcome.
+- Browser mutations carry stable client IDs with server-side successful-response receipts; offline conflicts and failed writes remain visible in Settings → Data with retry/discard actions.
+- Reminder controls now support browser subscriptions, VAPID-backed Web Push delivery, Telegram chat configuration, due-review scheduling, and persisted delivery evidence.
+- Migration rehearsal is idempotent through `npm run verify:migrations`; large-library pagination, responsive overflow, screenshot smoke, bilingual extraction, and source-record integration checks are covered.
 - Agent control protocol exposes the complete allow-listed site API through `/agent/capabilities`, `/agent/openapi.json`, `/agent/request`, and `/agent/tool-call`; mutations are audited in `agent_logs` and preserve product validation.
 - `POST /brain/profile` updates all editable profile fields, including reaction style, quality rules, operational style, pattern summary, and recent signal, with legacy aliases preserved.
 - `POST /ai/suggest` LLM curation prompt and Hermes `taste-rec` / `taste-enhancer` skills are fully synchronized with Mahmood's explicit exclusion rules (zero book-derived Islamic recs, existential death content only, real-life/business storytelling, mastered dopamine/habit neuroscience, Mathur/ProPublica dark patterns, and shippable AI dev tools without corporate PR).
 - Hermes explicit recommendations use a bounded fast path: one `/agent/context` preflight, selected-run reuse, three parallel research leaves, one complete candidate batch, and immediate activation; feedback-only skills are excluded from new recommendation runs.
-- Hermes now has a canonical `learning-compass-site-operator` skill for linear, verified read/write/delete control across all Learning Compass tabs and live Worker APIs; its request wrapper was smoke-tested against 88 live capabilities and `/agent/context`.
+- Hermes is now a Learning Compass-only procedural operating system. `learning-compass-operating-system` routes every chat event—especially a reflection—into one verified site procedure, then calls one focused specialist. Only 11 Learning Compass procedures and their required project tools remain active; all generic skills/plugins are disabled and removed from the Hermes profile.
 
 ## Last Live Verification
 
@@ -80,6 +92,22 @@ On 2026-07-31:
 - `npm test` — 31 unit tests and TypeScript checks passed.
 - `npm run build` — production client build passed.
 
+On 2026-08-01:
+
+- `npm run verify:hermes` — 8 migrations and 11 synchronized contract checks passed.
+- `npm run verify:migrations` — clean migration apply and idempotent re-apply passed.
+- `npm run test:unit` — 31 unit tests passed.
+- `npm run typecheck` — passed after normalizing offline request headers and backfill body narrowing.
+- `npm run build` — production client build passed.
+- `npm run test:e2e` — all 31 destinations, mobile shell, and mobile navigation passed; the runner uses an isolated local port.
+- Learning Compass router skill validation, Hermes configuration validation, gateway restart, and live fresh-chat reflection-routing smoke test passed.
+- `node tests/integration/hermes_upgrade_flow.mjs` — Hermes analytics, guarded memory lifecycle, evidence gate, weekly evaluator, dry-run backfill, notifications, and capabilities passed.
+- `node tests/integration/test_rec_flow.mjs` and `node tests/integration/discovery_flow.mjs` — discovery and feedback flows passed on fresh migrated D1 databases.
+- `git diff --check` — passed.
+- Production D1 applied 0006 and 0007 after reconciling already-present 0005 notebook URL state; the deployed Worker version is `c15c22d3-7560-4550-8d0f-c0707e0c1d78`.
+- Live smoke passed for `/health`, NotebookLM status/health, Hermes analytics/weekly evaluator, memory review, job health, and capabilities. Production backfill inserted 39 missing outcomes, 17 taste vectors, and 11 creator-trust rows; a second dry-run reported zero missing outcomes.
+- Production VAPID public/private keys are configured. The in-app browser denied notification permission, so a regular-browser subscription is still required for the closed-app delivery check.
+
 On 2026-07-29:
 
 - `npm test` — 17 unit tests and TypeScript checks passed.
@@ -91,11 +119,8 @@ On 2026-07-29:
 
 Treat these as the next-value queue, not as claims that the current app is broken:
 
-1. Populate and validate real intelligence data: SRS backfill, contradictions, missing taste vectors, decay/staleness, Creator Trust, and forecast quality.
-2. Complete full offline mutation conflict handling beyond cached reads and pending text captures.
-3. Complete browser push and Telegram reminder controls and delivery verification.
-4. Expand large-data, migration rehearsal, visual-regression, and bilingual direction coverage.
-5. Verify complete external handoff → return → reflection → Finish and Process → recall approval → Review against production-like data.
+1. Enable browser notifications from Mahmood's regular browser and run one closed-app `/notifications/test` delivery.
+2. Continue validating intelligence quality over real use, especially decay/staleness and forecast accuracy.
 
 ## Repository Condition
 

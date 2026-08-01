@@ -110,7 +110,8 @@ The HTML and PDF represent one source and must not count as two taste signals.
 
 ### Site operations
 
-- `learning-compass-site-operator` is the canonical Hermes control skill for reading, creating, editing, processing, triaging, completing, and removing site data across every destination. It uses `/agent/capabilities` and `/agent/request`, reads before writes, verifies after writes, and uses the Cloudflare-compatible Hermes User-Agent.
+- `learning-compass-operating-system` is Hermes's single entry point. It classifies every Learning Compass request into a verified procedure, then calls one focused specialist skill. `learning-compass-site-operator` is its live Worker API execution layer: it uses `/agent/capabilities` and `/agent/request`, reads before writes, verifies after writes, and uses the Cloudflare-compatible Hermes User-Agent.
+- A reflection sent to Hermes is explicit feedback: preserve it verbatim, resolve the source/session, queue Taste Mapper analysis, create reviewable proposals, and stop. Do not recommend or apply a change unless explicitly asked.
 
 ## Purposeful Destinations
 
@@ -120,10 +121,10 @@ The route registry is the executable source of truth:
 - Curate: 7
 - Map: 4
 - Learn: 7
-- Insights: 4
+- Insights: 6
 - Settings: 5
 
-Total: 28. Queue, Discovery, Inbox, Collections, Resurfacing, Contradictions, and Archive live in Curate. Files, Reflections, extracted Notes, Cards, Review, Changes, and Journal live in Learn. Every destination must support a real user decision or workflow. Related cloud datasets may be combined when that makes the page more useful; infrastructure implementation details stay out of user-facing copy.
+Total: 31. Queue, Discovery, Inbox, Collections, Resurfacing, Contradictions, and Archive live in Curate. Files, Reflections, extracted Notes, Cards, Review, Changes, and Journal live in Learn. Hermes operations and Memory Review live in Insights. Every destination must support a real user decision or workflow. Related cloud datasets may be combined when that makes the page more useful; infrastructure implementation details stay out of user-facing copy.
 
 ## Data and Migrations
 
@@ -136,6 +137,8 @@ Apply in order:
 5. `migrations/0003_feedback_review.sql`
 6. `migrations/0004_discovery_engine.sql`
 7. `migrations/0005_recommendation_notebook_url.sql`
+8. `migrations/0006_hermes_upgrade.sql`
+9. `migrations/0007_sync_notifications.sql`
 
 New schema changes require a new numbered idempotent migration. Never hide schema mutation inside cron or request handlers.
 

@@ -1,6 +1,7 @@
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -8,13 +9,22 @@ const workspaces = {
   today: ['briefing'],
   curate: ['queue','discovery','inbox','collections','resurfacing','contradictions','archive'],
   map: ['atlas','branches','coverage','taste'],
-  learn: ['files','reflections','notes','cards','review','changes','journal'],
-  insights: ['overview','learning','taste','forecast'],
+  learn: ['files','notebooklm','reflections','notes','cards','review','changes','journal'],
+  insights: ['overview','learning','taste','forecast','hermes','memory'],
   settings: ['profile','appearance','learning','curation','data'],
 }
 
 const wrangler = './node_modules/.bin/wrangler'
 const persistDir = mkdtempSync(join(tmpdir(), 'learning-compass-e2e-'))
+const port = await new Promise((resolve, reject) => {
+  const probe = createServer()
+  probe.once('error', reject)
+  probe.listen(0, '127.0.0.1', () => {
+    const address = probe.address()
+    probe.close((error) => error ? reject(error) : resolve(address.port))
+  })
+})
+const baseUrl = `http://127.0.0.1:${port}`
 let server
 let browser
 
@@ -31,9 +41,9 @@ try {
     if (status !== 0) throw new Error(`D1 setup failed:\n${output}`)
   }
 
-  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8787'], {
+  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', String(port)], {
     stdio: ['ignore', 'pipe', 'pipe'],
-    detached: false,
+    detached: true,
   })
   let serverLog = ''
   server.stdout.on('data', (chunk) => { serverLog = (serverLog + chunk).slice(-4000) })
@@ -41,7 +51,7 @@ try {
 
   for (let attempt = 0; attempt < 60; attempt++) {
     try {
-      const response = await fetch('http://127.0.0.1:8787/health')
+      const response = await fetch(`${baseUrl}/health`)
       if (response.ok) break
     } catch {}
     if (attempt === 59) throw new Error(`Worker did not start:\n${serverLog}`)
@@ -58,7 +68,7 @@ let count = 0
 for (const [workspace, views] of Object.entries(workspaces)) {
   for (const view of views) {
     const before = errors.length
-    await page.goto(`http://127.0.0.1:8787/#/${workspace}/${view}`, { waitUntil: 'networkidle' })
+    await page.goto(`${baseUrl}/#/${workspace}/${view}`, { waitUntil: 'networkidle' })
     const heading = await page.locator('.page-head h1').textContent()
     if (!heading?.trim()) throw new Error(`${workspace}/${view}: missing heading`)
     if (errors.length !== before) throw new Error(`${workspace}/${view}: ${errors.at(-1)}`)
@@ -68,25 +78,31 @@ for (const [workspace, views] of Object.entries(workspaces)) {
     if (workspace === 'curate' && view === 'archive') {
       await page.locator('.archive-rss').waitFor({ state: 'attached' })
     }
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    if (overflow > 2) throw new Error(`${workspace}/${view}: horizontal overflow ${overflow}px`)
+    if (workspace === 'today' && view === 'briefing') {
+      const screenshot = await page.screenshot({ path: join(persistDir, 'briefing-desktop.png') })
+      if (!screenshot.length) throw new Error('desktop visual smoke screenshot was empty')
+    }
     count++
   }
 }
 
-if (count !== 28) throw new Error(`expected 28 routes, checked ${count}`)
-await page.goto('http://127.0.0.1:8787/#/curate/queue', { waitUntil: 'networkidle' })
+if (count !== 31) throw new Error(`expected 31 routes, checked ${count}`)
+await page.goto(`${baseUrl}/#/curate/queue`, { waitUntil: 'networkidle' })
 const curateNav = await page.locator('.subnav button').allTextContents()
 if (curateNav[0]?.trim() !== 'Queue' || curateNav[2]?.trim() !== 'RSS Feed') throw new Error('Curate navigation order or RSS label is incorrect')
-await page.goto('http://127.0.0.1:8787/#/learn/files', { waitUntil: 'networkidle' })
+await page.goto(`${baseUrl}/#/learn/files`, { waitUntil: 'networkidle' })
 const learnNav = await page.locator('.subnav button').allTextContents()
 if (learnNav[0]?.trim() !== 'Files' || learnNav.includes('Sessions')) throw new Error('Learn navigation order is incorrect')
 const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards] = await Promise.all([
-  fetch('http://127.0.0.1:8787/settings').then((response) => response.json()),
-  fetch('http://127.0.0.1:8787/manifest.json').then((response) => response.json()),
-  fetch('http://127.0.0.1:8787/artifacts').then((response) => response.json()),
-  fetch('http://127.0.0.1:8787/capture/feeds').then((response) => response.json()),
-  fetch('http://127.0.0.1:8787/recommendations/list?source=manual').then((response) => response.json()),
-  fetch('http://127.0.0.1:8787/feedback/proposals').then((response) => response.json()),
-  fetch('http://127.0.0.1:8787/learning/srs/cards').then((response) => response.json()),
+  fetch(`${baseUrl}/settings`).then((response) => response.json()),
+  fetch(`${baseUrl}/manifest.json`).then((response) => response.json()),
+  fetch(`${baseUrl}/artifacts`).then((response) => response.json()),
+  fetch(`${baseUrl}/capture/feeds`).then((response) => response.json()),
+  fetch(`${baseUrl}/recommendations/list?source=manual`).then((response) => response.json()),
+  fetch(`${baseUrl}/feedback/proposals`).then((response) => response.json()),
+  fetch(`${baseUrl}/learning/srs/cards`).then((response) => response.json()),
 ])
 if (settings.resolved?.learning?.retention !== 90 || settings.resolved?.learning?.queue_cap !== 5) throw new Error('settings defaults are not resolved')
 if (settings.resolved?.srs_drafts?.minimum_rating !== 7 || settings.resolved?.profile_proposals?.review_required !== true) throw new Error('learning automation defaults are incorrect')
@@ -98,13 +114,19 @@ if (!Array.isArray(proposals.proposals)) throw new Error('feedback proposal cont
 if (!Array.isArray(cards.cards)) throw new Error('SRS card management contract is invalid')
 
 const requestJson = async (path, options = {}) => {
-  const response = await fetch(`http://127.0.0.1:8787${path}`, { headers: { 'content-type': 'application/json' }, ...options })
+  const response = await fetch(`${baseUrl}${path}`, { headers: { 'content-type': 'application/json' }, ...options })
   const body = await response.json()
   if (!response.ok) throw new Error(`${options.method || 'GET'} ${path} failed: ${JSON.stringify(body)}`)
   return body
 }
 const captured = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hermes-e2e', title: 'Hermes automation test' }) })
 await requestJson(`/capture/${captured.id}/triage`, { method: 'POST', body: JSON.stringify({ action: 'queue' }) })
+await page.goto(`${baseUrl}/#/curate/queue`, { waitUntil: 'networkidle' })
+await page.getByRole('button', { name: 'Record' }).first().click()
+const recordDrawer = page.locator('.record-drawer')
+await recordDrawer.getByRole('heading', { name: 'Learning status' }).waitFor()
+if (!await recordDrawer.isVisible()) throw new Error('source record drawer did not link the learning loop')
+await page.getByRole('button', { name: 'Close source record' }).click()
 const started = await requestJson('/sessions/start', { method: 'POST', body: JSON.stringify({ recommendation_id: captured.id }) })
 const returned = await requestJson(`/sessions/${started.session_id}/return`, { method: 'POST', body: JSON.stringify({ reflection: 'The mechanism is useful and I will apply it.', rating: 7, complete: true, auto_enqueue: true }) })
 if (returned.status !== 'completed' || !returned.reflection_note_id || !returned.srs_eligible) throw new Error('rating 7 did not close the reflection workflow')
@@ -141,9 +163,13 @@ if (!activeCards.length) throw new Error('approved draft did not become an activ
 await requestJson(`/learning/srs/cards/${activeCards[0].id}`, { method: 'DELETE' })
 if ((await requestJson('/learning/srs/cards')).cards.some((card) => card.id === activeCards[0].id)) throw new Error('active card deletion failed')
 await page.setViewportSize({ width: 390, height: 844 })
-await page.goto('http://127.0.0.1:8787/#/today/briefing', { waitUntil: 'networkidle' })
+await page.goto(`${baseUrl}/#/today/briefing`, { waitUntil: 'networkidle' })
 if (!(await page.locator('.mobile-nav').isVisible())) throw new Error('mobile primary navigation is not visible')
 if (await page.locator('.rail').isVisible()) throw new Error('desktop rail remains visible on mobile')
+const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+if (mobileOverflow > 2) throw new Error(`mobile briefing horizontal overflow ${mobileOverflow}px`)
+const mobileScreenshot = await page.screenshot({ path: join(persistDir, 'briefing-mobile.png') })
+if (!mobileScreenshot.length) throw new Error('mobile visual smoke screenshot was empty')
 await page.getByRole('button', { name: 'More' }).click()
 const moreDialog = page.locator('.mobile-more-dialog')
 await moreDialog.waitFor({ state: 'visible' })
@@ -158,8 +184,9 @@ console.log(`E2E passed: ${count} purposeful destinations, mobile shell, and com
   await browser?.close()
   if (server && server.exitCode === null) {
     const exited = new Promise((resolve) => server.once('exit', resolve))
-    server.kill('SIGTERM')
-    await exited
+    try { process.kill(-server.pid, 'SIGTERM') } catch { server.kill('SIGTERM') }
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 3000))])
+    if (server.exitCode === null) { try { process.kill(-server.pid, 'SIGKILL') } catch { server.kill('SIGKILL') } }
   }
   rmSync(persistDir, { recursive: true, force: true })
 }

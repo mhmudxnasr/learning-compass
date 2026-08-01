@@ -25,7 +25,7 @@ try {
   console.log('2. Starting local Wrangler dev server...')
   server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8788'], {
     stdio: ['ignore', 'pipe', 'pipe'],
-    detached: false,
+    detached: true,
   })
   let serverLog = ''
   server.stdout.on('data', (chunk) => { serverLog = (serverLog + chunk).slice(-4000) })
@@ -146,8 +146,9 @@ try {
 } finally {
   if (server && server.exitCode === null) {
     const exited = new Promise((resolve) => server.once('exit', resolve))
-    server.kill('SIGTERM')
-    await exited
+    try { process.kill(-server.pid, 'SIGTERM') } catch { server.kill('SIGTERM') }
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 3000))])
+    if (server.exitCode === null) { try { process.kill(-server.pid, 'SIGKILL') } catch { server.kill('SIGKILL') } }
   }
   rmSync(persistDir, { recursive: true, force: true })
 }
