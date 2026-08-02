@@ -16,11 +16,11 @@ Calm editorial learning surface + precise research instrument. Information hiera
 
 ## Shell
 
-Collapsible desktop rail. Mobile bottom bar: Today, Curate, Learn, More. Contextual sub-navigation lives below the page heading. ⌘K opens the command palette. Capture is available globally.
+Collapsible desktop rail. Mobile bottom bar: Momentum, Curate, Learn, More. Contextual sub-navigation lives below the page heading. ⌘K opens the command palette. Capture is available globally.
 
 ## Content
 
-Today prioritizes due work, queue progress, actionable coverage gaps, resurfacing, and recent output. Queue owns start, resume, and finish. Legacy Discovery is available inside Archive while new recommendations appear as one Compass Pick on Today. Learn begins with Files and uses one source-centric Notes record that presents personal feedback before extractor-created Notes. Activity shows only pending proposals with explicit Approve and Reject actions; reviewed changes belong to history. Internal jobs never appear in the user interface. Notes use Foundation → Case Studies → Exploitation → Defense plus My Notes & Reaction.
+Momentum prioritizes the active Queue source and its linked HTML, PDF, Notes, and NotebookLM files. The remaining active shelf, real weekly completion/note/recall progress, evidence-backed insight, and recent wins follow. Motivation comes from recorded work, never quotes or decorative gamification. Queue owns start, resume, and finish. Legacy Discovery is available inside Archive; a Compass Pick appears on Momentum only when the active shelf is empty. Learn begins with Files and uses one source-centric Notes record that presents personal feedback before extractor-created Notes. Activity shows only pending proposals with explicit Approve and Reject actions; reviewed changes belong to history. Internal jobs never appear in the user interface. Notes use Foundation → Case Studies → Exploitation → Defense plus My Notes & Reaction.
 
 ## Atlas
 

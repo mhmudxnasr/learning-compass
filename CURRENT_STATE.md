@@ -3,9 +3,10 @@
 Update this file whenever a milestone is completed, a contract changes, a deployment occurs, or a new blocker is discovered. Keep only current facts; remove resolved or superseded entries instead of accumulating a diary.
 
 **Last verified:** 2026-08-02
-**Production Worker version:** `fd54f05f-2890-4c02-b874-69e073ced88a`
+**Production Worker version:** `701ecaf5-87ca-4504-bdb0-d365ee97290e`
 
 - Personal Bayesian Cascade is live behind `/compass`: one unresolved Compass Pick, adaptive 3–8 candidate submissions, server-owned scoring, confidence/margin abstention, explicit Start/feedback, and separate Compass outcome storage. Legacy Discovery V2 and `/ai/suggest` remain compatibility/archive paths.
+- Compass scoring now checks source reachability, canonicalizes URLs, removes exact/semantic duplicates, excludes consumed/active/rejected/mastered/blocked sources, uses priorities, taste vectors, sample-size-shrunk creator/format outcomes and format fatigue, applies distinct fit/bridge/challenge pairwise ranking, records calibrated decision receipts and predicted outcomes, learns explicit Compass outcomes, and ignores client scores/verification flags.
 
 
 
@@ -22,7 +23,7 @@ Update this file whenever a milestone is completed, a contract changes, a deploy
 - The standalone NotebookLM page and non-executing Studio workbench are removed. NotebookLM remains a Hermes backend and source-specific links remain contextual in Files and source records.
 - Notes is source-centric: one page presents exact personal feedback, extracted bilingual sections, proposals, files, recall, outcome, memory influence, and session history while internal job state stays out of the UI.
 - `POST /feedback/record` is the single tracked/untracked feedback mutation and exact receipt. Activity applies an approved proposal once without creating a redundant application job.
-- Today shows a real Review now action when recall is due and includes resurfaced sources; Compass Start opens the source and preserves the active session handoff.
+- Momentum replaces the unused Briefing as the default home: it opens the active Queue source and its linked files first, shows the full five-source shelf, earned weekly progress, one evidence-backed insight, and recent wins. Compass Pick appears only when the shelf is empty.
 - Legacy Discovery Engine V2 remains readable for compatibility; new recommendation work uses the Compass Cascade and preserves its evidence/receipt data without enforcing the former 20-candidate gate.
 
 - Mobile shell/navigation tests pass.
@@ -47,6 +48,8 @@ Update this file whenever a milestone is completed, a contract changes, a deploy
 - Settings are resolved from stored values and now control retention scheduling, capture enrichment, SRS-draft generation, and profile-proposal review behavior.
 - The service worker fetches new navigation shells before falling back to cache, avoiding stale lazy-chunk references after deployment; the manifest includes a local app icon.
 - Hermes skills and memories describe the current D1/R2 architecture and connected Lite Visual workflow.
+- Lite Visual now requires exact source/pair resolution, complete-source evidence packets with coverage matrices, measured metadata, responsive/print validation, a six-page PDF inspection set, an 8/10 HTML quality gate, versioned pair metadata, one verified HTML extraction job, and canonical source-record verification.
+- Artifact publication now has a machine-readable QA contract: visualise enqueueing is Hermes-only; strict Lite Visual HTML/PDF and NotebookLM cinematic-video gates return structured repair-required failures, while GET `/artifacts` normalizes legacy files as unverified and exposes compact QA state to Learn → Files.
 - No scheduled Hermes poller is active; explicit workflows process only the work they create.
 - Hermes job leases now require the claiming worker identity for heartbeat, completion, and failure, and `/agent/jobs/health` exposes queue counts, stale leases, and recent failures.
 - Hermes upgrades now record predicted-versus-actual recommendation outcomes, enforce unique verified discovery URLs, recalibrate engine weights only from five or more rated outcomes with slow bounded deltas, and expose the evidence in Insights → Hermes.
@@ -94,6 +97,12 @@ All returned successfully after the last deployment.
 
 On 2026-08-02:
 
+- Deployed the media QA contract on Worker version `701ecaf5-87ca-4504-bdb0-d365ee97290e`: Lite Visual is Hermes-only and source-prompted, HTML/PDF uploads are quality-gated, NotebookLM video publication requires cinematic/custom-prompt evidence, and Files exposes verified or repair-required QA state.
+- Deployed the context-aware Compass scorer on Worker version `00f75fa3-bd42-4baf-9f60-85394417d4c4`; health, Momentum, Inbox, Queue, Notes, Recall, pending jobs, and Compass Pick reads all returned 200.
+- Replaced the default Briefing with the file-first Momentum workspace: active mission files, full Queue shelf, weekly completion/note/recall progress, evidence-backed insight, and recent wins. The legacy route redirects cleanly.
+- Deployed Momentum on Worker version `b19ef202-1671-481a-8c46-d65956cf3614`; live API and client-asset smoke checks passed.
+- Added the compact Momentum streak keeper: a seven-day chain, current streak, today-secured state, and direct action to preserve momentum.
+- Deployed the streak keeper on Worker version `8d42d061-bbe2-488b-a8fc-fe3f7df37fb0`; live API and client-asset smoke checks passed.
 - Cancelled all 26 pending, running, or retrying Hermes jobs without deleting source data or completed results. Production now has zero active jobs, no stale leases, and no scheduled Hermes poller.
 - Removed job controls, processing state, queue reliability, failure/replay panels, and the Files skill-prompt control from the site.
 - Deployed atomic feedback recording, direct proposal approval, proposal deduplication, pending-only Activity, searchable Notes, batch Recall actions, actionable Today signals, and the simplified editable Profile.

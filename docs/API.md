@@ -2,7 +2,7 @@
 
 ## Canonical read models
 
-- `GET /dashboard/briefing` — Today next action, due reviews, queue pressure, gaps, neglected branches, and recent output.
+- `GET /dashboard/briefing` — Momentum workspace data: active Queue shelf, linked files, weekly completions/notes/recall, evidence-backed insight, and recent wins. Legacy next-action fields remain compatible.
 - `GET /capture/queue` — five-item active queue read model.
 - `GET /recommendations/list` — archive and filtered recommendation records. Use `source=feed` for RSS/Atom captures or `source=manual` to keep feed entries out of the main archive.
 - `GET /knowledge/graph` — nodes and evidence-backed edges.
@@ -24,7 +24,8 @@
 - `GET /capture/feeds/:id/entries` — read all imported articles for one feed with pagination.
 - `POST /capture/feeds/sync`, `POST /capture/feeds/:id/sync` — check all feeds or one feed now; optional `{ "limit": 1..20 }` caps entries imported per feed. Inbox **Check now** uses 5. Scheduled checks run every six hours without this manual cap.
 - `POST /capture/:id/triage` — promote an Inbox item to Queue or exclude it; queue overflow requires explicit override.
-- `POST /artifacts`, `GET /artifacts`, `GET /artifacts/:id` — R2-backed files and metadata. Multipart uploads accept `pair_id`, `role`, `recommendation_id`, `source_url`, `source_title`, `generator`, or a JSON `metadata` field. `GET /artifacts` joins each file's `notebook_url` from the owning recommendation (null when unset) — Learn → Files uses it for the NBLM button.
+- `POST /artifacts`, `GET /artifacts`, `GET /artifacts/:id` — R2-backed files and metadata. Multipart uploads normalize string, boolean, numeric, and JSON metadata including `revision`, `supersedes_pair_id`, `quality_score`, `qa_status`, `qa_checked_at`, `qa_checks_json`, `coverage_status`, `repair_status`, `repair_reason`, `video_format`, `custom_prompt_applied`, `notebook_url_linked`, `source_indexed`, and `download_verified`. Lite Visual HTML/PDF and NotebookLM cinematic video uploads enforce their QA contracts; failed contracts return HTTP 422 with `quality_assurance.status=repair_required`, `failures`, and `repair_status=required`. `GET /artifacts` exposes normalized `quality_assurance` (`unverified`, `passed`, or `repair_required`) and joins each file's `notebook_url` from the owning recommendation.
+- `POST /capture/:id/visualise` — enqueue-only `visualise_source` Hermes work. The payload requires a custom prompt and QA, sets the HTML quality threshold to 8, and expects the `html` and `pdf` roles; the route does not run a generic Worker visualiser.
 - `GET /artifacts/:id/view` — render Markdown artifacts as a safe, readable HTML document.
 - `POST /artifacts/:id/process` — queue an idempotent `extract_notes` Hermes job; a failed extraction is reset to `retry` by the same call.
 - `POST /recommendations/action` — update recommendation status, rating, review, consumed date, and optionally register an item-specific `notebook_url`, which Learn → Files exposes as the NBLM button.
@@ -39,7 +40,7 @@
 ## AI & Curation
 
 - `GET /compass/pick` — the single unresolved Personal Bayesian Cascade pick.
-- `POST /compass/picks` — submit 3–8 researched candidates; the Worker owns scoring, confidence, and abstention.
+- `POST /compass/picks` — submit 3–8 candidates with canonical URL, title, creator, format/source class, topics/branch, optional duration/access metadata, and evidence. The Worker checks source reachability, canonicalizes and semantically deduplicates, excludes known/mastered/blocked material, uses taste/priority/creator/format/outcome context, pairwise-ranks with fit/bridge/challenge weights, records a score receipt, and ignores client scores or verification flags. The response includes `eligible_count`, `score`, calibrated `confidence`, `margin`, `source_check`, and an exact `abstention_reason` when withheld.
 - `POST /compass/pick/:id/start` — move the one pick into the normal Queue and start its session.
 - `POST /compass/pick/:id/feedback` — record explicit outcome, score, reason tags, and reflection.
 

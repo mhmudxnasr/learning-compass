@@ -3,7 +3,6 @@ import { queueDecision } from '../domain'
 import { Bindings, safeError } from '../lib'
 import { createInboxCapture } from '../services/capture'
 import { addFeed, syncAllFeeds, syncFeed } from '../services/rss'
-import { processVisualiseJob } from '../services/visual'
 
 import { activateWaitingRun } from './discovery'
 
@@ -143,12 +142,15 @@ app.post('/:id/visualise', async (c) => {
   if (!item) return c.json({ error: 'not found' }, 404)
   if (!item.video_url) return c.json({ error: 'source link required' }, 400)
   const jobId = `job_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
-  await c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'visualise_source',?,?)`).bind(jobId, JSON.stringify({ recommendation_id: item.id, source_url: item.video_url, title: item.video_title }), `visualise-queue:${item.id}:${Date.now()}`).run()
-  if (c.executionCtx && typeof c.executionCtx.waitUntil === 'function') {
-    c.executionCtx.waitUntil(processVisualiseJob(c.env, jobId, item))
-  } else {
-    processVisualiseJob(c.env, jobId, item).catch((err) => console.error('[visualise bg error]', err))
-  }
+  await c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'visualise_source',?,?)`).bind(jobId, JSON.stringify({
+    recommendation_id: item.id,
+    source_url: item.video_url,
+    title: item.video_title,
+    custom_prompt_required: true,
+    qa_required: true,
+    quality_threshold: 8,
+    expected_roles: ['html', 'pdf'],
+  }), `visualise-queue:${item.id}:${Date.now()}`).run()
   return c.json({ ok: true, status: 'queued', job_id: jobId, recommendation_id: item.id }, 202)
 })
 

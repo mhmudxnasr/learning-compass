@@ -26,7 +26,7 @@ The product is single-user, English-first, supports bilingual English/Egyptian-A
 The system is **Scholar's Instrument**: neutral, typographic, compact, precise, and calm.
 
 - Desktop uses a collapsible left rail.
-- Mobile prioritizes Today, Curate, Learn, and More.
+- Mobile prioritizes Momentum, Curate, Learn, and More.
 - IBM Plex Sans/Arabic is the UI family; IBM Plex Mono is for data; editorial typography is reserved for reading and notes.
 - Use neutral surfaces and one muted ink-blue accent. Semantic color is only for status/data.
 - Prefer lists, rules, timelines, tables, charts, and meaningful panels.
@@ -90,12 +90,17 @@ Cloudflare rejects Python's default User-Agent.
 
 “Visual lite” and “lite visual” mean the `lite-visual` skill:
 
-1. Capture the source in Learning Compass.
-2. Produce a high-quality tablet/print-friendly HTML companion.
-3. Produce the matching PDF companion.
-4. Upload both to R2 through `/artifacts` with one `pair_id`, roles `html` and `pdf`, and source/recommendation metadata.
-5. Call `/artifacts/:html_id/process` once; rerun it only to retry a failed extraction.
-6. Notes Extractor reads the HTML, preserves source anchors, writes the structured site note and 3–5 SRS drafts, then creates the Obsidian archive copy.
+1. Resolve the exact source and previous artifact pair by recommendation ID, canonical URL, then title.
+2. Retrieve the complete primary source, figures, tables, appendices, and substantive supplementary material; record any inaccessible scope.
+3. Create a checksum-backed evidence packet and coverage matrix mapping every material section, claim, method, result, caveat, and conclusion to the companion.
+4. Produce a source-proportional, tablet/print-friendly HTML companion in separate coverage and design passes.
+5. Calculate and validate displayed metadata from the finished artifact; run structural, link, responsive, console, and PDF checks before upload.
+6. Score HTML source fidelity, learning value, composition, visual intelligence, and source fit; require at least 8/10 with no factual/rendering defect.
+7. Upload a new revision pair with explicit revision and superseded-pair metadata; never silently overwrite the previous pair.
+8. Re-read both uploaded artifacts, then call `/artifacts/:html_id/process` exactly once; poll the extraction job to completed or failed and verify the canonical source record.
+9. Notes Extractor reads the HTML, preserves source anchors, writes the structured site note and 3–5 SRS drafts, then creates the Obsidian archive copy.
+
+The Worker only enqueues `visualise_source` with `custom_prompt_required=true`, `qa_required=true`, `quality_threshold=8`, and expected roles `html`/`pdf`; Hermes owns mining, source-specific prompts, rendering, validation, upload, and completion. Lite Visual HTML uploads require a complete five-dimension 0–2 QA score totaling at least 8 with no defects; linked PDFs require a passed render check.
 
 The HTML and PDF represent one source and must not count as two taste signals.
 
@@ -103,7 +108,7 @@ The HTML and PDF represent one source and must not count as two taste signals.
 
 - `taste-mapper` processes explicit feedback and proposes profile/map updates.
 - `taste-rec` recommends only when a new recommendation is explicitly requested.
-- Explicit one-item requests use the Personal Bayesian Cascade: submit 3 candidates first, expand only after Worker abstention up to 8, expose one server-scored pick, and wait for explicit Start and feedback. `/discovery` and `/ai/suggest` are compatibility/archive paths.
+- Explicit one-item requests use the Personal Bayesian Cascade: submit 3 candidates first, expand only after Worker abstention up to 8, expose one server-scored pick, and wait for explicit Start and feedback. The Worker owns source reachability checks, URL/semantic deduplication, hard exclusions, D1-context scoring, strategy-specific pairwise ranking, calibrated confidence, decision receipts, and predicted-versus-actual outcome learning. `/discovery` and `/ai/suggest` are compatibility/archive paths.
 - `taste-enhancer` audits system quality and cross-layer integrity.
 - Feedback jobs never call `taste-rec` automatically.
 - NotebookLM updates happen only when Hermes is handling explicit feedback on a recommendation; there is no automatic D1 mutation sync.
@@ -117,7 +122,7 @@ The HTML and PDF represent one source and must not count as two taste signals.
 
 The route registry is the executable source of truth:
 
-- Today: 1
+- Momentum: 1
 - Curate: 4
 - Map: 2
 - Learn: 4

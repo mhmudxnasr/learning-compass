@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { mergeArtifactMultipartMetadata, normalizeQualityAssurance } from '../artifact-metadata'
 import { Bindings, escapeHtml, safeError } from '../lib'
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -46,8 +47,11 @@ app.get('/', async (c) => {
   }
   const legacy = await c.env.DB.prepare(`SELECT id,filename,CASE WHEN lower(filename) LIKE '%.pdf' THEN 'application/pdf' ELSE 'text/html' END media_type,length(content) size_bytes,created_at FROM html_files ORDER BY created_at DESC LIMIT 200`).all()
   const artifacts = (rows.results || []).map((row: any) => {
-    try { return { ...row, metadata: JSON.parse(row.metadata_json || '{}'), metadata_json: undefined, extraction: jobByArtifact.get(row.id) || null } }
-    catch { return { ...row, metadata: {}, metadata_json: undefined, extraction: jobByArtifact.get(row.id) || null } }
+    try {
+      const metadata = JSON.parse(row.metadata_json || '{}')
+      return { ...row, metadata, quality_assurance: normalizeQualityAssurance(metadata), metadata_json: undefined, extraction: jobByArtifact.get(row.id) || null }
+    }
+    catch { return { ...row, metadata: {}, quality_assurance: normalizeQualityAssurance(), metadata_json: undefined, extraction: jobByArtifact.get(row.id) || null } }
   })
   const recIds = [...new Set(artifacts.map((a: any) => a.metadata?.recommendation_id).filter(Boolean))]
   const notebookByRec = new Map<string, string>()
@@ -60,7 +64,7 @@ app.get('/', async (c) => {
     const recId = artifact.metadata?.recommendation_id
     artifact.notebook_url = (recId && notebookByRec.get(recId)) || null
   }
-  return c.json({ artifacts: [...artifacts, ...(legacy.results || []).map((row: any) => ({ ...row, legacy: true, metadata: {}, notebook_url: null }))] })
+  return c.json({ artifacts: [...artifacts, ...(legacy.results || []).map((row: any) => ({ ...row, legacy: true, metadata: {}, quality_assurance: normalizeQualityAssurance({}, true), notebook_url: null }))] })
 })
 
 app.post('/', async (c) => {
@@ -78,16 +82,13 @@ app.post('/', async (c) => {
       }
       catch { return c.json({ error: 'metadata must be valid JSON' }, 400) }
     }
-    const allowed = ['pair_id', 'role', 'recommendation_id', 'source_url', 'source_title', 'generator']
-    for (const key of allowed) {
-      const value = form.get(key)
-      if (typeof value === 'string' && value.trim()) metadata[key] = value.trim()
-    }
+    const validation = mergeArtifactMultipartMetadata(metadata, form, file)
+    if (!validation.ok) return c.json({ error: 'quality_assurance_validation_failed', quality_assurance: { status: 'repair_required', failures: validation.failures, repair_status: 'required' } }, 422)
     const id = `artifact_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
     const key = `${new Date().toISOString().slice(0, 10)}/${id}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
     if (c.env.ARTIFACTS) await c.env.ARTIFACTS.put(key, file.stream(), { httpMetadata: { contentType: file.type || 'application/octet-stream' } })
     await c.env.DB.prepare(`INSERT INTO artifacts (id,filename,media_type,r2_key,size_bytes,metadata_json) VALUES (?,?,?,?,?,?)`).bind(id, file.name, file.type || 'application/octet-stream', key, file.size, JSON.stringify({ source: 'artifact_upload', ...metadata })).run()
-    return c.json({ ok: true, id, filename: file.name, r2_key: key, metadata }, 201)
+    return c.json({ ok: true, id, filename: file.name, r2_key: key, metadata, quality_assurance: normalizeQualityAssurance(metadata) }, 201)
   } catch (error) { return c.json(safeError('Artifact upload failed')(error), 500) }
 })
 

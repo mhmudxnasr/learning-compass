@@ -163,7 +163,7 @@ app.post('/:id/complete', async (c) => {
     if (job.job_type === 'apply_feedback_proposal' && payload.proposal_id) {
       statements.push(DB.prepare(`UPDATE feedback_proposals SET status='applied',applied_at=datetime('now') WHERE id=? AND status='approved'`).bind(payload.proposal_id))
     }
-    statements.push(DB.prepare(`UPDATE agent_jobs SET status='completed',result_json=?,lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=?`).bind(JSON.stringify(body), job.id))
+    statements.push(DB.prepare(`UPDATE agent_jobs SET status='completed',result_json=?,error=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=?`).bind(JSON.stringify(body), job.id))
     await DB.batch(statements)
     return c.json({ ok: true })
   } catch (error) { return c.json(safeError('Job completion failed')(error), 500) }

@@ -15,7 +15,7 @@ type AgentMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
  */
 const CAPABILITIES = [
   ['GET', '/agent/context', 'Read the compact taste and learning context.'],
-  ['GET', '/dashboard/briefing', 'Read Today briefing and next actions.'],
+  ['GET', '/dashboard/briefing', 'Read Momentum, active Queue files, weekly progress, and current insight.'],
   ['GET', '/capture', 'Read the unlimited Inbox.'],
   ['POST', '/capture', 'Capture a URL, text, or artifact into Inbox.'],
   ['GET', '/capture/feeds', 'Read RSS and Atom subscriptions.'],

@@ -5,7 +5,7 @@
 - `npm run test:e2e`
 - `npm run build`
 - Rehearse `schema.sql` and migrations `0000` through `0009` on a clean D1 database.
-- Verify Today, Queue, source-centric Notes, Atlas, Recall, Inbox/RSS refresh, and the atomic feedback receipt.
+- Verify Momentum, Queue, source-centric Notes, Atlas, Recall, Inbox/RSS refresh, and the atomic feedback receipt.
 - Verify Insights → Hermes, `/analytics/hermes`, guarded memory lifecycle, direct proposal approval, and the recalibration evidence gate.
 - Check desktop, tablet, phone, light, and dark screenshots.
 - Confirm no stale service-worker cache remains after version bump.

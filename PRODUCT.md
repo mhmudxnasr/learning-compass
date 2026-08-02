@@ -10,7 +10,7 @@ Manual captures, share targets, Telegram links, and subscribed RSS/Atom entries 
 
 ## Workspaces
 
-Today, Curate, Map, Learn, Insights, and Settings contain 17 purposeful destinations. Curate includes Inbox, Queue, Collections, and Archive. Map includes Atlas and Coverage. Learn includes Files, source-centric Notes, Recall, and Activity. Insights includes Overview, Taste, and Hermes. Legacy Discovery remains inside Archive; mobile keeps Today, Curate, Learn, and More in primary navigation.
+Momentum, Curate, Map, Learn, Insights, and Settings contain 17 purposeful destinations. Momentum is the file-first home for the current mission, the five-source active shelf, earned weekly progress, evidence-backed insight, and recent wins. Curate includes Inbox, Queue, Collections, and Archive. Map includes Atlas and Coverage. Learn includes Files, source-centric Notes, Recall, and Activity. Insights includes Overview, Taste, and Hermes. Legacy Discovery remains inside Archive; mobile keeps Momentum, Curate, Learn, and More in primary navigation.
 
 ## User context
 

@@ -15,7 +15,7 @@ const define = (workspace: WorkspaceKey, entries: Array<[string, string, string,
   entries.map(([slug, title, purpose, kind, endpoint]) => ({ key: `${workspace}.${slug}`, workspace, slug, title, purpose, kind, endpoint }))
 
 export const destinations: Destination[] = [
-  ...define('today', [['briefing', 'Briefing', 'Decide what deserves attention today.', 'briefing', '/dashboard/briefing']]),
+  ...define('today', [['momentum', 'Momentum', 'Open active files, protect momentum, and notice what is working.', 'briefing', '/dashboard/briefing']]),
   ...define('curate', [
     ['queue', 'Queue', 'Choose the five items worth doing next.', 'board', '/capture/queue'],
     ['inbox', 'Inbox', 'Capture, subscribe, refresh, and triage sources before the queue.', 'list', '/capture'],
@@ -52,8 +52,9 @@ export function destinationForPath(path: string): Destination | null {
   if (clean === 'vault/notes') return destinations.find((item) => item.key === 'learn.notes') || null
   if (clean === 'learn/sessions') return destinations.find((item) => item.key === 'curate.queue') || null
   const aliases: Record<string, string> = {
+    'today/briefing': 'today/momentum',
     'curate/discovery': 'curate/archive',
-    'curate/resurfacing': 'today/briefing',
+    'curate/resurfacing': 'today/momentum',
     'curate/contradictions': 'map/coverage',
     'map/branches': 'map/atlas',
     'map/taste': 'insights/taste',

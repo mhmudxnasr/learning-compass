@@ -29,7 +29,7 @@ List every operation available through the Learning Compass agent API. Group the
 ```
 
 ```text
-Read the current Inbox, active Queue, Today briefing, profile, knowledge graph, notes, SRS drafts, settings, and analytics. Return a compact status report with IDs for anything actionable.
+Read the current Inbox, active Queue, Momentum workspace, profile, knowledge graph, notes, SRS drafts, settings, and analytics. Return a compact status report with IDs for anything actionable.
 ```
 
 ```text

@@ -5,15 +5,25 @@ import { freeAi } from '../services/ai'
 const app = new Hono<{ Bindings: Bindings }>()
 
 // Offline fallback: return the curator's own text cleaned up (never dead).
-function localEnhance(text: string, item: any): string {
+export function localEnhance(text: string, item: any): string {
   const t = (text || '').trim() || (item?.user_review || '').trim() || (item?.why_this || '').trim()
   if (!t) return 'Write a sentence of feedback first, then enhance it.'
-  return t.replace(/\s+/g, ' ').trim().slice(0, 280)
+  return t.replace(/\s+/g, ' ').trim()
+}
+
+export function feedbackEnhancementPrompt(content: string, ctx: string, rating?: number | string): string {
+  return `Lightly improve the clarity and flow of the curator's feedback below while keeping it conversational and close to their original voice. Preserve uncertainty, spoken phrasing, meaning, verdict, and every concrete point. Do not make it formal, add claims, or force extra sentences. Return only the edited feedback.
+
+${rating != null ? `The source is rated ${rating}/10. Do not change or reinterpret this rating.\n\n` : ''}Source context:
+${ctx}
+
+Curator's feedback:
+${content}`
 }
 
 app.post('/enhance', async (c) => {
   const { DB } = c.env
-  let body: { id?: string; text?: string; video_title?: string; creator?: string; content_type?: string; why_this?: string }
+  let body: { id?: string; text?: string; video_title?: string; creator?: string; content_type?: string; why_this?: string; rating?: number | string }
   try {
     body = await c.req.json()
   } catch {
@@ -48,22 +58,9 @@ app.post('/enhance', async (c) => {
         creator && `Creator: ${creator}`,
         `Type: ${type}`,
       ].filter(Boolean).join('\n')
-      const wordCount = content.split(/\s+/).filter(Boolean).length
-      const tooThin = wordCount <= 3
-      const seed = tooThin
-        ? `The curator's note is too vague to sharpen: "${content}". Do NOT invent specifics. Reply with exactly this, unchanged: ${content}`
-        : `Rewrite the curator's note below as a clean, well-structured review. You MUST write at least 2 complete sentences. Rules:
-- Use ONLY facts, opinions, and specifics the curator already wrote. Do NOT add any new claims, new details, new judgments, or recommendations that were not in the note.
-- You may tighten wording, fix grammar, expand into as many sentences as the note naturally supports, and improve flow — but the verdict and every concrete point must come from the note, never from you.
-- No preamble, no emoji, no hype words.
+      const seed = feedbackEnhancementPrompt(content, ctx, body.rating)
 
-Context:
-${ctx}
-
-Curator's note:
-${content}`
-
-      const result = await freeAi(c.env, 'You are a strict copy editor. Use only the curator\'s own words; never invent claims. Return only the polished note.', seed, 1024)
+      const result = await freeAi(c.env, 'You are a light-touch copy editor. Preserve the writer\'s meaning, uncertainty, conversational voice, and spoken tone. Never invent claims. Return only the edited feedback.', seed, 1024)
       if (result) return c.json({ text: result.text, source: 'ai', model: result.model })
     } catch (e) {
       console.warn('enhance upstream failed, falling back', e)

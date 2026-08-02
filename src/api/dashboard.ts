@@ -7,7 +7,7 @@ app.get('/briefing', async (c) => {
   const { DB } = c.env
   try {
     const weekStart = `date('now', printf('-%d days', (CAST(strftime('%w','now') AS INTEGER)+6)%7))`
-    const [active, due, inbox, pending, momentum, bestWeek, recent, latestSignal, topFormat, streak] = await Promise.all([
+    const [active, due, inbox, pending, momentum, bestWeek, recent, latestSignal, topFormat, streak, streakDays] = await Promise.all([
       DB.prepare(`SELECT r.id,r.video_title,r.creator,r.content_type,r.video_url,r.why_this,r.notebook_url,r.created_at,
         m.learning_state,m.priority_rank,m.progress_percent,m.estimated_minutes,m.started_at,m.last_opened_at,
         (SELECT COUNT(*) FROM notes n WHERE n.recommendation_id=r.id) note_count
@@ -28,6 +28,7 @@ app.get('/briefing', async (c) => {
       DB.prepare(`WITH RECURSIVE dates(d) AS (SELECT date('now') UNION ALL SELECT date(d,'-1 day') FROM dates WHERE d>date('now','-365 days'))
         SELECT COUNT(*) count FROM dates d WHERE EXISTS (SELECT 1 FROM learning_log WHERE learning_log.date=d.d)
           AND d.d>=COALESCE((SELECT date(MAX(date),'+1 day') FROM learning_log l1 WHERE NOT EXISTS (SELECT 1 FROM learning_log l2 WHERE date(l2.date,'+1 day')=l1.date)),'1970-01-01')`).first<any>(),
+      DB.prepare(`SELECT date,count FROM learning_log WHERE date>=date('now','-6 days') ORDER BY date`).all<any>(),
     ])
 
     const activeItems = active.results || []
@@ -61,7 +62,7 @@ app.get('/briefing', async (c) => {
       due_reviews: due?.count || 0,
       inbox_count: inbox?.count || 0,
       pending_proposals: pending?.count || 0,
-      momentum: { completed, notes: Number(momentum?.notes || 0), reviews: Number(momentum?.reviews || 0), streak: Number(streak?.count || 0), personal_best: personalBest },
+      momentum: { completed, notes: Number(momentum?.notes || 0), reviews: Number(momentum?.reviews || 0), streak: Number(streak?.count || 0), streak_days: streakDays.results || [], personal_best: personalBest },
       insight,
       recent_wins: recent.results || [],
       // Compatibility fields for existing API consumers.

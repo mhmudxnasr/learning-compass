@@ -158,8 +158,8 @@ export default function DiscoveryPage() {
       <section class="discovery-card">
         <span class="meta">LEGACY DISCOVERY ARCHIVE</span>
         <h2 style={{ font: '600 24px/1.2 var(--font-reading)', margin: '4px 0 0' }}>Recommendation research now lives behind one Compass Pick.</h2>
-        <p>New recommendations start from Today. The system searches adaptively, stops when confidence is sufficient, and can abstain instead of filling the queue with candidates.</p>
-        <a class="primary-action" href="#/today/briefing">Open Today</a>
+        <p>New recommendations start from Momentum when the active shelf is empty. The system searches adaptively, stops when confidence is sufficient, and can abstain instead of filling the queue with candidates.</p>
+        <a class="primary-action" href="#/today/momentum">Open Momentum</a>
       </section>
     </div>
   )

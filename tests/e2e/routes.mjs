@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const workspaces = {
-  today: ['briefing'],
+  today: ['momentum'],
   curate: ['queue','inbox','collections','archive'],
   map: ['atlas','coverage'],
   learn: ['files','notes','recall','activity'],
@@ -80,8 +80,8 @@ for (const [workspace, views] of Object.entries(workspaces)) {
     }
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
     if (overflow > 2) throw new Error(`${workspace}/${view}: horizontal overflow ${overflow}px`)
-    if (workspace === 'today' && view === 'briefing') {
-      const screenshot = await page.screenshot({ path: join(persistDir, 'briefing-desktop.png') })
+    if (workspace === 'today' && view === 'momentum') {
+      const screenshot = await page.screenshot({ path: join(persistDir, 'momentum-desktop.png') })
       if (!screenshot.length) throw new Error('desktop visual smoke screenshot was empty')
     }
     count++
@@ -95,7 +95,7 @@ if (curateNav[0]?.trim() !== 'Queue' || curateNav[1]?.trim() !== 'Inbox') throw 
 await page.goto(`${baseUrl}/#/learn/notes`, { waitUntil: 'networkidle' })
 const learnNav = await page.locator('.subnav button').allTextContents()
 if (learnNav[0]?.trim() !== 'Files' || learnNav.includes('NotebookLM') || learnNav.includes('Reflections')) throw new Error('Learn navigation order is incorrect')
-const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards] = await Promise.all([
+const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards, momentum] = await Promise.all([
   fetch(`${baseUrl}/settings`).then((response) => response.json()),
   fetch(`${baseUrl}/manifest.json`).then((response) => response.json()),
   fetch(`${baseUrl}/artifacts`).then((response) => response.json()),
@@ -103,6 +103,7 @@ const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards] = 
   fetch(`${baseUrl}/recommendations/list?source=manual`).then((response) => response.json()),
   fetch(`${baseUrl}/feedback/proposals`).then((response) => response.json()),
   fetch(`${baseUrl}/learning/srs/cards`).then((response) => response.json()),
+  fetch(`${baseUrl}/dashboard/briefing`).then((response) => response.json()),
 ])
 if (settings.resolved?.learning?.retention !== 90 || settings.resolved?.learning?.queue_cap !== 5) throw new Error('settings defaults are not resolved')
 if (settings.resolved?.srs_drafts?.minimum_rating !== 7 || settings.resolved?.profile_proposals?.review_required !== true) throw new Error('learning automation defaults are incorrect')
@@ -112,6 +113,7 @@ if (!Array.isArray(feeds.feeds)) throw new Error('feed subscriptions contract is
 if (!Array.isArray(manualArchive.recommendations)) throw new Error('manual archive contract is invalid')
 if (!Array.isArray(proposals.proposals)) throw new Error('feedback proposal contract is invalid')
 if (!Array.isArray(cards.cards)) throw new Error('SRS card management contract is invalid')
+if (!Array.isArray(momentum.active_items) || !Array.isArray(momentum.artifacts) || !momentum.momentum || !momentum.insight || !Array.isArray(momentum.recent_wins)) throw new Error('Momentum workspace contract is invalid')
 
 const requestJson = async (path, options = {}) => {
   const response = await fetch(`${baseUrl}${path}`, { headers: { 'content-type': 'application/json' }, ...options })
@@ -182,12 +184,12 @@ if (atomicFeedback.preserved_feedback !== 'Preserve these exact words.' || atomi
 const atomicRecord = await requestJson(`/capture/${atomicFeedback.source.id}/record`)
 if (!atomicRecord.notes.some((note) => note.kind === 'reflection' && note.sections.some((section) => section.content === 'Preserve these exact words.'))) throw new Error('atomic feedback did not preserve exact words')
 await page.setViewportSize({ width: 390, height: 844 })
-await page.goto(`${baseUrl}/#/today/briefing`, { waitUntil: 'networkidle' })
+await page.goto(`${baseUrl}/#/today/momentum`, { waitUntil: 'networkidle' })
 if (!(await page.locator('.mobile-nav').isVisible())) throw new Error('mobile primary navigation is not visible')
 if (await page.locator('.rail').isVisible()) throw new Error('desktop rail remains visible on mobile')
 const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
-if (mobileOverflow > 2) throw new Error(`mobile briefing horizontal overflow ${mobileOverflow}px`)
-const mobileScreenshot = await page.screenshot({ path: join(persistDir, 'briefing-mobile.png') })
+if (mobileOverflow > 2) throw new Error(`mobile momentum horizontal overflow ${mobileOverflow}px`)
+const mobileScreenshot = await page.screenshot({ path: join(persistDir, 'momentum-mobile.png') })
 if (!mobileScreenshot.length) throw new Error('mobile visual smoke screenshot was empty')
 await page.getByRole('button', { name: 'More' }).click()
 const moreDialog = page.locator('.mobile-more-dialog')

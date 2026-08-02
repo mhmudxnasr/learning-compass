@@ -8,7 +8,7 @@ const AtlasPage = lazy(() => import('./features/atlas/AtlasPage'))
 const DiscoveryPage = lazy(() => import('./features/discovery/DiscoveryPage'))
 
 const workspaceLabels: Record<WorkspaceKey, string> = {
-  today: 'Today', curate: 'Curate', map: 'Map', learn: 'Learn', insights: 'Insights', settings: 'Settings',
+  today: 'Momentum', curate: 'Curate', map: 'Map', learn: 'Learn', insights: 'Insights', settings: 'Settings',
 }
 
 const icons: Record<WorkspaceKey | 'search' | 'capture' | 'more', ComponentChildren> = {
@@ -28,7 +28,7 @@ function Icon({ name }: { name: keyof typeof icons }) {
 }
 
 function readRoute() {
-  const raw = location.hash.slice(1) || '/today/briefing'
+  const raw = location.hash.slice(1) || '/today/momentum'
   return destinationForPath(raw) || destinations[0]
 }
 
@@ -37,7 +37,7 @@ function useRoute() {
   useEffect(() => {
     const change = () => setRoute({ ...readRoute() })
     addEventListener('hashchange', change)
-    if (!location.hash) location.hash = '#/today/briefing'
+    if (!location.hash) location.hash = '#/today/momentum'
     return () => removeEventListener('hashchange', change)
   }, [])
   return route
@@ -160,40 +160,100 @@ function ErrorState({ message }: { message: string }) { return <div class="error
 function TodayPage() {
   const { data, error, loading } = useData('/dashboard/briefing')
   const compass = useData('/compass/pick')
-  const resurfacing = useData('/brain/resurfacing')
   const [compassWorking, setCompassWorking] = useState(false)
   if (loading) return <Loading />
   if (error) return <ErrorState message={error} />
-  const next = data?.next_item
-  const signals = [
-    ['Reviews due', data?.due_reviews || 0, 'learn.recall'],
-    ['Queue', data?.queue_count || 0, 'curate.queue'],
-    ['Coverage gaps', data?.gap_count || 0, 'map.coverage'],
-  ]
-  return <div class="today-layout">
+  const items = data?.active_items || []
+  const mission = items[0]
+  const filesFor = (id: string) => (data?.artifacts || []).filter((artifact: any) => artifact.recommendation_id === id)
+  const fileLabel = (artifact: any) => artifact.role || (/pdf/i.test(artifact.media_type || artifact.filename) ? 'PDF' : /html/i.test(artifact.media_type || artifact.filename) ? 'HTML' : artifact.filename)
+  const insightTarget = destinations.find((item) => item.key === data?.insight?.target)
+  const best = Math.max(Number(data?.momentum?.personal_best || 0), 1)
+  const completed = Number(data?.momentum?.completed || 0)
+  const streak = Number(data?.momentum?.streak || 0)
+  const streakDays = data?.momentum?.streak_days || []
+  const streakDates = new Set(streakDays.map((day: any) => day.date))
+  const streakToday = new Date().toISOString().slice(0, 10)
+  const streakCells = Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setDate(date.getDate() - (6 - index)); return date.toISOString().slice(0, 10) })
+  return <div class="momentum-page">
     {compass.error && <div class="error-state"><strong>Compass Pick unavailable.</strong><span>{compass.error}</span></div>}
-    {compass.data?.pick && <section class="module compass-pick-module">
-      <div class="module-head"><h3>The one useful thing</h3><span>{compass.data.pick.strategy}</span></div>
-      <h2>{compass.data.pick.video_title || 'Compass Pick'}</h2>
-      <p>{compass.data.pick.rationale?.why_this || compass.data.pick.why_this || 'Selected from your current learning context.'}</p>
+    <section class="mission-section">
+      <div class="momentum-kicker"><span>Active mission</span><span>{items.length}/5 on the shelf</span></div>
+      <div class="streak-keeper" aria-label={`${streak}-day learning streak`}>
+        <div class="streak-mark">{streakCells.map((date) => <i class={streakDates.has(date) ? 'filled' : ''} />)}</div>
+        <div><strong>{streak ? `${streak}-day chain` : 'Start your chain'}</strong><span>{streakDates.has(streakToday) ? 'Today is secured.' : streak ? 'One small session keeps it alive.' : 'One small session is enough.'}</span></div>
+        <a href={Number(data?.due_reviews || 0) > 0 ? '#/learn/recall' : mission ? `#/learn/notes?source=${encodeURIComponent(mission.id)}` : '#/curate/inbox'}>{streakDates.has(streakToday) ? 'View' : 'Keep it alive →'}</a>
+      </div>
+      {mission ? <div class="mission-grid">
+        <div class="mission-copy">
+          <span class="meta">{mission.learning_state === 'in_progress' ? 'in progress' : mission.content_type || 'source'} · {mission.creator || 'independent source'}</span>
+          <h2>{mission.video_title}</h2>
+          <p>{formatSmartHook(mission)}</p>
+          <div class="mission-actions">
+            <a class="primary-action" href={mission.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, mission)}>{mission.learning_state === 'in_progress' ? 'Resume source' : 'Start source'}</a>
+            <button onClick={() => { location.hash = `#/learn/notes?source=${encodeURIComponent(mission.id)}` }}>Reflect</button>
+          </div>
+        </div>
+        <div class="mission-files">
+          <div class="module-head"><h3>Working files</h3><span>{filesFor(mission.id).length + Number(Boolean(mission.note_count))}</span></div>
+          <div class="file-stack">
+            {filesFor(mission.id).map((artifact: any) => <a href={`/artifacts/${artifact.id}`} target="_blank" rel="noreferrer"><span>{fileLabel(artifact)}</span><strong>{artifact.filename}</strong><b>Open ↗</b></a>)}
+            {mission.note_count > 0 && <a href={`#/learn/notes?source=${encodeURIComponent(mission.id)}`}><span>Notes</span><strong>Source record</strong><b>Open →</b></a>}
+            {mission.notebook_url && <a href={mission.notebook_url} target="_blank" rel="noreferrer"><span>NotebookLM</span><strong>Grounded notebook</strong><b>Open ↗</b></a>}
+            {!filesFor(mission.id).length && !mission.note_count && !mission.notebook_url && <p>No companion files yet. The original source is ready.</p>}
+          </div>
+        </div>
+      </div> : <Empty title="The shelf is clear" body="Queue one source worth caring about. Momentum starts there." />}
+    </section>
+
+    <section class="active-shelf">
+      <div class="section-title"><div><span>Active shelf</span><h2>Your five deliberate sources</h2></div><button onClick={() => go(destinations.find((item) => item.key === 'curate.queue')!)}>Manage queue →</button></div>
+      <div class="shelf-grid">{items.map((item: any, index: number) => <article class={item.id === mission?.id ? 'active' : ''}>
+        <div class="shelf-number">{String(index + 1).padStart(2, '0')}</div>
+        <span class="meta">{item.learning_state === 'in_progress' ? 'in progress' : item.content_type || 'source'}</span>
+        <h3>{item.video_title}</h3>
+        <div class="shelf-files">
+          {filesFor(item.id).slice(0, 3).map((artifact: any) => <a href={`/artifacts/${artifact.id}`} target="_blank" rel="noreferrer">{fileLabel(artifact)}</a>)}
+          {item.note_count > 0 && <a href={`#/learn/notes?source=${encodeURIComponent(item.id)}`}>Notes</a>}
+          {item.notebook_url && <a href={item.notebook_url} target="_blank" rel="noreferrer">Notebook</a>}
+          {!filesFor(item.id).length && !item.note_count && !item.notebook_url && <span>Source only</span>}
+        </div>
+      </article>)}</div>
+    </section>
+
+    <div class="momentum-grid">
+      <section class="momentum-score">
+        <div class="section-title"><div><span>This week</span><h2>Momentum</h2></div><strong>{completed === best && completed > 0 ? 'Personal best' : `${Math.max(best - completed, 0)} from your best`}</strong></div>
+        <div class="momentum-bar"><i style={{ width: `${Math.min(100, completed / best * 100)}%` }} /></div>
+        <div class="momentum-stats">
+          <div><strong>{completed}</strong><span>completed</span></div>
+          <div><strong>{data?.momentum?.notes || 0}</strong><span>notes made</span></div>
+          <div><strong>{data?.momentum?.reviews || 0}</strong><span>recalls done</span></div>
+          <div><strong>{data?.momentum?.streak || 0}</strong><span>day streak</span></div>
+        </div>
+        <div class="momentum-actions">
+          {Number(data?.due_reviews || 0) > 0 && <a href="#/learn/recall">Review {data.due_reviews} due →</a>}
+          {Number(data?.pending_proposals || 0) > 0 && <a href="#/learn/activity">Confirm {data.pending_proposals} insight{data.pending_proposals === 1 ? '' : 's'} →</a>}
+          <a href="#/curate/inbox">Triage {data?.inbox_count || 0} in Inbox →</a>
+        </div>
+      </section>
+      <section class="insight-card">
+        <span>Pattern worth noticing</span>
+        <h2>{data?.insight?.title}</h2>
+        <p>{data?.insight?.body}</p>
+        <div><small>{data?.insight?.evidence}</small>{insightTarget && <button onClick={() => go(insightTarget)}>See evidence →</button>}</div>
+      </section>
+    </div>
+
+    <section class="recent-wins"><div class="section-title"><div><span>Recent wins</span><h2>Proof you are moving</h2></div><button onClick={() => go(destinations.find((item) => item.key === 'learn.notes')!)}>Open notes →</button></div>{(data?.recent_wins || []).length ? <div>{data.recent_wins.map((item: any) => <article><span>{item.user_score ? `${item.user_score}/10` : item.content_type || 'done'}</span><strong>{item.video_title}</strong><time>{formatDate(item.created_at)}</time></article>)}</div> : <p class="quiet-copy">Completed sources will build your record here.</p>}</section>
+
+    {!mission && compass.data?.pick && <section class="empty-compass">
+      <span>Compass Pick · {compass.data.pick.strategy}</span><h2>{compass.data.pick.video_title || 'Compass Pick'}</h2><p>{compass.data.pick.rationale?.why_this || compass.data.pick.why_this}</p>
       <div class="row-actions">
-        {compass.data.pick.status === 'ready' && <button class="primary-action" disabled={compassWorking} onClick={async () => { setCompassWorking(true); const target = window.open('about:blank', '_blank'); try { const result = await api<any>(`/compass/pick/${compass.data.pick.id}/start`, { method: 'POST' }); localStorage.setItem('tm-active-session', JSON.stringify({ id: result.session_id, recommendationId: result.recommendation_id, title: compass.data.pick.video_title, sourceUrl: compass.data.pick.video_url })); if (target) target.location.replace(compass.data.pick.video_url); else location.assign(compass.data.pick.video_url); compass.reload() } catch (error: any) { target?.close(); window.alert(error.message) } finally { setCompassWorking(false) } }}>{compassWorking ? 'Starting…' : 'Start'}</button>}
-        {compass.data.pick.status === 'started' && compass.data.pick.video_url && <a class="focus-button" href={compass.data.pick.video_url} target="_blank" rel="noreferrer">Resume</a>}
+        {compass.data.pick.status === 'ready' && <button class="primary-action" disabled={compassWorking} onClick={async () => { setCompassWorking(true); const target = window.open('about:blank', '_blank'); try { const result = await api<any>(`/compass/pick/${compass.data.pick.id}/start`, { method: 'POST' }); localStorage.setItem('tm-active-session', JSON.stringify({ id: result.session_id, recommendationId: result.recommendation_id, title: compass.data.pick.video_title, sourceUrl: compass.data.pick.video_url })); if (target) target.location.replace(compass.data.pick.video_url); else location.assign(compass.data.pick.video_url); compass.reload() } catch (error: any) { target?.close(); window.alert(error.message) } finally { setCompassWorking(false) } }}>Start</button>}
         <button disabled={compassWorking} onClick={async () => { setCompassWorking(true); try { await api(`/compass/pick/${compass.data.pick.id}/feedback`, { method: 'POST', body: JSON.stringify({ outcome: 'declined', reason_tags: ['not_now'] }) }); compass.reload() } catch (error: any) { window.alert(error.message) } finally { setCompassWorking(false) } }}>Not for me</button>
       </div>
     </section>}
-    <section class="today-lead">
-      <div class="date-line">{new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</div>
-      <h2>{data?.next_action === 'review' && Number(data?.due_reviews || 0) > 0 ? 'Review before new input.' : next ? 'Continue where the signal is strongest.' : 'Clear space for the next useful thing.'}</h2>
-      {data?.next_action === 'review' && Number(data?.due_reviews || 0) > 0 ? <div class="focus-item"><div><span>Recall session</span><h3>{data.due_reviews} review{data.due_reviews === 1 ? '' : 's'} due</h3><p>Clear active recall before starting another source.</p></div><a class="focus-button" href="#/learn/recall">Review now</a></div> : next ? <div class="focus-item"><div><span>{next.content_type || 'source'} · {next.creator || 'Unknown creator'}</span><h3>{next.video_title}</h3><p>{next.why_this || 'Ready when you are.'}</p></div><a class="focus-button" href={next.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, next)}>Start externally</a></div> : <Empty title="Your active queue is clear" body="Capture one strong source instead of filling a backlog." />}
-    </section>
-    <section class="signal-strip">{signals.map(([label, value, key]) => <button onClick={() => go(destinations.find((item) => item.key === key)!)}><span>{label}</span><strong>{value}</strong></button>)}</section>
-    <div class="today-columns">
-      <section class="module"><div class="module-head"><h3>Queue pressure</h3><span>{data?.queue_count || 0}/5</span></div><div class="slot-line">{[0,1,2,3,4].map((slot) => <i class={slot < (data?.queue_count || 0) ? 'filled' : ''} />)}</div><p>Five deliberate choices. Extra items require an explicit override.</p></section>
-      <section class="module"><div class="module-head"><h3>Map pulse</h3><span>{data?.streak || 0} day streak</span></div><p>{data?.recent_signal || 'New profile signals and branch changes will surface here after processing.'}</p></section>
-    </div>
-    <section class="activity-list"><div class="module-head"><h3>Recent output</h3><button onClick={() => go(destinations.find((item) => item.key === 'learn.notes')!)}>Open notes</button></div>{(data?.recent || []).length ? data.recent.map((item: any) => <div class="activity-row"><span>{item.content_type || 'item'}</span><strong>{item.video_title}</strong><time>{formatDate(item.updated_at || item.created_at)}</time></div>) : <Empty title="No finished work yet" body="Completed notes, reviews, and reading files will collect here." />}</section>
-    {(resurfacing.data?.due || []).length > 0 && <section class="activity-list"><div class="module-head"><h3>Worth revisiting</h3><span>{resurfacing.data.due.length}</span></div>{resurfacing.data.due.slice(0, 5).map((item: any) => <div class="activity-row"><span>Due {formatDate(item.due_at)}</span><strong>{item.video_title || 'Saved source'}</strong>{item.video_url && <a href={item.video_url} target="_blank" rel="noreferrer">Open</a>}</div>)}</section>}
   </div>
 }
 
@@ -406,7 +466,7 @@ function ArchivePage() {
   const feeds = feedsState.data?.feeds || []
   const feedCount = feeds.reduce((sum: number, feed: any) => sum + Number(feed.entry_count || 0), 0)
   const inbox = destinations.find((item) => item.key === 'curate.inbox')!
-  return <div class="archive-page"><section class="archive-rss"><div class="archive-rss-head"><div><span class="meta">Pinned · RSS / Atom</span><h2>Feed reading</h2><p>{feedCount ? `${feedCount} captured ${feedCount === 1 ? 'article' : 'articles'} kept here, outside the main archive.` : 'Subscribe to a feed in Inbox and its articles will stay grouped here.'}</p></div><button onClick={() => go(inbox)}>Open Inbox</button></div>{feeds.length ? <div class="archive-rss-list">{feeds.map((feed: any) => <div><strong>{feed.title}</strong><span>{feed.entry_count || 0} captured · {feed.last_checked_at ? `checked ${formatDate(feed.last_checked_at)}` : 'not checked yet'}</span></div>)}</div> : <div class="archive-rss-empty">No subscribed feeds yet.</div>}</section><div class="filter-bar"><label>Status<select value={filter} onChange={(event) => setFilter((event.target as HTMLSelectElement).value)}><option value="all">All</option><option value="consumed">Completed</option><option value="rejected">Excluded</option><option value="active">Saved</option></select></label><span>{data?.total || 0} non-feed sources</span></div>{items.length ? <div class="source-list">{items.map((item: any) => <article><div><span class="meta">{item.content_type || 'source'} · {item.status}</span><h2>{item.video_title}</h2><p>{item.user_review || item.why_this || item.creator || 'No reaction recorded.'}</p></div>{item.video_url && <a href={item.video_url} target="_blank" rel="noreferrer">Open</a>}</article>)}</div> : <Empty title="No matching sources" body="Try another status filter." />}<details class="legacy-discovery"><summary>Legacy Discovery archive</summary><p>Older research runs remain available here for reference. New recommendations appear as one Compass Pick on Today.</p><Suspense fallback={<Loading />}><DiscoveryPage /></Suspense></details></div>
+  return <div class="archive-page"><section class="archive-rss"><div class="archive-rss-head"><div><span class="meta">Pinned · RSS / Atom</span><h2>Feed reading</h2><p>{feedCount ? `${feedCount} captured ${feedCount === 1 ? 'article' : 'articles'} kept here, outside the main archive.` : 'Subscribe to a feed in Inbox and its articles will stay grouped here.'}</p></div><button onClick={() => go(inbox)}>Open Inbox</button></div>{feeds.length ? <div class="archive-rss-list">{feeds.map((feed: any) => <div><strong>{feed.title}</strong><span>{feed.entry_count || 0} captured · {feed.last_checked_at ? `checked ${formatDate(feed.last_checked_at)}` : 'not checked yet'}</span></div>)}</div> : <div class="archive-rss-empty">No subscribed feeds yet.</div>}</section><div class="filter-bar"><label>Status<select value={filter} onChange={(event) => setFilter((event.target as HTMLSelectElement).value)}><option value="all">All</option><option value="consumed">Completed</option><option value="rejected">Excluded</option><option value="active">Saved</option></select></label><span>{data?.total || 0} non-feed sources</span></div>{items.length ? <div class="source-list">{items.map((item: any) => <article><div><span class="meta">{item.content_type || 'source'} · {item.status}</span><h2>{item.video_title}</h2><p>{item.user_review || item.why_this || item.creator || 'No reaction recorded.'}</p></div>{item.video_url && <a href={item.video_url} target="_blank" rel="noreferrer">Open</a>}</article>)}</div> : <Empty title="No matching sources" body="Try another status filter." />}<details class="legacy-discovery"><summary>Legacy Discovery archive</summary><p>Older research runs remain available here for reference. New recommendations appear as one Compass Pick on Momentum when the active shelf is empty.</p><Suspense fallback={<Loading />}><DiscoveryPage /></Suspense></details></div>
 }
 
 function SourceRecordPage({ record, onBack, onReload }: { record: any; onBack: () => void; onReload: () => void }) {
@@ -414,6 +474,7 @@ function SourceRecordPage({ record, onBack, onReload }: { record: any; onBack: (
   const reflection = (record.notes || []).find((note: any) => note.kind === 'reflection')
   const extracted = (record.notes || []).find((note: any) => note.kind !== 'reflection')
   const [feedback, setFeedback] = useState(reflection?.sections?.find((section: any) => section.section_key === 'reaction')?.content || item.user_review || '')
+  const [feedbackBeforeEnhancement, setFeedbackBeforeEnhancement] = useState<string | null>(null)
   const [sourceNote, setSourceNote] = useState(extracted)
   const [status, setStatus] = useState('')
   const saveNote = async (note: any, content?: string) => {
@@ -431,10 +492,34 @@ function SourceRecordPage({ record, onBack, onReload }: { record: any; onBack: (
       setStatus('Feedback saved'); onReload()
     } catch (error: any) { setStatus(error.message) }
   }
+  const enhanceFeedback = async () => {
+    if (!feedback.trim()) return
+    setStatus('Enhancing…')
+    try {
+      const result = await api<{ text: string }>('/ai/enhance', { method: 'POST', body: JSON.stringify({
+        id: item.id,
+        text: feedback,
+        video_title: item.video_title,
+        creator: item.creator,
+        content_type: item.content_type,
+        why_this: item.why_this,
+        rating: item.user_score,
+      }) })
+      setFeedbackBeforeEnhancement(feedback)
+      setFeedback(result.text)
+      setStatus('Enhanced preview — review before saving')
+    } catch (error: any) { setStatus(error.message) }
+  }
+  const undoEnhancement = () => {
+    if (feedbackBeforeEnhancement === null) return
+    setFeedback(feedbackBeforeEnhancement)
+    setFeedbackBeforeEnhancement(null)
+    setStatus('Original draft restored')
+  }
   return <div class="source-record-page">
     <button class="back-link" onClick={onBack}>← All notes</button>
     <header class="source-record-head"><div><span class="meta">Source record</span><h2>{item.video_title || reflection?.title || extracted?.title || 'Learning source'}</h2><p>{item.creator || item.content_type || 'Source'} · {item.learning_state || item.status || 'saved'}</p></div><div class="row-actions">{item.notebook_url && <a href={item.notebook_url} target="_blank" rel="noreferrer">Open NotebookLM</a>}{item.video_url && <a class="primary-action" href={item.video_url} target="_blank" rel="noreferrer">Open original</a>}</div></header>
-    <section class="record-section"><div class="section-head"><h3>My Feedback</h3><span>{item.user_score != null ? `${item.user_score}/10` : 'Not rated'}</span></div><textarea class="note-editor feedback-editor" value={feedback} onInput={(event) => setFeedback((event.target as HTMLTextAreaElement).value)} placeholder="Your exact reaction is preserved here." /><div class="row-actions"><button onClick={saveFeedback} disabled={!feedback.trim()}>Save feedback</button></div></section>
+    <section class="record-section"><div class="section-head"><h3>My Feedback</h3><span>{item.user_score != null ? `${item.user_score}/10` : 'Not rated'}</span></div><textarea class="note-editor feedback-editor" value={feedback} onInput={(event) => setFeedback((event.target as HTMLTextAreaElement).value)} placeholder="Your exact reaction is preserved here." /><div class="row-actions"><button onClick={saveFeedback} disabled={!feedback.trim()}>Save feedback</button><button onClick={enhanceFeedback} disabled={!feedback.trim() || status === 'Enhancing…'}>Enhance writing</button>{feedbackBeforeEnhancement !== null && <button onClick={undoEnhancement}>Undo enhancement</button>}</div></section>
     <section class="record-section"><div class="section-head"><h3>Extracted note</h3><span>{extracted?.status || 'Not created'}</span></div>{sourceNote ? <>{(sourceNote.sections || []).map((section: any) => <div dir={section.direction || 'auto'}><h4>{section.label}</h4><textarea class="note-editor" value={section.content} onInput={(event) => setSourceNote({ ...sourceNote, sections: sourceNote.sections.map((current: any) => current.section_key === section.section_key ? { ...current, content: (event.target as HTMLTextAreaElement).value } : current) })} /></div>)}<div class="row-actions"><button onClick={() => saveNote(sourceNote)}>Save extracted note</button></div></> : <p class="record-muted">A completed rating of 7–10 creates a bilingual source note and editable recall drafts.</p>}</section>
     <section class="record-section"><div class="section-head"><h3>Recall</h3><span>{record.srs?.cards?.length || 0} active</span></div><p>{record.srs?.drafts?.length || 0} editable drafts · {record.srs?.cards?.length || 0} approved cards</p></section>
     <section class="record-section"><div class="section-head"><h3>Files</h3><span>{record.artifacts?.length || 0}</span></div>{record.artifacts?.length ? record.artifacts.map((file: any) => <a class="record-line" href={`/artifacts/${file.id}`} target="_blank" rel="noreferrer"><strong>{file.filename}</strong><span>{file.media_type}{file.notebook_url ? ' · Open NotebookLM' : ''}</span></a>) : <p class="record-muted">No companion files yet.</p>}</section>
@@ -576,7 +661,10 @@ function ArtifactsPage() {
     const markdown = files.find((file) => /markdown|text\/plain/i.test(file.media_type || '') || /\.md$/i.test(file.filename))
     const primary = html || pdf || markdown || files[0]
     const notebookUrl = files.find((file) => file.notebook_url)?.notebook_url || null
-    return { id, files, html, pdf, markdown, primary, notebookUrl, metadata: primary.metadata || {} }
+    const qualityAssurance = files.find((file) => file.quality_assurance?.status === 'repair_required')?.quality_assurance
+      || primary.quality_assurance
+      || { status: 'unverified' }
+    return { id, files, html, pdf, markdown, primary, notebookUrl, qualityAssurance, metadata: primary.metadata || {} }
   })
   if (!pairs.length) return <Empty title="No files yet" body="Uploaded documents and generated reading companions will appear here." />
   const process = async (file: any) => { setWorking(file.id); setStatus('Asking Hermes to extract the full bilingual note…'); try { const result = await api<{ status: string }> (`/artifacts/${file.id}/process`, { method: 'POST' }); setStatus(result.status === 'retry' ? 'Extraction retry queued.' : 'Extraction queued.'); reload() } catch (processError: any) { setStatus(processError.message) } finally { setWorking('') } }
@@ -1657,7 +1745,9 @@ Never:
     <div class="artifact-table">{pairs.map((pair) => {
       const title = pair.metadata.source_title || pair.primary.filename?.replace(/\.(html?|pdf|md)$/i, '') || 'Untitled file'
       const href = (file: any) => file.legacy ? `/html/download/${file.id}` : /markdown|text\/plain/i.test(file.media_type || '') || /\.md$/i.test(file.filename || '') ? `/artifacts/${file.id}/view` : `/artifacts/${file.id}`
-      return <article><div class="artifact-kind"><span>{artifactKind(pair)}</span><small>{formatDate(pair.primary.created_at)}</small></div><div class="artifact-copy"><h3>{title}</h3><p>{pair.metadata.source_url || `${pair.files.length} ${pair.files.length === 1 ? 'file' : 'linked files'}`}</p></div><div class="artifact-actions">{pair.metadata.source_url && <a href={pair.metadata.source_url} target="_blank" rel="noreferrer">Original</a>}{pair.html && <a class="primary-action" href={href(pair.html)} target="_blank" rel="noreferrer">Read</a>}{pair.markdown && !pair.html && <a class="primary-action" href={href(pair.markdown)} target="_blank" rel="noreferrer">Read</a>}{pair.pdf && <a href={href(pair.pdf)} target="_blank" rel="noreferrer">PDF</a>}{pair.notebookUrl && <a class="nblm-link" href={pair.notebookUrl} target="_blank" rel="noreferrer">NBLM</a>}{pair.files.length > 0 && <button class="artifact-remove" disabled={working === pair.id} onClick={() => remove(pair)}>Remove</button>}</div></article>
+      const qa = pair.qualityAssurance
+      const qaLabel = qa.status === 'repair_required' ? 'Needs repair' : qa.status === 'passed' && pair.html && qa.score != null ? `Verified ${qa.score}/10` : qa.status === 'passed' && qa.video_format === 'cinematic' ? 'Verified cinematic' : null
+      return <article><div class="artifact-kind"><span>{artifactKind(pair)}</span><small>{formatDate(pair.primary.created_at)}</small></div><div class="artifact-copy"><h3>{title}</h3><p>{pair.metadata.source_url || `${pair.files.length} ${pair.files.length === 1 ? 'file' : 'linked files'}`}</p></div><div class="artifact-actions">{qaLabel && <span class={`qa-label qa-${qa.status}`}>{qaLabel}</span>}{pair.metadata.source_url && <a href={pair.metadata.source_url} target="_blank" rel="noreferrer">Original</a>}{pair.html && <a class="primary-action" href={href(pair.html)} target="_blank" rel="noreferrer">Read</a>}{pair.markdown && !pair.html && <a class="primary-action" href={href(pair.markdown)} target="_blank" rel="noreferrer">Read</a>}{pair.pdf && <a href={href(pair.pdf)} target="_blank" rel="noreferrer">PDF</a>}{pair.notebookUrl && <a class="nblm-link" href={pair.notebookUrl} target="_blank" rel="noreferrer">NBLM</a>}{pair.files.length > 0 && <button class="artifact-remove" disabled={working === pair.id} onClick={() => remove(pair)}>Remove</button>}</div></article>
     })}</div>{status && <output class="sticky-status">{status}</output>}
   </div>
 }
@@ -1854,7 +1944,7 @@ function SettingsPage({ route }: { route: Destination }) {
 }
 
 function View({ route }: { route: Destination }) {
-  if (route.key === 'today.briefing') return <TodayPage />
+  if (route.key === 'today.momentum') return <TodayPage />
   if (route.key === 'curate.inbox') return <InboxPage />
   if (route.key === 'curate.queue') return <QueuePage />
   if (route.key === 'curate.collections') return <CollectionsPage scope="curate" />
