@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { Bindings, normalizeRating, safeError } from '../lib'
 import { defaultSettings, loadSettings } from '../services/settings'
 import { createInboxCapture } from '../services/capture'
+import { isSupportedProposalType, mergeQualityRules, serializeProfileValue } from '../services/profile-proposals'
 import { activateWaitingRun } from './discovery'
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -294,9 +295,15 @@ app.get('/feedback/proposals', async (c) => {
 app.post('/feedback/proposals/:id/approve', async (c) => {
   const proposal = await c.env.DB.prepare(`SELECT * FROM feedback_proposals WHERE id=? AND status='pending'`).bind(c.req.param('id')).first<any>()
   if (!proposal) return c.json({ error: 'pending proposal not found' }, 404)
+  if (!isSupportedProposalType(proposal.change_type)) {
+    return c.json({ error: 'unsupported proposal change type', change_type: proposal.change_type }, 422)
+  }
   let proposed: any = null
   try { proposed = JSON.parse(proposal.proposed_json) } catch { proposed = proposal.proposed_json }
   const proposedText = typeof proposed === 'string' ? proposed : JSON.stringify(proposed)
+  const profile = proposal.change_type === 'quality_rule'
+    ? await c.env.DB.prepare(`SELECT quality_rules_json FROM profile WHERE id=1`).first<any>()
+    : null
 
   const statements: D1PreparedStatement[] = [
     c.env.DB.prepare(`UPDATE feedback_proposals SET status='applied',reviewed_at=datetime('now'),applied_at=datetime('now') WHERE id=? AND status='pending'`).bind(proposal.id),
@@ -304,6 +311,10 @@ app.post('/feedback/proposals/:id/approve', async (c) => {
 
   if (proposal.change_type === 'profile_signal' || proposal.change_type === 'profile_update') {
     statements.push(c.env.DB.prepare(`UPDATE profile SET recent_signal = ?, last_synced_at = datetime('now') WHERE id = 1`).bind(proposedText))
+  } else if (proposal.change_type === 'quality_rule') {
+    statements.push(c.env.DB.prepare(`UPDATE profile SET quality_rules_json = ?, last_synced_at = datetime('now') WHERE id = 1`).bind(mergeQualityRules(profile?.quality_rules_json, proposed)))
+  } else if (proposal.change_type === 'operational_style') {
+    statements.push(c.env.DB.prepare(`UPDATE profile SET operational_style_json = ?, last_synced_at = datetime('now') WHERE id = 1`).bind(serializeProfileValue(proposed)))
   } else if (proposal.change_type === 'pattern_hypothesis' || proposal.change_type === 'pattern') {
     const patternId = (proposal.target_label || 'pattern-' + Date.now()).toLowerCase().replace(/[^a-z0-9_-]/g, '-')
     statements.push(c.env.DB.prepare(`INSERT OR REPLACE INTO patterns (id, description, evidence_json, confirmed_date, strength) VALUES (?, ?, ?, date('now'), 'confirmed')`).bind(patternId, proposedText, JSON.stringify([proposal.evidence || 'Approved proposal'])))

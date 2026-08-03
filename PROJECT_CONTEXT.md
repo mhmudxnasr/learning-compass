@@ -11,10 +11,10 @@ The product is single-user, English-first, supports bilingual English/Egyptian-A
 ## Product Model
 
 - **Inbox:** the Curate destination for subscriptions, captures, and triage; it remains the unlimited landing place for URL, text, PDF, HTML, video, Telegram, share-target, RSS, and Atom captures. RSS/Atom entries stay grouped in the pinned Archive feed shelf instead of mixing into the manual archive list. Manual **Check now** imports at most five latest entries per feed.
-- **Queue:** five active items by default. Consume/drop before adding, or use an explicit override.
+- **Queue:** five active queued/in-progress items by default. Compass can prepare multiple ready picks while capacity remains; explicit starts enforce the five-item cap. Compass completion, decline, and abandonment atomically move the linked source to completed or excluded state; written feedback/rating remains attached as a reviewable learning signal. Other Queue additions still require consume/drop or an explicit override.
 - **Queue and hidden sessions:** Queue owns start, resume, return, and completion. Hidden session records preserve source/reflection linkage without a separate management destination.
 - **Source notes:** one source-centric Notes record presents the user's exact typed or handwritten feedback alongside the separate complete bilingual English/Egyptian-Arabic source note; incomplete legacy notes can be re-run from the site.
-- **Feedback proposals:** every reflection/rating produces reviewable Taste Mapper proposals. Profile, pattern, priority, contradiction, and map changes apply only after explicit approval.
+- **Feedback proposals:** every reflection/rating produces auditable Taste Mapper proposals. During an active Hermes conversation, evidence-qualified profile, pattern, priority, contradiction, map, scoring, skill, prompt, code, runtime, and workflow improvements may be applied under Mahmood's standing authorization; uncertain hypotheses remain reviewable.
 - **SRS:** ratings 7–10 automatically queue Notes Extractor and produce 3–5 editable drafts. Only approved drafts become review cards; drafts and active cards can be deleted.
 - **Knowledge map:** branches, edges, evidence, contradictions, coverage, health, and taste signals.
 - **Resurfacing:** brings useful knowledge back at the right time without auto-chaining recommendations.
@@ -78,6 +78,8 @@ Obsidian is not bidirectional storage. Do not make an archive copy overwrite D1.
 
 Hermes handles durable work only inside an explicit Learning Compass workflow. It claims the exact work created by that request, runs the specialist, then completes or fails it using the same stable identity. There is no automatic host poller, and internal job state is not exposed in the site UI. Job keys, leases, retries, and completion writes remain idempotent.
 
+Hermes self-improvement is conversation-driven, never scheduled. After completing each user request, the operating system inspects evidence exposed by that turn and may apply the smallest verified improvement across data, profile/map state, scoring, skills, prompts, code, tests, runtime, or deployment. Explicit user corrections are authoritative; repeated behavioral evidence requires confidence of at least 0.8; weak one-off inferences remain expiring hypotheses. No evidence means no mutation.
+
 The retained manual runner is `~/.hermes/scripts/taste-map-job.py`. Its User-Agent must remain:
 
 ```text
@@ -108,7 +110,7 @@ The HTML and PDF represent one source and must not count as two taste signals.
 
 - `taste-mapper` processes explicit feedback and proposes profile/map updates.
 - `taste-rec` recommends only when a new recommendation is explicitly requested.
-- Explicit one-item requests use the Personal Bayesian Cascade: submit 3 candidates first, expand only after Worker abstention up to 8, expose one server-scored pick, and wait for explicit Start and feedback. The Worker owns source reachability checks, URL/semantic deduplication, hard exclusions, D1-context scoring, strategy-specific pairwise ranking, calibrated confidence, decision receipts, and predicted-versus-actual outcome learning. `/discovery` and `/ai/suggest` are compatibility/archive paths.
+- Explicit recommendation requests use the Personal Bayesian Cascade: submit 3 candidates first, expand only after Worker abstention up to 8, expose server-scored picks, and wait for explicit Start and feedback. A weak but safe winner is shown as a clearly labeled review pick with its score, confidence, source status, and reason it missed the automatic threshold; it reaches the Queue only if the curator explicitly chooses **Add to Queue anyway**. Normal requests may expose one pick; queue-fill requests may create and explicitly start additional picks until five queued/in-progress items exist. The Worker owns source reachability checks, URL/semantic deduplication, hard exclusions, D1-context scoring, strategy-specific pairwise ranking, calibrated confidence, decision receipts, and predicted-versus-actual outcome learning. `/discovery` and `/ai/suggest` are compatibility/archive paths.
 - `taste-enhancer` audits system quality and cross-layer integrity.
 - Feedback jobs never call `taste-rec` automatically.
 - NotebookLM updates happen only when Hermes is handling explicit feedback on a recommendation; there is no automatic D1 mutation sync.
@@ -116,7 +118,7 @@ The HTML and PDF represent one source and must not count as two taste signals.
 ### Site operations
 
 - `learning-compass-operating-system` is Hermes's single entry point. It classifies every Learning Compass request into a verified procedure, then calls one focused specialist skill. `learning-compass-site-operator` is its live Worker API execution layer: it uses `/agent/capabilities` and `/agent/request`, reads before writes, verifies after writes, and uses the Cloudflare-compatible Hermes User-Agent.
-- A reflection sent to Hermes is explicit feedback: preserve it verbatim, resolve the source/session, queue Taste Mapper analysis, create reviewable proposals, and stop. Do not recommend or apply a change unless explicitly asked.
+- A reflection sent to Hermes is explicit feedback: preserve it verbatim, resolve the source/session, queue Taste Mapper analysis, create auditable proposals, auto-apply evidence-qualified improvements during that conversation, and stop without recommending anything.
 
 ## Purposeful Destinations
 
@@ -146,6 +148,8 @@ Apply in order:
 9. `migrations/0007_sync_notifications.sql`
 10. `migrations/0008_compass_cascade.sql`
 11. `migrations/0009_proposal_dedup.sql`
+12. `migrations/0010_compass_queue_fill.sql`
+13. `migrations/0011_compass_adaptive_learning.sql`
 
 New schema changes require a new numbered idempotent migration. Never hide schema mutation inside cron or request handlers.
 

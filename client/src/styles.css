@@ -147,6 +147,8 @@ kbd { font-family: var(--font-mono); font-size: 10px; font-weight: 400; }
 .quiet-copy { color: var(--ink-3); }
 .empty-compass { padding: 28px; border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 9px; }
 .empty-compass h2 { margin: 9px 0; font: 600 22px var(--font-reading); }.empty-compass p { max-width: 70ch; color: var(--ink-2); }
+.compass-weak-context { margin: 16px 0; padding: 14px 16px; border: 1px solid var(--line-strong); border-left: 3px solid var(--ink-3); border-radius: 6px; background: var(--surface-2); }
+.compass-weak-context strong { font: 600 11px var(--font-mono); letter-spacing: .05em; text-transform: uppercase; }.compass-weak-context p { margin: 6px 0 0; font-size: 13px; }
 
 .queue-view { max-width: 980px; }.queue-summary { display: flex; justify-content: space-between; align-items: end; padding-bottom: 24px; border-bottom: 1px solid var(--line-strong); }.queue-summary > div { display: flex; align-items: baseline; gap: 10px; }.queue-summary strong { font: 500 34px var(--font-mono); }.queue-summary span, .queue-summary p { color: var(--ink-2); }.queue-summary p { max-width: 420px; margin: 0; }
 .queue-row { display: grid; grid-template-columns: 44px 1fr auto; gap: 18px; padding: 22px 0; border-bottom: 1px solid var(--line); align-items: center; }.queue-index, .record-number { color: var(--ink-3); font: 11px var(--font-mono); }.queue-row h3 { margin: 6px 0; font-size: 15px; }.queue-row p { color: var(--ink-2); margin: 0; line-height: 1.5; }.queue-slot { padding: 18px 0 18px 62px; color: var(--ink-3); border-bottom: 1px dashed var(--line); font: 11px var(--font-mono); }

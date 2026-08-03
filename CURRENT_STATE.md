@@ -2,11 +2,14 @@
 
 Update this file whenever a milestone is completed, a contract changes, a deployment occurs, or a new blocker is discovered. Keep only current facts; remove resolved or superseded entries instead of accumulating a diary.
 
-**Last verified:** 2026-08-02
-**Production Worker version:** `701ecaf5-87ca-4504-bdb0-d365ee97290e`
+**Last verified:** 2026-08-03
+**Production Worker version:** `b4a6b0bf-026b-456b-b0e8-a38f616ee8b1`
 
-- Personal Bayesian Cascade is live behind `/compass`: one unresolved Compass Pick, adaptive 3–8 candidate submissions, server-owned scoring, confidence/margin abstention, explicit Start/feedback, and separate Compass outcome storage. Legacy Discovery V2 and `/ai/suggest` remain compatibility/archive paths.
-- Compass scoring now checks source reachability, canonicalizes URLs, removes exact/semantic duplicates, excludes consumed/active/rejected/mastered/blocked sources, uses priorities, taste vectors, sample-size-shrunk creator/format outcomes and format fatigue, applies distinct fit/bridge/challenge pairwise ranking, records calibrated decision receipts and predicted outcomes, learns explicit Compass outcomes, and ignores client scores/verification flags.
+- Personal Bayesian Cascade is live behind `/compass`: multiple concurrent ready/started Compass Picks are supported while the active queued/in-progress Queue count is below five; `GET /compass/pick` returns the newest one, submissions do not auto-start, and explicit Start/feedback remain required. Adaptive 3–8 candidate submissions, server-owned scoring, confidence/margin abstention, and separate Compass outcome storage remain intact. Legacy Discovery V2 and `/ai/suggest` remain compatibility/archive paths.
+- Compass scoring now checks source reachability, canonicalizes URLs, removes exact/semantic duplicates, excludes consumed/active/rejected/mastered/blocked sources, uses priorities, taste vectors, sample-size-shrunk creator/format outcomes and format fatigue, applies distinct fit/bridge/challenge pairwise ranking, records calibrated decision receipts and predicted outcomes, learns explicit Compass outcomes, and ignores client scores/verification flags. Compass feedback atomically puts completed picks in completed history and declined/abandoned picks in excluded history; any written feedback or rating is preserved and queued for auditable Taste Mapper analysis.
+- Hermes self-improvement is conversation-driven, not scheduled: every Hermes turn completes the user's task first, then may apply the smallest verified improvement across data, profile/map state, scoring, skills, prompts, code, tests, runtime, and deployment. Explicit corrections are authoritative, repeated evidence requires confidence of at least 0.8, weak inferences remain hypotheses, and no evidence means no mutation.
+- Hermes evaluator proposals now use canonically supported `quality_rule` and `pattern_hypothesis` types instead of the unapprovable `evaluator_signal` type. Evidence-qualified proposals may be applied during the active conversation under Mahmood's standing authorization; uncertain proposals remain reviewable.
+- Production health verified at `https://recommendations-worker.mhmudnasr30.workers.dev/health` after deployment.
 
 
 
@@ -57,7 +60,7 @@ Update this file whenever a milestone is completed, a contract changes, a deploy
 - Hermes memory is provenance-backed and typed (`durable`, `episodic`, `working`, `rejection`, `hypothesis`); durable entries require confidence, temporary entries expire, and replacement requires explicit supersession.
 - Insights → Hermes includes Memory Review with search, evidence inspection, approval, rejection, and expiry; source records expose recommendation-level memory influence links.
 - NotebookLM broker health now has heartbeat, stale-session, recovery receipt, and explicit grounded/fallback/offline reporting. The Worker does not claim to control the host browser session.
-- Hermes weekly evaluator reports accuracy, abandoned sources, prediction error, best creators/formats, and taste drift; scheduled runs create pending proposals only. Intelligence backfill is idempotent and dry-run by default.
+- Hermes evaluator reports accuracy, abandoned sources, prediction error, best creators/formats, and taste drift when conversation evidence makes evaluation relevant. Intelligence backfill is idempotent and dry-run by default; no evaluator cron is active.
 - Internal Hermes work retains idempotent leases and recovery APIs, but no scheduled poller is active and the site exposes no job controls.
 - Hermes contract verification is available through `npm run verify:hermes` and checks migration order, route/API registration, docs, and the repository Hermes contract.
 - Each Queue item now opens a linked source record containing its session history, personal reflection, extracted note, companion files, recall drafts/cards, and measured outcome.
@@ -66,8 +69,9 @@ Update this file whenever a milestone is completed, a contract changes, a deploy
 - Migration rehearsal is idempotent through `npm run verify:migrations`; large-library pagination, responsive overflow, screenshot smoke, bilingual extraction, and source-record integration checks are covered.
 - Agent control protocol exposes the complete allow-listed site API through `/agent/capabilities`, `/agent/openapi.json`, `/agent/request`, and `/agent/tool-call`; mutations are audited in `agent_logs` and preserve product validation.
 - `POST /brain/profile` updates all editable profile fields, including reaction style, quality rules, operational style, pattern summary, and recent signal, with legacy aliases preserved.
+- Feedback proposal approval now persists `quality_rule` and `operational_style` changes through the canonical profile JSON columns, remains idempotent, and leaves unsupported proposal types pending.
 - `POST /ai/suggest` LLM curation prompt and Hermes `taste-rec` / `taste-enhancer` skills are fully synchronized with Mahmood's explicit exclusion rules (zero book-derived Islamic recs, existential death content only, real-life/business storytelling, mastered dopamine/habit neuroscience, Mathur/ProPublica dark patterns, and shippable AI dev tools without corporate PR).
-- Hermes recommendation skills target Compass Cascade and retain Mahmoud's explicit exclusion rules; `/ai/suggest` is compatibility-only. The workflow uses adaptive 3–8 candidates, Worker-owned scoring, one exposed pick, explicit Start, and explicit feedback with no automatic follow-up recommendation.
+- Hermes recommendation skills target Compass Cascade and retain Mahmoud's explicit exclusion rules; `/ai/suggest` is compatibility-only. Normal requests use one exposed pick; queue-fill requests continue generating and explicitly starting picks until five queued/in-progress items exist. Submissions never auto-start, and explicit feedback never creates a follow-up recommendation.
 - Hermes is now a Learning Compass-only procedural operating system. `learning-compass-operating-system` routes every chat event—especially a reflection—into one verified site procedure, then calls one focused specialist. Only 11 Learning Compass procedures and their required project tools remain active; all generic skills/plugins are disabled and removed from the Hermes profile.
 
 ## Last Live Verification

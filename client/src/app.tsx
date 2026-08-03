@@ -156,6 +156,15 @@ function Shell({ route, children, onCapture, onSearch, onMore }: { route: Destin
 function Loading() { return <div class="skeleton-stack"><i /><i /><i /></div> }
 function Empty({ title = 'Nothing here yet', body = 'This view is ready when the system has relevant data.' }) { return <div class="empty-state"><span class="empty-rule" /><h2>{title}</h2><p>{body}</p></div> }
 function ErrorState({ message }: { message: string }) { return <div class="error-state"><strong>Couldn’t load this view.</strong><span>{message}</span></div> }
+function compassWeakReason(reason: string) {
+  return ({
+    not_enough_eligible_candidates: 'Too few candidates survived the quality checks.',
+    winner_not_verifiable: 'The source could not be verified with enough certainty.',
+    winner_below_score_threshold: 'Its overall fit score was below the automatic threshold.',
+    insufficient_calibrated_confidence: 'The system could not distinguish it confidently from the alternatives.',
+    candidate_set_not_usable: 'The candidate set did not support an automatic choice.',
+  } as Record<string, string>)[reason] || 'The candidate did not clear the automatic quality checks.'
+}
 
 function TodayPage() {
   const { data, error, loading } = useData('/dashboard/briefing')
@@ -248,9 +257,10 @@ function TodayPage() {
     <section class="recent-wins"><div class="section-title"><div><span>Recent wins</span><h2>Proof you are moving</h2></div><button onClick={() => go(destinations.find((item) => item.key === 'learn.notes')!)}>Open notes →</button></div>{(data?.recent_wins || []).length ? <div>{data.recent_wins.map((item: any) => <article><span>{item.user_score ? `${item.user_score}/10` : item.content_type || 'done'}</span><strong>{item.video_title}</strong><time>{formatDate(item.created_at)}</time></article>)}</div> : <p class="quiet-copy">Completed sources will build your record here.</p>}</section>
 
     {!mission && compass.data?.pick && <section class="empty-compass">
-      <span>Compass Pick · {compass.data.pick.strategy}</span><h2>{compass.data.pick.video_title || 'Compass Pick'}</h2><p>{compass.data.pick.rationale?.why_this || compass.data.pick.why_this}</p>
+      <span>{compass.data.pick.status === 'abstained' ? 'Weak Compass Pick · your decision' : `Compass Pick · ${compass.data.pick.strategy}`}</span><h2>{compass.data.pick.video_title || 'Compass Pick'}</h2><p>{compass.data.pick.rationale?.why_this || compass.data.pick.why_this}</p>
+      {compass.data.pick.status === 'abstained' && <div class="compass-weak-context"><strong>Not automatically recommended</strong><p>{compassWeakReason(compass.data.pick.rationale?.abstention_reason || compass.data.pick.stop_reason)} {compass.data.pick.rationale?.reviewable_weak_pick ? 'This is the strongest safe eligible source found, but it did not meet the automatic recommendation threshold.' : 'No candidate passed all safety and quality checks, so this source cannot be added to the Queue.'} Score {Math.round(Number(compass.data.pick.rationale?.score || 0) * 100)}% · confidence {Math.round(Number(compass.data.pick.confidence || 0) * 100)}% · source {compass.data.pick.rationale?.source_check?.status || 'unknown'}.</p></div>}
       <div class="row-actions">
-        {compass.data.pick.status === 'ready' && <button class="primary-action" disabled={compassWorking} onClick={async () => { setCompassWorking(true); const target = window.open('about:blank', '_blank'); try { const result = await api<any>(`/compass/pick/${compass.data.pick.id}/start`, { method: 'POST' }); localStorage.setItem('tm-active-session', JSON.stringify({ id: result.session_id, recommendationId: result.recommendation_id, title: compass.data.pick.video_title, sourceUrl: compass.data.pick.video_url })); if (target) target.location.replace(compass.data.pick.video_url); else location.assign(compass.data.pick.video_url); compass.reload() } catch (error: any) { target?.close(); window.alert(error.message) } finally { setCompassWorking(false) } }}>Start</button>}
+        {(compass.data.pick.status === 'ready' || (compass.data.pick.status === 'abstained' && compass.data.pick.rationale?.reviewable_weak_pick)) && <button class="primary-action" disabled={compassWorking} onClick={async () => { setCompassWorking(true); const target = window.open('about:blank', '_blank'); try { const result = await api<any>(`/compass/pick/${compass.data.pick.id}/start`, { method: 'POST' }); localStorage.setItem('tm-active-session', JSON.stringify({ id: result.session_id, recommendationId: result.recommendation_id, title: compass.data.pick.video_title, sourceUrl: compass.data.pick.video_url })); if (target) target.location.replace(compass.data.pick.video_url); else location.assign(compass.data.pick.video_url); compass.reload() } catch (error: any) { target?.close(); window.alert(error.message) } finally { setCompassWorking(false) } }}>{compass.data.pick.status === 'abstained' ? 'Add to Queue anyway' : 'Start'}</button>}
         <button disabled={compassWorking} onClick={async () => { setCompassWorking(true); try { await api(`/compass/pick/${compass.data.pick.id}/feedback`, { method: 'POST', body: JSON.stringify({ outcome: 'declined', reason_tags: ['not_now'] }) }); compass.reload() } catch (error: any) { window.alert(error.message) } finally { setCompassWorking(false) } }}>Not for me</button>
       </div>
     </section>}
@@ -414,7 +424,7 @@ function InboxPage() {
     </section>
     <div class="inbox-summary"><strong>{items.length} waiting</strong><span>Promote only what deserves one of five active queue slots.</span></div>
     {blocked && <div class="queue-warning"><span>{blocked.error || 'Queue full. Finish an active item or make this a deliberate override.'}</span>{!blocked.error && <button onClick={() => triage(blocked, 'queue', true)}>Add anyway</button>}</div>}
-    {items.length ? <div class="record-list">{items.map((item: any, index: number) => <article><span class="record-number">{String(index + 1).padStart(2, '0')}</span><div><span class="meta">{item.feed_title ? `rss · ${item.feed_title}` : item.content_type || 'source'}</span><h3>{item.video_title}</h3><p>{item.why_this || item.video_url}</p></div><div class="row-actions"><button disabled={working === item.id} onClick={() => triage(item, 'exclude')}>Exclude</button><button class="primary-action" disabled={working === item.id} onClick={() => triage(item, 'queue')}>Queue</button></div></article>)}</div> : <Empty title="Inbox clear" body="New captures and feed articles land here for a quick fit check before they earn a queue slot." />}
+    {items.length ? <div class="record-list">{items.map((item: any, index: number) => <article><span class="record-number">{String(index + 1).padStart(2, '0')}</span><div><span class="meta">{item.feed_title ? `rss · ${item.feed_title}` : item.content_type || 'source'}</span><h3>{item.video_title}</h3><p>{item.why_this || item.video_url}</p></div><div class="row-actions"><button class="danger-action" disabled={working === item.id} onClick={() => triage(item, 'exclude')}>Remove</button><button class="primary-action" disabled={working === item.id} onClick={() => triage(item, 'queue')}>Queue</button></div></article>)}</div> : <Empty title="Inbox clear" body="New captures and feed articles land here for a quick fit check before they earn a queue slot." />}
   </div>
 }
 

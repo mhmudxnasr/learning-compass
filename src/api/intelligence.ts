@@ -68,7 +68,7 @@ app.get('/analytics/forecast', async (c) => {
 app.get('/analytics/hermes', async (c) => {
   const { DB } = c.env
   try {
-    const [jobCounts, stale, retryQueue, deadLetters, quality, qualityByFormat, memory, alerts, failures, weights, proposals] = await Promise.all([
+    const [jobCounts, stale, retryQueue, deadLetters, quality, qualityByFormat, memory, alerts, failures, weights, proposals, compassPriors, compassWeights] = await Promise.all([
       DB.prepare(`SELECT status,COUNT(*) count FROM agent_jobs GROUP BY status`).all<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM agent_jobs WHERE status='running' AND lease_expires_at < datetime('now')`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM agent_job_retries WHERE dead_lettered_at IS NULL AND next_attempt_at > datetime('now')`).first<any>(),
@@ -80,6 +80,8 @@ app.get('/analytics/hermes', async (c) => {
       DB.prepare(`SELECT id,job_type,attempts,error,updated_at FROM agent_jobs WHERE status='failed' ORDER BY updated_at DESC LIMIT 12`).all<any>(),
       DB.prepare(`SELECT dimension,current_weight,baseline_weight,evidence_count,updated_at FROM engine_weights ORDER BY current_weight DESC`).all<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM feedback_proposals WHERE status='pending'`).first<any>(),
+      DB.prepare(`SELECT strategy,alpha,beta,explicit_evidence_count,updated_at FROM compass_strategy_priors ORDER BY strategy`).all<any>().catch(() => ({ results: [] })),
+      DB.prepare(`SELECT strategy,dimension,current_weight,baseline_weight,evidence_count,updated_at FROM compass_feature_weights ORDER BY strategy,current_weight DESC`).all<any>().catch(() => ({ results: [] })),
     ])
     const statuses: Record<string, number> = {}
     for (const row of jobCounts.results || []) statuses[row.status] = Number(row.count || 0)
@@ -90,6 +92,7 @@ app.get('/analytics/hermes', async (c) => {
       memory: { entries: memory.results || [], active: (memory.results || []).filter((row: any) => row.status === 'active').reduce((sum: number, row: any) => sum + Number(row.count || 0), 0) },
       alerts: alerts.results || [],
       engine_weights: weights.results || [],
+      compass_learning: { strategies: compassPriors.results || [], feature_weights: compassWeights.results || [] },
       pending_proposals: Number(proposals?.count || 0),
     })
   } catch (error) {

@@ -9,9 +9,10 @@ export type CompassContext = {
   priorityTopics: Set<string>
   formatOutcomes: Map<string, TrustSignal>
   recentFormats: string[]
+  featureWeights?: Map<string, Record<string, number>>
 }
 
-const EMPTY_CONTEXT: CompassContext = { knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [] }
+const EMPTY_CONTEXT: CompassContext = { knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [], featureWeights: new Map() }
 const clamp = (value: unknown, fallback = 0) => { const n = Number(value); return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : fallback }
 const norm = (value: unknown) => String(value || '').trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
 const STOP_WORDS = new Set(['and', 'the', 'with', 'from', 'into', 'for', 'this', 'that', 'how', 'why', 'what'])
@@ -91,12 +92,14 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
   }
 }
 
-export function serverScore(features: Record<string, unknown>, strategy = 'fit') {
-  const weights = strategy === 'bridge'
-    ? { topic_value: .17, personal_relevance: .16, source_quality: .17, information_gain: .22, novelty: .15, format_fit: .06, evidence_quality: .07 }
-    : strategy === 'challenge'
-      ? { topic_value: .14, personal_relevance: .13, source_quality: .18, information_gain: .20, novelty: .23, format_fit: .05, evidence_quality: .07 }
-      : { topic_value: .23, personal_relevance: .22, source_quality: .19, information_gain: .13, novelty: .08, format_fit: .07, evidence_quality: .08 }
+export const DEFAULT_FEATURE_WEIGHTS: Record<string, Record<string, number>> = {
+  fit: { topic_value: .23, personal_relevance: .22, source_quality: .19, information_gain: .13, novelty: .08, format_fit: .07, evidence_quality: .08 },
+  bridge: { topic_value: .17, personal_relevance: .16, source_quality: .17, information_gain: .22, novelty: .15, format_fit: .06, evidence_quality: .07 },
+  challenge: { topic_value: .14, personal_relevance: .13, source_quality: .18, information_gain: .20, novelty: .23, format_fit: .05, evidence_quality: .07 },
+}
+
+export function serverScore(features: Record<string, unknown>, strategy = 'fit', customWeights?: Record<string, number>) {
+  const weights = customWeights || DEFAULT_FEATURE_WEIGHTS[strategy] || DEFAULT_FEATURE_WEIGHTS.fit
   const score = Object.entries(weights).reduce((sum, [key, weight]) => sum + clamp(features[key], .5) * weight, 0)
   return clamp(score - clamp(features.friction, 0) * .10, 0)
 }
@@ -112,4 +115,4 @@ export function pairwiseDominance(candidate: Record<string, any>, peers: Record<
 export function calibratedConfidence(score: number, uncertainty: number, margin: number, dominance: number) {
   return clamp(score * .55 + (1 - uncertainty) * .22 + clamp(margin / .06, 0) * .13 + dominance * .10, 0)
 }
-export const compassPickIsUnresolved = (pickStatus: string, recommendationStatus?: string | null) => ['ready', 'started'].includes(pickStatus) && !['consumed', 'rejected'].includes(String(recommendationStatus || 'active'))
+export const compassPickIsUnresolved = (pickStatus: string, recommendationStatus?: string | null) => ['ready', 'started', 'abstained'].includes(pickStatus) && !['consumed', 'rejected'].includes(String(recommendationStatus || 'active'))
