@@ -1,5 +1,7 @@
 # Learning Compass API
 
+Hermes ownership, endpoint permissions, side-effect tiers, routing policy, and specialist receipts are canonical in [`docs/hermes-contract.json`](./hermes-contract.json); this API reference documents the route surface.
+
 ## Canonical read models
 
 - `GET /dashboard/briefing` — Momentum workspace data: active Queue shelf, linked files, weekly completions/notes/recall, evidence-backed insight, and recent wins. Legacy next-action fields remain compatible.
@@ -8,6 +10,7 @@
 - `GET /knowledge/graph` — nodes and evidence-backed edges.
 - `GET /knowledge/blind-spots` — unmapped or unconsumed branches.
 - `GET /learning/health` — branch health.
+- `GET /learning/balance?window=30|90|365` — canonical map-balance read model combining attention share, explicit priority share, coverage, notes, SRS due cards, recall strength, branch depth, and unmapped-source warnings.
 - `GET /taste/dna` — vectors, decay, ratings, diversity, and momentum.
 - `GET /analytics/heatmaps`, `/analytics/forecast`, `/analytics/taste-drift`, `/analytics/creator-trust`.
 - `GET /analytics/hermes` — compact Hermes operations, recommendation quality, memory, alert, and engine evidence read model.
@@ -34,7 +37,7 @@
 - `GET /srs/drafts`, `PUT /srs/drafts/:id`, `POST /srs/drafts/:id/approve`, `POST /srs/drafts/:id/reject` — editable recall drafts.
 - `GET /learning/srs/cards`, `DELETE /learning/srs/cards/:id` — list or permanently remove approved review cards.
 - `POST /feedback/record` — the canonical feedback write. Resolve by ID, exact URL, or exact title; capture an untracked source; preserve feedback verbatim; update rating/completion; create idempotent analysis/extraction work; and return the exact source receipt.
-- `GET /feedback/proposals`, `POST /feedback/proposals/:id/approve`, `POST /feedback/proposals/:id/reject` — list Hermes changes before mutation; Activity or the conversation-driven Hermes improvement pass applies an approved change exactly once, merges `quality_rule` into `profile.quality_rules_json`, serializes `operational_style` into `profile.operational_style_json`, and rejects unsupported change types without marking them applied. Rejection leaves profile/map state untouched.
+- `GET /feedback/proposals`, `POST /feedback/proposals/:id/approve`, `POST /feedback/proposals/:id/reject` — list Hermes changes before mutation. Evidence-qualified profile/map/scoring proposals may be applied exactly once during the active conversation; skill, prompt, code, schema, runtime, and workflow proposals remain reviewable, while deployment, deletion, and external publication require separate explicit instruction. The route merges supported `quality_rule` and `operational_style` changes into their canonical profile JSON columns and rejects unsupported types without marking them applied.
 - Existing `/learning/srs/due`, `/learning/srs/review`, and `/learning/srs/create` remain compatible.
 
 ## AI & Curation
@@ -70,7 +73,7 @@
 - `POST /agent/jobs/:id/complete` — persist structured note/SRS output while its lease is current; send the claiming `worker`.
 - `POST /agent/jobs/:id/fail` — retry up to three attempts, then mark failed; send the claiming `worker`.
 - `POST /agent/jobs/:id/replay` — reset a failed/dead-lettered job for a clean, auditable replay.
-- `GET/POST /agent/memory` — browse/search or write provenance-backed Hermes memory with evidence and recommendation influence links; durable entries require high confidence, temporary entries expire.
+- `GET/POST /agent/memory` — browse/search or write provenance-backed Hermes memory with evidence and recommendation influence links; durable entries require high confidence, temporary entries expire. Verified reversible skill improvements use `memory_kind: "durable"`, a `skill_procedure:*` key, validation evidence, scope, and supersession metadata.
 - `POST /agent/memory/:id/approve`, `/expire` — review memory lifecycle without deleting evidence.
 - `POST /agent/memory/:id/resolve` — supersede or reject an active memory entry.
 - `GET /notebooklm/health` — broker heartbeat, session, grounding, fallback, and stale health state; `POST /notebooklm/health` records a host heartbeat and `POST /notebooklm/recover` records a recovery receipt.

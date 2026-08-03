@@ -109,6 +109,18 @@ test('Compass infers topic affinity from legacy title-only metadata', () => {
   assert.ok(features.personal_relevance >= .9)
 })
 
+test('Compass uses learning balance as a bounded branch signal', () => {
+  const base = { canonical_url: 'https://example.com/history', title: 'A history source', format: 'lecture', topic: 'history', evidence: 'Methods, claims, caveats, and source anchors.' }
+  const context = {
+    knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map([['history', 2]]), priorityTopics: new Set(),
+    formatOutcomes: new Map(), recentFormats: [], branchSignals: new Map([['history', { state: 'at-risk', attentionShare: 0, priorityShare: null }]]),
+  }
+  const balanced = deriveCandidateFeatures(base)
+  const redirected = deriveCandidateFeatures(base, context)
+  assert.ok(redirected.topic_value > balanced.topic_value)
+  assert.equal(redirected._branch_state, 'at-risk')
+})
+
 test('the product exposes exactly seventeen distinct destinations', () => {
   assert.equal(destinations.length, 17)
   assert.equal(new Set(destinations.map((item) => item.key)).size, 17)

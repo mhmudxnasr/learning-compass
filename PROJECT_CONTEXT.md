@@ -14,12 +14,12 @@ The product is single-user, English-first, supports bilingual English/Egyptian-A
 - **Queue:** five active queued/in-progress items by default. Compass can prepare multiple ready picks while capacity remains; explicit starts enforce the five-item cap. Compass completion, decline, and abandonment atomically move the linked source to completed or excluded state; written feedback/rating remains attached as a reviewable learning signal. Other Queue additions still require consume/drop or an explicit override.
 - **Queue and hidden sessions:** Queue owns start, resume, return, and completion. Hidden session records preserve source/reflection linkage without a separate management destination.
 - **Source notes:** one source-centric Notes record presents the user's exact typed or handwritten feedback alongside the separate complete bilingual English/Egyptian-Arabic source note; incomplete legacy notes can be re-run from the site.
-- **Feedback proposals:** every reflection/rating produces auditable Taste Mapper proposals. During an active Hermes conversation, evidence-qualified profile, pattern, priority, contradiction, map, scoring, skill, prompt, code, runtime, and workflow improvements may be applied under Mahmood's standing authorization; uncertain hypotheses remain reviewable.
+- **Feedback proposals:** every reflection/rating produces auditable Taste Mapper proposals. During an active Hermes conversation, evidence-qualified profile, pattern, priority, contradiction, map, and scoring changes may apply automatically at confidence ≥0.8; skill, prompt, code, schema, runtime, and workflow changes remain proposal-only; deployment, destructive deletion, and external publication require separate explicit instruction.
 - **SRS:** ratings 7–10 automatically queue Notes Extractor and produce 3–5 editable drafts. Only approved drafts become review cards; drafts and active cards can be deleted.
-- **Knowledge map:** branches, edges, evidence, contradictions, coverage, health, and taste signals.
+- **Knowledge map:** branches, edges, evidence, contradictions, coverage, health, and taste signals. Learning balance combines map depth (R1/R2/R3), recent attention share, explicit priority share, notes, SRS due cards, recall strength, and unmapped-source warnings; the site and Hermes read this same model.
 - **Resurfacing:** brings useful knowledge back at the right time without auto-chaining recommendations.
 - **NotebookLM grounding:** Hermes uses the dedicated Master Corpus notebook for complete-corpus grounding during explicit recommendation-feedback workflows. Only original source material and Mahmood-authored reflections/feedback enter the corpus; generated translations and Lite Visual companions do not count as his thoughts. Explicit source-specific Studio requests create a fresh per-source notebook, add the link as a Website source, start the artifact without downloading/uploading or waiting, and immediately save the notebook URL on the matching site item.
-- **NotebookLM Q&A speed:** the active NotebookLM skill keeps a local authenticated browser broker warm, automatically reuses compatible investigation sessions, starts fresh on topic changes or low confidence, and caches exact answers for 24 hours using the latest corpus fingerprint.
+- **NotebookLM Q&A speed:** the active NotebookLM skill reuses compatible MCP sessions, starts fresh on topic changes or low confidence, and accepts exact 24-hour cache hits only when the latest corpus fingerprint is part of the cache key.
 
 ## Visual and UX Direction
 
@@ -78,7 +78,9 @@ Obsidian is not bidirectional storage. Do not make an archive copy overwrite D1.
 
 Hermes handles durable work only inside an explicit Learning Compass workflow. It claims the exact work created by that request, runs the specialist, then completes or fails it using the same stable identity. There is no automatic host poller, and internal job state is not exposed in the site UI. Job keys, leases, retries, and completion writes remain idempotent.
 
-Hermes self-improvement is conversation-driven, never scheduled. After completing each user request, the operating system inspects evidence exposed by that turn and may apply the smallest verified improvement across data, profile/map state, scoring, skills, prompts, code, tests, runtime, or deployment. Explicit user corrections are authoritative; repeated behavioral evidence requires confidence of at least 0.8; weak one-off inferences remain expiring hypotheses. No evidence means no mutation.
+Hermes self-improvement is conversation-driven, never scheduled. After completing each user request, the operating system inspects evidence exposed by that turn and applies the smallest verified profile/map/scoring improvement automatically at confidence ≥0.8, or saves a narrowly scoped, reversible skill-procedure improvement to D1 `hermes_memory` when a skill failure or better path passes replay/test validation at confidence ≥0.9 (or repeats twice). Skill-source edits, prompts, code, tests, schema, runtime, and workflow changes produce reviewable proposals; deployment, destructive deletion, and external publication require separate explicit instruction. Explicit user corrections are authoritative for data-layer learning; weak one-off inferences remain expiring hypotheses. No evidence means no mutation.
+
+Every specialist returns the canonical receipt `intent → target → before → mutation/job → after → evidence → blocker`; endpoint ownership and permissions live in `docs/hermes-contract.json`.
 
 The retained manual runner is `~/.hermes/scripts/taste-map-job.py`. Its User-Agent must remain:
 
@@ -118,7 +120,7 @@ The HTML and PDF represent one source and must not count as two taste signals.
 ### Site operations
 
 - `learning-compass-operating-system` is Hermes's single entry point. It classifies every Learning Compass request into a verified procedure, then calls one focused specialist skill. `learning-compass-site-operator` is its live Worker API execution layer: it uses `/agent/capabilities` and `/agent/request`, reads before writes, verifies after writes, and uses the Cloudflare-compatible Hermes User-Agent.
-- A reflection sent to Hermes is explicit feedback: preserve it verbatim, resolve the source/session, queue Taste Mapper analysis, create auditable proposals, auto-apply evidence-qualified improvements during that conversation, and stop without recommending anything.
+- A reflection sent to Hermes is explicit feedback: preserve it verbatim, resolve the source/session, queue Taste Mapper analysis, create auditable proposals, apply only evidence-qualified profile/map/scoring changes during that conversation, and stop without recommending anything.
 
 ## Purposeful Destinations
 

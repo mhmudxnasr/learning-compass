@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { safeError, normalizeRating, type Bindings } from '../lib'
 import { createInboxCapture } from '../services/capture'
 import { calibratedConfidence, canonicalizeUrl, DEFAULT_FEATURE_WEIGHTS, deriveCandidateFeatures, pairwiseDominance, semanticSimilarity, serverScore, urlOf, type CompassContext, type SourceCheck } from '../compass-scoring'
+import { buildLearningBalance } from '../services/learning-balance'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const STRATEGIES = new Set(['fit', 'bridge', 'challenge'])
@@ -31,7 +32,7 @@ const checkSource = async (item: any): Promise<SourceCheck> => {
 }
 
 const loadCompassContext = async (DB: D1Database): Promise<CompassContext> => {
-  const [history, mastered, blacklist, trust, vectors, priorities, formats, recent, weights] = await Promise.all([
+  const [history, mastered, blacklist, trust, vectors, priorities, formats, recent, weights, balance] = await Promise.all([
     DB.prepare(`SELECT video_url,video_title,creator,status FROM recommendations WHERE status IN ('consumed','active','rejected') LIMIT 2000`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT label,author FROM mastered`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT name,work FROM blacklist`).all<any>().catch(() => ({ results: [] })),
@@ -41,12 +42,18 @@ const loadCompassContext = async (DB: D1Database): Promise<CompassContext> => {
     DB.prepare(`SELECT LOWER(COALESCE(format,'unknown')) format,COUNT(*) sample_count,AVG(COALESCE(actual_score,CASE outcome_status WHEN 'rejected' THEN 2 WHEN 'abandoned' THEN 3 END)) average_score FROM recommendation_outcomes WHERE outcome_status IN ('consumed','rejected','abandoned') GROUP BY LOWER(COALESCE(format,'unknown'))`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT LOWER(COALESCE(format,'unknown')) format FROM recommendation_outcomes WHERE outcome_status='consumed' ORDER BY COALESCE(consumed_at,evaluated_at) DESC LIMIT 5`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT strategy,dimension,current_weight FROM compass_feature_weights`).all<any>().catch(() => ({ results: [] })),
+    buildLearningBalance(DB, 90).catch(() => null),
   ])
   const terms = [...(mastered.results || []), ...(blacklist.results || [])]
     .flatMap((row: any) => [row.label, row.author, row.work, row.name])
     .map((value) => String(value || '').trim().toLowerCase()).filter((value) => value.length >= 4)
   const featureWeights = new Map<string, Record<string, number>>()
   for (const row of weights.results || []) featureWeights.set(String(row.strategy), { ...(featureWeights.get(String(row.strategy)) || {}), [String(row.dimension)]: Number(row.current_weight) })
+  const branchSignals = new Map<string, { state: string; attentionShare: number; priorityShare: number | null }>()
+  for (const branch of balance?.branches || []) {
+    branchSignals.set(String(branch.id).toLowerCase(), { state: String(branch.state), attentionShare: Number(branch.attention_share || 0), priorityShare: branch.priority_share == null ? null : Number(branch.priority_share) })
+    branchSignals.set(String(branch.label).toLowerCase(), { state: String(branch.state), attentionShare: Number(branch.attention_share || 0), priorityShare: branch.priority_share == null ? null : Number(branch.priority_share) })
+  }
   return {
     knownSources: (history.results || []).map((row: any) => ({ url: row.video_url || '', title: row.video_title || '', creator: row.creator || '', status: row.status || '' })),
     blockedEntities: [...new Set(terms)],
@@ -56,6 +63,7 @@ const loadCompassContext = async (DB: D1Database): Promise<CompassContext> => {
     formatOutcomes: new Map((formats.results || []).map((row: any) => [String(row.format), { average: Number(row.average_score || 5), count: Number(row.sample_count || 0) }])),
     recentFormats: (recent.results || []).map((row: any) => String(row.format)),
     featureWeights,
+    branchSignals,
   }
 }
 

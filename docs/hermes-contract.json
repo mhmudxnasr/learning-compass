@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "name": "learning-compass-hermes",
+  "router": "learning-compass-operating-system",
+  "canonical_sources": {
+    "structured_state": "D1",
+    "artifacts": "R2",
+    "api": "live Worker API",
+    "archive": "Obsidian extracted-note copy only"
+  },
+  "network": {
+    "private_urls": "deny_by_default",
+    "trusted_public_worker": "https://recommendations-worker.mhmudnasr30.workers.dev",
+    "local_services": "require_explicit_operator_override"
+  },
+  "policies": {
+    "workflow": "conversation-driven",
+    "background_self_improvement": false,
+    "self_evolution": {
+      "enabled": true,
+      "scope": "verified_skill_procedure_memory",
+      "trigger": ["observed skill failure", "validated better path"],
+      "automatic_when": [
+        "the current conversation provides evidence",
+        "the improvement is reversible and narrowly scoped",
+        "the relevant replay, test, or validator passes",
+        "confidence >= 0.9 or the same issue is observed twice"
+      ],
+      "persist_to": "D1 hermes_memory with evidence, validation, scope, and supersession",
+      "skill_source_edits": "proposal_only",
+      "never": ["unverified rules", "silent policy weakening", "code/schema/runtime changes", "deployment", "destructive deletion", "external publication", "background jobs"]
+    },
+    "feedback": "preserve exact reflection, then create one auditable Taste Mapper proposal set",
+    "notebooklm": "explicit feedback grounding or explicit Studio request only",
+    "recommendations": "explicit request only; feedback never creates a recommendation",
+    "ai_routing": {
+      "basic_intro": "inbox",
+      "corporate_pr": "reject_or_inbox",
+      "practical_applied_tool": "recommendation_allowed",
+      "major_release_or_hardware_analysis": "recommendation_allowed",
+      "training_internals_theory": "reject"
+    }
+  },
+  "side_effect_tiers": {
+    "automatic": {
+      "requires": "explicit request or feedback plus evidence confidence >= 0.8",
+      "allows": ["profile", "map", "scoring", "feedback receipts", "durable job completion", "verified skill procedure memory"]
+    },
+    "proposal_only": {
+      "requires": "reviewable proposal and evidence receipt",
+      "allows": ["skills", "prompts", "code", "tests", "schema", "runtime configuration"]
+    },
+    "explicit_only": {
+      "requires": "separate explicit user instruction for the exact target",
+      "allows": ["deployment", "destructive deletion", "external publication"]
+    }
+  },
+  "specialist_receipt": ["intent", "target", "before", "mutation_or_job", "after", "evidence", "blocker"],
+  "route_ownership": {
+    "GET /agent/capabilities": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "GET /agent/context": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "POST /feedback/record": {"owner": "learning-compass-operating-system", "permission": "explicit_feedback"},
+    "POST /feedback/proposals/:id/approve": {"owner": "learning-compass-site-operator", "permission": "automatic_evidence_only"},
+    "GET /compass/pick": {"owner": "taste-rec", "permission": "explicit_recommendation"},
+    "POST /compass/picks": {"owner": "taste-rec", "permission": "explicit_recommendation"},
+    "POST /compass/pick/:id/start": {"owner": "learning-compass-site-operator", "permission": "explicit_start"},
+    "POST /compass/pick/:id/feedback": {"owner": "learning-compass-site-operator", "permission": "explicit_feedback"},
+    "POST /agent/jobs/:id/claim": {"owner": "focused_specialist", "permission": "exact_job_only"},
+    "POST /agent/jobs/:id/complete": {"owner": "focused_specialist", "permission": "claimed_job_only"},
+    "POST /agent/jobs/:id/fail": {"owner": "focused_specialist", "permission": "claimed_job_only"},
+    "GET /agent/memory": {"owner": "learning-compass-operating-system", "permission": "read_or_verified_skill_evolution"},
+    "POST /agent/memory": {"owner": "learning-compass-operating-system", "permission": "verified_skill_evolution_only"},
+    "POST /artifacts": {"owner": "learning-compass-site-operator", "permission": "explicit_media_request"},
+    "npx wrangler deploy --config wrangler.toml": {"owner": "recommendations-worker-ops", "permission": "explicit_deployment"}
+  }
+}

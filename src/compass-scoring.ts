@@ -10,9 +10,10 @@ export type CompassContext = {
   formatOutcomes: Map<string, TrustSignal>
   recentFormats: string[]
   featureWeights?: Map<string, Record<string, number>>
+  branchSignals?: Map<string, { state: string; attentionShare: number; priorityShare: number | null }>
 }
 
-const EMPTY_CONTEXT: CompassContext = { knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [], featureWeights: new Map() }
+const EMPTY_CONTEXT: CompassContext = { knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [], featureWeights: new Map(), branchSignals: new Map() }
 const clamp = (value: unknown, fallback = 0) => { const n = Number(value); return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : fallback }
 const norm = (value: unknown) => String(value || '').trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
 const STOP_WORDS = new Set(['and', 'the', 'with', 'from', 'into', 'for', 'this', 'that', 'how', 'why', 'what'])
@@ -64,6 +65,8 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
   const topicSignals = candidateTopics.flatMap((topic) => [...context.topicAffinities.entries()].filter(([known]) => topicMatches(topic, known)).map(([, score]) => clamp(score / 5, .5)))
   const topicAffinity = topicSignals.length ? Math.max(...topicSignals) : .5
   const priorityMatch = candidateTopics.some((topic) => [...context.priorityTopics].some((priority) => topicMatches(topic, priority)))
+  const branchSignal = [...(context.branchSignals || [])].filter(([branch]) => candidateTopics.some((topic) => topicMatches(topic, branch))).map(([, signal]) => signal).sort((a, b) => Number(b.attentionShare) - Number(a.attentionShare))[0]
+  const balanceBoost = branchSignal?.state === 'at-risk' || branchSignal?.state === 'uncovered' ? .08 : branchSignal?.state === 'over-focused' && !priorityMatch ? -.06 : 0
   const creatorSignal = context.creatorTrust.get(norm(creator))
   const formatSignal = context.formatOutcomes.get(format)
   const recentFormatCount = context.recentFormats.filter((recent) => recent === format).length
@@ -74,8 +77,8 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
   const friction = clamp((item.paywalled === true ? .45 : 0) + (duration > 120 ? .25 : duration > 60 ? .12 : 0) + (sourceCheck.status === 'restricted' ? .12 : 0), 0)
   const novelty = clamp(1 - knownSimilarity * .75, 0)
   return {
-    topic_value: clamp(.40 + topicAffinity * .35 + (priorityMatch ? .20 : 0), 0),
-    personal_relevance: clamp(.38 + topicAffinity * .40 + (priorityMatch ? .17 : 0), 0),
+    topic_value: clamp(.40 + topicAffinity * .35 + (priorityMatch ? .20 : 0) + balanceBoost, 0),
+    personal_relevance: clamp(.38 + topicAffinity * .40 + (priorityMatch ? .17 : 0) + balanceBoost, 0),
     source_quality: clamp(authority * .72 + shrunk(creatorSignal) * .28, 0),
     information_gain: clamp(novelty * .70 + (topicSignals.length ? .15 : .28), 0),
     novelty,
@@ -89,6 +92,7 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
     _topic_affinity: topicAffinity,
     _known_similarity: knownSimilarity,
     _source_check: sourceCheck.status,
+    _branch_state: branchSignal?.state || 'unmapped',
   }
 }
 

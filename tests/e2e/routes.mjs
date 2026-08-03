@@ -58,6 +58,28 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
 
+  const requestJson = async (path, options = {}) => {
+    const response = await fetch(`${baseUrl}${path}`, { headers: { 'content-type': 'application/json' }, ...options })
+    const body = await response.json()
+    if (!response.ok) throw new Error(`${options.method || 'GET'} ${path} failed: ${JSON.stringify(body)}`)
+    return body
+  }
+  await requestJson('/brain/seed', { method: 'POST', body: JSON.stringify({
+    profile: {
+      identity: JSON.stringify({ role: 'builder', context: 'Profile rendering fixture' }),
+      mega_priority: [{ rank: 1, label: 'Deep systems thinking' }],
+      core_filter: 'Only sources with concrete mechanisms and evidence.',
+      reaction_style: JSON.stringify({ tone: 'direct', format: 'compact' }),
+      quality_rules: '{"malformed":',
+      operational_style: JSON.stringify({ language: 'English-first' }),
+      patterns_summary: JSON.stringify({ preference: 'applied examples' }),
+      recent_signal: 'Prefer evidence-backed applied material.',
+    },
+    priorities: [[1, 'systems', 'Systems thinking', 'Build durable models.']],
+  }) })
+  const seededProfile = await requestJson('/brain/profile?recent_limit=50')
+  if (!seededProfile.profile) throw new Error(`profile fixture did not persist: ${JSON.stringify(seededProfile)}`)
+
   browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 const errors = []
@@ -89,13 +111,23 @@ for (const [workspace, views] of Object.entries(workspaces)) {
 }
 
 if (count !== 17) throw new Error(`expected 17 routes, checked ${count}`)
+await page.goto(`${baseUrl}/#/settings/preferences`, { waitUntil: 'networkidle' })
+await page.goto(`${baseUrl}/#/settings/profile`, { waitUntil: 'networkidle' })
+await page.locator('.profile-fields-section').waitFor({ state: 'visible' })
+const profileBody = await page.locator('.page-content').innerText()
+for (const value of ['Deep systems thinking', 'Systems thinking', 'Only sources with concrete mechanisms and evidence.', 'Profile rendering fixture', 'Raw text · invalid JSON', '{"malformed":', 'Reaction style', 'Pattern summary', 'Recent activity', 'Feed sources', 'SRS statistics', 'Activity statistics', 'Infrastructure statistics', 'Creator trust']) {
+  if (!profileBody.includes(value)) throw new Error(`profile page is missing rendered value or section: ${value}`)
+}
+if (profileBody.includes('Priority topics configured.')) throw new Error('profile page still renders the fake priority placeholder')
+if (await page.locator('.profile-json-invalid').count() !== 1) throw new Error('malformed JSON was not marked safely')
+if (await page.locator('.profile-page .profile-record').count() < 1) throw new Error('profile records did not render')
 await page.goto(`${baseUrl}/#/curate/queue`, { waitUntil: 'networkidle' })
 const curateNav = await page.locator('.subnav button').allTextContents()
 if (curateNav[0]?.trim() !== 'Queue' || curateNav[1]?.trim() !== 'Inbox') throw new Error('Curate navigation order or Inbox label is incorrect')
 await page.goto(`${baseUrl}/#/learn/notes`, { waitUntil: 'networkidle' })
 const learnNav = await page.locator('.subnav button').allTextContents()
 if (learnNav[0]?.trim() !== 'Files' || learnNav.includes('NotebookLM') || learnNav.includes('Reflections')) throw new Error('Learn navigation order is incorrect')
-const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards, momentum] = await Promise.all([
+const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards, momentum, balance] = await Promise.all([
   fetch(`${baseUrl}/settings`).then((response) => response.json()),
   fetch(`${baseUrl}/manifest.json`).then((response) => response.json()),
   fetch(`${baseUrl}/artifacts`).then((response) => response.json()),
@@ -104,6 +136,7 @@ const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards, mo
   fetch(`${baseUrl}/feedback/proposals`).then((response) => response.json()),
   fetch(`${baseUrl}/learning/srs/cards`).then((response) => response.json()),
   fetch(`${baseUrl}/dashboard/briefing`).then((response) => response.json()),
+  fetch(`${baseUrl}/learning/balance?window=90`).then((response) => response.json()),
 ])
 if (settings.resolved?.learning?.retention !== 90 || settings.resolved?.learning?.queue_cap !== 5) throw new Error('settings defaults are not resolved')
 if (settings.resolved?.srs_drafts?.minimum_rating !== 7 || settings.resolved?.profile_proposals?.review_required !== true) throw new Error('learning automation defaults are incorrect')
@@ -111,16 +144,11 @@ if (!manifest.icons?.some((icon) => icon.src === '/icon.svg')) throw new Error('
 if (!Array.isArray(artifacts.artifacts)) throw new Error('artifact library contract is invalid')
 if (!Array.isArray(feeds.feeds)) throw new Error('feed subscriptions contract is invalid')
 if (!Array.isArray(manualArchive.recommendations)) throw new Error('manual archive contract is invalid')
+if (!Array.isArray(balance.branches) || balance.window_days !== 90 || !balance.portfolio) throw new Error('learning balance contract is invalid')
 if (!Array.isArray(proposals.proposals)) throw new Error('feedback proposal contract is invalid')
 if (!Array.isArray(cards.cards)) throw new Error('SRS card management contract is invalid')
 if (!Array.isArray(momentum.active_items) || !Array.isArray(momentum.artifacts) || !momentum.momentum || !momentum.insight || !Array.isArray(momentum.recent_wins)) throw new Error('Momentum workspace contract is invalid')
 
-const requestJson = async (path, options = {}) => {
-  const response = await fetch(`${baseUrl}${path}`, { headers: { 'content-type': 'application/json' }, ...options })
-  const body = await response.json()
-  if (!response.ok) throw new Error(`${options.method || 'GET'} ${path} failed: ${JSON.stringify(body)}`)
-  return body
-}
 const captured = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hermes-e2e', title: 'Hermes automation test' }) })
 const preRecord = await requestJson(`/capture/${captured.id}/record`)
 if (!preRecord.item) throw new Error('source record API did not return the captured source')

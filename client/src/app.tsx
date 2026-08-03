@@ -1772,15 +1772,36 @@ function JournalPage() {
 }
 
 function CoveragePage({ insight = false }: { insight?: boolean }) {
-  const health = useData('/learning/health')
-  const gaps = useData('/learning/gaps')
-  const blind = useData('/knowledge/blind-spots')
-  if (health.loading || gaps.loading || blind.loading) return <Loading />
-  if (health.error || gaps.error || blind.error) return <ErrorState message={health.error || gaps.error || blind.error} />
-  const branches = health.data?.health || []
-  const uncovered = blind.data?.blind_spots || []
-  const weak = gaps.data?.gaps || []
-  return <div class="coverage-page"><div class="summary-strip"><div><strong>{health.data?.healthy || 0}</strong><span>Healthy</span></div><div><strong>{branches.filter((item: any) => item.health === 'growing').length}</strong><span>Growing</span></div><div><strong>{health.data?.neglected || 0}</strong><span>Neglected</span></div><div><strong>{uncovered.length}</strong><span>Uncovered</span></div></div><section><div class="section-head"><h2>{insight ? 'Branch health' : 'Coverage by branch'}</h2><span>{branches.length} tracked</span></div>{branches.length ? <div class="health-table">{branches.map((item: any) => <article><div><strong>{item.branch || 'Unmapped'}</strong><span>{item.consumed || 0} completed of {item.total || 0}</span></div><span class={`state state-${item.health}`}>{item.health}</span></article>)}</div> : <Empty title="No branch activity yet" body="Completed sources will reveal which areas are growing or neglected." />}</section>{(weak.length > 0 || uncovered.length > 0) && <section><div class="section-head"><h2>Needs attention</h2><span>{weak.length + uncovered.length} areas</span></div><div class="compact-list">{[...weak, ...uncovered].slice(0, 80).map((item: any) => <article><strong>{item.topic || item.label || item.branch || 'Unmapped area'}</strong><span>{item.reason || item.status || 'No completed source yet'}</span></article>)}</div></section>}</div>
+  const [windowDays, setWindowDays] = useState('90')
+  const [depth, setDepth] = useState(2)
+  const [sort, setSort] = useState('attention')
+  const [selected, setSelected] = useState<any>(null)
+  const balance = useData(`/learning/balance?window=${windowDays}`)
+  if (balance.loading) return <Loading />
+  if (balance.error) return <ErrorState message={balance.error} />
+  const branches = balance.data?.branches || []
+  const children = new Map<string, any[]>()
+  branches.forEach((branch: any) => { if (branch.parent_id) children.set(branch.parent_id, [...(children.get(branch.parent_id) || []), branch]) })
+  const roots = branches.filter((branch: any) => branch.round === 'R1' || (!branch.parent_id && branch.type === 'branch'))
+  const visibleDepth = (branch: any) => Number(String(branch.round || 'R1').replace('R', '')) <= depth
+  const ordered = (items: any[]) => [...items].sort((a, b) => {
+    if (sort === 'oldest') return String(a.last_consumed_at || '').localeCompare(String(b.last_consumed_at || ''))
+    if (sort === 'latest') return String(b.last_consumed_at || '').localeCompare(String(a.last_consumed_at || ''))
+    if (sort === 'risk') return (['over-focused', 'at-risk', 'uncovered', 'cooling', 'balanced'].indexOf(a.state) - ['over-focused', 'at-risk', 'uncovered', 'cooling', 'balanced'].indexOf(b.state)) || b.attention_share - a.attention_share
+    return b.attention_share - a.attention_share
+  })
+  const renderChildren = (parentId: string, level = 2): ComponentChildren => {
+    if (level > depth) return null
+    return ordered((children.get(parentId) || []).filter(visibleDepth)).map((branch: any) => <div class={`balance-child balance-level-${level}`} key={branch.id}><button class="balance-row" onClick={() => setSelected(branch)}><span class="balance-round">{branch.round}</span><span class="balance-name"><strong>{branch.label}</strong><small>{branch.consumed_count} completed · {branch.last_consumed_at ? formatDate(branch.last_consumed_at) : 'never touched'}</small></span><span class="balance-bar"><i style={{ width: `${Math.min(100, branch.attention_share)}%` }} /></span><span class={`state state-${branch.state}`}>{labelize(branch.state)}</span></button>{renderChildren(branch.id, level + 1)}</div>)
+  }
+  const branchRows = ordered(roots)
+  const statusCount = (state: string) => branches.filter((branch: any) => branch.state === state).length
+  return <div class="coverage-page balance-page"><div class="summary-strip"><div><strong>{balance.data?.portfolio?.total_consumed || 0}</strong><span>Completed in {windowDays}d</span></div><div><strong>{statusCount('over-focused')}</strong><span>Over-focused</span></div><div><strong>{statusCount('at-risk')}</strong><span>At risk</span></div><div><strong>{balance.data?.portfolio?.unmapped_count || 0}</strong><span>Unmapped sources</span></div></div><section class="balance-controls"><div><strong>Learning balance</strong><span>Attention, coverage, and retention share one map.</span></div><div><label>Window <select value={windowDays} onChange={(event) => setWindowDays((event.target as HTMLSelectElement).value)}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select></label><label>Depth <select value={depth} onChange={(event) => setDepth(Number((event.target as HTMLSelectElement).value))}><option value="1">R1 only</option><option value="2">R1 + R2</option><option value="3">R1 + R2 + R3</option><option value="9">All map depth</option></select></label><label>Sort <select value={sort} onChange={(event) => setSort((event.target as HTMLSelectElement).value)}><option value="attention">Most attention</option><option value="risk">Needs attention</option><option value="latest">Latest activity</option><option value="oldest">Oldest activity</option></select></label></div></section><section><div class="section-head"><h2>{insight ? 'Branch balance' : 'Map balance'}</h2><span>R1 collapsed by default · {branches.length} mapped nodes</span></div>{branchRows.length ? <div class="balance-tree">{branchRows.map((branch: any) => <details class="balance-branch" data-balance-id={branch.id} key={branch.id}><summary><span class="balance-round">{branch.round}</span><span class="balance-name"><strong>{branch.label}</strong><small>{branch.consumed_count} completed · last {branch.last_consumed_at ? formatDate(branch.last_consumed_at) : 'never'}</small></span><span class="balance-bar"><i style={{ width: `${Math.min(100, branch.attention_share)}%` }} /></span><span class="balance-share">{branch.attention_share.toFixed(1)}%</span><span class={`state state-${branch.state}`}>{labelize(branch.state)}</span><button class="balance-inspect" onClick={(event) => { event.preventDefault(); setSelected(branch) }}>Inspect</button></summary><div class="balance-descendants">{renderChildren(branch.id)}</div></details>)}</div> : <Empty title="No mapped branches yet" body="Completed sources will reveal where your attention and retention are going." />}</section>{(statusCount('over-focused') || statusCount('at-risk') || balance.data?.portfolio?.unmapped_count) && <section class="balance-attention"><div class="section-head"><h2>What needs your attention</h2><span>Signals, not a single opaque score</span></div><div class="compact-list">{ordered(branches.filter((branch: any) => ['over-focused', 'at-risk', 'uncovered'].includes(branch.state))).slice(0, 12).map((branch: any) => <button class="balance-signal" onClick={() => setSelected(branch)}><strong>{branch.label}</strong><span>{branch.reasons[0] || labelize(branch.state)}</span></button>)}{balance.data?.portfolio?.unmapped_count > 0 && <div class="balance-signal"><strong>Unmapped sources</strong><span>{balance.data.portfolio.unmapped_count} completed source(s) cannot be assigned to the map yet.</span></div>}</div></section>}{selected && <BalancePopup branch={selected} branches={branches} onClose={() => setSelected(null)} />}</div>
+}
+
+function BalancePopup({ branch, branches, onClose }: { branch: any; branches: any[]; onClose: () => void }) {
+  const descendants = branches.filter((item) => item.id !== branch.id && (item.parent_id === branch.id || item.id.startsWith(`${branch.id}-`)))
+  return <div class="balance-overlay" role="presentation" onClick={onClose}><section class="balance-popup" role="dialog" aria-modal="true" aria-label={`${branch.label} balance`} onClick={(event) => event.stopPropagation()}><div class="dialog-head"><div><span>{branch.round} branch</span><h2>{branch.label}</h2></div><button onClick={onClose}>Close</button></div><div class="balance-popup-stats"><div><strong>{branch.attention_share.toFixed(1)}%</strong><span>attention share</span></div><div><strong>{branch.priority_share == null ? '—' : `${(branch.priority_share * 100).toFixed(1)}%`}</strong><span>priority share</span></div><div><strong>{branch.recall_strength == null ? '—' : `${Math.round(branch.recall_strength * 100)}%`}</strong><span>recall strength</span></div><div><strong>{branch.srs_due}</strong><span>cards due</span></div></div><div class="balance-popup-lines"><p><strong>Status:</strong> <span class={`state state-${branch.state}`}>{labelize(branch.state)}</span></p><p><strong>Last touched:</strong> {branch.last_consumed_at ? formatDate(branch.last_consumed_at) : 'Never'}</p><p><strong>Evidence:</strong> {branch.consumed_count} completed · {branch.notes_count} notes · {branch.srs_total} recall cards</p></div>{branch.reasons.length > 0 && <div class="balance-popup-reasons"><strong>Why this appears here</strong>{branch.reasons.map((reason: string) => <span>{reason}</span>)}</div>}{descendants.length > 0 && <div class="balance-popup-children"><div class="section-head"><h3>Deeper map</h3><span>{descendants.length} nodes</span></div>{descendants.slice(0, 40).map((item: any) => <button onClick={() => { onClose(); setTimeout(() => document.querySelector(`[data-balance-id="${item.id}"]`)?.scrollIntoView({ block: 'center' }), 0) }}><span>{item.round}</span><strong>{item.label}</strong><em class={`state state-${item.state}`}>{labelize(item.state)}</em></button>)}</div>}</section></div>
 }
 
 function TastePage({ insight = false }: { insight?: boolean }) {
@@ -1885,6 +1906,66 @@ function ReminderControls() {
   return <section class="reminder-controls"><div class="section-head"><h2>Reminder delivery</h2><span>{(data?.deliveries || []).length} recent deliveries</span></div><div class="setting-row"><div><strong>Browser reminders</strong><span>{data?.browser?.enabled ? 'Enabled on this device.' : 'Due-review reminders for this device.'}</span></div><button class="secondary-action" onClick={enableBrowser}>{data?.browser?.enabled ? 'Send test' : 'Enable'}</button></div><div class="setting-row"><label><strong>Telegram chat ID</strong><span>Use @userinfobot or your bot chat to find this value.</span></label><input class="reminder-chat-input" value={chatId} onInput={(event) => setChatId((event.target as HTMLInputElement).value)} placeholder="e.g. 123456789" /><button class="secondary-action" onClick={saveTelegram}>{data?.telegram?.enabled ? 'Update' : 'Enable'}</button></div>{(data?.deliveries || []).slice(0, 5).map((delivery: any) => <div class="delivery-row" key={delivery.id}><span>{delivery.channel} · {delivery.event_kind}</span><strong class={`delivery-${delivery.status}`}>{delivery.status}</strong><small>{delivery.error || formatDate(delivery.attempted_at)}</small></div>)}{status && <output class="settings-status">{status}</output>}</section>
 }
 
+const editableProfileFields = [
+  { draftKey: 'identity', apiKey: 'identity', label: 'Identity & context', description: 'Personal background and learning context.', json: true },
+  { draftKey: 'mega_priority', apiKey: 'mega_priority', label: 'Mega priority focus', description: 'The highest-level topics and focus areas.', json: true },
+  { draftKey: 'core_filter', apiKey: 'core_filter', label: 'Core curation filter', description: 'Primary criteria required for new content.', json: false },
+  { draftKey: 'reaction_style_json', apiKey: 'reaction_style_json', label: 'Reaction style', description: 'How learning reactions and feedback should be interpreted.', json: true },
+  { draftKey: 'quality_rules_json', apiKey: 'quality_rules_json', label: 'Quality & verification rules', description: 'Source verification protocol and content boundaries.', json: true },
+  { draftKey: 'operational_style_json', apiKey: 'operational_style_json', label: 'Operational style', description: 'Interaction preference and communication rules.', json: true },
+  { draftKey: 'patterns_summary_json', apiKey: 'patterns_summary_json', label: 'Pattern summary', description: 'The stored summary of recurring learning patterns.', json: true },
+  { draftKey: 'recent_signal', apiKey: 'recent_signal', label: 'Recent signal', description: 'Latest approved learning signal and updates.', json: false },
+] as const
+
+function safeProfileJson(value: unknown) {
+  if (value === null || value === undefined || value === '') return { text: 'Not set', valid: true }
+  if (typeof value !== 'string') {
+    try { return { text: JSON.stringify(value, null, 2) || 'Not set', valid: true } } catch { return { text: String(value), valid: false } }
+  }
+  try { return { text: JSON.stringify(JSON.parse(value), null, 2), valid: true } }
+  catch { return { text: value, valid: false } }
+}
+
+function safeProfileText(value: unknown) {
+  if (value === null || value === undefined || value === '') return 'Not set'
+  if (typeof value === 'string') return value
+  return safeProfileJson(value).text
+}
+
+function ProfileField({ label, description, value, json = false }: { label: string; description: string; value: unknown; json?: boolean }) {
+  const rendered = json ? safeProfileJson(value) : { text: safeProfileText(value), valid: true }
+  return <article class="profile-field">
+    <div class="profile-field-head"><div><h3>{label}</h3><p>{description}</p></div>{json && <span class={rendered.valid ? 'profile-json-status' : 'profile-json-status profile-json-invalid'}>{rendered.valid ? 'JSON' : 'Raw text · invalid JSON'}</span>}</div>
+    <details class="profile-value" open><summary>Stored value · {rendered.valid ? 'formatted safely' : 'raw value preserved'}</summary><pre>{rendered.text}</pre></details>
+  </article>
+}
+
+function ProfileRecord({ item, title, meta }: { item: any; title: string; meta?: string }) {
+  return <details class="profile-record" open>
+    <summary><span>{title}</span>{meta && <small>{meta}</small>}</summary>
+    <dl class="profile-record-fields">{Object.entries(item || {}).map(([key, value]) => {
+      const isJson = key.endsWith('_json') || key === 'details_json' || key === 'evidence_json'
+      const rendered = isJson ? safeProfileJson(value) : { text: safeProfileText(value), valid: true }
+      return <div key={key}><dt>{labelize(key)}{isJson && !rendered.valid ? ' · raw' : ''}</dt><dd><pre>{rendered.text}</pre></dd></div>
+    })}</dl>
+  </details>
+}
+
+function ProfileRecords({ title, description, items, empty, getTitle, getMeta }: { title: string; description: string; items: any[]; empty: string; getTitle: (item: any) => string; getMeta?: (item: any) => string }) {
+  return <section class="profile-section">
+    <div class="section-head"><div><h2>{title}</h2><p>{description}</p></div><span>{items.length}</span></div>
+    {items.length ? <div class="profile-record-list">{items.map((item, index) => <ProfileRecord key={`${title}-${item.id || item.rank || index}`} item={item} title={getTitle(item)} meta={getMeta?.(item)} />)}</div> : <p class="profile-empty">{empty}</p>}
+  </section>
+}
+
+function ProfileStats({ title, description, stats }: { title: string; description: string; stats: Record<string, unknown> }) {
+  const entries = Object.entries(stats || {})
+  return <section class="profile-section">
+    <div class="section-head"><div><h2>{title}</h2><p>{description}</p></div><span>{entries.length} fields</span></div>
+    {entries.length ? <dl class="profile-stats">{entries.map(([key, value]) => <div key={key}><dt>{labelize(key)}</dt><dd>{safeProfileText(value)}</dd></div>)}</dl> : <p class="profile-empty">No statistics returned.</p>}
+  </section>
+}
+
 function SettingsPage({ route }: { route: Destination }) {
   const [theme, setTheme] = useState(localStorage.getItem('tm-theme') || 'system')
   const [density, setDensity] = useState(localStorage.getItem('tm-density') || 'balanced')
@@ -1892,8 +1973,9 @@ function SettingsPage({ route }: { route: Destination }) {
   const [enrichCapture, setEnrichCapture] = useState(true)
   const [saved, setSaved] = useState('')
   const [offline, setOffline] = useState<any[]>([])
-  const [profileDraft, setProfileDraft] = useState<any>(null)
-  const profile = useData(route.slug === 'profile' ? '/brain/profile' : undefined)
+  const [profileDraft, setProfileDraft] = useState<Record<string, string> | null>(null)
+  const [profileOriginal, setProfileOriginal] = useState<Record<string, string> | null>(null)
+  const profile = useData(route.slug === 'profile' ? '/brain/profile?recent_limit=50' : undefined)
   const settings = useData('/settings')
   const refreshOffline = () => listOfflineMutations().then(setOffline)
   useEffect(() => { refreshOffline() }, [])
@@ -1908,44 +1990,50 @@ function SettingsPage({ route }: { route: Destination }) {
   }, [settings.data?.resolved])
   useEffect(() => {
     if (!profile.data?.profile) return
-    setProfileDraft({ identity: profile.data.profile.identity_json || '', core_filter: profile.data.profile.core_filter || '', quality_rules_json: profile.data.profile.quality_rules_json || '', operational_style_json: profile.data.profile.operational_style_json || '' })
+    const next = Object.fromEntries(editableProfileFields.map(({ draftKey, apiKey }) => [draftKey, String(profile.data.profile[apiKey === 'identity' ? 'identity_json' : apiKey === 'mega_priority' ? 'mega_priority_json' : apiKey] || '')]))
+    setProfileDraft(next)
+    setProfileOriginal(next)
   }, [profile.data?.profile])
   const persist = async (key: string, value: unknown) => { setSaved('Saving…'); try { await api(`/settings/${key}`, { method: 'PUT', body: JSON.stringify(value) }); setSaved('Saved'); setTimeout(() => setSaved(''), 1400) } catch (error: any) { setSaved(error.message) } }
   const changeTheme = (value: string) => { setTheme(value); localStorage.setItem('tm-theme', value); applyTheme(value); persist('appearance', { theme: value, density }) }
   const changeDensity = (value: string) => { setDensity(value); localStorage.setItem('tm-density', value); document.documentElement.dataset.density = value; persist('appearance', { theme, density: value }) }
-  const compactRule = (value: string) => value?.length > 260 ? `${value.slice(0, 257)}…` : value || 'Not set'
-  const saveProfile = async () => { if (!profileDraft) return; setSaved('Saving profile…'); try { await api('/brain/profile', { method: 'POST', body: JSON.stringify(profileDraft) }); setSaved('Profile saved'); profile.reload() } catch (error: any) { setSaved(error.message) } }
-  return <div class="settings-page"><section>
-    {route.slug === 'profile' && <>{profile.loading ? <Loading /> : profile.error ? <ErrorState message={profile.error} /> : <div class="profile-dashboard">
-      <div class="setting-row profile-rule"><div><strong>Identity & context</strong><span>Personal background and learning context.</span></div><span class="setting-value">{compactRule(profile.data?.profile?.identity_json)}</span></div>
-      <div class="setting-row profile-rule"><div><strong>Core curation filter</strong><span>Primary criteria required for new content.</span></div><span class="setting-value">{compactRule(profile.data?.profile?.core_filter)}</span></div>
-      <div class="setting-row profile-rule"><div><strong>Quality & verification rules</strong><span>Source verification protocol and content boundaries.</span></div><span class="setting-value">{compactRule(profile.data?.profile?.quality_rules_json)}</span></div>
-      <div class="setting-row profile-rule"><div><strong>Operational style</strong><span>Interaction preference and communication rules.</span></div><span class="setting-value">{compactRule(profile.data?.profile?.operational_style_json)}</span></div>
-      <div class="setting-row"><div><strong>Recent signal</strong><span>Latest approved learning signal and updates.</span></div><span class="setting-value">{profile.data?.profile?.recent_signal || 'No recent signal'}</span></div>
-      {profileDraft && <details class="profile-editor"><summary>Edit profile rules</summary><label>Identity<textarea value={profileDraft.identity} onInput={(event) => setProfileDraft({ ...profileDraft, identity: (event.target as HTMLTextAreaElement).value })} /></label><label>Core curation filter<textarea value={profileDraft.core_filter} onInput={(event) => setProfileDraft({ ...profileDraft, core_filter: (event.target as HTMLTextAreaElement).value })} /></label><label>Quality rules<textarea value={profileDraft.quality_rules_json} onInput={(event) => setProfileDraft({ ...profileDraft, quality_rules_json: (event.target as HTMLTextAreaElement).value })} /></label><label>Operational style<textarea value={profileDraft.operational_style_json} onInput={(event) => setProfileDraft({ ...profileDraft, operational_style_json: (event.target as HTMLTextAreaElement).value })} /></label><button class="primary-action" onClick={saveProfile}>Save profile rules</button></details>}
+  const saveProfile = async () => {
+    if (!profileDraft || !profileOriginal) return
+    const payload = Object.fromEntries(editableProfileFields.filter(({ draftKey }) => profileDraft[draftKey] !== profileOriginal[draftKey]).map(({ draftKey, apiKey }) => [apiKey, profileDraft[draftKey]]))
+    setSaved(Object.keys(payload).length ? 'Saving profile…' : 'No profile changes')
+    if (!Object.keys(payload).length) return
+    try { await api('/brain/profile', { method: 'POST', body: JSON.stringify(payload) }); setSaved('Profile saved'); profile.reload() } catch (error: any) { setSaved(error.message) }
+  }
+  const profileRow = profile.data?.profile
+  const profileItems = profile.data || {}
+  return <div class={`settings-page ${route.slug === 'profile' ? 'profile-settings-page' : ''}`}><section>
+    {route.slug === 'profile' && <>{profile.loading ? <Loading /> : profile.error ? <ErrorState message={profile.error} /> : <div class="profile-page">
+      <div class="profile-intro"><p>Stored profile state, curation memory, and operating signals. Expand any value to inspect the complete record.</p></div>
+      {profileRow ? <section class="profile-section profile-fields-section"><div class="section-head"><div><h2>Profile fields</h2><p>All scalar and JSON fields returned by the profile record. Invalid JSON remains readable as stored.</p></div><span>{Object.keys(profileRow).length} fields</span></div><div class="profile-fields">{[
+        ['id', 'Profile id', 'Singleton identifier.', false],
+        ['identity_json', 'Identity & context', 'Personal background and learning context.', true],
+        ['mega_priority_json', 'Mega priority focus', 'Highest-level topics and focus areas.', true],
+        ['core_filter', 'Core curation filter', 'Primary criteria required for new content.', false],
+        ['reaction_style_json', 'Reaction style', 'How learning reactions and feedback should be interpreted.', true],
+        ['quality_rules_json', 'Quality & verification rules', 'Source verification protocol and content boundaries.', true],
+        ['operational_style_json', 'Operational style', 'Interaction preference and communication rules.', true],
+        ['patterns_summary_json', 'Pattern summary', 'Stored summary of recurring learning patterns.', true],
+        ['recent_signal', 'Recent signal', 'Latest approved learning signal and updates.', false],
+        ['last_synced_at', 'Last synced at', 'Last profile synchronization timestamp.', false],
+      ].map(([key, label, description, json]) => <ProfileField key={key as string} label={label as string} description={description as string} value={profileRow[key as string]} json={Boolean(json)} />)}</div></section> : <Empty title="No profile record" body="The profile endpoint returned no singleton profile row." />}
 
-      <div class="setting-section"><div class="section-head"><h3>Priority focus</h3><span>{(profile.data?.profile?.mega_priority_json ? JSON.parse(profile.data.profile.mega_priority_json).length : 0)}</span></div><p class="setting-value">{profile.data?.profile?.mega_priority_json ? 'Priority topics configured.' : 'No priority topics recorded.'}</p></div>
+      {profileDraft && <details class="profile-editor" open><summary>Edit API-editable profile fields</summary><p>Values are saved as entered. JSON fields may be edited as JSON or plain text; existing fields are only sent when changed so untouched data is preserved.</p>{editableProfileFields.map((field) => <label key={field.draftKey}>{field.label}<span>{field.description}</span><textarea maxLength={5000} aria-label={field.label} value={profileDraft[field.draftKey]} onInput={(event) => setProfileDraft({ ...profileDraft, [field.draftKey]: (event.target as HTMLTextAreaElement).value })} /></label>)}<button class="primary-action" onClick={saveProfile}>Save profile fields</button></details>}
 
-      <div class="setting-section"><div class="section-head"><h3>Priorities</h3><span>{profile.data?.priorities?.length || 0}</span></div><div class="compact-list">{(profile.data?.priorities || []).map((item: any) => <article><strong>{item.label || item.topic || item.id}</strong><span>Rank {item.rank}</span></article>)}</div></div>
-
-      <details class="setting-section profile-group"><summary>Mastered knowledge &amp; frameworks <span>{profile.data?.mastered?.length || 0}</span></summary>{profile.data?.mastered?.length ? <div class="compact-list">{profile.data.mastered.map((item: any) => <article><strong>{item.label || item.id}</strong><span>{item.author ? `by ${item.author}` : 'Mastered'} • {item.rating || '10/10'}</span></article>)}</div> : <p>No mastered topics recorded.</p>}</details>
-
-      <details class="setting-section profile-group"><summary>Excluded creators and works <span>{profile.data?.blacklist?.length || 0}</span></summary>{profile.data?.blacklist?.length ? <div class="compact-list">{profile.data.blacklist.map((item: any) => <article><strong>{item.name || item.id} {item.work ? `(${item.work})` : ''}</strong><span>{item.reason || `Severity ${item.severity}`}</span></article>)}</div> : <p>No exclusions recorded.</p>}</details>
-
-      <details class="setting-section profile-group"><summary>Learning patterns &amp; heuristics <span>{profile.data?.patterns?.length || 0}</span></summary>{profile.data?.patterns?.length ? <div class="compact-list">{profile.data.patterns.map((item: any) => <article><strong>{item.description || item.id}</strong><span>{item.strength}</span></article>)}</div> : <p>No confirmed patterns yet.</p>}</details>
-
-      <div class="setting-section"><div class="section-head"><h3>Monitored RSS feeds & strategic news</h3><span>{profile.data?.feed_sources?.length || 0}</span></div>{profile.data?.feed_sources?.length ? <div class="compact-list">{profile.data.feed_sources.map((item: any) => <article><strong>{item.title}</strong><span>{item.is_active ? 'Active' : 'Paused'} • {item.site_url || item.feed_url}</span></article>)}</div> : <p>No active feed sources.</p>}</div>
-
-      <div class="setting-section"><div class="section-head"><h3>Top creators & content sources</h3><span>{profile.data?.creator_trust?.length || 0}</span></div>{profile.data?.creator_trust?.length ? <div class="compact-list">{profile.data.creator_trust.map((item: any) => <article><strong>{item.creator}</strong><span>{item.count} items consumed</span></article>)}</div> : <p>No creator stats available.</p>}</div>
-
-      <div class="setting-section"><div class="section-head"><h3>Learning session & recall metrics</h3><span>Active</span></div><div class="compact-list">
-        <article><strong>Total sessions</strong><span>{profile.data?.activity_stats?.total_sessions || 0}</span></article>
-        <article><strong>Reflections recorded</strong><span>{profile.data?.activity_stats?.reflections_count || 0}</span></article>
-        <article><strong>Structured notes</strong><span>{profile.data?.activity_stats?.total_notes || 0}</span></article>
-        <article><strong>Active SRS cards</strong><span>{profile.data?.srs_stats?.active_cards || 0}</span></article>
-        <article><strong>Pending SRS drafts</strong><span>{profile.data?.srs_stats?.pending_drafts || 0}</span></article>
-      </div></div>
-
+      <ProfileRecords title="Priorities" description="Ordered priority branches and their rationale." items={profileItems.priorities || []} empty="No priorities recorded." getTitle={(item) => item.label || item.branch_id || item.id || 'Priority'} getMeta={(item) => item.rank == null ? '' : `Rank ${item.rank}`} />
+      <ProfileRecords title="Mastered knowledge & frameworks" description="Topics and works already marked as mastered." items={profileItems.mastered || []} empty="No mastered topics recorded." getTitle={(item) => item.label || item.id || 'Mastered item'} getMeta={(item) => [item.kind, item.author, item.rating].filter(Boolean).join(' · ')} />
+      <ProfileRecords title="Blacklist" description="Creators, works, and content boundaries excluded from curation." items={profileItems.blacklist || []} empty="No blacklist entries recorded." getTitle={(item) => [item.name, item.work].filter(Boolean).join(' · ') || item.id || 'Blacklist entry'} getMeta={(item) => item.severity == null ? '' : `Severity ${item.severity}`} />
+      <ProfileRecords title="Patterns" description="Confirmed and locked learning heuristics, including their evidence." items={profileItems.patterns || []} empty="No learning patterns recorded." getTitle={(item) => item.description || item.id || 'Pattern'} getMeta={(item) => [item.strength, item.confirmed_date].filter(Boolean).join(' · ')} />
+      <ProfileRecords title="Recent activity" description="The latest update-log records returned by the profile endpoint." items={profileItems.recent || []} empty="No recent activity recorded." getTitle={(item) => item.summary || item.kind || 'Activity'} getMeta={(item) => item.ts || ''} />
+      <ProfileRecords title="Feed sources" description="Monitored RSS sources and their current fetch state." items={profileItems.feed_sources || []} empty="No feed sources recorded." getTitle={(item) => item.title || item.feed_url || item.id || 'Feed source'} getMeta={(item) => item.is_active ? 'Active' : 'Paused'} />
+      <ProfileRecords title="Creator trust" description="Consumed source counts by creator returned by the trust query." items={profileItems.creator_trust || []} empty="No creator trust data available." getTitle={(item) => item.creator || 'Creator'} getMeta={(item) => `${item.count ?? 0} consumed`} />
+      <ProfileStats title="SRS statistics" description="Recall cards and drafts currently tracked." stats={profileItems.srs_stats || {}} />
+      <ProfileStats title="Activity statistics" description="Learning sessions, reflections, and structured notes." stats={profileItems.activity_stats || {}} />
+      <ProfileStats title="Infrastructure statistics" description="Artifact, proposal, database, and worker metadata returned by the endpoint." stats={profileItems.infrastructure_stats || {}} />
     </div>}</>}
     {route.slug === 'preferences' && <><div class="setting-section"><h3>Appearance</h3><div class="setting-row"><div><strong>Theme</strong><span>Follow the device unless you choose an override.</span></div><select value={theme} onChange={(event) => changeTheme((event.target as HTMLSelectElement).value)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></div><div class="setting-row"><div><strong>Density</strong><span>Balanced for daily use; compact when managing large libraries.</span></div><select value={density} onChange={(event) => changeDensity((event.target as HTMLSelectElement).value)}><option value="balanced">Balanced</option><option value="compact">Compact</option></select></div></div><div class="setting-section"><h3>Learning</h3><div class="setting-row"><div><strong>Active queue</strong><span>Five deliberate items; Inbox remains unlimited.</span></div><span class="setting-value">5 slots</span></div><label class="setting-row"><div><strong>Review target</strong><span>Used to adjust future recall intervals.</span></div><select value={retention} onChange={(event) => { const value = Number((event.target as HTMLSelectElement).value); setRetention(value); persist('learning', { retention: value, queue_cap: 5 }) }}><option value="85">85%</option><option value="90">90%</option><option value="95">95%</option></select></label><div class="setting-row"><div><strong>Rating 7+ notes and cards</strong><span>Notes Extractor runs after a completed rating of 7 or higher.</span></div><span class="setting-value">Automatic</span></div></div><div class="setting-section"><h3>Curation</h3><label class="setting-row"><div><strong>Enrich new captures</strong><span>Queue enrichment only when enabled.</span></div><input type="checkbox" checked={enrichCapture} onChange={(event) => { const enabled = (event.target as HTMLInputElement).checked; setEnrichCapture(enabled); persist('ai_curation', { enrich_capture: enabled }) }} /></label><div class="setting-row"><div><strong>Hermes change confirmation</strong><span>Every taste, profile, pattern, and map change requires approval.</span></div><span class="setting-value">Required</span></div><div class="setting-row"><div><strong>Automatic recommendations</strong><span>Finishing one source does not automatically add another.</span></div><span class="setting-value">Off</span></div></div></>}
     {route.slug === 'data' && <><div class="setting-row"><div><strong>Cloud library</strong><span>Your sources, notes, ratings, map, and files are available.</span></div><span class="status">Connected</span></div><div class="setting-row"><div><strong>Offline changes</strong><span>{offline.length ? `${offline.length} waiting · conflicts stay visible until you resolve them.` : 'No pending local changes.'}</span></div><button class="secondary-action" onClick={() => flushOfflineMutations().then(() => refreshOffline().then(() => setSaved('Sync complete')))}>Sync now</button></div>{offline.length > 0 && <div class="offline-mutation-list">{offline.map((item) => <div class="offline-mutation" key={item.id}><span><strong>{item.state || 'pending'}</strong><small>{item.method} {item.url} · {item.error || 'Waiting to sync'}</small></span><div>{(item.state === 'conflict' || item.state === 'failed') && <button onClick={() => resolveOfflineMutation(item.id, 'retry').then(refreshOffline)}>Retry</button>}<button onClick={() => resolveOfflineMutation(item.id, 'discard').then(refreshOffline)}>Discard</button></div></div>)}</div>}<ReminderControls /><div class="setting-row"><div><strong>Export source library</strong><span>Download your recommendation history as a portable file.</span></div><a class="secondary-action" href="/recommendations/export">Download export</a></div><div class="setting-row"><div><strong>Saved preferences</strong><span>{Object.keys(settings.data?.settings || {}).length} preference groups stored.</span></div><span class="setting-value">{settings.error ? 'Unavailable' : 'Up to date'}</span></div></>}

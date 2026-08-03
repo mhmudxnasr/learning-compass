@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
 import { scheduleReview } from '../domain'
 import { loadSettings } from '../services/settings'
+import { buildLearningBalance } from '../services/learning-balance'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -187,6 +188,16 @@ app.get('/gaps', async (c) => {
     return c.json({ gaps: result.results || [] })
   } catch (err) {
     return c.json(safeError('Gaps analysis failed')(err), 500)
+  }
+})
+
+// GET /learning/balance — explain attention, coverage, and retention by map branch
+app.get('/balance', async (c) => {
+  try {
+    const windowDays = Number(c.req.query('window') || 90)
+    return c.json(await buildLearningBalance(c.env.DB, windowDays))
+  } catch (err) {
+    return c.json(safeError('Learning balance failed')(err), 500)
   }
 })
 

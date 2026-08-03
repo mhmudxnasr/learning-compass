@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { Bindings, safeError, isNonEmptyStr } from '../lib'
 import { createInboxCapture } from '../services/capture'
+import { buildLearningBalance } from '../services/learning-balance'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const sqliteTime = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString().slice(0, 19).replace('T', ' ')
@@ -111,6 +112,7 @@ const CAPABILITIES = [
   ['GET', '/search', 'Search site content.'],
   ['GET', '/taste/vector', 'Read taste vectors.'],
   ['GET', '/learning/health', 'Read learning health.'],
+  ['GET', '/learning/balance', 'Read attention balance, branch coverage, retention signals, and unmapped sources.'],
   ['GET', '/analytics/creator-trust', 'Read creator trust analytics.'],
   ['GET', '/analytics/taste-drift', 'Read taste drift analytics.'],
   ['GET', '/analytics/heatmaps', 'Read learning heatmaps.'],
@@ -168,6 +170,7 @@ app.get('/context', async (c) => {
   let creatorTrust: any = { results: [] }
   let tasteVectors: any = { results: [] }
   let reflections: any = { results: [] }
+  let learningBalance: any = null
 
   try { profile = await DB.prepare('SELECT identity_json, mega_priority_json, core_filter, reaction_style_json, quality_rules_json, patterns_summary_json FROM profile WHERE id = 1').first<any>() } catch {}
   try { priorities = await DB.prepare('SELECT rank, branch_id, label, rationale FROM priorities ORDER BY rank ASC LIMIT 10').all() } catch {}
@@ -222,6 +225,19 @@ app.get('/context', async (c) => {
   } catch {}
   try { tasteVectors = await DB.prepare('SELECT topic, affinity_score FROM taste_vectors ORDER BY affinity_score DESC LIMIT 15').all() } catch {}
   try { reflections = await DB.prepare("SELECT reflection FROM learning_sessions WHERE reflection IS NOT NULL AND reflection != '' ORDER BY completed_at DESC LIMIT 5").all() } catch {}
+  try {
+    const balance = await buildLearningBalance(DB, 90)
+    const branches = balance.branches || []
+    const compact = (state: string) => branches.filter((branch: any) => branch.state === state).sort((a: any, b: any) => Number(b.attention_share || 0) - Number(a.attention_share || 0)).slice(0, 8)
+    learningBalance = {
+      window_days: balance.window_days,
+      unmapped_count: balance.portfolio?.unmapped_count || 0,
+      attention_by_r1: branches.filter((branch: any) => branch.round === 'R1').sort((a: any, b: any) => Number(b.attention_share || 0) - Number(a.attention_share || 0)).slice(0, 12).map((branch: any) => ({ id: branch.id, label: branch.label, attention_share: branch.attention_share, priority_share: branch.priority_share })),
+      overfocused_branches: compact('over-focused').map((branch: any) => ({ id: branch.id, label: branch.label, attention_share: branch.attention_share, priority_share: branch.priority_share, reasons: branch.reasons })),
+      at_risk_branches: compact('at-risk').map((branch: any) => ({ id: branch.id, label: branch.label, round: branch.round, last_consumed_at: branch.last_consumed_at, srs_due: branch.srs_due, recall_strength: branch.recall_strength, reasons: branch.reasons })),
+      uncovered_branches: compact('uncovered').map((branch: any) => ({ id: branch.id, label: branch.label, round: branch.round, priority_rank: branch.priority_rank })),
+    }
+  } catch {}
 
   let identityParsed = null
   let patternsParsed = null
@@ -252,6 +268,7 @@ app.get('/context', async (c) => {
     creator_trust: creatorTrust?.results || [],
     taste_vectors: tasteVectors?.results || [],
     recent_note_anchors: noteAnchors,
+    learning_balance: learningBalance,
   })
 })
 

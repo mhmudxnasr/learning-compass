@@ -24,7 +24,7 @@ export const destinations: Destination[] = [
   ]),
   ...define('map', [
     ['atlas', 'Atlas', 'Explore the living topology of your knowledge.', 'graph', '/knowledge/graph'],
-    ['coverage', 'Coverage', 'Find healthy, growing, neglected, and competing areas.', 'analysis', '/learning/health'],
+    ['coverage', 'Coverage', 'See where attention, coverage, and retention are balanced or drifting.', 'analysis', '/learning/balance'],
   ]),
   ...define('learn', [
     ['files', 'Files', 'Open PDFs, web companions, and uploaded documents.', 'library', '/artifacts'],

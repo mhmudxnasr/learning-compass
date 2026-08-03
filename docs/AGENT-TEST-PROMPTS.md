@@ -5,7 +5,7 @@ Use these prompts with Hermes, Claude Code, Codex, or another connected agent. R
 ## Procedure routing
 
 ```text
-Load learning-compass-operating-system. I finished [TITLE] and my exact reflection is: [REFLECTION]. Rating: [1-10]. Resolve the exact live source, preserve the reflection verbatim, complete the linked session, queue feedback, verify the reflection note and queued job, then stop at reviewable proposals. Do not recommend anything or apply any proposal.
+Load learning-compass-operating-system. I finished [TITLE] and my exact reflection is: [REFLECTION]. Rating: [1-10]. Resolve the exact live source, preserve the reflection verbatim, complete the linked session, queue feedback, verify the reflection note and queued job, then stop at the standard receipt. Do not recommend anything. Apply only evidence-qualified profile/map/scoring changes; leave system-layer proposals reviewable.
 ```
 
 ```text
