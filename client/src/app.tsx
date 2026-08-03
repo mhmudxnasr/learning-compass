@@ -1787,7 +1787,7 @@ function CoveragePage({ insight = false }: { insight?: boolean }) {
   const ordered = (items: any[]) => [...items].sort((a, b) => {
     if (sort === 'oldest') return String(a.last_consumed_at || '').localeCompare(String(b.last_consumed_at || ''))
     if (sort === 'latest') return String(b.last_consumed_at || '').localeCompare(String(a.last_consumed_at || ''))
-    if (sort === 'risk') return (['over-focused', 'at-risk', 'uncovered', 'cooling', 'balanced'].indexOf(a.state) - ['over-focused', 'at-risk', 'uncovered', 'cooling', 'balanced'].indexOf(b.state)) || b.attention_share - a.attention_share
+    if (sort === 'risk') return (['over-focused', 'at-risk', 'exposed', 'uncovered', 'cooling', 'balanced'].indexOf(a.state) - ['over-focused', 'at-risk', 'exposed', 'uncovered', 'cooling', 'balanced'].indexOf(b.state)) || b.attention_share - a.attention_share
     return b.attention_share - a.attention_share
   })
   const renderChildren = (parentId: string, level = 2): ComponentChildren => {
@@ -1796,7 +1796,7 @@ function CoveragePage({ insight = false }: { insight?: boolean }) {
   }
   const branchRows = ordered(roots)
   const statusCount = (state: string) => branches.filter((branch: any) => branch.state === state).length
-  return <div class="coverage-page balance-page"><div class="summary-strip"><div><strong>{balance.data?.portfolio?.total_consumed || 0}</strong><span>Completed in {windowDays}d</span></div><div><strong>{statusCount('over-focused')}</strong><span>Over-focused</span></div><div><strong>{statusCount('at-risk')}</strong><span>At risk</span></div><div><strong>{balance.data?.portfolio?.unmapped_count || 0}</strong><span>Unmapped sources</span></div></div><section class="balance-controls"><div><strong>Learning balance</strong><span>Attention, coverage, and retention share one map.</span></div><div><label>Window <select value={windowDays} onChange={(event) => setWindowDays((event.target as HTMLSelectElement).value)}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select></label><label>Depth <select value={depth} onChange={(event) => setDepth(Number((event.target as HTMLSelectElement).value))}><option value="1">R1 only</option><option value="2">R1 + R2</option><option value="3">R1 + R2 + R3</option><option value="9">All map depth</option></select></label><label>Sort <select value={sort} onChange={(event) => setSort((event.target as HTMLSelectElement).value)}><option value="attention">Most attention</option><option value="risk">Needs attention</option><option value="latest">Latest activity</option><option value="oldest">Oldest activity</option></select></label></div></section><section><div class="section-head"><h2>{insight ? 'Branch balance' : 'Map balance'}</h2><span>R1 collapsed by default · {branches.length} mapped nodes</span></div>{branchRows.length ? <div class="balance-tree">{branchRows.map((branch: any) => <details class="balance-branch" data-balance-id={branch.id} key={branch.id}><summary><span class="balance-round">{branch.round}</span><span class="balance-name"><strong>{branch.label}</strong><small>{branch.consumed_count} completed · last {branch.last_consumed_at ? formatDate(branch.last_consumed_at) : 'never'}</small></span><span class="balance-bar"><i style={{ width: `${Math.min(100, branch.attention_share)}%` }} /></span><span class="balance-share">{branch.attention_share.toFixed(1)}%</span><span class={`state state-${branch.state}`}>{labelize(branch.state)}</span><button class="balance-inspect" onClick={(event) => { event.preventDefault(); setSelected(branch) }}>Inspect</button></summary><div class="balance-descendants">{renderChildren(branch.id)}</div></details>)}</div> : <Empty title="No mapped branches yet" body="Completed sources will reveal where your attention and retention are going." />}</section>{(statusCount('over-focused') || statusCount('at-risk') || balance.data?.portfolio?.unmapped_count) && <section class="balance-attention"><div class="section-head"><h2>What needs your attention</h2><span>Signals, not a single opaque score</span></div><div class="compact-list">{ordered(branches.filter((branch: any) => ['over-focused', 'at-risk', 'uncovered'].includes(branch.state))).slice(0, 12).map((branch: any) => <button class="balance-signal" onClick={() => setSelected(branch)}><strong>{branch.label}</strong><span>{branch.reasons[0] || labelize(branch.state)}</span></button>)}{balance.data?.portfolio?.unmapped_count > 0 && <div class="balance-signal"><strong>Unmapped sources</strong><span>{balance.data.portfolio.unmapped_count} completed source(s) cannot be assigned to the map yet.</span></div>}</div></section>}{selected && <BalancePopup branch={selected} branches={branches} onClose={() => setSelected(null)} />}</div>
+  return <div class="coverage-page balance-page"><div class="summary-strip"><div><strong>{balance.data?.portfolio?.total_consumed || 0}</strong><span>Completed in {windowDays}d</span></div><div><strong>{statusCount('over-focused')}</strong><span>Over-focused</span></div><div><strong>{statusCount('at-risk')}</strong><span>At risk</span></div><div><strong>{balance.data?.portfolio?.unmapped_count || 0}</strong><span>Unmapped sources</span></div></div><section class="balance-controls"><div><strong>Learning balance</strong><span>Attention, coverage, and retention share one map.</span></div><div><label>Window <select value={windowDays} onChange={(event) => setWindowDays((event.target as HTMLSelectElement).value)}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select></label><label>Depth <select value={depth} onChange={(event) => setDepth(Number((event.target as HTMLSelectElement).value))}><option value="1">R1 only</option><option value="2">R1 + R2</option><option value="3">R1 + R2 + R3</option><option value="9">All map depth</option></select></label><label>Sort <select value={sort} onChange={(event) => setSort((event.target as HTMLSelectElement).value)}><option value="attention">Most attention</option><option value="risk">Needs attention</option><option value="latest">Latest activity</option><option value="oldest">Oldest activity</option></select></label></div></section><section><div class="section-head"><h2>{insight ? 'Branch balance' : 'Map balance'}</h2><span>R1 collapsed by default · {branches.length} mapped nodes</span></div>{branchRows.length ? <div class="balance-tree">{branchRows.map((branch: any) => <details class="balance-branch" data-balance-id={branch.id} key={branch.id}><summary><span class="balance-round">{branch.round}</span><span class="balance-name"><strong>{branch.label}</strong><small>{branch.consumed_count} completed · last {branch.last_consumed_at ? formatDate(branch.last_consumed_at) : 'never'}</small></span><span class="balance-bar"><i style={{ width: `${Math.min(100, branch.attention_share)}%` }} /></span><span class="balance-share">{branch.attention_share.toFixed(1)}%</span><span class={`state state-${branch.state}`}>{labelize(branch.state)}</span><button class="balance-inspect" onClick={(event) => { event.preventDefault(); setSelected(branch) }}>Inspect</button></summary><div class="balance-descendants">{renderChildren(branch.id)}</div></details>)}</div> : <Empty title="No mapped branches yet" body="Completed sources will reveal where your attention and retention are going." />}</section>{(statusCount('over-focused') || statusCount('at-risk') || statusCount('exposed') || balance.data?.portfolio?.unmapped_count) && <section class="balance-attention"><div class="section-head"><h2>What needs your attention</h2><span>Signals, not a single opaque score</span></div><div class="compact-list">{ordered(branches.filter((branch: any) => ['over-focused', 'at-risk', 'exposed', 'uncovered'].includes(branch.state))).slice(0, 12).map((branch: any) => <button class="balance-signal" onClick={() => setSelected(branch)}><strong>{branch.label}</strong><span>{branch.reasons[0] || labelize(branch.state)}</span></button>)}{balance.data?.portfolio?.unmapped_count > 0 && <div class="balance-signal"><strong>Unmapped sources</strong><span>{balance.data.portfolio.unmapped_count} completed source(s) cannot be assigned to the map yet.</span></div>}</div></section>}{selected && <BalancePopup branch={selected} branches={branches} onClose={() => setSelected(null)} />}</div>
 }
 
 function BalancePopup({ branch, branches, onClose }: { branch: any; branches: any[]; onClose: () => void }) {
@@ -1932,38 +1932,154 @@ function safeProfileText(value: unknown) {
   return safeProfileJson(value).text
 }
 
+function profilePreview(value: string) {
+  return value.replace(/\s+/g, ' ').trim() || 'Not set'
+}
+
+function profileValue(value: unknown) {
+  if (typeof value !== 'string') return value
+  try { return JSON.parse(value) } catch { return value }
+}
+
+function profileTags(value: unknown, limit = 12) {
+  const parsed = profileValue(value)
+  if (Array.isArray(parsed)) return parsed.slice(0, limit).map((item) => {
+    if (typeof item === 'string' || typeof item === 'number') return String(item)
+    if (item && typeof item === 'object') return String((item as any).label || (item as any).name || (item as any).topic || (item as any).role || (item as any).value || '')
+    return ''
+  }).filter(Boolean)
+  if (parsed && typeof parsed === 'object') return Object.entries(parsed).slice(0, limit).map(([key, item]) => `${labelize(key)}${typeof item === 'string' || typeof item === 'number' ? ` · ${item}` : ''}`)
+  return String(parsed || '').split(/[.;·\n]+/).map((item) => item.trim()).filter(Boolean).slice(0, limit)
+}
+
 function ProfileField({ label, description, value, json = false }: { label: string; description: string; value: unknown; json?: boolean }) {
   const rendered = json ? safeProfileJson(value) : { text: safeProfileText(value), valid: true }
+  const filled = rendered.text !== 'Not set'
+  const tags = profileTags(value)
   return <article class="profile-field">
-    <div class="profile-field-head"><div><h3>{label}</h3><p>{description}</p></div>{json && <span class={rendered.valid ? 'profile-json-status' : 'profile-json-status profile-json-invalid'}>{rendered.valid ? 'JSON' : 'Raw text · invalid JSON'}</span>}</div>
-    <details class="profile-value" open><summary>Stored value · {rendered.valid ? 'formatted safely' : 'raw value preserved'}</summary><pre>{rendered.text}</pre></details>
+    <div class="profile-field-head"><span><strong><i class={`profile-field-dot${filled ? '' : ' empty'}`} aria-hidden="true" />{label}</strong><small>{description}</small></span></div>
+    {tags.length ? <div class="profile-tag-list">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div> : <p class="profile-field-empty">Not set yet</p>}
   </article>
 }
 
-function ProfileRecord({ item, title, meta }: { item: any; title: string; meta?: string }) {
-  return <details class="profile-record" open>
-    <summary><span>{title}</span>{meta && <small>{meta}</small>}</summary>
-    <dl class="profile-record-fields">{Object.entries(item || {}).map(([key, value]) => {
-      const isJson = key.endsWith('_json') || key === 'details_json' || key === 'evidence_json'
-      const rendered = isJson ? safeProfileJson(value) : { text: safeProfileText(value), valid: true }
-      return <div key={key}><dt>{labelize(key)}{isJson && !rendered.valid ? ' · raw' : ''}</dt><dd><pre>{rendered.text}</pre></dd></div>
-    })}</dl>
-  </details>
+function recordSignal(item: any) {
+  const keys = ['description', 'reason', 'rationale', 'feedback', 'reflection', 'user_review', 'summary', 'note', 'topic', 'branch_id', 'status']
+  for (const key of keys) {
+    const value = item?.[key]
+    if (typeof value === 'string' && value.trim()) return profilePreview(value)
+  }
+  return ''
 }
 
-function ProfileRecords({ title, description, items, empty, getTitle, getMeta }: { title: string; description: string; items: any[]; empty: string; getTitle: (item: any) => string; getMeta?: (item: any) => string }) {
-  return <section class="profile-section">
-    <div class="section-head"><div><h2>{title}</h2><p>{description}</p></div><span>{items.length}</span></div>
-    {items.length ? <div class="profile-record-list">{items.map((item, index) => <ProfileRecord key={`${title}-${item.id || item.rank || index}`} item={item} title={getTitle(item)} meta={getMeta?.(item)} />)}</div> : <p class="profile-empty">{empty}</p>}
+function ProfileRecord({ item, title, meta, rank }: { item: any; title: string; meta?: string; rank?: number }) {
+  const signal = recordSignal(item)
+  return <li class="profile-record">{rank != null && <span class="profile-rank-no" aria-hidden="true">{String(rank).padStart(2, '0')}</span>}<div class="profile-record-body"><div class="profile-record-title"><strong>{title}</strong>{meta && <small>{meta}</small>}</div>{signal && <p>{signal}</p>}</div></li>
+}
+
+function ProfilePanel({ id, title, description, count, children, open = false }: { id: string; title: string; description: string; count?: number | string; children: ComponentChildren; open?: boolean }) {
+  return <section class="profile-section" id={id}>
+    <details class="profile-panel" open={open}>
+      <summary><span><strong>{title}</strong><small>{description}</small></span>{count != null && <em class="profile-count">{count}</em>}</summary>
+      <div class="profile-panel-content">{children}</div>
+    </details>
   </section>
 }
 
-function ProfileStats({ title, description, stats }: { title: string; description: string; stats: Record<string, unknown> }) {
+function ProfileRecords({ id, title, description, items, empty, getTitle, getMeta, ranked = false, open = false }: { id: string; title: string; description: string; items: any[]; empty: string; getTitle: (item: any) => string; getMeta?: (item: any) => string; ranked?: boolean; open?: boolean }) {
+  return <ProfilePanel id={id} title={title} description={description} count={items.length} open={open}>{items.length ? <ol class={`profile-record-list${ranked ? ' profile-ranked' : ''}`}>{items.map((item, index) => <ProfileRecord key={`${title}-${item.id || item.rank || index}`} item={item} title={getTitle(item)} meta={getMeta?.(item)} rank={ranked ? (item.rank ?? index + 1) : undefined} />)}</ol> : <p class="profile-empty">{empty}</p>}</ProfilePanel>
+}
+
+function ProfileStats({ id, title, description, stats }: { id: string; title: string; description: string; stats: Record<string, unknown> }) {
   const entries = Object.entries(stats || {})
-  return <section class="profile-section">
-    <div class="section-head"><div><h2>{title}</h2><p>{description}</p></div><span>{entries.length} fields</span></div>
-    {entries.length ? <dl class="profile-stats">{entries.map(([key, value]) => <div key={key}><dt>{labelize(key)}</dt><dd>{safeProfileText(value)}</dd></div>)}</dl> : <p class="profile-empty">No statistics returned.</p>}
+  return <ProfilePanel id={id} title={title} description={description} count={`${entries.length} fields`}>{entries.length ? <dl class="profile-stats">{entries.map(([key, value]) => <div key={key}><dt>{labelize(key)}</dt><dd>{safeProfileText(value)}</dd></div>)}</dl> : <p class="profile-empty">No statistics returned.</p>}</ProfilePanel>
+}
+
+function identityParts(profile: Record<string, unknown>) {
+  const raw = profile.identity_json
+  if (typeof raw === 'string' && raw.trim()) {
+    const parts = raw.split('·').map((part) => part.trim()).filter(Boolean)
+    if (parts.length) return { name: parts[0], context: parts.slice(1) }
+  }
+  return { name: '', context: [] }
+}
+
+function profileInitials(profile: Record<string, unknown>) {
+  const { name } = identityParts(profile)
+  if (name) return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase()
+  return '✦'
+}
+
+const coreProfileFields = [
+  ['identity_json', 'Identity & context', 'Personal background and learning context.', true],
+  ['mega_priority_json', 'Mega priority focus', 'Highest-level topics and focus areas.', true],
+  ['core_filter', 'Core curation filter', 'Primary criteria required for new content.', false],
+  ['reaction_style_json', 'Reaction style', 'How learning reactions and feedback should be interpreted.', true],
+  ['quality_rules_json', 'Quality & verification rules', 'Source verification protocol and content boundaries.', true],
+  ['operational_style_json', 'Operational style', 'Interaction preference and communication rules.', true],
+  ['patterns_summary_json', 'Pattern summary', 'Stored summary of recurring learning patterns.', true],
+] as const
+
+function modelSectionCounts(items: Record<string, any>) {
+  return [
+    { id: 'profile-core', label: 'Core model', value: coreProfileFields.length, detail: 'fields' },
+    { id: 'profile-priorities', label: 'Priorities', value: items.priorities?.length || 0, detail: 'ranked focus' },
+    { id: 'profile-knowledge', label: 'Mastered', value: items.mastered?.length || 0, detail: 'topics' },
+    { id: 'profile-exclusions', label: 'Exclusions', value: items.blacklist?.length || 0, detail: 'blocked' },
+    { id: 'profile-signals', label: 'Patterns', value: items.patterns?.length || 0, detail: 'heuristics' },
+    { id: 'profile-affinities', label: 'Affinities', value: items.taste_vectors?.length || 0, detail: 'topics' },
+    { id: 'profile-creators', label: 'Creators', value: items.creator_trust?.length || 0, detail: 'tracked' },
+    { id: 'profile-history', label: 'Reflections', value: items.reflections?.length || 0, detail: 'written' },
+    { id: 'profile-ratings', label: 'Ratings', value: items.rating_history?.length || 0, detail: 'sources' },
+    { id: 'profile-activity', label: 'Activity', value: items.recent?.length || 0, detail: 'changes' },
+    { id: 'profile-feeds', label: 'Feeds', value: items.feed_sources?.length || 0, detail: 'subscribed' },
+    { id: 'profile-stats', label: 'Statistics', value: '—', detail: 'readout' },
+  ]
+}
+
+function setProfilePanels(open: boolean) {
+  document.querySelectorAll<HTMLDetailsElement>('.model-sections .profile-panel').forEach((panel) => { panel.open = open })
+}
+
+function openProfileSection(id: string) {
+  const section = document.getElementById(id)
+  const panel = section?.querySelector<HTMLDetailsElement>('.profile-panel')
+  if (panel) panel.open = true
+  if (id === 'profile-core') section?.querySelector<HTMLDetailsElement>('.profile-editor')?.setAttribute('open', '')
+  section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+function ModelHeader({ profile }: { profile: Record<string, unknown> }) {
+  const { name, context } = identityParts(profile)
+  const signal = typeof profile.recent_signal === 'string' && profile.recent_signal.trim() ? profilePreview(profile.recent_signal) : ''
+  return <section class="model-header">
+    <div class="model-header-main">
+      <div class="model-identity">
+        <span class="model-avatar" aria-hidden="true">{profileInitials(profile)}</span>
+        <div class="model-identity-copy"><span class="meta">Personal learning model</span><h2>{name || 'Learning model'}</h2>{context.length > 0 && <p class="model-context">{context.map((part, index) => <span key={part}>{index > 0 && <i aria-hidden="true">·</i>}{part}</span>)}</p>}</div>
+      </div>
+      <div class="model-header-side">{typeof profile.last_synced_at === 'string' && profile.last_synced_at && <span class="model-synced">Synced {profile.last_synced_at}</span>}<button class="primary-action" onClick={() => openProfileSection('profile-core')}>Edit model</button></div>
+    </div>
+    {signal && <div class="model-signal"><span class="model-signal-kicker">Latest approved signal</span><p>{signal}</p></div>}
   </section>
+}
+
+function ModelIndex({ items }: { items: Record<string, any> }) {
+  const entries = useMemo(() => modelSectionCounts(items), [items])
+  const [active, setActive] = useState('profile-core')
+  useEffect(() => {
+    const sections = entries.map((entry) => document.getElementById(entry.id)).filter(Boolean) as HTMLElement[]
+    const observer = new IntersectionObserver((hits) => {
+      const visible = hits.filter((hit) => hit.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+      if (visible[0]) setActive(visible[0].target.id)
+    }, { rootMargin: '-140px 0px -62% 0px', threshold: 0 })
+    sections.forEach((section) => observer.observe(section))
+    return () => observer.disconnect()
+  }, [entries])
+  return <nav class="model-index" aria-label="Model sections">
+    <div class="model-index-head"><strong>Model index</strong><span>{entries.length} sections</span></div>
+    {entries.map((entry) => <button class={active === entry.id ? 'active' : ''} onClick={() => openProfileSection(entry.id)}><span>{entry.label}</span><em>{entry.value}</em></button>)}
+    <div class="model-index-actions"><button onClick={() => setProfilePanels(true)}>Expand all</button><button onClick={() => setProfilePanels(false)}>Collapse all</button></div>
+  </nav>
 }
 
 function SettingsPage({ route }: { route: Destination }) {
@@ -2008,32 +2124,32 @@ function SettingsPage({ route }: { route: Destination }) {
   const profileItems = profile.data || {}
   return <div class={`settings-page ${route.slug === 'profile' ? 'profile-settings-page' : ''}`}><section>
     {route.slug === 'profile' && <>{profile.loading ? <Loading /> : profile.error ? <ErrorState message={profile.error} /> : <div class="profile-page">
-      <div class="profile-intro"><p>Stored profile state, curation memory, and operating signals. Expand any value to inspect the complete record.</p></div>
-      {profileRow ? <section class="profile-section profile-fields-section"><div class="section-head"><div><h2>Profile fields</h2><p>All scalar and JSON fields returned by the profile record. Invalid JSON remains readable as stored.</p></div><span>{Object.keys(profileRow).length} fields</span></div><div class="profile-fields">{[
-        ['id', 'Profile id', 'Singleton identifier.', false],
-        ['identity_json', 'Identity & context', 'Personal background and learning context.', true],
-        ['mega_priority_json', 'Mega priority focus', 'Highest-level topics and focus areas.', true],
-        ['core_filter', 'Core curation filter', 'Primary criteria required for new content.', false],
-        ['reaction_style_json', 'Reaction style', 'How learning reactions and feedback should be interpreted.', true],
-        ['quality_rules_json', 'Quality & verification rules', 'Source verification protocol and content boundaries.', true],
-        ['operational_style_json', 'Operational style', 'Interaction preference and communication rules.', true],
-        ['patterns_summary_json', 'Pattern summary', 'Stored summary of recurring learning patterns.', true],
-        ['recent_signal', 'Recent signal', 'Latest approved learning signal and updates.', false],
-        ['last_synced_at', 'Last synced at', 'Last profile synchronization timestamp.', false],
-      ].map(([key, label, description, json]) => <ProfileField key={key as string} label={label as string} description={description as string} value={profileRow[key as string]} json={Boolean(json)} />)}</div></section> : <Empty title="No profile record" body="The profile endpoint returned no singleton profile row." />}
-
-      {profileDraft && <details class="profile-editor" open><summary>Edit API-editable profile fields</summary><p>Values are saved as entered. JSON fields may be edited as JSON or plain text; existing fields are only sent when changed so untouched data is preserved.</p>{editableProfileFields.map((field) => <label key={field.draftKey}>{field.label}<span>{field.description}</span><textarea maxLength={5000} aria-label={field.label} value={profileDraft[field.draftKey]} onInput={(event) => setProfileDraft({ ...profileDraft, [field.draftKey]: (event.target as HTMLTextAreaElement).value })} /></label>)}<button class="primary-action" onClick={saveProfile}>Save profile fields</button></details>}
-
-      <ProfileRecords title="Priorities" description="Ordered priority branches and their rationale." items={profileItems.priorities || []} empty="No priorities recorded." getTitle={(item) => item.label || item.branch_id || item.id || 'Priority'} getMeta={(item) => item.rank == null ? '' : `Rank ${item.rank}`} />
-      <ProfileRecords title="Mastered knowledge & frameworks" description="Topics and works already marked as mastered." items={profileItems.mastered || []} empty="No mastered topics recorded." getTitle={(item) => item.label || item.id || 'Mastered item'} getMeta={(item) => [item.kind, item.author, item.rating].filter(Boolean).join(' · ')} />
-      <ProfileRecords title="Blacklist" description="Creators, works, and content boundaries excluded from curation." items={profileItems.blacklist || []} empty="No blacklist entries recorded." getTitle={(item) => [item.name, item.work].filter(Boolean).join(' · ') || item.id || 'Blacklist entry'} getMeta={(item) => item.severity == null ? '' : `Severity ${item.severity}`} />
-      <ProfileRecords title="Patterns" description="Confirmed and locked learning heuristics, including their evidence." items={profileItems.patterns || []} empty="No learning patterns recorded." getTitle={(item) => item.description || item.id || 'Pattern'} getMeta={(item) => [item.strength, item.confirmed_date].filter(Boolean).join(' · ')} />
-      <ProfileRecords title="Recent activity" description="The latest update-log records returned by the profile endpoint." items={profileItems.recent || []} empty="No recent activity recorded." getTitle={(item) => item.summary || item.kind || 'Activity'} getMeta={(item) => item.ts || ''} />
-      <ProfileRecords title="Feed sources" description="Monitored RSS sources and their current fetch state." items={profileItems.feed_sources || []} empty="No feed sources recorded." getTitle={(item) => item.title || item.feed_url || item.id || 'Feed source'} getMeta={(item) => item.is_active ? 'Active' : 'Paused'} />
-      <ProfileRecords title="Creator trust" description="Consumed source counts by creator returned by the trust query." items={profileItems.creator_trust || []} empty="No creator trust data available." getTitle={(item) => item.creator || 'Creator'} getMeta={(item) => `${item.count ?? 0} consumed`} />
-      <ProfileStats title="SRS statistics" description="Recall cards and drafts currently tracked." stats={profileItems.srs_stats || {}} />
-      <ProfileStats title="Activity statistics" description="Learning sessions, reflections, and structured notes." stats={profileItems.activity_stats || {}} />
-      <ProfileStats title="Infrastructure statistics" description="Artifact, proposal, database, and worker metadata returned by the endpoint." stats={profileItems.infrastructure_stats || {}} />
+      {profileRow ? <><ModelHeader profile={profileRow} />
+        <div class="model-layout"><ModelIndex items={profileItems} /><div class="model-sections">
+          <div class="model-group"><h3 class="model-group-title">The model</h3>
+            <ProfilePanel id="profile-core" title="Core profile" description="Identity, focus, rules, and operating style." count={`${coreProfileFields.length} fields`} open><div class="profile-fields">{coreProfileFields.map(([key, label, description, json]) => <ProfileField key={key} label={label} description={description} value={profileRow[key]} json={json} />)}</div>{profileDraft && <details class="profile-editor"><summary>Edit core profile</summary><p>Values are saved as entered. Unchanged fields are never sent.</p>{editableProfileFields.map((field) => <label key={field.draftKey}>{field.label}<span>{field.description}</span><textarea maxLength={5000} aria-label={field.label} value={profileDraft[field.draftKey]} onInput={(event) => setProfileDraft({ ...profileDraft, [field.draftKey]: (event.target as HTMLTextAreaElement).value })} /></label>)}<button class="primary-action" onClick={saveProfile}>Save profile</button></details>}</ProfilePanel>
+          </div>
+          <div class="model-group"><h3 class="model-group-title">Focus</h3>
+            <ProfileRecords id="profile-priorities" title="Priorities" description="Every ranked learning focus, in order." items={profileItems.priorities || []} empty="No priorities recorded." ranked open getTitle={(item) => item.label || item.branch_id || item.id || 'Priority'} getMeta={() => ''} />
+            <ProfileRecords id="profile-knowledge" title="Mastered knowledge & frameworks" description="Everything already marked as learned, with evidence and review timing." items={profileItems.mastered || []} empty="No mastered topics recorded." getTitle={(item) => item.label || item.id || 'Mastered item'} getMeta={(item) => [item.kind, item.author, item.rating].filter(Boolean).join(' · ')} />
+          </div>
+          <div class="model-group"><h3 class="model-group-title">Guardrails</h3>
+            <ProfileRecords id="profile-exclusions" title="Exclusions" description="Creators, works, and boundaries the Compass must avoid." items={profileItems.blacklist || []} empty="No exclusions recorded." getTitle={(item) => [item.name, item.work].filter(Boolean).join(' · ') || item.id || 'Excluded item'} getMeta={(item) => item.severity == null ? '' : `Severity ${item.severity}`} />
+            <ProfileRecords id="profile-signals" title="Patterns & heuristics" description="Confirmed and locked rules learned from your feedback." items={profileItems.patterns || []} empty="No learning patterns recorded." getTitle={(item) => item.description || item.id || 'Pattern'} getMeta={(item) => [item.strength, item.confirmed_date].filter(Boolean).join(' · ')} />
+          </div>
+          <div class="model-group"><h3 class="model-group-title">Taste</h3>
+            <ProfileRecords id="profile-affinities" title="Taste affinities" description="Your learned topic affinity, consumption history, and recency." items={profileItems.taste_vectors || []} empty="No taste affinities recorded." getTitle={(item) => item.topic || 'Topic'} getMeta={(item) => `${item.consumption_count || 0} completed · affinity ${item.affinity_score ?? '—'}`} />
+            <ProfileRecords id="profile-creators" title="Creator history" description="Every creator you have actually consumed, including your score history." items={profileItems.creator_trust || []} empty="No creator history available." getTitle={(item) => item.creator || 'Creator'} getMeta={(item) => `${item.total ?? 0} consumed · ${item.average_score ?? '—'} average`} />
+          </div>
+          <div class="model-group"><h3 class="model-group-title">Record</h3>
+            <ProfileRecords id="profile-history" title="Your reflections" description="Your own written learning reactions, kept verbatim." items={profileItems.reflections || []} empty="No reflections recorded." getTitle={(item) => item.video_title || 'Learning reflection'} getMeta={(item) => item.completed_at || ''} />
+            <ProfileRecords id="profile-ratings" title="Rating history" description="Your ratings, scores, and written reactions on completed sources." items={profileItems.rating_history || []} empty="No rated sources recorded." getTitle={(item) => item.video_title || 'Rated source'} getMeta={(item) => [item.creator, item.user_score ?? item.user_rating].filter(Boolean).join(' · ')} />
+            <ProfileRecords id="profile-activity" title="Profile activity" description="Changes and signals recorded against your learning model." items={profileItems.recent || []} empty="No profile activity recorded." getTitle={(item) => item.summary || item.kind || 'Activity'} getMeta={(item) => item.ts || ''} />
+            <ProfileRecords id="profile-feeds" title="Feed sources" description="RSS and Atom sources currently attached to your learning system." items={profileItems.feed_sources || []} empty="No feed sources recorded." getTitle={(item) => item.title || item.feed_url || item.id || 'Feed source'} getMeta={(item) => item.is_active ? 'Active' : 'Paused'} />
+            <ProfileStats id="profile-stats" title="Statistics & system" description="Your sessions, recall state, and stored artifacts." stats={Object.fromEntries(Object.entries({ ...(profileItems.activity_stats || {}), ...(profileItems.srs_stats || {}), artifacts: profileItems.infrastructure_stats?.artifacts_count, pending_proposals: profileItems.infrastructure_stats?.pending_proposals_count }).filter(([, value]) => value != null))} />
+          </div>
+        </div></div>
+      </> : <Empty title="No profile record" body="The profile endpoint returned no singleton profile row." />}
     </div>}</>}
     {route.slug === 'preferences' && <><div class="setting-section"><h3>Appearance</h3><div class="setting-row"><div><strong>Theme</strong><span>Follow the device unless you choose an override.</span></div><select value={theme} onChange={(event) => changeTheme((event.target as HTMLSelectElement).value)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></div><div class="setting-row"><div><strong>Density</strong><span>Balanced for daily use; compact when managing large libraries.</span></div><select value={density} onChange={(event) => changeDensity((event.target as HTMLSelectElement).value)}><option value="balanced">Balanced</option><option value="compact">Compact</option></select></div></div><div class="setting-section"><h3>Learning</h3><div class="setting-row"><div><strong>Active queue</strong><span>Five deliberate items; Inbox remains unlimited.</span></div><span class="setting-value">5 slots</span></div><label class="setting-row"><div><strong>Review target</strong><span>Used to adjust future recall intervals.</span></div><select value={retention} onChange={(event) => { const value = Number((event.target as HTMLSelectElement).value); setRetention(value); persist('learning', { retention: value, queue_cap: 5 }) }}><option value="85">85%</option><option value="90">90%</option><option value="95">95%</option></select></label><div class="setting-row"><div><strong>Rating 7+ notes and cards</strong><span>Notes Extractor runs after a completed rating of 7 or higher.</span></div><span class="setting-value">Automatic</span></div></div><div class="setting-section"><h3>Curation</h3><label class="setting-row"><div><strong>Enrich new captures</strong><span>Queue enrichment only when enabled.</span></div><input type="checkbox" checked={enrichCapture} onChange={(event) => { const enabled = (event.target as HTMLInputElement).checked; setEnrichCapture(enabled); persist('ai_curation', { enrich_capture: enabled }) }} /></label><div class="setting-row"><div><strong>Hermes change confirmation</strong><span>Every taste, profile, pattern, and map change requires approval.</span></div><span class="setting-value">Required</span></div><div class="setting-row"><div><strong>Automatic recommendations</strong><span>Finishing one source does not automatically add another.</span></div><span class="setting-value">Off</span></div></div></>}
     {route.slug === 'data' && <><div class="setting-row"><div><strong>Cloud library</strong><span>Your sources, notes, ratings, map, and files are available.</span></div><span class="status">Connected</span></div><div class="setting-row"><div><strong>Offline changes</strong><span>{offline.length ? `${offline.length} waiting · conflicts stay visible until you resolve them.` : 'No pending local changes.'}</span></div><button class="secondary-action" onClick={() => flushOfflineMutations().then(() => refreshOffline().then(() => setSaved('Sync complete')))}>Sync now</button></div>{offline.length > 0 && <div class="offline-mutation-list">{offline.map((item) => <div class="offline-mutation" key={item.id}><span><strong>{item.state || 'pending'}</strong><small>{item.method} {item.url} · {item.error || 'Waiting to sync'}</small></span><div>{(item.state === 'conflict' || item.state === 'failed') && <button onClick={() => resolveOfflineMutation(item.id, 'retry').then(refreshOffline)}>Retry</button>}<button onClick={() => resolveOfflineMutation(item.id, 'discard').then(refreshOffline)}>Discard</button></div></div>)}</div>}<ReminderControls /><div class="setting-row"><div><strong>Export source library</strong><span>Download your recommendation history as a portable file.</span></div><a class="secondary-action" href="/recommendations/export">Download export</a></div><div class="setting-row"><div><strong>Saved preferences</strong><span>{Object.keys(settings.data?.settings || {}).length} preference groups stored.</span></div><span class="setting-value">{settings.error ? 'Unavailable' : 'Up to date'}</span></div></>}

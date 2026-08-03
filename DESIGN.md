@@ -22,6 +22,8 @@ Collapsible desktop rail. Mobile bottom bar: Momentum, Curate, Learn, More. Cont
 
 Momentum prioritizes the active Queue source and its linked HTML, PDF, Notes, and NotebookLM files. The remaining active shelf, real weekly completion/note/recall progress, evidence-backed insight, and recent wins follow. Motivation comes from recorded work, never quotes or decorative gamification. Queue owns start, resume, and finish. Legacy Discovery is available inside Archive; a Compass Pick appears on Momentum only when the active shelf is empty. Learn begins with Files and uses one source-centric Notes record that presents personal feedback before extractor-created Notes. Activity shows only pending proposals with explicit Approve and Reject actions; reviewed changes belong to history. Internal jobs never appear in the user interface. Notes use Foundation → Case Studies → Exploitation → Defense plus My Notes & Reaction.
 
+Profile is the deliberate exception to list-heavy management views: use a bounded card matrix to turn personal rules, topics, evidence, and counts into scan-friendly objects. Represent structured values as tags and labeled facts, not JSON or raw database rows. Keep the full editor behind an explicit advanced action.
+
 ## Atlas
 
 Atlas is the immersive exception to compact management layouts. Its default state shows only major R1 branches as freely navigable organic constellations. Deeper rounds expand on demand, unrelated nodes fade during focus, and subtle low-chroma cluster colors aid orientation in both themes. Search, zoom, overview, and selection inspection remain visible alternatives to gestures.

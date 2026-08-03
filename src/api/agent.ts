@@ -235,6 +235,7 @@ app.get('/context', async (c) => {
       attention_by_r1: branches.filter((branch: any) => branch.round === 'R1').sort((a: any, b: any) => Number(b.attention_share || 0) - Number(a.attention_share || 0)).slice(0, 12).map((branch: any) => ({ id: branch.id, label: branch.label, attention_share: branch.attention_share, priority_share: branch.priority_share })),
       overfocused_branches: compact('over-focused').map((branch: any) => ({ id: branch.id, label: branch.label, attention_share: branch.attention_share, priority_share: branch.priority_share, reasons: branch.reasons })),
       at_risk_branches: compact('at-risk').map((branch: any) => ({ id: branch.id, label: branch.label, round: branch.round, last_consumed_at: branch.last_consumed_at, srs_due: branch.srs_due, recall_strength: branch.recall_strength, reasons: branch.reasons })),
+      weakly_consolidated_branches: compact('exposed').map((branch: any) => ({ id: branch.id, label: branch.label, round: branch.round, consumed_count: branch.consumed_count, reasons: branch.reasons })),
       uncovered_branches: compact('uncovered').map((branch: any) => ({ id: branch.id, label: branch.label, round: branch.round, priority_rank: branch.priority_rank })),
     }
   } catch {}

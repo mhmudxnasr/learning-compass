@@ -97,7 +97,7 @@ Hermes ownership, endpoint permissions, side-effect tiers, routing policy, and s
 
 Agent mutations reuse product validation, require `x-api-token` when configured, and audit to `agent_logs`. Arbitrary SQL, arbitrary paths, and outbound proxying are not exposed.
 
-`POST /brain/profile` updates any supplied editable profile field: `core_filter`, `mega_priority`, `identity`, `reaction_style_json`, `quality_rules_json`, `operational_style_json`, `patterns_summary_json`, and `recent_signal`. The four `*_json` fields also accept their legacy un-suffixed aliases.
+`GET /brain/profile` is the complete personal-learning snapshot: core profile, priorities, mastered knowledge, exclusions, learned patterns, taste affinities, creator history, written reflections, rating history, profile activity, feeds, and learning/system counts. `POST /brain/profile` updates any supplied editable profile field: `core_filter`, `mega_priority`, `identity`, `reaction_style_json`, `quality_rules_json`, `operational_style_json`, `patterns_summary_json`, and `recent_signal`. The four `*_json` fields also accept their legacy un-suffixed aliases.
 
 ## Settings and organization
 

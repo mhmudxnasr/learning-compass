@@ -113,13 +113,15 @@ for (const [workspace, views] of Object.entries(workspaces)) {
 if (count !== 17) throw new Error(`expected 17 routes, checked ${count}`)
 await page.goto(`${baseUrl}/#/settings/preferences`, { waitUntil: 'networkidle' })
 await page.goto(`${baseUrl}/#/settings/profile`, { waitUntil: 'networkidle' })
-await page.locator('.profile-fields-section').waitFor({ state: 'visible' })
+await page.locator('.profile-overview').waitFor({ state: 'visible' })
+await page.getByRole('button', { name: 'Open sections' }).click()
 const profileBody = await page.locator('.page-content').innerText()
-for (const value of ['Deep systems thinking', 'Systems thinking', 'Only sources with concrete mechanisms and evidence.', 'Profile rendering fixture', 'Raw text · invalid JSON', '{"malformed":', 'Reaction style', 'Pattern summary', 'Recent activity', 'Feed sources', 'SRS statistics', 'Activity statistics', 'Infrastructure statistics', 'Creator trust']) {
+for (const value of ['Your learning compass', 'Deep systems thinking', 'Systems thinking', 'Practical only', 'Profile rendering fixture', 'Reaction style', 'Patterns', 'Profile activity', 'Feed sources', 'Learning statistics', 'System record', 'Creator history', 'Taste affinities', 'Your reflections', 'Rating history']) {
   if (!profileBody.includes(value)) throw new Error(`profile page is missing rendered value or section: ${value}`)
 }
 if (profileBody.includes('Priority topics configured.')) throw new Error('profile page still renders the fake priority placeholder')
-if (await page.locator('.profile-json-invalid').count() !== 1) throw new Error('malformed JSON was not marked safely')
+if (profileBody.includes('{"malformed":') || profileBody.includes('JSON')) throw new Error('profile page exposed raw JSON in its normal view')
+if (await page.locator('.profile-tag-list').count() < 1) throw new Error('profile page did not render visual topic tags')
 if (await page.locator('.profile-page .profile-record').count() < 1) throw new Error('profile records did not render')
 await page.goto(`${baseUrl}/#/curate/queue`, { waitUntil: 'networkidle' })
 const curateNav = await page.locator('.subnav button').allTextContents()

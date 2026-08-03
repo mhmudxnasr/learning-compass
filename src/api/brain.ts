@@ -51,7 +51,7 @@ app.get('/profile', async (c) => {
   const recentLimit = Math.min(Math.max(parseInt(c.req.query('recent_limit') || '10'), 1), 50)
   try {
     const data = await cached('brain.profile.' + recentLimit, 30000, async () => {
-      const [profile, priorities, mastered, blacklist, patterns, recent, feedSources, srsCards, srsDrafts, sessions, notes, creators, artifactsCount, proposalsCount] = await Promise.all([
+      const [profile, priorities, mastered, blacklist, patterns, recent, feedSources, srsCards, srsDrafts, sessions, notes, creators, tasteVectors, reflections, ratings, artifactsCount, proposalsCount] = await Promise.all([
         DB.prepare('SELECT * FROM profile WHERE id = 1').first(),
         DB.prepare('SELECT * FROM priorities ORDER BY rank ASC').all(),
         DB.prepare('SELECT * FROM mastered ORDER BY mastered_at DESC').all(),
@@ -63,7 +63,10 @@ app.get('/profile', async (c) => {
         DB.prepare("SELECT COUNT(*) as count FROM srs_drafts WHERE status = 'draft'").first<{ count: number }>().catch(() => ({ count: 0 })),
         DB.prepare("SELECT COUNT(*) as total_sessions, SUM(CASE WHEN reflection IS NOT NULL AND reflection != '' THEN 1 ELSE 0 END) as reflections_count FROM learning_sessions").first<{ total_sessions: number; reflections_count: number }>().catch(() => ({ total_sessions: 0, reflections_count: 0 })),
         DB.prepare("SELECT COUNT(*) as count FROM notes").first<{ count: number }>().catch(() => ({ count: 0 })),
-        DB.prepare("SELECT creator, COUNT(*) as count FROM recommendations WHERE creator IS NOT NULL AND creator != '' AND status='consumed' GROUP BY creator ORDER BY count DESC LIMIT 10").all().catch(() => ({ results: [] })),
+        DB.prepare("SELECT creator, COUNT(*) as total, ROUND(AVG(COALESCE(user_score, CASE user_rating WHEN 'love' THEN 10 WHEN 'like' THEN 8 WHEN 'meh' THEN 5 WHEN 'dislike' THEN 2 END)), 2) as average_score, SUM(CASE WHEN user_rating='love' THEN 1 ELSE 0 END) as loves FROM recommendations WHERE creator IS NOT NULL AND creator != '' AND status='consumed' GROUP BY creator ORDER BY average_score DESC, total DESC LIMIT 50").all().catch(() => ({ results: [] })),
+        DB.prepare('SELECT topic, affinity_score, consumption_count, last_consumed_at FROM taste_vectors ORDER BY affinity_score DESC, consumption_count DESC LIMIT 50').all().catch(() => ({ results: [] })),
+        DB.prepare("SELECT s.id, r.video_title, r.creator, s.reflection, s.completed_at FROM learning_sessions s LEFT JOIN recommendations r ON r.id=s.recommendation_id WHERE s.reflection IS NOT NULL AND s.reflection != '' ORDER BY s.completed_at DESC LIMIT 20").all().catch(() => ({ results: [] })),
+        DB.prepare("SELECT id, video_title, creator, user_rating, user_score, user_review, consumed_date FROM recommendations WHERE status='consumed' AND (user_rating IS NOT NULL OR user_score IS NOT NULL OR user_review IS NOT NULL) ORDER BY consumed_date DESC LIMIT 30").all().catch(() => ({ results: [] })),
         DB.prepare("SELECT COUNT(*) as count FROM artifacts").first<{ count: number }>().catch(() => ({ count: 0 })),
         DB.prepare("SELECT COUNT(*) as count FROM feedback_proposals WHERE status = 'pending'").first<{ count: number }>().catch(() => ({ count: 0 })),
       ])
@@ -85,6 +88,9 @@ app.get('/profile', async (c) => {
           total_notes: notes?.count || 0,
         },
         creator_trust: creators.results || [],
+        taste_vectors: tasteVectors.results || [],
+        reflections: reflections.results || [],
+        rating_history: ratings.results || [],
         infrastructure_stats: {
           artifacts_count: artifactsCount?.count || 0,
           pending_proposals_count: proposalsCount?.count || 0,

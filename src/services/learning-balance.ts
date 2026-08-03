@@ -100,11 +100,13 @@ export async function buildLearningBalance(DB: Db, windowDays = 90) {
   const addToPath = (id: string, fn: (value: ReturnType<typeof getStats>) => void) => pathOf(id).forEach((ancestor) => fn(getStats(ancestor)))
 
   let totalConsumed = 0
+  let mappedConsumed = 0
   for (const recommendation of recommendations) {
     if (recommendation.status !== 'consumed' || !recommendation.consumed_date || String(recommendation.consumed_date) < since) continue
     const node = resolveNode(recommendation.branch_id, recommendation.dedup_key)
     if (!node) continue
     totalConsumed += 1
+    mappedConsumed += 1
     addToPath(node, (value) => {
       value.consumed += 1
       if (!value.last || String(recommendation.consumed_date) > value.last) value.last = recommendation.consumed_date
@@ -151,8 +153,8 @@ export async function buildLearningBalance(DB: Db, windowDays = 90) {
       if (recallStrength != null && recallStrength < 0.55) reasons.push('Recent recall is weak')
       if (ageDays != null && ageDays >= 45) reasons.push(`Last touched ${ageDays} days ago`)
       if (branchStats.consumed && !branchStats.notes && !branchStats.grades.length) reasons.push('Consumed, but not consolidated yet')
-      const overFocused = priorityShare != null && attentionShare >= Math.max(0.08, priorityShare * 1.75)
-      const state = overFocused ? 'over-focused' : !branchStats.consumed ? 'uncovered' : branchStats.due || (ageDays != null && ageDays >= 45) || (recallStrength != null && recallStrength < 0.55) ? 'at-risk' : ageDays != null && ageDays >= 30 ? 'cooling' : 'balanced'
+      const overFocused = totalConsumed >= 8 && branchStats.consumed >= 2 && priorityShare != null && attentionShare >= Math.max(0.20, priorityShare * 1.75)
+      const state = overFocused ? 'over-focused' : !branchStats.consumed ? 'uncovered' : branchStats.due || (ageDays != null && ageDays >= 45) || (recallStrength != null && recallStrength < 0.55) ? 'at-risk' : !branchStats.notes && !branchStats.grades.length ? 'exposed' : ageDays != null && ageDays >= 30 ? 'cooling' : 'balanced'
       return {
         id, label: node.label || id, type: node.type, parent_id: node.parent_id || null,
         round: roundFor(node, depthOf(id)), super_category: node.super_category || null,
@@ -164,14 +166,13 @@ export async function buildLearningBalance(DB: Db, windowDays = 90) {
       }
     })
 
-  const r1 = nodes.filter((node) => node.round === 'R1' || (!node.parent_id && node.type === 'branch'))
-  const attention = r1.reduce((sum, node) => sum + node.attention_share, 0)
   return {
     generated_at: new Date().toISOString(),
     window_days: days,
     portfolio: {
       total_consumed: totalConsumed,
-      mapped_consumed: Math.round(attention * 10) / 10,
+      mapped_consumed: mappedConsumed,
+      mapped_attention_share: totalConsumed ? Math.round((mappedConsumed / totalConsumed) * 1000) / 10 : 0,
       over_focused: nodes.filter((node) => node.state === 'over-focused').map((node) => node.id),
       at_risk: nodes.filter((node) => node.state === 'at-risk').map((node) => node.id),
       uncovered: nodes.filter((node) => node.state === 'uncovered').map((node) => node.id),

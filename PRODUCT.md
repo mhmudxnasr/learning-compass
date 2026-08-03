@@ -12,6 +12,8 @@ Manual captures, share targets, Telegram links, and subscribed RSS/Atom entries 
 
 Momentum, Curate, Map, Learn, Insights, and Settings contain 17 purposeful destinations. Momentum is the file-first home for the current mission, the five-source active shelf, earned weekly progress, evidence-backed insight, and recent wins. Curate includes Inbox, Queue, Collections, and Archive. Map includes Atlas and Coverage. Learn includes Files, source-centric Notes, Recall, and Activity. Insights includes Overview, Taste, and Hermes. Legacy Discovery remains inside Archive; mobile keeps Momentum, Curate, Learn, and More in primary navigation.
 
+Settings → Profile is a visual learning model: topic and rule tags, compact record cards, and expandable categories. Stored JSON is never shown in the normal view; advanced editing remains available when needed.
+
 ## User context
 
 Single user in Egypt. Desktop is for curation and synthesis; tablet/phone are for capture, external consumption, reflection, and review. UI is English. Notes support English and Egyptian Arabic with per-block direction.

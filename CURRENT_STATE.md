@@ -3,7 +3,7 @@
 Update this file whenever a milestone is completed, a contract changes, a deployment occurs, or a new blocker is discovered. Keep only current facts; remove resolved or superseded entries instead of accumulating a diary.
 
 **Last verified:** 2026-08-03
-**Production Worker version:** `1f6d63d3-001a-464b-b4b1-0848cc93f166`
+**Production Worker version:** `4f2a4e16-e534-4994-82e1-01389b993808`
 
 - Restored the five missing editable Aronson recall drafts directly in canonical D1 from the terminal Notes Extractor receipt; no Worker deployment was needed.
 - Personal Bayesian Cascade is live behind `/compass`: multiple concurrent ready/started Compass Picks are supported while the active queued/in-progress Queue count is below five; `GET /compass/pick` returns the newest one, submissions do not auto-start, and explicit Start/feedback remain required. Adaptive 3–8 candidate submissions, server-owned scoring, confidence/margin abstention, and separate Compass outcome storage remain intact. Legacy Discovery V2 and `/ai/suggest` remain compatibility/archive paths.
@@ -12,7 +12,7 @@ Update this file whenever a milestone is completed, a contract changes, a deploy
 - Hermes side-effect tiers are enforced by `docs/hermes-contract.json`: profile/map/scoring learning and verified skill-procedure memory may apply automatically at their thresholds; skill-source/prompt/code/schema/runtime/workflow changes are proposal-only; deployment, destructive deletion, and external publication are explicit-only. Every specialist returns the standard receipt fields.
 - Hermes inference order is verified as OpenCode Go `deepseek-v4-flash`, OpenCode Zen `deepseek-v4-flash-free`, OpenAI Codex `gpt-5.6-luna`, then Nous `tencent/hy3:free`.
 - Hermes evaluator proposals now use canonically supported `quality_rule` and `pattern_hypothesis` types instead of the unapprovable `evaluator_signal` type. Only evidence-qualified profile/map/scoring proposals may apply during the active conversation; system-layer proposals remain reviewable.
-- Production health verified at `https://recommendations-worker.mhmudnasr30.workers.dev/health` after deployment.
+- Production health and `/learning/balance?window=90` verified after deployment. Live balance reports 4 mapped completed sources, 16 unmapped completed sources, zero over-focus alerts at the current sample size, and six exposed-but-not-consolidated branches.
 
 
 
@@ -72,7 +72,7 @@ Update this file whenever a milestone is completed, a contract changes, a deploy
 - Migration rehearsal is idempotent through `npm run verify:migrations`; large-library pagination, responsive overflow, screenshot smoke, bilingual extraction, and source-record integration checks are covered.
 - Agent control protocol exposes the complete allow-listed site API through `/agent/capabilities`, `/agent/openapi.json`, `/agent/request`, and `/agent/tool-call`; mutations are audited in `agent_logs` and preserve product validation.
 - `POST /brain/profile` updates all editable profile fields, including reaction style, quality rules, operational style, pattern summary, and recent signal, with legacy aliases preserved.
-- `GET /learning/balance` is the canonical attention/retention read model for Coverage and Hermes: R1/R2/R3 hierarchy, recent attention share, explicit priority share, notes, SRS due cards, recall strength, explainable branch states, and unmapped-source warnings. Compass scoring consumes the same branch signals with bounded boosts/penalties.
+- `GET /learning/balance` is the canonical attention/retention read model for Coverage and Hermes: R1/R2/R3 hierarchy, recent attention share, explicit priority share, notes, SRS due cards, recall strength, explainable uncovered/at-risk/exposed branch states, and unmapped-source warnings. Compass scoring consumes the same branch signals with bounded boosts/penalties.
 - Feedback proposal approval now persists `quality_rule` and `operational_style` changes through the canonical profile JSON columns, remains idempotent, and leaves unsupported proposal types pending.
 - `POST /ai/suggest` LLM curation prompt and Hermes `taste-rec` / `taste-enhancer` skills are fully synchronized with Mahmood's explicit exclusion rules (zero book-derived Islamic recs, existential death content only, real-life/business storytelling, mastered dopamine/habit neuroscience, Mathur/ProPublica dark patterns, and shippable AI dev tools without corporate PR).
 - Hermes recommendation skills target Compass Cascade and retain Mahmoud's explicit exclusion rules; `/ai/suggest` is compatibility-only. Normal requests use one exposed pick; queue-fill requests continue generating and explicitly starting picks until five queued/in-progress items exist. Submissions never auto-start, and explicit feedback never creates a follow-up recommendation.
@@ -105,8 +105,8 @@ All returned successfully after the last deployment.
 
 On 2026-08-03:
 
-- Added the canonical `/learning/balance` read model and collapsed Scholar’s Instrument Coverage surface. It exposes R1/R2/R3 attention share, explicit priority share, notes, SRS due cards, recall strength, explainable branch states, unmapped-source warnings, and a Notion-style branch detail popup. `/agent/context` and Compass scoring consume the same balance signals with bounded adjustments. `npm test` — 55 unit tests + TypeScript; `npm run build`; `npm run test:e2e`; `npm run verify:hermes`; and `git diff --check` passed. Not deployed.
-- Settings → Profile now renders the complete `/brain/profile` snapshot with safe expandable JSON/raw values, full activity/curation/stat sections, all API-editable profile fields, and E2E coverage for real priorities and malformed JSON.
+- Added the canonical `/learning/balance` read model and collapsed Scholar’s Instrument Coverage surface. It exposes R1/R2/R3 attention share, explicit priority share, notes, SRS due cards, recall strength, explainable branch states, unmapped-source warnings, and a Notion-style branch detail popup. `/agent/context` and Compass scoring consume the same balance signals with bounded adjustments. `npm test` — 55 unit tests + TypeScript; `npm run build`; `npm run test:e2e`; `npm run verify:hermes`; and `git diff --check` passed. Deployed as Worker version `8ff0ae3a-fe85-4507-a604-7f353dd4b4c6`; live health and balance smoke checks passed.
+- Settings → Profile is a card-led personal-learning record: core profile, priorities, mastery, exclusions, learned patterns, taste affinities, creator history, written reflections, ratings, feeds, activity, and learning/system counts are grouped into expandable visual sections. Normal viewing uses tags and compact cards rather than JSON or raw database rows; advanced core-field editing remains available. Deployed as Worker version `4f2a4e16-e534-4994-82e1-01389b993808`; live health and Profile rendering passed.
 - Reduced Hermes to ten validated Learning Compass skills, removed duplicate/obsolete skill trees and stale Playwright/Discord/debug artifacts, disabled autonomous curation, and confirmed no scheduled jobs.
 - Replaced the unreliable model configuration with the tested chain: OpenCode Go DeepSeek V4 Flash, OpenCode Zen DeepSeek V4 Flash Free, OpenAI Codex GPT-5.6 Luna, then Nous Hunyuan 3 Free.
 - Pinned `notebooklm-mcp@2.0.0`; MCP startup discovered 20 tools. Hermes Doctor, config validation, all skill validators, gateway restart, and a live default-model smoke test passed.
