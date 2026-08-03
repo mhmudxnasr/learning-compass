@@ -38,6 +38,7 @@ const CAPABILITIES = [
   ['GET', '/recommendations/list', 'Search and filter recommendation history.'],
   ['POST', '/recommendations/push', 'Create or update a recommendation with deduplication.'],
   ['POST', '/recommendations/action', 'Change status, rating, review, consumed date, or register an item-specific NotebookLM URL.'],
+  ['POST', '/recommendations/map', 'Attach one or more completed sources to an existing knowledge-map branch.'],
   ['POST', '/recommendations/delete', 'Delete a recommendation.'],
   ['POST', '/recommendations/undo', 'Undo a reversible recommendation deletion.'],
   ['GET', '/brain/profile', 'Read profile, priorities, patterns, blacklist, and audit history.'],

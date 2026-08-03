@@ -273,6 +273,37 @@ app.post('/action', async (c) => {
   return c.json({ ok: true, count: ids.length })
 })
 
+// POST /recommendations/map — attach completed sources to an existing map node.
+app.post('/map', async (c) => {
+  const { DB } = c.env
+  let body: { id?: string; ids?: string[]; branch_id?: string }
+  try { body = await c.req.json() } catch { return c.json({ error: 'Invalid JSON' }, 400) }
+  const ids = Array.isArray(body.ids) ? body.ids : (body.id ? [body.id] : [])
+  if (!ids.length || ids.length > 50) return c.json({ error: 'id or ids required (maximum 50)' }, 400)
+  if (!isNonEmptyStr(body.branch_id, 100)) return c.json({ error: 'branch_id required' }, 400)
+  if (!ids.every((id) => isNonEmptyStr(id, 100))) return c.json({ error: 'invalid id' }, 400)
+
+  try {
+    const branch = await DB.prepare("SELECT id,label,type FROM tree_nodes WHERE id=? AND type IN ('root','category','branch','leaf')").bind(body.branch_id).first<any>()
+    if (!branch) return c.json({ error: 'map branch not found' }, 404)
+    const sources = await DB.prepare(`SELECT id,status FROM recommendations WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all<any>()
+    if ((sources.results || []).length !== ids.length) return c.json({ error: 'one or more sources not found' }, 404)
+    const incomplete = (sources.results || []).filter((source: any) => source.status !== 'consumed')
+    if (incomplete.length) return c.json({ error: 'only completed sources can be mapped', ids: incomplete.map((source: any) => source.id) }, 409)
+
+    const statements = ids.flatMap((id) => [
+      DB.prepare(`INSERT OR IGNORE INTO recommendation_meta (recommendation_id, learning_state, source_metadata_json) VALUES (?, 'completed', '{}')`).bind(id),
+      DB.prepare(`UPDATE recommendation_meta SET branch_id=?, updated_at=datetime('now') WHERE recommendation_id=?`).bind(body.branch_id, id),
+      DB.prepare(`UPDATE recommendation_outcomes SET branch_id=? WHERE recommendation_id=?`).bind(body.branch_id, id),
+    ])
+    await DB.batch(statements)
+    await DB.prepare(`INSERT INTO update_log (kind,summary,details_json) VALUES ('tree_change',?,?)`)
+      .bind(`Mapped ${ids.length} completed source${ids.length === 1 ? '' : 's'} to ${branch.label || body.branch_id}`, JSON.stringify({ recommendation_ids: ids, branch_id: body.branch_id, source: 'hermes' })).run()
+    const mapped = await DB.prepare(`SELECT r.id,r.video_title,m.branch_id FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all<any>()
+    return c.json({ ok: true, count: ids.length, branch, sources: mapped.results || [] })
+  } catch (err) { return c.json(safeError('Map source failed')(err), 500) }
+})
+
 app.post('/delete', async (c) => {
   const { DB } = c.env
   let body: { id: string; undo?: boolean }

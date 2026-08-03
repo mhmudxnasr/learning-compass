@@ -10,6 +10,12 @@ const QUEUE_CAP = 5
 type ScoredCandidate = { item: any; index: number; features: ReturnType<typeof deriveCandidateFeatures>; score: number; baseScore: number; dominance: number; uncertainty: number; sourceCheck: SourceCheck }
 type PreparedCandidate = { item: any; index: number; features: ReturnType<typeof deriveCandidateFeatures>; url: string; sourceCheck: SourceCheck }
 
+const weakPickSourceIsQueueable = (candidate: any) => {
+  let features: any = {}
+  try { features = JSON.parse(candidate?.features_json || '{}') } catch {}
+  return Boolean(candidate?.canonical_url && candidate?.title && features._valid_url && features._has_identity && !features._hard_excluded && ['verified', 'restricted'].includes(String(features._source_check || '')))
+}
+
 const checkSource = async (item: any): Promise<SourceCheck> => {
   const url = urlOf(item)
   if (!url) return { status: 'invalid' }
@@ -224,7 +230,7 @@ app.post('/picks', async (c) => {
       .bind(pickId, requestId, strategy, status, recommendationId, scored.length, scored.length > 3 ? 2 : 1, confident ? 'winner_confident' : abstentionReason, confidence, margin, JSON.stringify({ why_this: winner.item.why_this || '', why_now: winner.item.why_now || '', expected_learning: winner.item.expected_learning || '', cost: winner.item.cost || null, score: winner.score, confidence, uncertainty: winner.uncertainty, score_breakdown: winner.features, source_check: winner.sourceCheck, reviewable_weak_pick: reviewableWeakPick, abstention_reason: confident ? null : abstentionReason, exclusions: scored.filter((entry) => entry.features._hard_excluded).map((entry) => ({ title: entry.item.title, reason: entry.features._exclusion_reason })) })).run()
     for (const entry of scored) {
       await c.env.DB.prepare(`INSERT INTO compass_candidates (id,pick_id,canonical_url,title,creator,format,source_class,features_json,evidence_json,score,uncertainty,is_verified,is_winner) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .bind(`cc_${crypto.randomUUID()}`, pickId, urlOf(entry.item), String(entry.item.title), entry.item.creator || null, entry.item.format || null, entry.item.source_class || null, JSON.stringify(entry.features), JSON.stringify(entry.item.evidence || entry.item.rationale || {}), entry.score, entry.uncertainty, entry.features._valid_url && entry.features._has_identity && Number(entry.features.evidence_quality) >= .70 && !['invalid','unavailable'].includes(entry.sourceCheck.status) ? 1 : 0, entry === winner ? 1 : 0).run()
+        .bind(`cc_${crypto.randomUUID()}`, pickId, urlOf(entry.item), String(entry.item.title), entry.item.creator || null, entry.item.format || null, entry.item.source_class || null, JSON.stringify(entry.features), JSON.stringify(entry.item.evidence || entry.item.rationale || {}), entry.score, entry.uncertainty, entry.features._valid_url && entry.features._has_identity && !['invalid','unavailable'].includes(entry.sourceCheck.status) ? 1 : 0, entry === winner ? 1 : 0).run()
     }
     return c.json({ ok: true, status, strength: confident ? 'strong' : reviewableWeakPick ? 'weak_review' : 'withheld', strategy, reviewable_weak_pick: reviewableWeakPick, pick_id: pickId, recommendation_id: recommendationId, candidate_count: scored.length, eligible_count: eligible.length, active_queue_count: queuedCount, queue_cap: QUEUE_CAP, score: winner.score, confidence, margin, source_check: winner.sourceCheck.status, abstention_reason: confident ? null : abstentionReason, search_guidance: confident ? null : { expand_to: 8, needs: ['independent source angle', 'structured evidence', 'clear expected learning'] } })
   } catch (err) { return c.json(safeError('Failed to create Compass Pick')(err), 500) }
@@ -257,7 +263,7 @@ app.post('/pick/:id/start', async (c) => {
     let recommendationId = pick.recommendation_id as string | null
     if (!recommendationId) {
       const winner = await c.env.DB.prepare(`SELECT * FROM compass_candidates WHERE pick_id=? AND is_winner=1`).bind(pick.id).first<any>()
-      if (!winner || !winner.canonical_url || !winner.title || !winner.is_verified) return c.json({ error: 'This weak pick cannot be added because its source is not safe to queue.' }, 409)
+      if (!weakPickSourceIsQueueable(winner)) return c.json({ error: 'This pick cannot be added because its source is not safe to queue.' }, 409)
       const capture = await createInboxCapture(c.env.DB, { source: winner.canonical_url, title: winner.title })
       if (capture.status !== 'active') return c.json({ error: 'This source is no longer eligible for the Queue.' }, 409)
       recommendationId = capture.id

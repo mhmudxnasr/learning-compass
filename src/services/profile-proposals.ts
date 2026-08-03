@@ -3,7 +3,14 @@ const supportedProposalTypes = new Set([
   'pattern_hypothesis', 'pattern', 'blacklist', 'priority',
 ])
 
-export const isSupportedProposalType = (value: unknown): boolean => supportedProposalTypes.has(String(value))
+const legacyProposalTypes: Record<string, string> = {
+  recent_signal: 'profile_signal',
+  quality_rules_json: 'quality_rule',
+}
+
+export const normalizeProposalType = (value: unknown): string => legacyProposalTypes[String(value)] || String(value)
+
+export const isSupportedProposalType = (value: unknown): boolean => supportedProposalTypes.has(normalizeProposalType(value))
 
 export const serializeProfileValue = (value: any): string => {
   if (typeof value === 'string') return value

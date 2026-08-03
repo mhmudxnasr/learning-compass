@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { Bindings, normalizeRating, safeError } from '../lib'
 import { defaultSettings, loadSettings } from '../services/settings'
 import { createInboxCapture } from '../services/capture'
-import { isSupportedProposalType, mergeQualityRules, serializeProfileValue } from '../services/profile-proposals'
+import { isSupportedProposalType, mergeQualityRules, normalizeProposalType, serializeProfileValue } from '../services/profile-proposals'
 import { activateWaitingRun } from './discovery'
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -298,10 +298,11 @@ app.post('/feedback/proposals/:id/approve', async (c) => {
   if (!isSupportedProposalType(proposal.change_type)) {
     return c.json({ error: 'unsupported proposal change type', change_type: proposal.change_type }, 422)
   }
+  const changeType = normalizeProposalType(proposal.change_type)
   let proposed: any = null
   try { proposed = JSON.parse(proposal.proposed_json) } catch { proposed = proposal.proposed_json }
   const proposedText = typeof proposed === 'string' ? proposed : JSON.stringify(proposed)
-  const profile = proposal.change_type === 'quality_rule'
+  const profile = changeType === 'quality_rule'
     ? await c.env.DB.prepare(`SELECT quality_rules_json FROM profile WHERE id=1`).first<any>()
     : null
 
@@ -309,19 +310,19 @@ app.post('/feedback/proposals/:id/approve', async (c) => {
     c.env.DB.prepare(`UPDATE feedback_proposals SET status='applied',reviewed_at=datetime('now'),applied_at=datetime('now') WHERE id=? AND status='pending'`).bind(proposal.id),
   ]
 
-  if (proposal.change_type === 'profile_signal' || proposal.change_type === 'profile_update') {
+  if (changeType === 'profile_signal' || changeType === 'profile_update') {
     statements.push(c.env.DB.prepare(`UPDATE profile SET recent_signal = ?, last_synced_at = datetime('now') WHERE id = 1`).bind(proposedText))
-  } else if (proposal.change_type === 'quality_rule') {
+  } else if (changeType === 'quality_rule') {
     statements.push(c.env.DB.prepare(`UPDATE profile SET quality_rules_json = ?, last_synced_at = datetime('now') WHERE id = 1`).bind(mergeQualityRules(profile?.quality_rules_json, proposed)))
-  } else if (proposal.change_type === 'operational_style') {
+  } else if (changeType === 'operational_style') {
     statements.push(c.env.DB.prepare(`UPDATE profile SET operational_style_json = ?, last_synced_at = datetime('now') WHERE id = 1`).bind(serializeProfileValue(proposed)))
-  } else if (proposal.change_type === 'pattern_hypothesis' || proposal.change_type === 'pattern') {
+  } else if (changeType === 'pattern_hypothesis' || changeType === 'pattern') {
     const patternId = (proposal.target_label || 'pattern-' + Date.now()).toLowerCase().replace(/[^a-z0-9_-]/g, '-')
     statements.push(c.env.DB.prepare(`INSERT OR REPLACE INTO patterns (id, description, evidence_json, confirmed_date, strength) VALUES (?, ?, ?, date('now'), 'confirmed')`).bind(patternId, proposedText, JSON.stringify([proposal.evidence || 'Approved proposal'])))
-  } else if (proposal.change_type === 'blacklist') {
+  } else if (changeType === 'blacklist') {
     const blackId = (proposal.target_label || 'black-' + Date.now()).toLowerCase().replace(/[^a-z0-9_-]/g, '-')
     statements.push(c.env.DB.prepare(`INSERT OR REPLACE INTO blacklist (id, name, reason, severity) VALUES (?, ?, ?, 3)`).bind(blackId, proposal.target_label || 'Excluded Item', proposedText))
-  } else if (proposal.change_type === 'priority' && typeof proposed === 'object' && proposed?.branch_id && proposed?.rank) {
+  } else if (changeType === 'priority' && typeof proposed === 'object' && proposed?.branch_id && proposed?.rank) {
     statements.push(c.env.DB.prepare(`INSERT OR REPLACE INTO priorities (rank, branch_id, label) VALUES (?, ?, ?)`).bind(proposed.rank, proposed.branch_id, proposed.label || proposal.target_label))
   }
 

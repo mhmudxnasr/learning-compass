@@ -281,6 +281,8 @@ Add offline mutation recovery, large-data tests, bilingual direction handling, r
 - Every reflection produces confirmation-gated Taste Mapper proposals.
 - Ratings of 7–10 automatically create a separate extracted note and editable recall drafts; approval is required before Recall.
 - Feedback processing does not request a new recommendation.
+- Completed sources can be explicitly attached to existing knowledge-map nodes; ambiguous matches stay unresolved instead of creating speculative branches.
+- An abstained Compass Pick with a verified or restricted reachable source can be explicitly added to the Queue anyway; the override bypasses only the automatic threshold, and the five-item Queue cap still applies.
 - One Lite Visual source creates one linked HTML/PDF pair and counts as one taste signal.
 - D1 remains canonical; R2 stores large artifacts; Obsidian remains an archive export.
 - Every registered destination resolves to a purposeful view.
