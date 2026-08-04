@@ -185,3 +185,4 @@ When changing this file:
 - move completed gaps into **Working Baseline** only when verified;
 - record a blocker only when it is reproducible and unresolved;
 - delete stale statements immediately.
+- **Visual Pipeline Contract v2** (2026-08-04): Visual Mind now uses `visual-contract.schema.json`, SHA-256 asset/source identity, authored captions/alt text/claims/anchors/learning roles/placements, per-pair style locks, and Gemini API-only OCR/review/native image generation. Mermaid rendering is locally pinned and offline; chart rendering, slide extraction, SVG/HTML label occlusion, stepwise diagram exploration, and visual recall components are available. Lite Visual validates manifest coverage at four responsive breakpoints and a six-page PDF inspection set. Current Gemini free-tier image-generation quota is exhausted; native generation fails explicitly rather than falling back to local OCR, alternate providers, or local generation.
