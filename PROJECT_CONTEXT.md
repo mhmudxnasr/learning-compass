@@ -10,10 +10,10 @@ The product is single-user, English-first, supports bilingual English/Egyptian-A
 
 ## Product Model
 
-- **Inbox:** the Curate destination for subscriptions, captures, and triage; it remains the unlimited landing place for URL, text, PDF, HTML, video, Telegram, share-target, RSS, and Atom captures. RSS/Atom entries stay grouped in the pinned Archive feed shelf instead of mixing into the manual archive list. Manual **Check now** imports at most five latest entries per feed.
-- **Queue:** five active queued/in-progress items by default. Compass can prepare multiple ready picks while capacity remains; explicit starts enforce the five-item cap. Compass completion, decline, and abandonment atomically move the linked source to completed or excluded state; written feedback/rating remains attached as a reviewable learning signal. Other Queue additions still require consume/drop or an explicit override.
+- **Inbox:** the Curate destination for subscriptions, captures, books, and triage; it remains the unlimited landing place for URL, text, PDF, HTML, video, Telegram, share-target, RSS, and Atom captures. RSS/Atom entries stay grouped in the pinned Archive feed shelf instead of mixing into the manual archive list. Manual **Check now** imports at most five latest entries per feed.
+- **Queue:** five active queued/in-progress items by default. Each item can carry a compact source-grounded `context_brief` that explains the topic before starting. Compass can prepare multiple ready picks while capacity remains; explicit starts enforce the five-item cap. Compass completion, decline, and abandonment atomically move the linked source to completed or excluded state; written feedback/rating remains attached as a reviewable learning signal. Other Queue additions still require consume/drop or an explicit override.
 - **Queue and hidden sessions:** Queue owns start, resume, return, and completion. Hidden session records preserve source/reflection linkage without a separate management destination.
-- **Source notes:** one source-centric Notes record presents the user's exact typed or handwritten feedback alongside the separate complete bilingual English/Egyptian-Arabic source note; incomplete legacy notes can be re-run from the site.
+- **Source notes:** the Notes library shows only structured Notes Extractor source notes (Foundation → Case Studies → Exploitation → Defense) read in a dedicated typographic reader with section navigation and in-place editing. Each note keeps one explicit Source context hop back to the full source record, which presents the user's exact typed or handwritten feedback before the extracted note; incomplete legacy notes can be re-run from the site.
 - **Feedback proposals:** every reflection/rating produces auditable Taste Mapper proposals. During an active Hermes conversation, evidence-qualified profile, pattern, priority, contradiction, map, and scoring changes may apply automatically at confidence ≥0.8; skill, prompt, code, schema, runtime, and workflow changes remain proposal-only; deployment, destructive deletion, and external publication require separate explicit instruction.
 - **SRS:** ratings 7–10 automatically queue Notes Extractor and produce 3–5 editable drafts. Only approved drafts become review cards; drafts and active cards can be deleted.
 - **Knowledge map:** branches, edges, evidence, contradictions, coverage, health, and taste signals. Learning balance combines map depth (R1/R2/R3), recent attention share, explicit priority share, notes, SRS due cards, recall strength, explainable uncovered/at-risk/exposed states, and unmapped-source warnings; the site and Hermes read this same model.
@@ -105,7 +105,9 @@ Cloudflare rejects Python's default User-Agent.
 8. Re-read both uploaded artifacts, then call `/artifacts/:html_id/process` exactly once; poll the extraction job to completed or failed and verify the canonical source record.
 9. Notes Extractor reads the HTML, preserves source anchors, writes the structured site note and 3–5 SRS drafts, then creates the Obsidian archive copy.
 
-The Worker only enqueues `visualise_source` with `custom_prompt_required=true`, `qa_required=true`, `quality_threshold=8`, and expected roles `html`/`pdf`; Hermes owns mining, source-specific prompts, rendering, validation, upload, and completion. Lite Visual HTML uploads require a complete five-dimension 0–2 QA score totaling at least 8 with no defects; linked PDFs require a passed render check.
+The Worker only enqueues `visualise_source` with `custom_prompt_required=true`, `qa_required=true`, `quality_threshold=8`, and expected roles `html`/`pdf`; Hermes owns mining, source-specific prompts, rendering, validation, upload, and completion. Lite Visual HTML uploads require a complete five-dimension 0–2 QA score totaling at least 8 with no defects; linked PDFs require a passed render check. Book jobs require one stable HTML/PDF pair per chapter and one extraction job per chapter HTML.
+
+Books use Lite Visual Book Mode from the Books shelf: complete chapter/file mining, B2 explanations, first-page TOC, source-proportional pagination, and an approximately 6cm print annotation margin. The book API exposes each chapter's HTML/PDF pair, extraction state, and finished state, while visualise requests remain idempotent Hermes jobs. The Books page UI expands/collapses chapters on book title click, showing each chapter with number badge, title, status, file links (HTML/PDF/NBLM), upload buttons for missing files, and Finish/Undo toggle. Chapter file uploads use the existing `POST /artifacts` endpoint with chapter metadata.
 
 The HTML and PDF represent one source and must not count as two taste signals.
 
@@ -122,6 +124,7 @@ The HTML and PDF represent one source and must not count as two taste signals.
 
 - `learning-compass-operating-system` is Hermes's single entry point. It classifies every Learning Compass request into a verified procedure, then calls one focused specialist skill. `learning-compass-site-operator` is its live Worker API execution layer: it uses `/agent/capabilities` and `/agent/request`, reads before writes, verifies after writes, and uses the Cloudflare-compatible Hermes User-Agent.
 - A reflection sent to Hermes is explicit feedback: preserve it verbatim, resolve the source/session, queue Taste Mapper analysis, create auditable proposals, apply only evidence-qualified profile/map/scoring changes during that conversation, and stop without recommending anything.
+- Every feedback analysis reads the complete archived feedback context plus the current profile and knowledge-map nodes through `GET /feedback/context`, so repeated signals can improve proposals without rewriting the user's original feedback.
 
 ## Purposeful Destinations
 
@@ -134,7 +137,7 @@ The route registry is the executable source of truth:
 - Insights: 3
 - Settings: 3
 
-Total: 17. Inbox, Queue, Collections, and Archive live in Curate. Atlas and Coverage live in Map. Files, source-centric Notes, Recall, and Activity live in Learn. Overview, Taste, and Hermes live in Insights. Every destination must support a real user decision or workflow. Related cloud datasets may be combined when that makes the page more useful; infrastructure implementation details stay out of user-facing copy.
+Total: 18. Books, Inbox, Queue, Collections, and Archive live in Curate. Atlas and Coverage live in Map. Files, extracted Notes library, Recall, and Activity live in Learn. Overview, Taste, and Hermes live in Insights. Every destination must support a real user decision or workflow. Related cloud datasets may be combined when that makes the page more useful; infrastructure implementation details stay out of user-facing copy.
 
 ## Data and Migrations
 
@@ -153,6 +156,10 @@ Apply in order:
 11. `migrations/0009_proposal_dedup.sql`
 12. `migrations/0010_compass_queue_fill.sql`
 13. `migrations/0011_compass_adaptive_learning.sql`
+14. `migrations/0012_context_brief.sql`
+15. `migrations/0013_book_visual_chapters.sql`
+16. `migrations/0014_canonical_activity_ledger.sql`
+17. `migrations/0015_outcome_learning_integrity.sql`
 
 New schema changes require a new numbered idempotent migration. Never hide schema mutation inside cron or request handlers.
 

@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS recommendations (
   content_type TEXT DEFAULT 'video',
   video_url TEXT NOT NULL,
   why_this TEXT,
+  context_brief TEXT,
   verified TEXT,
   status TEXT DEFAULT 'active',
   user_rating TEXT DEFAULT 'unset',

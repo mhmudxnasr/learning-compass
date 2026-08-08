@@ -1,13 +1,13 @@
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const workspaces = {
   today: ['momentum'],
-  curate: ['queue','inbox','collections','archive'],
+  curate: ['queue','inbox','collections','archive','books'],
   map: ['atlas','coverage'],
   learn: ['files','notes','recall','activity'],
   insights: ['overview','taste','hermes'],
@@ -16,6 +16,8 @@ const workspaces = {
 
 const wrangler = './node_modules/.bin/wrangler'
 const persistDir = mkdtempSync(join(tmpdir(), 'learning-compass-e2e-'))
+const preContextBriefSchema = join(persistDir, 'schema-before-context-brief.sql')
+writeFileSync(preContextBriefSchema, readFileSync('schema.sql', 'utf8').replace('  context_brief TEXT,\n', ''))
 const port = await new Promise((resolve, reject) => {
   const probe = createServer()
   probe.once('error', reject)
@@ -30,7 +32,7 @@ let browser
 
 try {
   for (const args of [
-    ['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--file', 'schema.sql'],
+    ['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--file', preContextBriefSchema],
     ['d1', 'migrations', 'apply', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir],
   ]) {
     const process = spawn(wrangler, args, { stdio: ['ignore', 'pipe', 'pipe'] })
@@ -110,14 +112,14 @@ for (const [workspace, views] of Object.entries(workspaces)) {
   }
 }
 
-if (count !== 17) throw new Error(`expected 17 routes, checked ${count}`)
+if (count !== 18) throw new Error(`expected 18 routes, checked ${count}`)
 await page.goto(`${baseUrl}/#/settings/preferences`, { waitUntil: 'networkidle' })
 await page.goto(`${baseUrl}/#/settings/profile`, { waitUntil: 'networkidle' })
 await page.locator('.profile-overview').waitFor({ state: 'visible' })
 await page.getByRole('button', { name: 'Open sections' }).click()
 const profileBody = await page.locator('.page-content').innerText()
-for (const value of ['Your learning compass', 'Deep systems thinking', 'Systems thinking', 'Practical only', 'Profile rendering fixture', 'Reaction style', 'Patterns', 'Profile activity', 'Feed sources', 'Learning statistics', 'System record', 'Creator history', 'Taste affinities', 'Your reflections', 'Rating history']) {
-  if (!profileBody.includes(value)) throw new Error(`profile page is missing rendered value or section: ${value}`)
+for (const value of ['Personal learning model', 'Deep systems thinking', 'Profile rendering fixture', 'Reaction style', 'Patterns & heuristics', 'Profile activity', 'Feed sources', 'Statistics & system', 'Creator history', 'Taste affinities', 'Your reflections', 'Rating history']) {
+  if (!profileBody.toLowerCase().includes(value.toLowerCase())) throw new Error(`profile page is missing rendered value or section: ${value}`)
 }
 if (profileBody.includes('Priority topics configured.')) throw new Error('profile page still renders the fake priority placeholder')
 if (profileBody.includes('{"malformed":') || profileBody.includes('JSON')) throw new Error('profile page exposed raw JSON in its normal view')
@@ -149,14 +151,20 @@ if (!Array.isArray(manualArchive.recommendations)) throw new Error('manual archi
 if (!Array.isArray(balance.branches) || balance.window_days !== 90 || !balance.portfolio) throw new Error('learning balance contract is invalid')
 if (!Array.isArray(proposals.proposals)) throw new Error('feedback proposal contract is invalid')
 if (!Array.isArray(cards.cards)) throw new Error('SRS card management contract is invalid')
-if (!Array.isArray(momentum.active_items) || !Array.isArray(momentum.artifacts) || !momentum.momentum || !momentum.insight || !Array.isArray(momentum.recent_wins)) throw new Error('Momentum workspace contract is invalid')
+if (!Array.isArray(momentum.active_items) || !Array.isArray(momentum.artifacts) || !momentum.momentum || !momentum.insight || !momentum.next_action_detail || !Array.isArray(momentum.recent_wins)) throw new Error('Momentum workspace contract is invalid')
+await page.goto(`${baseUrl}/#/today/momentum`, { waitUntil: 'networkidle' })
+await page.getByText('Learning runway', { exact: true }).waitFor({ state: 'visible', timeout: 15000 })
+const momentumBody = await page.locator('.page-content').innerText()
+for (const value of ['Learning runway', 'Queue manifest', 'Every source and file', 'Next move']) {
+  if (!momentumBody.toLowerCase().includes(value.toLowerCase())) throw new Error(`Momentum is missing ${value}: ${momentumBody}`)
+}
 
 const captured = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hermes-e2e', title: 'Hermes automation test' }) })
 const preRecord = await requestJson(`/capture/${captured.id}/record`)
 if (!preRecord.item) throw new Error('source record API did not return the captured source')
 await requestJson(`/capture/${captured.id}/triage`, { method: 'POST', body: JSON.stringify({ action: 'queue' }) })
 await page.goto(`${baseUrl}/#/learn/notes?source=${captured.id}`, { waitUntil: 'networkidle' })
-if (!await page.locator('.source-record-page').isVisible()) throw new Error(`canonical source record did not open: ${await page.locator('.page-content').innerText()}`)
+await page.locator('.source-record-page').waitFor({ state: 'visible', timeout: 15000 })
 if (!await page.getByRole('heading', { name: 'My Feedback' }).isVisible()) throw new Error('source record is missing feedback section')
 const started = await requestJson('/sessions/start', { method: 'POST', body: JSON.stringify({ recommendation_id: captured.id }) })
 const returned = await requestJson(`/sessions/${started.session_id}/return`, { method: 'POST', body: JSON.stringify({ reflection: 'The mechanism is useful and I will apply it.', rating: 7, complete: true, auto_enqueue: true }) })
@@ -191,6 +199,19 @@ await requestJson(`/agent/jobs/${extractJob.id}/complete`, { method: 'POST', bod
 }) })
 const extractedNotes = (await requestJson('/notes')).notes
 if (!extractedNotes.some((note) => note.id === 'e2e_source_note') || !extractedNotes.some((note) => note.kind === 'reflection' && note.sections.some((section) => section.content.includes('Handwritten margin note')))) throw new Error('extractor did not keep source note and handwritten reflection separate')
+const guideNotes = (await requestJson('/notes?kind=guide')).notes
+if (!guideNotes.some((note) => note.id === 'e2e_source_note') || guideNotes.some((note) => note.kind === 'reflection')) throw new Error('guide notes library leaked reflections into the extracted scope')
+await page.goto(`${baseUrl}/#/learn/notes`, { waitUntil: 'networkidle' })
+await page.getByRole('heading', { name: 'Hermes source note' }).waitFor({ state: 'visible', timeout: 15000 })
+if (await page.getByText('Handwritten margin note').count()) throw new Error('Notes library leaked personal reflection content into the extracted library')
+await page.goto(`${baseUrl}/#/learn/notes?note=e2e_source_note`, { waitUntil: 'networkidle' })
+await page.locator('.note-document').waitFor({ state: 'visible', timeout: 15000 })
+await page.getByRole('heading', { name: 'Foundation' }).waitFor({ state: 'visible', timeout: 15000 })
+await page.locator(`.note-sidebar a[href="#/learn/notes?source=${captured.id}"]`).waitFor({ state: 'attached', timeout: 15000 })
+if (await page.locator(`.note-sidebar a[href="#/learn/notes?source=${captured.id}"]`).count() !== 1) throw new Error('note reader is missing the source-context link')
+await page.locator(`.note-sidebar a[href="#/learn/notes?source=${captured.id}"]`).click()
+await page.waitForLoadState('networkidle')
+await page.locator('.source-record-page').waitFor({ state: 'visible', timeout: 15000 })
 const draft = (await requestJson('/srs/drafts')).drafts.find((item) => item.id)
 if (!draft || draft.status !== 'draft') throw new Error('rating 7 did not create an editable card draft')
 await requestJson(`/srs/drafts/${draft.id}/approve`, { method: 'POST' })
@@ -209,10 +230,12 @@ const progressReturn = await requestJson(`/sessions/${progressSession.session_id
 if (progressReturn.status !== 'returned') throw new Error('in-progress feedback incorrectly completed the source')
 const progressJobs = (await requestJson('/agent/jobs?status=pending')).jobs.filter((job) => job.payload.recommendation_id === progress.id)
 if (progressJobs.filter((job) => job.job_type === 'process_feedback').length !== 1 || progressJobs.some((job) => job.job_type === 'extract_notes')) throw new Error('in-progress feedback did not queue analysis cleanly')
-const atomicFeedback = await requestJson('/feedback/record', { method: 'POST', body: JSON.stringify({ source_url: 'https://example.com/atomic-feedback', title: 'Atomic feedback test', feedback: 'Preserve these exact words.', rating: 8 }) })
+const atomicFeedback = await requestJson('/feedback/record', { method: 'POST', body: JSON.stringify({ source_url: 'https://example.com/atomic-feedback', title: 'Atomic feedback test', feedback: 'Preserve these exact words.', score: 8, completion_state: 'completed', reason_tags: ['practical', 'revisit'], expected: 'A useful mechanism.', actual: 'Useful and concrete.', effort: 'deep', length_minutes: 45 }) })
 if (atomicFeedback.preserved_feedback !== 'Preserve these exact words.' || atomicFeedback.completion_state !== 'completed' || !atomicFeedback.feedback_job || !atomicFeedback.extraction_job || !atomicFeedback.source_page.includes(atomicFeedback.source.id)) throw new Error('atomic feedback receipt is incomplete')
 const atomicRecord = await requestJson(`/capture/${atomicFeedback.source.id}/record`)
 if (!atomicRecord.notes.some((note) => note.kind === 'reflection' && note.sections.some((section) => section.content === 'Preserve these exact words.'))) throw new Error('atomic feedback did not preserve exact words')
+const atomicStructuredFeedback = JSON.parse(atomicRecord.item.source_metadata_json || '{}').learning_feedback
+if (atomicStructuredFeedback?.score !== 8 || atomicStructuredFeedback?.effort !== 'deep' || atomicStructuredFeedback?.length_minutes !== 45 || atomicStructuredFeedback?.expected !== 'A useful mechanism.' || !atomicStructuredFeedback?.reason_tags?.includes('revisit')) throw new Error('structured feedback was not preserved on the source record')
 await page.setViewportSize({ width: 390, height: 844 })
 await page.goto(`${baseUrl}/#/today/momentum`, { waitUntil: 'networkidle' })
 if (!(await page.locator('.mobile-nav').isVisible())) throw new Error('mobile primary navigation is not visible')

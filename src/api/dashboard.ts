@@ -7,7 +7,7 @@ app.get('/briefing', async (c) => {
   const { DB } = c.env
   try {
     const weekStart = `date('now', printf('-%d days', (CAST(strftime('%w','now') AS INTEGER)+6)%7))`
-    const [active, due, inbox, pending, momentum, bestWeek, recent, latestSignal, topFormat, streak, streakDays] = await Promise.all([
+    const [active, due, inbox, pending, drafts, momentum, bestWeek, recent, latestSignal, topFormat, activityDates, streakDays] = await Promise.all([
       DB.prepare(`SELECT r.id,r.video_title,r.creator,r.content_type,r.video_url,r.why_this,r.notebook_url,r.created_at,
         m.learning_state,m.priority_rank,m.progress_percent,m.estimated_minutes,m.started_at,m.last_opened_at,
         (SELECT COUNT(*) FROM notes n WHERE n.recommendation_id=r.id) note_count
@@ -17,18 +17,21 @@ app.get('/briefing', async (c) => {
       DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE due_at<=date('now')`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND m.learning_state='inbox'`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM feedback_proposals WHERE status='pending'`).first<any>(),
+      DB.prepare(`SELECT COUNT(*) count FROM srs_drafts WHERE status='draft'`).first<any>(),
       DB.prepare(`SELECT
-        (SELECT COUNT(*) FROM recommendations WHERE status='consumed' AND date(consumed_date)>=${weekStart}) completed,
-        (SELECT COUNT(*) FROM notes WHERE date(created_at)>=${weekStart}) notes,
-        (SELECT COUNT(*) FROM srs_review_events WHERE date(reviewed_at)>=${weekStart}) reviews`).first<any>(),
-      DB.prepare(`SELECT COALESCE(MAX(completed),0) count FROM (SELECT COUNT(*) completed FROM recommendations WHERE status='consumed' AND consumed_date IS NOT NULL GROUP BY strftime('%Y-%W',consumed_date))`).first<any>(),
+        SUM(CASE WHEN event_type='completion' THEN 1 ELSE 0 END) completed,
+        SUM(CASE WHEN event_type IN ('note_created','note_edited') THEN 1 ELSE 0 END) notes,
+        SUM(CASE WHEN event_type='recall_reviewed' THEN 1 ELSE 0 END) reviews
+        FROM learning_activity_ledger WHERE activity_date>=${weekStart}`).first<any>(),
+      DB.prepare(`SELECT COALESCE(MAX(completed),0) count FROM (
+        SELECT COUNT(*) completed FROM learning_activity_ledger WHERE event_type='completion'
+        GROUP BY strftime('%Y-%W',activity_date)
+      )`).first<any>(),
       DB.prepare(`SELECT id,video_title,content_type,creator,user_score,consumed_date AS created_at FROM recommendations WHERE status='consumed' ORDER BY consumed_date DESC LIMIT 6`).all<any>(),
       DB.prepare(`SELECT summary FROM update_log ORDER BY ts DESC LIMIT 1`).first<any>(),
       DB.prepare(`SELECT content_type,COUNT(*) count,ROUND(AVG(user_score),1) average FROM recommendations WHERE status='consumed' AND user_score IS NOT NULL GROUP BY content_type HAVING COUNT(*)>=2 ORDER BY average DESC,count DESC LIMIT 1`).first<any>(),
-      DB.prepare(`WITH RECURSIVE dates(d) AS (SELECT date('now') UNION ALL SELECT date(d,'-1 day') FROM dates WHERE d>date('now','-365 days'))
-        SELECT COUNT(*) count FROM dates d WHERE EXISTS (SELECT 1 FROM learning_log WHERE learning_log.date=d.d)
-          AND d.d>=COALESCE((SELECT date(MAX(date),'+1 day') FROM learning_log l1 WHERE NOT EXISTS (SELECT 1 FROM learning_log l2 WHERE date(l2.date,'+1 day')=l1.date)),'1970-01-01')`).first<any>(),
-      DB.prepare(`SELECT date,count FROM learning_log WHERE date>=date('now','-6 days') ORDER BY date`).all<any>(),
+      DB.prepare(`SELECT DISTINCT activity_date AS date FROM learning_activity_ledger ORDER BY activity_date DESC`).all<any>(),
+      DB.prepare(`SELECT activity_date AS date,COUNT(*) count FROM learning_activity_ledger WHERE activity_date>=date('now','+3 hours','-29 days') GROUP BY activity_date ORDER BY activity_date`).all<any>(),
     ])
 
     const activeItems = active.results || []
@@ -43,6 +46,29 @@ app.get('/briefing', async (c) => {
       artifacts = rows.results || []
     }
 
+    const today = (await DB.prepare(`SELECT date('now','+3 hours') AS date, ROUND((julianday(date('now','+3 hours','+1 day')) - julianday(datetime('now','+3 hours'))) * 86400) AS seconds_remaining`).first<any>()) || {}
+    const todayDate = String(today.date)
+    const activeDates = new Set((activityDates.results || []).map((row: any) => String(row.date)))
+    const yesterday = String((await DB.prepare(`SELECT date('now','+3 hours','-1 day') AS date`).first<any>())?.date || '')
+    const streakEnd = activeDates.has(todayDate) ? todayDate : yesterday
+    let currentStreak = 0
+    if (activeDates.has(streakEnd)) {
+      const cursor = new Date(`${streakEnd}T12:00:00Z`)
+      while (activeDates.has(cursor.toISOString().slice(0, 10))) {
+        currentStreak += 1
+        cursor.setUTCDate(cursor.getUTCDate() - 1)
+      }
+    }
+    let longestStreak = 0
+    const orderedDates = [...activeDates].sort()
+    let run = 0
+    for (let index = 0; index < orderedDates.length; index += 1) {
+      const previous = index ? new Date(`${orderedDates[index - 1]}T12:00:00Z`) : null
+      const current = new Date(`${orderedDates[index]}T12:00:00Z`)
+      if (previous && (current.getTime() - previous.getTime()) === 86400000) run += 1
+      else run = 1
+      longestStreak = Math.max(longestStreak, run)
+    }
     const completed = Number(momentum?.completed || 0)
     const personalBest = Math.max(Number(bestWeek?.count || 0), completed)
     const insight = topFormat
@@ -56,17 +82,33 @@ app.get('/briefing', async (c) => {
         ? { title: 'Your map just moved', body: latestSignal.summary, evidence: 'Latest approved signal', target: 'map.atlas' }
         : { title: 'Your pattern is still forming', body: 'Complete and rate two sources to reveal your strongest learning format.', evidence: 'Needs two rated completions', target: 'curate.queue' }
 
+    const nextAction = Number(due?.count || 0) > 0
+      ? { kind: 'review', label: 'Review due recall', reason: `${due.count} recall ${Number(due.count) === 1 ? 'card is' : 'cards are'} due today.`, target: 'learn.recall' }
+      : activeItems.length
+        ? { kind: 'continue', label: 'Continue your queue', reason: `${activeItems[0].video_title} is ${activeItems[0].learning_state === 'in_progress' ? 'in progress' : 'ready to start'}.`, target: 'curate.queue', recommendation_id: activeItems[0].id }
+        : Number(drafts?.count || 0) > 0
+          ? { kind: 'approve_recall', label: 'Approve recall drafts', reason: `${drafts.count} drafted recall ${Number(drafts.count) === 1 ? 'card is' : 'cards are'} waiting for approval.`, target: 'learn.recall' }
+          : Number(inbox?.count || 0) > 0
+            ? { kind: 'curate', label: 'Curate your inbox', reason: `${inbox.count} captured ${Number(inbox.count) === 1 ? 'source needs' : 'sources need'} a decision.`, target: 'curate.inbox' }
+            : { kind: 'capture', label: 'Capture your next source', reason: 'Your queue and inbox are clear.', target: 'curate.inbox' }
+
     return c.json({
       active_items: activeItems,
       artifacts,
       due_reviews: due?.count || 0,
       inbox_count: inbox?.count || 0,
       pending_proposals: pending?.count || 0,
-      momentum: { completed, notes: Number(momentum?.notes || 0), reviews: Number(momentum?.reviews || 0), streak: Number(streak?.count || 0), streak_days: streakDays.results || [], personal_best: personalBest },
+      momentum: {
+        completed, notes: Number(momentum?.notes || 0), reviews: Number(momentum?.reviews || 0),
+        streak: currentStreak, streak_days: streakDays.results || [], personal_best: personalBest,
+        longest_streak: longestStreak, today_secured: activeDates.has(todayDate), last_activity_date: [...activeDates][0] || null,
+        current_date: todayDate, seconds_remaining: Number(today.seconds_remaining || 0), timezone: 'Africa/Cairo',
+      },
       insight,
       recent_wins: recent.results || [],
       // Compatibility fields for existing API consumers.
-      next_action: Number(due?.count || 0) > 0 ? 'review' : activeItems.length ? 'continue' : 'capture',
+      next_action: nextAction.kind,
+      next_action_detail: nextAction,
       next_item: activeItems[0] || null,
       queue_count: activeItems.length,
       recent: recent.results || [],

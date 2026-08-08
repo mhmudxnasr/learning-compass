@@ -20,7 +20,7 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 - Notes are structured, editable, searchable, and support per-block English/Egyptian-Arabic direction.
 - Ratings of 7–10 create editable SRS drafts; approval is required before Review.
 - Feedback processing never requests another recommendation automatically.
-- Lite Visual creates one linked HTML+PDF R2 pair. It must resolve the exact source/pair, mine the complete source into a checksum-backed evidence packet and coverage matrix, pass measured metadata/responsive/print validation and an 8/10 HTML quality gate, upload a versioned pair, queue Notes Extractor once from the HTML artifact, verify the extraction to terminal state, and verify the canonical source record. The PDF is the reading companion.
+- Lite Visual creates one linked HTML+PDF R2 pair for normal sources. For books, it creates one linked pair per chapter with stable chapter metadata, mines the complete source into a checksum-backed evidence packet and coverage matrix, passes measured metadata/responsive/print validation and an 8/10 HTML quality gate, queues Notes Extractor once per HTML chapter, verifies each extraction to terminal state, and verifies the canonical source record. The PDF is the reading companion.
 - All destinations in `client/src/destinations.ts` must resolve to a purposeful real view. No generic fallback screens or tabs that expose only infrastructure.
 
 ## Architecture Boundaries
@@ -58,6 +58,7 @@ Active Hermes files:
 - `~/.hermes/skills/taste-enhancer/SKILL.md`
 - `~/.hermes/skills/learning-notes-extractor/SKILL.md`
 - `~/.hermes/skills/lite-visual/SKILL.md`
+- `~/.hermes/skills/visual-mind/SKILL.md`
 - `~/.hermes/skills/productivity/rss-feed/SKILL.md`
 - `~/.hermes/skills/notebooklm/SKILL.md`
 - `~/.hermes/memories/MEMORY.md` and `USER.md` only for durable facts

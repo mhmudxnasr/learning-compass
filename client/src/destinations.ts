@@ -15,12 +15,13 @@ const define = (workspace: WorkspaceKey, entries: Array<[string, string, string,
   entries.map(([slug, title, purpose, kind, endpoint]) => ({ key: `${workspace}.${slug}`, workspace, slug, title, purpose, kind, endpoint }))
 
 export const destinations: Destination[] = [
-  ...define('today', [['momentum', 'Momentum', 'Open active files, protect momentum, and notice what is working.', 'briefing', '/dashboard/briefing']]),
+  ...define('today', [['momentum', 'Momentum', 'See your streak, continue the queue, and open every source file.', 'briefing', '/dashboard/briefing']]),
   ...define('curate', [
     ['queue', 'Queue', 'Choose the five items worth doing next.', 'board', '/capture/queue'],
     ['inbox', 'Inbox', 'Capture, subscribe, refresh, and triage sources before the queue.', 'list', '/capture'],
     ['collections', 'Collections', 'Build active thematic learning groups.', 'board', '/collections?scope=curate'],
     ['archive', 'Archive', 'Find completed, excluded, and saved sources while RSS stays pinned above.', 'list', '/recommendations/list?limit=200&source=manual'],
+    ['books', 'Books', 'Keep a deliberate shelf of books to read, reading, and finished.', 'library', '/recommendations/books'],
   ]),
   ...define('map', [
     ['atlas', 'Atlas', 'Explore the living topology of your knowledge.', 'graph', '/knowledge/graph'],
@@ -28,7 +29,7 @@ export const destinations: Destination[] = [
   ]),
   ...define('learn', [
     ['files', 'Files', 'Open PDFs, web companions, and uploaded documents.', 'library', '/artifacts'],
-    ['notes', 'Notes', 'Open one source record with your feedback and extracted learning notes.', 'library', '/notes'],
+    ['notes', 'Notes', 'Read and edit the structured notes extracted from completed sources.', 'library', '/notes'],
     ['recall', 'Recall', 'Review due cards and approve or edit future recall prompts.', 'study', '/learning/srs/due'],
     ['activity', 'Activity', 'Review Hermes proposals and the history of what changed.', 'list', '/feedback/proposals'],
   ]),

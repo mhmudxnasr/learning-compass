@@ -10,7 +10,7 @@ Manual captures, share targets, Telegram links, and subscribed RSS/Atom entries 
 
 ## Workspaces
 
-Momentum, Curate, Map, Learn, Insights, and Settings contain 17 purposeful destinations. Momentum is the file-first home for the current mission, the five-source active shelf, earned weekly progress, evidence-backed insight, and recent wins. Curate includes Inbox, Queue, Collections, and Archive. Map includes Atlas and Coverage. Learn includes Files, source-centric Notes, Recall, and Activity. Insights includes Overview, Taste, and Hermes. Legacy Discovery remains inside Archive; mobile keeps Momentum, Curate, Learn, and More in primary navigation.
+Momentum, Curate, Map, Learn, Insights, and Settings contain 18 purposeful destinations. Momentum is the action-first home: a 14-day streak runway with weekly totals, the current source and complete reading kit, a five-source queue manifest exposing every original/HTML/PDF/Notes/NotebookLM link, and one concrete next move. Curate includes Inbox, Queue, Collections, Archive, and Books. Map includes Atlas and Coverage. Learn includes Files, the extracted Notes library, Recall, and Activity; the full per-source record (feedback, proposals, files, recall, sessions) stays one hop away as source context. Insights includes Overview, Taste, and Hermes. Legacy Discovery remains inside Archive; mobile keeps Momentum, Curate, Learn, and More in primary navigation.
 
 Settings → Profile is a visual learning model: topic and rule tags, compact record cards, and expandable categories. Stored JSON is never shown in the normal view; advanced editing remains available when needed.
 

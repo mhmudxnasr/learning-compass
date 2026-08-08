@@ -1,11 +1,12 @@
 import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import assert from 'node:assert/strict'
 
 const wrangler = './node_modules/.bin/wrangler'
 const persistDir = mkdtempSync(join(tmpdir(), 'learning-compass-compass-feedback-'))
+const preContextBriefSchema = join(persistDir, 'schema-before-context-brief.sql')
 let server
 
 const run = (args) => new Promise((resolve, reject) => {
@@ -18,8 +19,9 @@ const run = (args) => new Promise((resolve, reject) => {
 })
 
 try {
+  writeFileSync(preContextBriefSchema, readFileSync('schema.sql', 'utf8').replace('  context_brief TEXT,\n', ''))
   for (const args of [
-    ['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--file', 'schema.sql'],
+    ['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--file', preContextBriefSchema],
     ['d1', 'migrations', 'apply', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir],
   ]) await run(args)
 
@@ -72,19 +74,48 @@ try {
   assert.equal(completedRecord.body.sessions[0].status, 'completed')
   assert.equal(completedRecord.body.item.user_score, 9)
 
+  const contextBrief = 'What it is: a primary-source research note.\n• Covers the method, evidence, and practical implication.\n• Expect a focused technical overview.'
+  const submitted = await request('/compass/picks', {
+    method: 'POST',
+    body: JSON.stringify({
+      request_id: 'request_context_brief',
+      strategy: 'fit',
+      candidates: [
+        { canonical_url: 'https://example.com/?context-brief=winner', title: 'Context brief primary research', creator: 'Research Lab', format: 'article', source_class: 'research', evidence: 'The original research explains its method, evidence, limitations, and practical implication.', context_brief: contextBrief },
+        { canonical_url: 'https://example.com/?context-brief=alternate-one', title: 'Context brief alternate one', creator: 'Writer One', format: 'article', source_class: 'blog' },
+        { canonical_url: 'https://example.com/?context-brief=alternate-two', title: 'Context brief alternate two', creator: 'Writer Two', format: 'article', source_class: 'blog' },
+      ],
+    }),
+  })
+  assert.equal(submitted.status, 200)
+  assert.ok(submitted.body.recommendation_id || submitted.body.reviewable_weak_pick)
+  const submittedPick = await request('/compass/pick')
+  assert.equal(submittedPick.status, 200)
+  assert.equal(submittedPick.body.pick.context_brief, contextBrief)
+  const startedSubmitted = await request(`/compass/pick/${submittedPick.body.pick.id}/start`, { method: 'POST' })
+  assert.equal(startedSubmitted.status, 200)
+  const submittedQueue = await request('/capture/queue')
+  assert.equal(submittedQueue.body.items.find((item) => item.id === startedSubmitted.body.recommendation_id).context_brief, contextBrief)
+  await request(`/compass/pick/${submittedPick.body.pick.id}/feedback`, { method: 'POST', body: JSON.stringify({ outcome: 'declined' }) })
+
   await query(`
-    INSERT INTO compass_picks (id,request_id,strategy,status,candidate_count,confidence,stop_reason,rationale_json) VALUES ('pick_weak','request_weak','fit','abstained',3,0.61,'winner_below_score_threshold','{"why_this":"A promising but lightly evidenced source.","score":0.63,"abstention_reason":"winner_below_score_threshold","source_check":{"status":"verified"}}');
-    INSERT INTO compass_candidates (id,pick_id,canonical_url,title,creator,format,source_class,features_json,evidence_json,score,uncertainty,is_verified,is_winner) VALUES ('candidate_weak','pick_weak','https://example.net/weak','Reviewable weak source','Creator C','article','essay','{}','{}',0.63,0.3,1,1);
+    INSERT INTO compass_picks (id,request_id,strategy,status,candidate_count,confidence,stop_reason,rationale_json) VALUES ('pick_weak','request_weak','fit','abstained',3,0.61,'winner_below_score_threshold','{"why_this":"A promising but lightly evidenced source.","context_brief":"What it is: a compact source review.\\n• Covers the core argument and supporting evidence.\\n• Expect a cautious, practical overview.","score":0.63,"abstention_reason":"winner_below_score_threshold","source_check":{"status":"verified"}}');
+    INSERT INTO compass_candidates (id,pick_id,canonical_url,title,creator,format,source_class,context_brief,features_json,evidence_json,score,uncertainty,is_verified,is_winner) VALUES ('candidate_weak','pick_weak','https://example.net/weak','Reviewable weak source','Creator C','article','essay','What it is: a compact source review.\n• Covers the core argument and supporting evidence.\n• Expect a cautious, practical overview.','{"_valid_url":true,"_has_identity":true,"_source_check":"verified"}','{}',0.63,0.3,1,1);
   `)
   const weak = await request('/compass/pick')
+  assert.equal(weak.status, 200, JSON.stringify(weak.body))
   assert.equal(weak.body.pick.status, 'abstained')
   assert.equal(weak.body.pick.video_title, 'Reviewable weak source')
   assert.equal(weak.body.pick.video_url, 'https://example.net/weak')
+  assert.equal(weak.body.pick.context_brief, 'What it is: a compact source review.\n• Covers the core argument and supporting evidence.\n• Expect a cautious, practical overview.')
   const acceptedWeak = await request('/compass/pick/pick_weak/start', { method: 'POST' })
   assert.equal(acceptedWeak.status, 200)
   assert.ok(acceptedWeak.body.recommendation_id)
   const acceptedWeakRecord = await request(`/capture/${acceptedWeak.body.recommendation_id}/record`)
   assert.equal(acceptedWeakRecord.body.item.learning_state, 'queued')
+  assert.equal(acceptedWeakRecord.body.item.context_brief, 'What it is: a compact source review.\n• Covers the core argument and supporting evidence.\n• Expect a cautious, practical overview.')
+  const queue = await request('/capture/queue')
+  assert.equal(queue.body.items.find((item) => item.id === acceptedWeak.body.recommendation_id).context_brief, 'What it is: a compact source review.\n• Covers the core argument and supporting evidence.\n• Expect a cautious, practical overview.')
   assert.equal((await request('/compass/pick')).body.pick.status, 'started')
   console.log('Compass feedback state transitions integration passed')
 } finally {

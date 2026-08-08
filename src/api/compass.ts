@@ -3,6 +3,7 @@ import { safeError, normalizeRating, type Bindings } from '../lib'
 import { createInboxCapture } from '../services/capture'
 import { calibratedConfidence, canonicalizeUrl, DEFAULT_FEATURE_WEIGHTS, deriveCandidateFeatures, pairwiseDominance, semanticSimilarity, serverScore, urlOf, type CompassContext, type SourceCheck } from '../compass-scoring'
 import { buildLearningBalance } from '../services/learning-balance'
+import { canonicalTasteIdentity } from './taste'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const STRATEGIES = new Set(['fit', 'bridge', 'challenge'])
@@ -42,7 +43,7 @@ const loadCompassContext = async (DB: D1Database): Promise<CompassContext> => {
     DB.prepare(`SELECT video_url,video_title,creator,status FROM recommendations WHERE status IN ('consumed','active','rejected') LIMIT 2000`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT label,author FROM mastered`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT name,work FROM blacklist`).all<any>().catch(() => ({ results: [] })),
-    DB.prepare(`SELECT creator,COUNT(*) sample_count,AVG(COALESCE(actual_score,CASE outcome_status WHEN 'rejected' THEN 2 WHEN 'abandoned' THEN 3 END)) average_score FROM recommendation_outcomes WHERE creator IS NOT NULL AND outcome_status IN ('consumed','rejected','abandoned') GROUP BY creator`).all<any>().catch(() => ({ results: [] })),
+    DB.prepare(`SELECT creator,COUNT(*) sample_count,AVG(COALESCE(actual_score,CASE outcome_status WHEN 'rejected' THEN 2 WHEN 'abandoned' THEN 3 END)) average_score,MAX(COALESCE(consumed_at,evaluated_at)) last_feedback_at FROM recommendation_outcomes WHERE creator IS NOT NULL AND outcome_status IN ('consumed','rejected','abandoned') GROUP BY creator`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT topic,affinity_score FROM taste_vectors`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT COALESCE(label,branch_id) topic FROM priorities ORDER BY rank`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT LOWER(COALESCE(format,'unknown')) format,COUNT(*) sample_count,AVG(COALESCE(actual_score,CASE outcome_status WHEN 'rejected' THEN 2 WHEN 'abandoned' THEN 3 END)) average_score FROM recommendation_outcomes WHERE outcome_status IN ('consumed','rejected','abandoned') GROUP BY LOWER(COALESCE(format,'unknown'))`).all<any>().catch(() => ({ results: [] })),
@@ -60,12 +61,23 @@ const loadCompassContext = async (DB: D1Database): Promise<CompassContext> => {
     branchSignals.set(String(branch.id).toLowerCase(), { state: String(branch.state), attentionShare: Number(branch.attention_share || 0), priorityShare: branch.priority_share == null ? null : Number(branch.priority_share) })
     branchSignals.set(String(branch.label).toLowerCase(), { state: String(branch.state), attentionShare: Number(branch.attention_share || 0), priorityShare: branch.priority_share == null ? null : Number(branch.priority_share) })
   }
+  const creatorTrust = new Map<string, { average: number; count: number }>()
+  for (const row of trust.results || []) {
+    const key = canonicalTasteIdentity(row.creator, '')
+    if (!key) continue
+    const existing = creatorTrust.get(key) || { average: 0, count: 0 }
+    const count = Number(row.sample_count || 0)
+    const nextCount = existing.count + count
+    creatorTrust.set(key, { average: nextCount ? ((existing.average * existing.count) + Number(row.average_score || 5) * count) / nextCount : 5, count: nextCount })
+  }
+  const topicAffinities = new Map<string, number>()
+  for (const row of vectors.results || []) topicAffinities.set(canonicalTasteIdentity(row.topic), Number(row.affinity_score))
   return {
     knownSources: (history.results || []).map((row: any) => ({ url: row.video_url || '', title: row.video_title || '', creator: row.creator || '', status: row.status || '' })),
     blockedEntities: [...new Set(terms)],
-    creatorTrust: new Map((trust.results || []).map((row: any) => [String(row.creator).trim().toLowerCase(), { average: Number(row.average_score || 5), count: Number(row.sample_count || 0) }])),
-    topicAffinities: new Map((vectors.results || []).map((row: any) => [String(row.topic).toLowerCase(), Number(row.affinity_score)])),
-    priorityTopics: new Set((priorities.results || []).map((row: any) => String(row.topic || '').trim().toLowerCase()).filter(Boolean)),
+    creatorTrust,
+    topicAffinities,
+    priorityTopics: new Set((priorities.results || []).map((row: any) => canonicalTasteIdentity(row.topic, '')).filter(Boolean)),
     formatOutcomes: new Map((formats.results || []).map((row: any) => [String(row.format), { average: Number(row.average_score || 5), count: Number(row.sample_count || 0) }])),
     recentFormats: (recent.results || []).map((row: any) => String(row.format)),
     featureWeights,
@@ -142,7 +154,8 @@ async function currentPick(DB: D1Database) {
   return DB.prepare(`
     SELECT p.*, COALESCE(r.video_title,w.title) AS video_title, COALESCE(r.creator,w.creator) AS creator,
       COALESCE(r.content_type,w.format,w.source_class) AS content_type, COALESCE(r.video_url,w.canonical_url) AS video_url,
-      COALESCE(r.why_this,json_extract(p.rationale_json,'$.why_this')) AS why_this
+      COALESCE(r.why_this,json_extract(p.rationale_json,'$.why_this')) AS why_this,
+      COALESCE(r.context_brief,json_extract(p.rationale_json,'$.context_brief')) AS context_brief
     FROM compass_picks p
     LEFT JOIN recommendations r ON r.id=p.recommendation_id
     LEFT JOIN compass_candidates w ON w.pick_id=p.id AND w.is_winner=1
@@ -171,7 +184,7 @@ app.post('/picks', async (c) => {
     const body = await c.req.json<any>()
     const requestedStrategy = body.strategy ? String(body.strategy) : ''
     const strategy = requestedStrategy || await chooseStrategy(c.env.DB)
-    const candidates = Array.isArray(body.candidates) ? body.candidates : []
+    const candidates = (Array.isArray(body.candidates) ? body.candidates : []).map((item: any) => item && typeof item === 'object' && item.context_brief != null ? { ...item, context_brief: String(item.context_brief) } : item)
     if (!STRATEGIES.has(strategy)) return c.json({ error: 'strategy must be fit, bridge, or challenge' }, 400)
     if (candidates.length < 3 || candidates.length > 8) return c.json({ error: 'adaptive search accepts 3 to 8 candidates' }, 400)
     await currentPick(c.env.DB)
@@ -222,15 +235,15 @@ app.post('/picks', async (c) => {
       const capture = await createInboxCapture(c.env.DB, { source: urlOf(winner.item), title: String(winner.item.title) })
       recommendationId = capture.id
       const rationale = winner.item.why_this || (typeof winner.item.evidence === 'string' ? winner.item.evidence : null)
-      await c.env.DB.prepare(`UPDATE recommendations SET creator=?,content_type=?,why_this=? WHERE id=?`).bind(winner.item.creator || null, winner.item.format || winner.item.source_class || null, rationale, recommendationId).run()
+      await c.env.DB.prepare(`UPDATE recommendations SET creator=?,content_type=?,why_this=?,context_brief=? WHERE id=?`).bind(winner.item.creator || null, winner.item.format || winner.item.source_class || null, rationale, winner.item.context_brief || null, recommendationId).run()
       await c.env.DB.prepare(`UPDATE recommendation_meta SET learning_state='compass_pick',source_metadata_json=json_patch(COALESCE(source_metadata_json,'{}'),?),updated_at=datetime('now') WHERE recommendation_id=?`).bind(JSON.stringify({ compass_pick_id: pickId, strategy }), recommendationId).run()
       await c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,source_class,format,creator,predicted_score,predicted_confidence,predicted_components_json,outcome_status) VALUES (?,?,?,?,?,?,?,?, 'active') ON CONFLICT(recommendation_id) DO UPDATE SET predicted_score=excluded.predicted_score,predicted_confidence=excluded.predicted_confidence,predicted_components_json=excluded.predicted_components_json,evaluated_at=datetime('now')`).bind(`outcome_${recommendationId}`, recommendationId, winner.item.source_class || null, winner.item.format || null, winner.item.creator || null, winner.score * 10, confidence, JSON.stringify(winner.features)).run()
     }
     await c.env.DB.prepare(`INSERT INTO compass_picks (id,request_id,strategy,status,recommendation_id,candidate_count,search_rounds,stop_reason,confidence,margin,rationale_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
-      .bind(pickId, requestId, strategy, status, recommendationId, scored.length, scored.length > 3 ? 2 : 1, confident ? 'winner_confident' : abstentionReason, confidence, margin, JSON.stringify({ why_this: winner.item.why_this || '', why_now: winner.item.why_now || '', expected_learning: winner.item.expected_learning || '', cost: winner.item.cost || null, score: winner.score, confidence, uncertainty: winner.uncertainty, score_breakdown: winner.features, source_check: winner.sourceCheck, reviewable_weak_pick: reviewableWeakPick, abstention_reason: confident ? null : abstentionReason, exclusions: scored.filter((entry) => entry.features._hard_excluded).map((entry) => ({ title: entry.item.title, reason: entry.features._exclusion_reason })) })).run()
+      .bind(pickId, requestId, strategy, status, recommendationId, scored.length, scored.length > 3 ? 2 : 1, confident ? 'winner_confident' : abstentionReason, confidence, margin, JSON.stringify({ why_this: winner.item.why_this || '', context_brief: winner.item.context_brief || '', why_now: winner.item.why_now || '', expected_learning: winner.item.expected_learning || '', cost: winner.item.cost || null, score: winner.score, confidence, uncertainty: winner.uncertainty, score_breakdown: winner.features, source_check: winner.sourceCheck, reviewable_weak_pick: reviewableWeakPick, abstention_reason: confident ? null : abstentionReason, exclusions: scored.filter((entry) => entry.features._hard_excluded).map((entry) => ({ title: entry.item.title, reason: entry.features._exclusion_reason })) })).run()
     for (const entry of scored) {
-      await c.env.DB.prepare(`INSERT INTO compass_candidates (id,pick_id,canonical_url,title,creator,format,source_class,features_json,evidence_json,score,uncertainty,is_verified,is_winner) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .bind(`cc_${crypto.randomUUID()}`, pickId, urlOf(entry.item), String(entry.item.title), entry.item.creator || null, entry.item.format || null, entry.item.source_class || null, JSON.stringify(entry.features), JSON.stringify(entry.item.evidence || entry.item.rationale || {}), entry.score, entry.uncertainty, entry.features._valid_url && entry.features._has_identity && !['invalid','unavailable'].includes(entry.sourceCheck.status) ? 1 : 0, entry === winner ? 1 : 0).run()
+      await c.env.DB.prepare(`INSERT INTO compass_candidates (id,pick_id,canonical_url,title,creator,format,source_class,context_brief,features_json,evidence_json,score,uncertainty,is_verified,is_winner) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .bind(`cc_${crypto.randomUUID()}`, pickId, urlOf(entry.item), String(entry.item.title), entry.item.creator || null, entry.item.format || null, entry.item.source_class || null, entry.item.context_brief || null, JSON.stringify(entry.features), JSON.stringify(entry.item.evidence || entry.item.rationale || {}), entry.score, entry.uncertainty, entry.features._valid_url && entry.features._has_identity && !['invalid','unavailable'].includes(entry.sourceCheck.status) ? 1 : 0, entry === winner ? 1 : 0).run()
     }
     return c.json({ ok: true, status, strength: confident ? 'strong' : reviewableWeakPick ? 'weak_review' : 'withheld', strategy, reviewable_weak_pick: reviewableWeakPick, pick_id: pickId, recommendation_id: recommendationId, candidate_count: scored.length, eligible_count: eligible.length, active_queue_count: queuedCount, queue_cap: QUEUE_CAP, score: winner.score, confidence, margin, source_check: winner.sourceCheck.status, abstention_reason: confident ? null : abstentionReason, search_guidance: confident ? null : { expand_to: 8, needs: ['independent source angle', 'structured evidence', 'clear expected learning'] } })
   } catch (err) { return c.json(safeError('Failed to create Compass Pick')(err), 500) }
@@ -243,9 +256,9 @@ app.post('/pick/:id/candidates', async (c) => {
     if (!pick) return c.json({ error: 'expandable weak Compass Pick not found' }, 404)
     const body = await c.req.json<any>().catch(() => ({}))
     const additions = Array.isArray(body.candidates) ? body.candidates : []
-    const existing = (await c.env.DB.prepare(`SELECT canonical_url,title,creator,format,source_class,evidence_json FROM compass_candidates WHERE pick_id=? ORDER BY created_at`).bind(pick.id).all<any>()).results || []
+    const existing = (await c.env.DB.prepare(`SELECT canonical_url,title,creator,format,source_class,context_brief,evidence_json FROM compass_candidates WHERE pick_id=? ORDER BY created_at`).bind(pick.id).all<any>()).results || []
     if (!additions.length || existing.length + additions.length > 8) return c.json({ error: 'expansion must add at least one candidate and keep the total at eight or fewer' }, 400)
-    const candidates = existing.map((item: any) => ({ canonical_url: item.canonical_url, title: item.title, creator: item.creator, format: item.format, source_class: item.source_class, evidence: (() => { try { return JSON.parse(item.evidence_json || '{}') } catch { return {} } })() })).concat(additions)
+    const candidates = existing.map((item: any) => ({ canonical_url: item.canonical_url, title: item.title, creator: item.creator, format: item.format, source_class: item.source_class, context_brief: item.context_brief, evidence: (() => { try { return JSON.parse(item.evidence_json || '{}') } catch { return {} } })() })).concat(additions)
     await c.env.DB.prepare(`UPDATE compass_picks SET status='replaced',resolved_at=datetime('now'),updated_at=datetime('now') WHERE id=?`).bind(pick.id).run()
     const response = await app.fetch(new Request(new URL('/picks', c.req.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ request_id: `${pick.request_id}:expanded:${Date.now()}`, strategy: pick.strategy, candidates }) }), c.env)
     if (!response.ok) await c.env.DB.prepare(`UPDATE compass_picks SET status='abstained',resolved_at=NULL,updated_at=datetime('now') WHERE id=?`).bind(pick.id).run()
@@ -269,7 +282,7 @@ app.post('/pick/:id/start', async (c) => {
       recommendationId = capture.id
       const rationale = JSON.parse(pick.rationale_json || '{}')
       await c.env.DB.batch([
-        c.env.DB.prepare(`UPDATE recommendations SET creator=?,content_type=?,why_this=?,updated_at=datetime('now') WHERE id=?`).bind(winner.creator || null, winner.format || winner.source_class || null, rationale.why_this || null, recommendationId),
+        c.env.DB.prepare(`UPDATE recommendations SET creator=?,content_type=?,why_this=?,context_brief=?,updated_at=datetime('now') WHERE id=?`).bind(winner.creator || null, winner.format || winner.source_class || null, rationale.why_this || null, winner.context_brief || null, recommendationId),
         c.env.DB.prepare(`UPDATE recommendation_meta SET learning_state='compass_pick',source_metadata_json=json_patch(COALESCE(source_metadata_json,'{}'),?),updated_at=datetime('now') WHERE recommendation_id=?`).bind(JSON.stringify({ compass_pick_id: pick.id, strategy: pick.strategy, accepted_weak_pick: true }), recommendationId),
         c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,source_class,format,creator,predicted_score,predicted_confidence,predicted_components_json,outcome_status) VALUES (?,?,?,?,?,?,?,?, 'active') ON CONFLICT(recommendation_id) DO UPDATE SET predicted_score=excluded.predicted_score,predicted_confidence=excluded.predicted_confidence,predicted_components_json=excluded.predicted_components_json,evaluated_at=datetime('now')`).bind(`outcome_${recommendationId}`, recommendationId, winner.source_class || null, winner.format || null, winner.creator || null, Number(winner.score || 0) * 10, Number(pick.confidence || 0), winner.features_json || '{}'),
         c.env.DB.prepare(`UPDATE compass_picks SET recommendation_id=?,updated_at=datetime('now') WHERE id=?`).bind(recommendationId, pick.id),
@@ -329,7 +342,7 @@ app.post('/pick/:id/feedback', async (c) => {
         for (const [position, [sectionKey, label, content]] of [['reaction', 'Reaction', reflection], ['foundation', 'Foundation', ''], ['case_studies', 'Case Studies', ''], ['exploitation', 'Exploitation', ''], ['defense', 'Defense', '']].entries()) statements.push(c.env.DB.prepare(`INSERT INTO note_sections (id,note_id,section_key,label,content,direction,position) VALUES (?,?,?,?,?,'auto',?)`).bind(`${reflectionNoteId}_${sectionKey}`, reflectionNoteId, sectionKey, label, content, position))
       }
     }
-    if (feedbackJobId && pick.recommendation_id) statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'process_feedback',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(feedbackJobId, JSON.stringify({ recommendation_id: pick.recommendation_id, note_id: reflectionNoteId, reflection: reflection || null, rating: rating.score, outcome, reason_tags: Array.isArray(body.reason_tags) ? body.reason_tags.slice(0, 8) : [], review_required: true, source: 'compass_pick' }), `compass-feedback:${pick.id}`))
+    if (feedbackJobId && pick.recommendation_id) statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'process_feedback',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(feedbackJobId, JSON.stringify({ recommendation_id: pick.recommendation_id, note_id: reflectionNoteId, reflection: reflection || null, rating: rating.score, outcome, reason_tags: Array.isArray(body.reason_tags) ? body.reason_tags.slice(0, 8) : [], review_required: true, source: 'compass_pick', feedback_context_endpoint: '/feedback/context', feedback_context_scope: 'all_archived_feedback_profile_and_nodes' }), `compass-feedback:${pick.id}`))
     await c.env.DB.batch(statements)
     const reasonTags = Array.isArray(body.reason_tags) ? body.reason_tags.map((tag: any) => String(tag).trim().slice(0, 40)).filter(Boolean).slice(0, 8) : []
     const learning = await learnFromOutcome(c.env.DB, pick, rating.score, outcome, reasonTags)

@@ -138,10 +138,17 @@ app.post('/:id/triage', async (c) => {
 })
 
 app.post('/:id/visualise', async (c) => {
-  const item = await c.env.DB.prepare(`SELECT id,video_url,video_title,creator FROM recommendations WHERE id=? AND status='active'`).bind(c.req.param('id')).first<any>()
+  const item = await c.env.DB.prepare(`SELECT id,video_url,video_title,creator,content_type FROM recommendations WHERE id=? AND status='active'`).bind(c.req.param('id')).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
   if (!item.video_url) return c.json({ error: 'source link required' }, 400)
-  const jobId = `job_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
+  const idempotencyKey = `visualise-source:${item.id}`
+  const existing = await c.env.DB.prepare(`SELECT id,status FROM agent_jobs WHERE idempotency_key=?`).bind(idempotencyKey).first<{ id: string; status: string }>()
+  if (existing && existing.status !== 'failed') return c.json({ ok: true, status: existing.status, job_id: existing.id, recommendation_id: item.id }, 202)
+  const jobId = existing?.id || `job_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
+  if (existing?.status === 'failed') {
+    await c.env.DB.prepare(`UPDATE agent_jobs SET status='retry',attempts=0,error=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=?`).bind(existing.id).run()
+    return c.json({ ok: true, status: 'retry', job_id: existing.id, recommendation_id: item.id }, 202)
+  }
   await c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'visualise_source',?,?)`).bind(jobId, JSON.stringify({
     recommendation_id: item.id,
     source_url: item.video_url,
@@ -150,7 +157,13 @@ app.post('/:id/visualise', async (c) => {
     qa_required: true,
     quality_threshold: 8,
     expected_roles: ['html', 'pdf'],
-  }), `visualise-queue:${item.id}:${Date.now()}`).run()
+    ...(item.content_type === 'book' ? {
+      visual_mode: 'book_annotation_companion',
+      book_mode: true,
+      chapter_outputs: true,
+      chapter_artifact_contract: { metadata: ['chapter_key', 'chapter_title', 'chapter_number', 'pair_id', 'role'] },
+    } : {}),
+  }), idempotencyKey).run()
   return c.json({ ok: true, status: 'queued', job_id: jobId, recommendation_id: item.id }, 202)
 })
 

@@ -121,10 +121,11 @@ test('Compass uses learning balance as a bounded branch signal', () => {
   assert.equal(redirected._branch_state, 'at-risk')
 })
 
-test('the product exposes exactly seventeen distinct destinations', () => {
-  assert.equal(destinations.length, 17)
-  assert.equal(new Set(destinations.map((item) => item.key)).size, 17)
+test('the product exposes purposeful distinct destinations', () => {
+  assert.equal(destinations.length, 18)
+  assert.equal(new Set(destinations.map((item) => item.key)).size, 18)
   assert.ok(destinations.every((item) => item.title && item.purpose && item.kind))
+  assert.equal(destinationForPath('/curate/books')?.endpoint, '/recommendations/books')
 })
 
 test('unknown hashes never fall back to an unrelated view', () => {

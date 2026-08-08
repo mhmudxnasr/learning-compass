@@ -12,20 +12,27 @@ app.get('/heatmap', async (c) => {
   yearAgo.setFullYear(yearAgo.getFullYear() - 1)
   const startDate = yearAgo.toISOString().split('T')[0]
   try {
-    const result = await DB.prepare(
-      'SELECT date, count, topics FROM learning_log WHERE date >= ? ORDER BY date ASC'
-    ).bind(startDate).all()
+    const result = await DB.prepare(`
+      SELECT activity_date AS date, SUM(event_count) AS count,
+        GROUP_CONCAT(DISTINCT event_type) AS topics,
+        json_group_object(event_type, event_count) AS breakdown
+      FROM (
+        SELECT activity_date,event_type,COUNT(*) AS event_count
+        FROM learning_activity_ledger WHERE activity_date >= ?
+        GROUP BY activity_date,event_type
+      ) GROUP BY activity_date ORDER BY activity_date ASC
+    `).bind(startDate).all()
     const days: { date: string; count: number; topics: string }[] = []
     const rows = result.results || []
-    const map = new Map<string, { date: string; count: number; topics: string }>()
+    const map = new Map<string, { date: string; count: number; topics: string; breakdown?: string }>()
     for (const row of rows) {
       const r = row as any
-      map.set(r.date, { date: r.date, count: r.count, topics: r.topics || '' })
+      map.set(r.date, { date: r.date, count: r.count, topics: r.topics || '', breakdown: r.breakdown || '{}' })
     }
     for (let d = new Date(yearAgo); d <= new Date(); d.setDate(d.getDate() + 1)) {
       const key = d.toISOString().split('T')[0]
       if (map.has(key)) days.push(map.get(key)!)
-      else days.push({ date: key, count: 0, topics: '' })
+      else days.push({ date: key, count: 0, topics: '', breakdown: '{}' } as any)
     }
     return c.json({ days })
   } catch (err) {
@@ -65,9 +72,11 @@ app.get('/detail', async (c) => {
   const startDate = date || yearAgo.toISOString().split('T')[0]
   const endDate = date || new Date().toISOString().split('T')[0]
   try {
-    const result = await DB.prepare(
-      'SELECT date, count, topics FROM learning_log WHERE date >= ? AND date <= ? ORDER BY date DESC'
-    ).bind(startDate, endDate).all()
+    const result = await DB.prepare(`
+      SELECT activity_date AS date, COUNT(*) AS count, GROUP_CONCAT(DISTINCT event_type) AS topics
+      FROM learning_activity_ledger WHERE activity_date >= ? AND activity_date <= ?
+      GROUP BY activity_date ORDER BY activity_date DESC
+    `).bind(startDate, endDate).all()
     return c.json({ days: result.results || [] })
   } catch (err) {
     return c.json(safeError('Detail failed')(err), 500)

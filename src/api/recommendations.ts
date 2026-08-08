@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { Bindings, Recommendation, VALID_STATUS, VALID_RATINGS, isValidUrl, isNonEmptyStr, safeError, normalizeRating, deriveDedupKey, normalizeUrlForDedup } from '../lib'
 import { activateWaitingRun } from './discovery'
+import { normalizeQualityAssurance } from '../artifact-metadata'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -84,6 +85,110 @@ app.get('/list', async (c) => {
   }
 })
 
+app.get('/books', async (c) => {
+  const status = c.req.query('status')
+  const allowed = new Set(['active', 'consumed', 'rejected'])
+  if (status && !allowed.has(status)) return c.json({ error: 'invalid status' }, 400)
+  const query = `SELECT r.*,m.learning_state,m.priority_rank FROM recommendations r
+    LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
+    WHERE r.content_type='book' ${status ? 'AND r.status=?' : ''}
+    ORDER BY r.updated_at DESC, r.created_at DESC`
+  const rows = status ? await c.env.DB.prepare(query).bind(status).all<any>() : await c.env.DB.prepare(query).all<any>()
+  const books = rows.results || []
+  const ids = books.map((book: any) => book.id)
+  const artifacts = ids.length
+    ? await c.env.DB.prepare(`SELECT id,filename,media_type,metadata_json,created_at FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${ids.map(() => '?').join(',')}) ORDER BY created_at DESC`).bind(...ids).all<any>()
+    : { results: [] }
+  const jobs = ids.length
+    ? await c.env.DB.prepare(`SELECT id,job_type,status,error,payload_json,updated_at FROM agent_jobs WHERE job_type IN ('visualise_source','extract_notes') AND json_extract(payload_json,'$.recommendation_id') IN (${ids.map(() => '?').join(',')}) ORDER BY updated_at DESC`).bind(...ids).all<any>()
+    : { results: [] }
+  const visuals = new Map<string, any>()
+  for (const book of books) visuals.set(book.id, { status: 'not_started', html: null, pdf: null, extraction: null, chapters: [] })
+  for (const row of artifacts.results || []) {
+    let metadata: any = {}
+    try { metadata = JSON.parse(row.metadata_json || '{}') } catch {}
+    const visual = visuals.get(metadata.recommendation_id)
+    if (!visual || !['html', 'pdf'].includes(metadata.role)) continue
+    const chapterKey = metadata.chapter_key || 'book'
+    await c.env.DB.prepare(`INSERT OR IGNORE INTO book_visual_chapters (recommendation_id,chapter_key,chapter_title,position) VALUES (?,?,?,?)`).bind(metadata.recommendation_id, chapterKey, metadata.chapter_title || (chapterKey === 'book' ? 'Book companion' : `Chapter ${metadata.chapter_number || chapterKey}`), Number(metadata.chapter_number || 0)).run()
+    const chapter = visual.chapters?.find((item: any) => item.key === chapterKey) || (() => {
+      const item = { key: chapterKey, title: metadata.chapter_title || (chapterKey === 'book' ? 'Book companion' : `Chapter ${metadata.chapter_number || chapterKey}`), number: metadata.chapter_number || null, html: null, pdf: null, completed: false }
+      visual.chapters = [...(visual.chapters || []), item]
+      return item
+    })()
+    chapter[metadata.role] = { id: row.id, filename: row.filename, quality_assurance: normalizeQualityAssurance(metadata), created_at: row.created_at }
+  }
+  const chapterIds = ids.filter(Boolean)
+  if (chapterIds.length) {
+    const chapters = await c.env.DB.prepare(`SELECT recommendation_id,chapter_key,chapter_title,position,completed_at FROM book_visual_chapters WHERE recommendation_id IN (${chapterIds.map(() => '?').join(',')}) ORDER BY position,chapter_key`).bind(...chapterIds).all<any>()
+    for (const row of chapters.results || []) {
+      const visual = visuals.get(row.recommendation_id)
+      if (!visual) continue
+      let chapter = visual.chapters?.find((item: any) => item.key === row.chapter_key)
+      if (!chapter) {
+        chapter = { key: row.chapter_key, title: row.chapter_title, number: null, html: null, pdf: null, completed: false }
+        visual.chapters = [...(visual.chapters || []), chapter]
+      }
+      chapter.title = row.chapter_title; chapter.position = row.position; chapter.completed = Boolean(row.completed_at); chapter.completed_at = row.completed_at
+    }
+  }
+  for (const row of jobs.results || []) {
+    let payload: any = {}
+    try { payload = JSON.parse(row.payload_json || '{}') } catch {}
+    const visual = visuals.get(payload.recommendation_id)
+    if (!visual) continue
+    if (row.job_type === 'visualise_source' && visual.status === 'not_started') visual.status = row.status
+    if (row.job_type === 'extract_notes') {
+      const chapter = visual.chapters?.find((item: any) => item.html?.id === payload.artifact_id)
+      if (chapter) chapter.extraction = { id: row.id, status: row.status, error: row.error || null, updated_at: row.updated_at }
+    }
+  }
+  return c.json({ books: books.map((book: any) => ({ ...book, visual: visuals.get(book.id) })) })
+})
+
+app.post('/books/:id/chapters/:chapterKey/complete', async (c) => {
+  const recommendationId = c.req.param('id')
+  const chapterKey = c.req.param('chapterKey')
+  const exists = await c.env.DB.prepare(`SELECT 1 FROM recommendations WHERE id=? AND content_type='book'`).bind(recommendationId).first()
+  if (!exists) return c.json({ error: 'book not found' }, 404)
+  const chapter = await c.env.DB.prepare(`SELECT chapter_key FROM book_visual_chapters WHERE recommendation_id=? AND chapter_key=?`).bind(recommendationId, chapterKey).first()
+  if (!chapter) return c.json({ error: 'chapter not found' }, 404)
+  const body: { completed?: boolean } = await c.req.json<{ completed?: boolean }>().catch(() => ({} as { completed?: boolean }))
+  const completed = body.completed !== false
+  await c.env.DB.prepare(`UPDATE book_visual_chapters SET completed_at=?,updated_at=datetime('now') WHERE recommendation_id=? AND chapter_key=?`).bind(completed ? new Date().toISOString() : null, recommendationId, chapterKey).run()
+  return c.json({ ok: true, completed })
+})
+
+app.post('/books', async (c) => {
+  let body: { title?: string; author?: string; isbn?: string; url?: string; why_this?: string }
+  try { body = await c.req.json() } catch { return c.json({ error: 'Invalid JSON' }, 400) }
+  const title = String(body.title || '').trim()
+  const author = String(body.author || '').trim()
+  const isbn = String(body.isbn || '').replace(/[-\s]/g, '')
+  if (!isNonEmptyStr(title, 500)) return c.json({ error: 'title required' }, 400)
+  if (!isNonEmptyStr(author, 300)) return c.json({ error: 'author required' }, 400)
+  if (isbn && !/^(?:\d{9}[\dX]|\d{13})$/i.test(isbn)) return c.json({ error: 'isbn must be 10 or 13 characters' }, 400)
+  const url = body.url?.trim() || `https://books.google.com/books?q=${encodeURIComponent(isbn || `${title} ${author}`)}`
+  if (!isValidUrl(url)) return c.json({ error: 'invalid url' }, 400)
+  const slug = `${title}-${author}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 100)
+  const dedupKey = `book_${isbn || slug}`
+  const id = `book_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+  try {
+    await c.env.DB.prepare(`INSERT INTO recommendations
+      (id,video_title,creator,content_type,video_url,why_this,verified,status,user_rating,dedup_key,updated_at)
+      VALUES (?,?,?,?,?,?,datetime('now'),'active','unset',?,datetime('now'))
+      ON CONFLICT(dedup_key) DO UPDATE SET video_title=excluded.video_title,creator=excluded.creator,video_url=excluded.video_url,why_this=excluded.why_this,updated_at=datetime('now')`)
+      .bind(id, title, author, 'book', url, body.why_this?.trim() || null, dedupKey).run()
+    const item = await c.env.DB.prepare('SELECT id FROM recommendations WHERE dedup_key=?').bind(dedupKey).first<{ id: string }>()
+    if (!item) return c.json({ error: 'book could not be saved' }, 500)
+    await c.env.DB.prepare(`INSERT OR IGNORE INTO recommendation_meta
+      (recommendation_id,learning_state,source_metadata_json,updated_at) VALUES (?,'inbox',?,datetime('now'))`)
+      .bind(item.id, JSON.stringify({ isbn: isbn || null, source: 'bookshelf' })).run()
+    const saved = await c.env.DB.prepare(`SELECT r.*,m.learning_state FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?`).bind(item.id).first<any>()
+    return c.json({ ok: true, book: saved, duplicate: item.id !== id }, item.id === id ? 201 : 200)
+  } catch (error) { return c.json(safeError('Book save failed')(error), 500) }
+})
+
 app.post('/push', async (c) => {
   const { DB } = c.env
   let body: Partial<Recommendation> | Partial<Recommendation>[]
@@ -116,15 +221,16 @@ app.post('/push', async (c) => {
       stmts.push(
         DB.prepare(
           `INSERT INTO recommendations (
-            id, video_title, creator, content_type, video_url, why_this, verified, status,
+            id, video_title, creator, content_type, video_url, why_this, context_brief, verified, status,
             user_rating, user_score, user_review, dedup_key, synergy_bundle_id, consumed_date, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
           ON CONFLICT(dedup_key) DO UPDATE SET
             video_title = excluded.video_title,
             creator = excluded.creator,
             content_type = excluded.content_type,
             video_url = excluded.video_url,
             why_this = excluded.why_this,
+            context_brief = excluded.context_brief,
             verified = excluded.verified,
             status = excluded.status,
             user_rating = excluded.user_rating,
@@ -140,6 +246,7 @@ app.post('/push', async (c) => {
           item.content_type || null,
           cleanUrl,
           item.why_this || null,
+          item.context_brief || null,
           item.verified || today,
           item.status || 'active',
           norm.rating,

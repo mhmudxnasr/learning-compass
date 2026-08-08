@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { adaptAndNormalizeWeights, computeDecayedAffinity } from '../domain'
 import { Bindings, safeError } from '../lib'
 import { backfillHermesIntelligence, createHermesEvaluatorProposals, hermesWeeklyReport } from '../services/hermes-intelligence'
+import { canonicalTasteIdentity, tasteEvidence } from './taste'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const all = async (statement: D1PreparedStatement) => (await statement.all<any>()).results || []
@@ -37,13 +38,40 @@ app.get('/taste/dna', async (c) => {
     all(c.env.DB.prepare(`SELECT user_rating,COUNT(*) count FROM recommendations WHERE status='consumed' GROUP BY user_rating`)),
     all(c.env.DB.prepare(`SELECT content_type,COUNT(*) count FROM recommendations GROUP BY content_type`)),
   ])
-  const activeVectors = vectors.filter((item: any) => Number(item.affinity_score) !== 0)
-  return c.json({ vectors: vectors.map((item: any) => ({ ...item, ...computeDecayedAffinity(Number(item.affinity_score || 0), item.last_consumed_at) })), ratings, categories, interest: activeVectors.length, diversity: categories.length, momentum: activeVectors.filter((item: any) => item.last_consumed_at).length })
+  const merged = new Map<string, any>()
+  for (const item of vectors) {
+    const topic = canonicalTasteIdentity(item.topic)
+    const current = merged.get(topic) || { topic, affinity_score: 0, consumption_count: 0, last_consumed_at: null }
+    current.affinity_score += Number(item.affinity_score || 0)
+    current.consumption_count += Number(item.consumption_count || 0)
+    if (!current.last_consumed_at || String(item.last_consumed_at || '') > current.last_consumed_at) current.last_consumed_at = item.last_consumed_at
+    merged.set(topic, current)
+  }
+  const normalized = [...merged.values()].map((item: any) => ({ ...item, ...computeDecayedAffinity(Number(item.affinity_score || 0), item.last_consumed_at), ...tasteEvidence(item.consumption_count, item.last_consumed_at) }))
+  const activeVectors = normalized.filter((item: any) => Number(item.affinity_score) !== 0 && item.evidence_status === 'usable')
+  return c.json({ vectors: normalized, ratings, categories, interest: activeVectors.length, diversity: categories.length, momentum: activeVectors.filter((item: any) => item.last_consumed_at).length })
 })
 
 app.get('/analytics/creator-trust', async (c) => {
-  const creators = await all(c.env.DB.prepare(`SELECT creator,COUNT(*) total,ROUND(AVG(COALESCE(user_score,CASE user_rating WHEN 'love' THEN 10 WHEN 'like' THEN 8 WHEN 'meh' THEN 5 WHEN 'dislike' THEN 2 END)),2) average_score,SUM(CASE WHEN user_rating='love' THEN 1 ELSE 0 END) loves FROM recommendations WHERE creator IS NOT NULL AND creator!='' AND status='consumed' GROUP BY creator ORDER BY average_score DESC,total DESC`))
-  return c.json({ creators: creators.map((row: any) => ({ ...row, trust_index: Math.round((Number(row.average_score || 0) * .7 + Math.min(Number(row.total), 10) * .3) * 10) / 10 })) })
+  const creators = await all(c.env.DB.prepare(`SELECT creator,user_score,user_rating,consumed_date,updated_at FROM recommendations WHERE creator IS NOT NULL AND creator!='' AND status='consumed' AND (user_score IS NOT NULL OR user_rating IN ('love','like','meh','dislike'))`))
+  const grouped = new Map<string, any>()
+  for (const row of creators) {
+    const creator = canonicalTasteIdentity(row.creator, '')
+    if (!creator) continue
+    const score = row.user_score == null ? ({ love: 10, like: 8, meh: 5, dislike: 2 } as Record<string, number>)[row.user_rating] : Number(row.user_score)
+    if (!Number.isFinite(score)) continue
+    const current = grouped.get(creator) || { creator, total: 0, sum: 0, loves: 0, last_feedback_at: null }
+    current.total += 1; current.sum += score; current.loves += row.user_rating === 'love' ? 1 : 0
+    if (!current.last_feedback_at || String(row.consumed_date || row.updated_at || '') > current.last_feedback_at) current.last_feedback_at = row.consumed_date || row.updated_at
+    grouped.set(creator, current)
+  }
+  const result = [...grouped.values()].map((row) => {
+    const average_score = row.sum / row.total
+    const shrunk_score = (row.sum + 15) / (row.total + 3)
+    const evidence = tasteEvidence(row.total, row.last_feedback_at)
+    return { creator: row.creator, total: row.total, loves: row.loves, average_score: Math.round(average_score * 100) / 100, shrunk_score: Math.round(shrunk_score * 100) / 100, trust_index: Math.round(shrunk_score * evidence.confidence * 10) / 10, last_feedback_at: row.last_feedback_at, ...evidence }
+  }).sort((a, b) => b.trust_index - a.trust_index || b.total - a.total)
+  return c.json({ creators: result })
 })
 
 app.get('/analytics/taste-drift', async (c) => {
@@ -68,6 +96,9 @@ app.get('/analytics/forecast', async (c) => {
 app.get('/analytics/hermes', async (c) => {
   const { DB } = c.env
   try {
+    const calibrationRows = await allOr(DB.prepare(`SELECT o.predicted_score,o.actual_score,o.format,o.creator,p.strategy
+      FROM recommendation_outcomes o LEFT JOIN compass_picks p ON p.recommendation_id=o.recommendation_id
+      WHERE o.actual_score IS NOT NULL`))
     const [jobCounts, stale, retryQueue, deadLetters, quality, qualityByFormat, memory, alerts, failures, weights, proposals, compassPriors, compassWeights] = await Promise.all([
       DB.prepare(`SELECT status,COUNT(*) count FROM agent_jobs GROUP BY status`).all<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM agent_jobs WHERE status='running' AND lease_expires_at < datetime('now')`).first<any>(),
@@ -85,6 +116,26 @@ app.get('/analytics/hermes', async (c) => {
     ])
     const statuses: Record<string, number> = {}
     for (const row of jobCounts.results || []) statuses[row.status] = Number(row.count || 0)
+    const summarizeCalibration = (key: 'strategy' | 'format' | 'creator') => {
+      const groups = new Map<string, { rated: number; paired: number; error: number }>()
+      for (const row of calibrationRows) {
+        const value = key === 'creator' ? canonicalTasteIdentity(row[key], 'unknown') : String(row[key] || 'unknown').toLowerCase()
+        const group = groups.get(value) || { rated: 0, paired: 0, error: 0 }
+        group.rated += 1
+        if (row.predicted_score != null) { group.paired += 1; group.error += Math.abs(Number(row.predicted_score) - Number(row.actual_score)) }
+        groups.set(value, group)
+      }
+      return [...groups.entries()].map(([label, group]) => ({ [key]: label, rated_outcomes: group.rated, predicted_and_rated_outcomes: group.paired, coverage_percent: group.rated ? Math.round(group.paired / group.rated * 100) : 0, mae: group.paired ? Math.round(group.error / group.paired * 100) / 100 : null, evidence_status: group.paired >= 5 ? 'usable' : 'insufficient' }))
+    }
+    const paired = calibrationRows.filter((row: any) => row.predicted_score != null)
+    const calibration = {
+      rated_outcomes: calibrationRows.length,
+      predicted_and_rated_outcomes: paired.length,
+      coverage_percent: calibrationRows.length ? Math.round(paired.length / calibrationRows.length * 100) : 0,
+      mae: paired.length ? Math.round(paired.reduce((sum: number, row: any) => sum + Math.abs(Number(row.predicted_score) - Number(row.actual_score)), 0) / paired.length * 100) / 100 : null,
+      evidence_status: paired.length >= 5 ? 'usable' : 'insufficient',
+      by_strategy: summarizeCalibration('strategy'), by_format: summarizeCalibration('format'), by_creator: summarizeCalibration('creator'),
+    }
     return c.json({
       checked_at: new Date().toISOString(),
       jobs: { statuses, stale_running: Number(stale?.count || 0), delayed_retries: Number(retryQueue?.count || 0), dead_letters: Number(deadLetters?.count || 0), recent_failures: failures.results || [] },
@@ -92,7 +143,7 @@ app.get('/analytics/hermes', async (c) => {
       memory: { entries: memory.results || [], active: (memory.results || []).filter((row: any) => row.status === 'active').reduce((sum: number, row: any) => sum + Number(row.count || 0), 0) },
       alerts: alerts.results || [],
       engine_weights: weights.results || [],
-      compass_learning: { strategies: compassPriors.results || [], feature_weights: compassWeights.results || [] },
+      compass_learning: { strategies: compassPriors.results || [], feature_weights: compassWeights.results || [], calibration },
       pending_proposals: Number(proposals?.count || 0),
     })
   } catch (error) {

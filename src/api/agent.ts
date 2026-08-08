@@ -36,6 +36,7 @@ const CAPABILITIES = [
   ['POST', '/compass/pick/:id/start', 'Explicitly start any ready Compass Pick through the normal Queue/session workflow; the five-item cap is enforced.'],
   ['POST', '/compass/pick/:id/feedback', 'Record explicit Compass Pick outcome, rating, reason tags, and reflection.'],
   ['GET', '/recommendations/list', 'Search and filter recommendation history.'],
+  ['GET', '/feedback/context', 'Read all archived feedback with the current profile and knowledge nodes for evidence-based learning.'],
   ['POST', '/recommendations/push', 'Create or update a recommendation with deduplication.'],
   ['POST', '/recommendations/action', 'Change status, rating, review, consumed date, or register an item-specific NotebookLM URL.'],
   ['POST', '/recommendations/map', 'Attach one or more completed sources to an existing knowledge-map branch.'],

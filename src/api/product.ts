@@ -4,13 +4,44 @@ import { defaultSettings, loadSettings } from '../services/settings'
 import { createInboxCapture } from '../services/capture'
 import { isSupportedProposalType, mergeQualityRules, normalizeProposalType, serializeProfileValue } from '../services/profile-proposals'
 import { activateWaitingRun } from './discovery'
+import { loadFeedbackContext } from '../services/feedback-context'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const id = (prefix: string) => `${prefix}_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
 
+type StructuredFeedback = {
+  completion_state: 'completed' | 'in_progress' | 'stopped'
+  reason_tags: string[]
+  expected: string | null
+  actual: string | null
+  effort: 'light' | 'moderate' | 'deep' | null
+  length_minutes: number | null
+}
+
+function structuredFeedback(body: any, fallbackComplete = false): StructuredFeedback {
+  const completion_state = ['completed', 'in_progress', 'stopped'].includes(body.completion_state)
+    ? body.completion_state
+    : fallbackComplete || body.complete === true ? 'completed' : 'in_progress'
+  const reason_tags: string[] = Array.isArray(body.reason_tags)
+    ? [...new Set<string>(body.reason_tags.map((tag: unknown) => String(tag).trim().toLowerCase()).filter((tag: string) => /^[a-z0-9][a-z0-9 _-]{0,39}$/.test(tag)))].slice(0, 8)
+    : []
+  const text = (value: unknown) => { const result = String(value || '').trim().slice(0, 2000); return result || null }
+  const effort = ['light', 'moderate', 'deep'].includes(body.effort) ? body.effort : null
+  const rawLength = Number(body.length_minutes)
+  return { completion_state, reason_tags, expected: text(body.expected), actual: text(body.actual), effort, length_minutes: Number.isFinite(rawLength) && rawLength >= 0 && rawLength <= 100000 ? Math.round(rawLength) : null }
+}
+
+function feedbackMetadata(feedback: StructuredFeedback, score: number | null) {
+  return { learning_feedback: { ...feedback, score, recorded_at: new Date().toISOString() } }
+}
+
 app.get('/sessions', async (c) => {
   const rows = await c.env.DB.prepare(`SELECT s.*, r.video_title, r.creator, r.video_url FROM learning_sessions s LEFT JOIN recommendations r ON r.id=s.recommendation_id ORDER BY s.started_at DESC LIMIT 100`).all()
   return c.json({ sessions: rows.results || [] })
+})
+app.get('/feedback/context', async (c) => {
+  try { return c.json(await loadFeedbackContext(c.env.DB)) }
+  catch (error) { return c.json(safeError('Feedback context failed')(error), 500) }
 })
 app.post('/sessions/start', async (c) => {
   const body = await c.req.json<{ recommendation_id: string; intent?: string }>()
@@ -30,12 +61,13 @@ app.post('/sessions/start', async (c) => {
   return c.json({ ok: true, session_id: sessionId }, 201)
 })
 app.post('/feedback/record', async (c) => {
-  type FeedbackBody = { recommendation_id?: string; source_url?: string; title?: string; feedback?: string; rating?: number | string; complete?: boolean }
+  type FeedbackBody = { recommendation_id?: string; source_url?: string; title?: string; feedback?: string; rating?: number | string; score?: number | string; complete?: boolean; completion_state?: StructuredFeedback['completion_state']; reason_tags?: string[]; expected?: string; actual?: string; effort?: StructuredFeedback['effort']; length_minutes?: number | string }
   const body: FeedbackBody = await c.req.json<FeedbackBody>().catch(() => ({} as FeedbackBody))
   const feedback = String(body.feedback || '').trim().slice(0, 10000)
   if (!feedback) return c.json({ error: 'feedback required' }, 400)
-  const rating = normalizeRating(body.rating)
-  const complete = body.complete === true || rating.score !== null
+  const rating = normalizeRating(body.score ?? body.rating)
+  const structured = structuredFeedback(body, body.complete === true || rating.score !== null)
+  const complete = structured.completion_state === 'completed'
   let recommendation = body.recommendation_id
     ? await c.env.DB.prepare(`SELECT * FROM recommendations WHERE id=?`).bind(body.recommendation_id).first<any>()
     : null
@@ -66,11 +98,11 @@ app.post('/feedback/record', async (c) => {
     statements.push(c.env.DB.prepare(`UPDATE notes SET revision=?,updated_at=datetime('now') WHERE id=?`).bind(revision, reflectionNoteId))
     statements.push(c.env.DB.prepare(`UPDATE note_sections SET content=?,updated_at=datetime('now') WHERE note_id=? AND section_key='reaction'`).bind(feedback, reflectionNoteId))
   }
-  statements.push(c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,progress_percent,last_opened_at,updated_at) VALUES (?,?,?,datetime('now'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET learning_state=excluded.learning_state,progress_percent=excluded.progress_percent,last_opened_at=datetime('now'),updated_at=datetime('now')`).bind(recommendation.id, complete ? 'completed' : 'in_progress', complete ? 100 : 50))
+  statements.push(c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,progress_percent,source_metadata_json,last_opened_at,updated_at) VALUES (?,?,?,?,datetime('now'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET learning_state=excluded.learning_state,progress_percent=excluded.progress_percent,source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json),last_opened_at=datetime('now'),updated_at=datetime('now')`).bind(recommendation.id, complete ? 'completed' : 'in_progress', complete ? 100 : 50, JSON.stringify(feedbackMetadata(structured, rating.score))))
   statements.push(c.env.DB.prepare(`UPDATE recommendations SET status=CASE WHEN ? THEN 'consumed' ELSE status END,consumed_date=CASE WHEN ? THEN COALESCE(consumed_date,date('now')) ELSE consumed_date END,user_rating=COALESCE(?,user_rating),user_score=COALESCE(?,user_score),user_review=?,updated_at=datetime('now') WHERE id=?`).bind(complete ? 1 : 0, complete ? 1 : 0, rating.rating, rating.score, feedback, recommendation.id))
   if (complete) statements.push(c.env.DB.prepare(`UPDATE compass_picks SET status='resolved',resolved_at=COALESCE(resolved_at,datetime('now')),updated_at=datetime('now') WHERE recommendation_id=? AND status IN ('ready','started')`).bind(recommendation.id))
   if (complete) statements.push(c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,actual_score,outcome_status,consumed_at,evaluated_at) VALUES (?,?,?,?,?,'consumed',date('now'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET actual_score=COALESCE(excluded.actual_score,recommendation_outcomes.actual_score),outcome_status='consumed',consumed_at=COALESCE(recommendation_outcomes.consumed_at,excluded.consumed_at),evaluated_at=datetime('now')`).bind(`outcome_${recommendation.id}`, recommendation.id, recommendation.creator || null, recommendation.content_type || null, rating.score))
-  statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'process_feedback',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(feedbackJobId, JSON.stringify({ recommendation_id: recommendation.id, session_id: sessionId, note_id: reflectionNoteId, reflection: feedback, rating: rating.score, review_required: true }), `feedback:${reflectionNoteId}:${revision}`))
+  statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'process_feedback',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(feedbackJobId, JSON.stringify({ recommendation_id: recommendation.id, session_id: sessionId, note_id: reflectionNoteId, reflection: feedback, rating: rating.score, ...structured, review_required: true, feedback_context_endpoint: '/feedback/context', feedback_context_scope: 'all_archived_feedback_profile_and_nodes' }), `feedback:${reflectionNoteId}:${revision}`))
   if (extractionJobId) statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'extract_notes',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(extractionJobId, JSON.stringify({ recommendation_id: recommendation.id, session_id: sessionId, reflection_note_id: reflectionNoteId, reflection: feedback, rating: rating.score, source_url: recommendation.video_url || body.source_url || null }), `extract:${reflectionNoteId}:${revision}`))
   await c.env.DB.batch(statements)
   return c.json({
@@ -78,7 +110,8 @@ app.post('/feedback/record', async (c) => {
     source: { id: recommendation.id, title: recommendation.video_title, url: recommendation.video_url },
     preserved_feedback: feedback,
     rating: rating.score,
-    completion_state: complete ? 'completed' : 'in_progress',
+    completion_state: structured.completion_state,
+    structured_feedback: { ...structured, score: rating.score },
     feedback_job: feedbackJobId,
     extraction_job: extractionJobId,
     extraction_skip_reason: extractionJobId ? null : complete ? 'rating_below_7' : 'source_not_completed',
@@ -86,17 +119,19 @@ app.post('/feedback/record', async (c) => {
   })
 })
 app.post('/sessions/:id/return', async (c) => {
-  const body: { reflection?: string; complete?: boolean; rating?: number | string; auto_enqueue?: boolean } = await c.req.json<{ reflection?: string; complete?: boolean; rating?: number | string; auto_enqueue?: boolean }>().catch(() => ({}))
+  const body: { reflection?: string; complete?: boolean; rating?: number | string; score?: number | string; auto_enqueue?: boolean; completion_state?: StructuredFeedback['completion_state']; reason_tags?: string[]; expected?: string; actual?: string; effort?: StructuredFeedback['effort']; length_minutes?: number | string } = await c.req.json<any>().catch(() => ({}))
   const session = await c.env.DB.prepare(`SELECT s.*, r.video_title, r.video_url, r.creator, r.content_type FROM learning_sessions s LEFT JOIN recommendations r ON r.id=s.recommendation_id WHERE s.id=?`).bind(c.req.param('id')).first<any>()
   if (!session) return c.json({ error: 'session not found' }, 404)
   const reflection = String(body.reflection || '').trim().slice(0, 10000)
-  const rating = normalizeRating(body.rating)
+  const rating = normalizeRating(body.score ?? body.rating)
+  const structured = structuredFeedback(body, body.complete === true)
+  const complete = structured.completion_state === 'completed'
   let reflectionNoteId: string | null = null
   let reflectionNoteCreated = false
   const wasCompleted = session.status === 'completed'
   const statements = [
-    c.env.DB.prepare(`UPDATE learning_sessions SET returned_at=datetime('now'),reflection=?,status=?,completed_at=CASE WHEN ? THEN datetime('now') ELSE completed_at END WHERE id=?`).bind(reflection || null, body.complete ? 'completed' : 'returned', body.complete ? 1 : 0, session.id),
-    c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,progress_percent,last_opened_at,updated_at) VALUES (?,?,?,datetime('now'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET learning_state=excluded.learning_state,progress_percent=excluded.progress_percent,last_opened_at=datetime('now'),updated_at=datetime('now')`).bind(session.recommendation_id, body.complete ? 'completed' : 'in_progress', body.complete ? 100 : 50),
+    c.env.DB.prepare(`UPDATE learning_sessions SET returned_at=datetime('now'),reflection=?,status=?,completed_at=CASE WHEN ? THEN datetime('now') ELSE completed_at END WHERE id=?`).bind(reflection || null, complete ? 'completed' : 'returned', complete ? 1 : 0, session.id),
+    c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,progress_percent,source_metadata_json,last_opened_at,updated_at) VALUES (?,?,?,?,datetime('now'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET learning_state=excluded.learning_state,progress_percent=excluded.progress_percent,source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json),last_opened_at=datetime('now'),updated_at=datetime('now')`).bind(session.recommendation_id, complete ? 'completed' : 'in_progress', complete ? 100 : 50, JSON.stringify(feedbackMetadata(structured, rating.score))),
   ]
   if (reflection && session.recommendation_id) {
     const existingNote = await c.env.DB.prepare(`SELECT id,revision FROM notes WHERE recommendation_id=? AND kind='reflection' ORDER BY updated_at DESC LIMIT 1`).bind(session.recommendation_id).first<{ id: string; revision: number }>()
@@ -119,18 +154,18 @@ app.post('/sessions/:id/return', async (c) => {
       statements.push(c.env.DB.prepare(`UPDATE notes SET revision=revision+1,updated_at=datetime('now') WHERE id=?`).bind(reflectionNoteId))
     }
   }
-  if (body.complete) {
+  if (complete) {
     statements.push(c.env.DB.prepare(`UPDATE recommendations SET status='consumed',consumed_date=date('now'),user_rating=?,user_score=?,user_review=?,updated_at=datetime('now') WHERE id=?`).bind(rating.rating, rating.score, reflection || null, session.recommendation_id))
     statements.push(c.env.DB.prepare(`UPDATE compass_picks SET status='resolved',resolved_at=COALESCE(resolved_at,datetime('now')),updated_at=datetime('now') WHERE recommendation_id=? AND status IN ('ready','started')`).bind(session.recommendation_id))
   }
-  if (body.complete && !wasCompleted && rating.score !== null) statements.push(c.env.DB.prepare(`INSERT INTO rating_events (recommendation_id,rating,score,created_at) VALUES (?,?,?,datetime('now'))`).bind(session.recommendation_id, rating.rating, rating.score))
-  if (body.complete) statements.push(c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,actual_score,outcome_status,consumed_at,evaluated_at) VALUES (?,?,?,?,?,'consumed',date('now'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET actual_score=COALESCE(excluded.actual_score,recommendation_outcomes.actual_score),outcome_status='consumed',consumed_at=excluded.consumed_at,evaluated_at=datetime('now')`).bind(`outcome_${session.recommendation_id}`, session.recommendation_id, session.creator || null, session.content_type || null, rating.score))
-  if (body.complete) {
+  if (complete && !wasCompleted && rating.score !== null) statements.push(c.env.DB.prepare(`INSERT INTO rating_events (recommendation_id,rating,score,created_at) VALUES (?,?,?,datetime('now'))`).bind(session.recommendation_id, rating.rating, rating.score))
+  if (complete) statements.push(c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,actual_score,outcome_status,consumed_at,evaluated_at) VALUES (?,?,?,?,?,'consumed',date('now'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET actual_score=COALESCE(excluded.actual_score,recommendation_outcomes.actual_score),outcome_status='consumed',consumed_at=excluded.consumed_at,evaluated_at=datetime('now')`).bind(`outcome_${session.recommendation_id}`, session.recommendation_id, session.creator || null, session.content_type || null, rating.score))
+  if (complete) {
     const isFeedItem = session.recommendation_id ? await c.env.DB.prepare(`SELECT 1 FROM feed_entries WHERE recommendation_id=?`).bind(session.recommendation_id).first() : null
     const settings = await loadSettings(c.env.DB)
     const allowJobs = !isFeedItem && (body.auto_enqueue === true || settings.srs_drafts.auto_extract === true)
     if (allowJobs) {
-      statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'process_feedback',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(id('job'), JSON.stringify({ recommendation_id: session.recommendation_id, session_id: session.id, note_id: reflectionNoteId, reflection, rating: rating.score, review_required: true }), `session-feedback:${session.id}`))
+      statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'process_feedback',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(id('job'), JSON.stringify({ recommendation_id: session.recommendation_id, session_id: session.id, note_id: reflectionNoteId, reflection, rating: rating.score, ...structured, review_required: true, feedback_context_endpoint: '/feedback/context', feedback_context_scope: 'all_archived_feedback_profile_and_nodes' }), `session-feedback:${session.id}`))
       if (Number(rating.score || 0) >= 7) {
         statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'extract_notes',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(id('job'), JSON.stringify({
           recommendation_id: session.recommendation_id,
@@ -145,13 +180,13 @@ app.post('/sessions/:id/return', async (c) => {
     }
   } else if (reflection && reflectionNoteId) {
     const revision = Number((await c.env.DB.prepare(`SELECT revision FROM notes WHERE id=?`).bind(reflectionNoteId).first<{ revision: number }>())?.revision || 0) + (reflectionNoteCreated ? 0 : 1)
-    statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'process_feedback',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(id('job'), JSON.stringify({ recommendation_id: session.recommendation_id, session_id: session.id, note_id: reflectionNoteId, reflection, rating: rating.score, review_required: true, source: 'in_progress_reflection' }), `feedback:${reflectionNoteId}:${Math.max(1, revision)}`))
+    statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'process_feedback',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(id('job'), JSON.stringify({ recommendation_id: session.recommendation_id, session_id: session.id, note_id: reflectionNoteId, reflection, rating: rating.score, ...structured, review_required: true, source: 'in_progress_reflection', feedback_context_endpoint: '/feedback/context', feedback_context_scope: 'all_archived_feedback_profile_and_nodes' }), `feedback:${reflectionNoteId}:${Math.max(1, revision)}`))
   }
   await c.env.DB.batch(statements)
-  if (body.complete) {
+  if (complete) {
     try { await activateWaitingRun(c.env.DB) } catch {}
   }
-  return c.json({ ok: true, status: body.complete ? 'completed' : 'returned', reflection_note_id: reflectionNoteId, reflection_note_created: reflectionNoteCreated, srs_eligible: Number(rating.score || 0) >= 7 })
+  return c.json({ ok: true, status: complete ? 'completed' : 'returned', completion_state: structured.completion_state, structured_feedback: { ...structured, score: rating.score }, reflection_note_id: reflectionNoteId, reflection_note_created: reflectionNoteCreated, srs_eligible: complete && Number(rating.score || 0) >= 7 })
 })
 app.delete('/sessions/:id', async (c) => {
   const result = await c.env.DB.prepare("DELETE FROM learning_sessions WHERE id=? AND status NOT IN ('completed')").bind(c.req.param('id')).run()
@@ -238,7 +273,7 @@ app.post('/notes/:id/process', async (c) => {
   }
   await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE notes SET status='processing',updated_at=datetime('now') WHERE id=?`).bind(note.id),
-    c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'process_feedback',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(id('job'), JSON.stringify({ note_id: note.id, recommendation_id: note.recommendation_id, reflection: true, full_profile_update: true, update_all_taste_elements: true, review_required: true, source: 'reflection_button' }), `feedback:${note.id}:${note.revision}`),
+    c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'process_feedback',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(id('job'), JSON.stringify({ note_id: note.id, recommendation_id: note.recommendation_id, reflection: true, full_profile_update: true, update_all_taste_elements: true, review_required: true, source: 'reflection_button', feedback_context_endpoint: '/feedback/context', feedback_context_scope: 'all_archived_feedback_profile_and_nodes' }), `feedback:${note.id}:${note.revision}`),
   ])
   return c.json({ ok: true, status: 'processing' }, 202)
 })
@@ -302,8 +337,8 @@ app.post('/feedback/proposals/:id/approve', async (c) => {
   let proposed: any = null
   try { proposed = JSON.parse(proposal.proposed_json) } catch { proposed = proposal.proposed_json }
   const proposedText = typeof proposed === 'string' ? proposed : JSON.stringify(proposed)
-  const profile = changeType === 'quality_rule'
-    ? await c.env.DB.prepare(`SELECT quality_rules_json FROM profile WHERE id=1`).first<any>()
+  const profile = changeType === 'quality_rule' || changeType === 'core_filter'
+    ? await c.env.DB.prepare(`SELECT quality_rules_json, core_filter FROM profile WHERE id=1`).first<any>()
     : null
 
   const statements: D1PreparedStatement[] = [
@@ -316,6 +351,10 @@ app.post('/feedback/proposals/:id/approve', async (c) => {
     statements.push(c.env.DB.prepare(`UPDATE profile SET quality_rules_json = ?, last_synced_at = datetime('now') WHERE id = 1`).bind(mergeQualityRules(profile?.quality_rules_json, proposed)))
   } else if (changeType === 'operational_style') {
     statements.push(c.env.DB.prepare(`UPDATE profile SET operational_style_json = ?, last_synced_at = datetime('now') WHERE id = 1`).bind(serializeProfileValue(proposed)))
+  } else if (changeType === 'core_filter') {
+    const existing = profile?.core_filter || ''
+    const merged = existing.includes(proposedText) ? existing : `${existing}${existing ? '\n' : ''}${proposedText}`
+    statements.push(c.env.DB.prepare(`UPDATE profile SET core_filter = ?, last_synced_at = datetime('now') WHERE id = 1`).bind(merged))
   } else if (changeType === 'pattern_hypothesis' || changeType === 'pattern') {
     const patternId = (proposal.target_label || 'pattern-' + Date.now()).toLowerCase().replace(/[^a-z0-9_-]/g, '-')
     statements.push(c.env.DB.prepare(`INSERT OR REPLACE INTO patterns (id, description, evidence_json, confirmed_date, strength) VALUES (?, ?, ?, date('now'), 'confirmed')`).bind(patternId, proposedText, JSON.stringify([proposal.evidence || 'Approved proposal'])))

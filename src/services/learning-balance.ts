@@ -103,9 +103,11 @@ export async function buildLearningBalance(DB: Db, windowDays = 90) {
   let mappedConsumed = 0
   for (const recommendation of recommendations) {
     if (recommendation.status !== 'consumed' || !recommendation.consumed_date || String(recommendation.consumed_date) < since) continue
+    // The attention denominator is every completed source, including sources
+    // awaiting mapping. Otherwise mapped branches falsely add up to 100%.
+    totalConsumed += 1
     const node = resolveNode(recommendation.branch_id, recommendation.dedup_key)
     if (!node) continue
-    totalConsumed += 1
     mappedConsumed += 1
     addToPath(node, (value) => {
       value.consumed += 1
@@ -173,10 +175,11 @@ export async function buildLearningBalance(DB: Db, windowDays = 90) {
       total_consumed: totalConsumed,
       mapped_consumed: mappedConsumed,
       mapped_attention_share: totalConsumed ? Math.round((mappedConsumed / totalConsumed) * 1000) / 10 : 0,
+      unmapped_attention_share: totalConsumed ? Math.round(((totalConsumed - mappedConsumed) / totalConsumed) * 1000) / 10 : 0,
       over_focused: nodes.filter((node) => node.state === 'over-focused').map((node) => node.id),
       at_risk: nodes.filter((node) => node.state === 'at-risk').map((node) => node.id),
       uncovered: nodes.filter((node) => node.state === 'uncovered').map((node) => node.id),
-      unmapped_count: recommendations.filter((row: any) => row.status === 'consumed' && row.consumed_date >= since && !resolveNode(row.branch_id, row.dedup_key)).length,
+      unmapped_count: totalConsumed - mappedConsumed,
     },
     branches: nodes,
   }

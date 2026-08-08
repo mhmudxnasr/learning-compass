@@ -1,5 +1,5 @@
 const supportedProposalTypes = new Set([
-  'profile_signal', 'profile_update', 'quality_rule', 'operational_style',
+  'profile_signal', 'profile_update', 'quality_rule', 'operational_style', 'core_filter',
   'pattern_hypothesis', 'pattern', 'blacklist', 'priority',
 ])
 

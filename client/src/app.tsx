@@ -174,94 +174,77 @@ function TodayPage() {
   const { data, error, loading } = useData('/dashboard/briefing')
   const compass = useData('/compass/pick')
   const [compassWorking, setCompassWorking] = useState(false)
+  const [secondsLeft, setSecondsLeft] = useState(0)
+  useEffect(() => { setSecondsLeft(Number(data?.momentum?.seconds_remaining || 0)); const timer = window.setInterval(() => setSecondsLeft((value) => Math.max(0, value - 1)), 1000); return () => window.clearInterval(timer) }, [data?.momentum?.seconds_remaining])
   if (loading) return <Loading />
   if (error) return <ErrorState message={error} />
   const items = data?.active_items || []
   const mission = items[0]
   const filesFor = (id: string) => (data?.artifacts || []).filter((artifact: any) => artifact.recommendation_id === id)
   const fileLabel = (artifact: any) => artifact.role || (/pdf/i.test(artifact.media_type || artifact.filename) ? 'PDF' : /html/i.test(artifact.media_type || artifact.filename) ? 'HTML' : artifact.filename)
-  const insightTarget = destinations.find((item) => item.key === data?.insight?.target)
-  const best = Math.max(Number(data?.momentum?.personal_best || 0), 1)
   const completed = Number(data?.momentum?.completed || 0)
   const streak = Number(data?.momentum?.streak || 0)
   const streakDays = data?.momentum?.streak_days || []
   const streakDates = new Set(streakDays.map((day: any) => day.date))
-  const streakToday = new Date().toISOString().slice(0, 10)
-  const streakCells = Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setDate(date.getDate() - (6 - index)); return date.toISOString().slice(0, 10) })
+  const streakToday = data?.momentum?.current_date
+  const streakCells = Array.from({ length: 14 }, (_, index) => { const date = new Date(`${streakToday}T12:00:00Z`); date.setUTCDate(date.getUTCDate() - (13 - index)); return date.toISOString().slice(0, 10) })
+  const countdown = `${Math.floor(secondsLeft / 3600)}h ${Math.floor((secondsLeft % 3600) / 60).toString().padStart(2, '0')}m`
+  const nextMove = data?.next_action_detail
+  const nextTarget = destinations.find((item) => item.key === nextMove?.target)
   return <div class="momentum-page">
     {compass.error && <div class="error-state"><strong>Compass Pick unavailable.</strong><span>{compass.error}</span></div>}
-    <section class="mission-section">
-      <div class="momentum-kicker"><span>Active mission</span><span>{items.length}/5 on the shelf</span></div>
+    <section class="runway-section">
+      <div class="momentum-kicker"><span>Learning runway</span><span>Cairo · resets at midnight</span></div>
       <div class="streak-keeper" aria-label={`${streak}-day learning streak`}>
-        <div class="streak-mark">{streakCells.map((date) => <i class={streakDates.has(date) ? 'filled' : ''} />)}</div>
-        <div><strong>{streak ? `${streak}-day chain` : 'Start your chain'}</strong><span>{streakDates.has(streakToday) ? 'Today is secured.' : streak ? 'One small session keeps it alive.' : 'One small session is enough.'}</span></div>
-        <a href={Number(data?.due_reviews || 0) > 0 ? '#/learn/recall' : mission ? `#/learn/notes?source=${encodeURIComponent(mission.id)}` : '#/curate/inbox'}>{streakDates.has(streakToday) ? 'View' : 'Keep it alive →'}</a>
+        <div class="streak-count"><strong>{streak}</strong><span>day chain</span><small>best {data?.momentum?.longest_streak || 0}</small></div>
+        <div class="streak-track"><div class="streak-mark">{streakCells.map((date) => <i title={date} class={streakDates.has(date) ? 'filled' : ''} />)}</div><span>Last 14 days</span></div>
+        <div class="streak-state"><strong>{streakDates.has(streakToday) ? 'Today locked in' : streak ? 'Chain open today' : 'Start today'}</strong><span>{streakDates.has(streakToday) ? `${countdown} until the next day` : `${countdown} left to record one learning action`}</span></div>
+        <div class="week-strip" aria-label="This week's learning totals"><span>This week</span><div><strong>{completed}</strong><small>finished</small></div><div><strong>{data?.momentum?.notes || 0}</strong><small>notes</small></div><div><strong>{data?.momentum?.reviews || 0}</strong><small>recalls</small></div></div>
       </div>
+    </section>
+
+    <section class="mission-section">
+      <div class="section-title"><div><span>Continue</span><h2>{mission?.learning_state === 'in_progress' ? 'Pick up where you stopped' : 'Ready when you are'}</h2></div><strong>{items.length}/5 queued</strong></div>
       {mission ? <div class="mission-grid">
         <div class="mission-copy">
           <span class="meta">{mission.learning_state === 'in_progress' ? 'in progress' : mission.content_type || 'source'} · {mission.creator || 'independent source'}</span>
           <h2>{mission.video_title}</h2>
           <p>{formatSmartHook(mission)}</p>
           <div class="mission-actions">
-            <a class="primary-action" href={mission.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, mission)}>{mission.learning_state === 'in_progress' ? 'Resume source' : 'Start source'}</a>
-            <button onClick={() => { location.hash = `#/learn/notes?source=${encodeURIComponent(mission.id)}` }}>Reflect</button>
+            <a class="primary-action" href={mission.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, mission)}>{mission.learning_state === 'in_progress' ? 'Resume original ↗' : 'Open original ↗'}</a>
+            <button onClick={() => { location.hash = `#/learn/notes?source=${encodeURIComponent(mission.id)}` }}>Source record</button>
           </div>
         </div>
         <div class="mission-files">
-          <div class="module-head"><h3>Working files</h3><span>{filesFor(mission.id).length + Number(Boolean(mission.note_count))}</span></div>
+          <div class="module-head"><h3>Reading kit</h3><span>{filesFor(mission.id).length + Number(Boolean(mission.note_count)) + Number(Boolean(mission.notebook_url))} files</span></div>
           <div class="file-stack">
             {filesFor(mission.id).map((artifact: any) => <a href={`/artifacts/${artifact.id}`} target="_blank" rel="noreferrer"><span>{fileLabel(artifact)}</span><strong>{artifact.filename}</strong><b>Open ↗</b></a>)}
             {mission.note_count > 0 && <a href={`#/learn/notes?source=${encodeURIComponent(mission.id)}`}><span>Notes</span><strong>Source record</strong><b>Open →</b></a>}
             {mission.notebook_url && <a href={mission.notebook_url} target="_blank" rel="noreferrer"><span>NotebookLM</span><strong>Grounded notebook</strong><b>Open ↗</b></a>}
-            {!filesFor(mission.id).length && !mission.note_count && !mission.notebook_url && <p>No companion files yet. The original source is ready.</p>}
+            {!filesFor(mission.id).length && !mission.note_count && !mission.notebook_url && <p>No companions yet. Use the original source.</p>}
           </div>
         </div>
       </div> : <Empty title="The shelf is clear" body="Queue one source worth caring about. Momentum starts there." />}
     </section>
 
     <section class="active-shelf">
-      <div class="section-title"><div><span>Active shelf</span><h2>Your five deliberate sources</h2></div><button onClick={() => go(destinations.find((item) => item.key === 'curate.queue')!)}>Manage queue →</button></div>
-      <div class="shelf-grid">{items.map((item: any, index: number) => <article class={item.id === mission?.id ? 'active' : ''}>
+      <div class="section-title"><div><span>Queue manifest</span><h2>Every source and file</h2></div><button onClick={() => go(destinations.find((item) => item.key === 'curate.queue')!)}>Edit queue →</button></div>
+      <div class="queue-manifest">{items.map((item: any, index: number) => <article class={item.id === mission?.id ? 'active' : ''}>
         <div class="shelf-number">{String(index + 1).padStart(2, '0')}</div>
-        <span class="meta">{item.learning_state === 'in_progress' ? 'in progress' : item.content_type || 'source'}</span>
-        <h3>{item.video_title}</h3>
-        <div class="shelf-files">
-          {filesFor(item.id).slice(0, 3).map((artifact: any) => <a href={`/artifacts/${artifact.id}`} target="_blank" rel="noreferrer">{fileLabel(artifact)}</a>)}
+        <div class="manifest-copy"><span class="meta">{item.learning_state === 'in_progress' ? 'in progress' : 'queued'} · {item.content_type || 'source'}</span><h3>{item.video_title}</h3><small>{item.creator || 'Independent source'}</small></div>
+        <div class="manifest-files">
+          <a class="source-link" href={item.video_url} target="_blank" rel="noreferrer">Original ↗</a>
+          {filesFor(item.id).map((artifact: any) => <a href={`/artifacts/${artifact.id}`} target="_blank" rel="noreferrer"><span>{fileLabel(artifact)}</span><small>{artifact.filename}</small></a>)}
           {item.note_count > 0 && <a href={`#/learn/notes?source=${encodeURIComponent(item.id)}`}>Notes</a>}
           {item.notebook_url && <a href={item.notebook_url} target="_blank" rel="noreferrer">Notebook</a>}
-          {!filesFor(item.id).length && !item.note_count && !item.notebook_url && <span>Source only</span>}
         </div>
       </article>)}</div>
     </section>
 
-    <div class="momentum-grid">
-      <section class="momentum-score">
-        <div class="section-title"><div><span>This week</span><h2>Momentum</h2></div><strong>{completed === best && completed > 0 ? 'Personal best' : `${Math.max(best - completed, 0)} from your best`}</strong></div>
-        <div class="momentum-bar"><i style={{ width: `${Math.min(100, completed / best * 100)}%` }} /></div>
-        <div class="momentum-stats">
-          <div><strong>{completed}</strong><span>completed</span></div>
-          <div><strong>{data?.momentum?.notes || 0}</strong><span>notes made</span></div>
-          <div><strong>{data?.momentum?.reviews || 0}</strong><span>recalls done</span></div>
-          <div><strong>{data?.momentum?.streak || 0}</strong><span>day streak</span></div>
-        </div>
-        <div class="momentum-actions">
-          {Number(data?.due_reviews || 0) > 0 && <a href="#/learn/recall">Review {data.due_reviews} due →</a>}
-          {Number(data?.pending_proposals || 0) > 0 && <a href="#/learn/activity">Confirm {data.pending_proposals} insight{data.pending_proposals === 1 ? '' : 's'} →</a>}
-          <a href="#/curate/inbox">Triage {data?.inbox_count || 0} in Inbox →</a>
-        </div>
-      </section>
-      <section class="insight-card">
-        <span>Pattern worth noticing</span>
-        <h2>{data?.insight?.title}</h2>
-        <p>{data?.insight?.body}</p>
-        <div><small>{data?.insight?.evidence}</small>{insightTarget && <button onClick={() => go(insightTarget)}>See evidence →</button>}</div>
-      </section>
-    </div>
-
-    <section class="recent-wins"><div class="section-title"><div><span>Recent wins</span><h2>Proof you are moving</h2></div><button onClick={() => go(destinations.find((item) => item.key === 'learn.notes')!)}>Open notes →</button></div>{(data?.recent_wins || []).length ? <div>{data.recent_wins.map((item: any) => <article><span>{item.user_score ? `${item.user_score}/10` : item.content_type || 'done'}</span><strong>{item.video_title}</strong><time>{formatDate(item.created_at)}</time></article>)}</div> : <p class="quiet-copy">Completed sources will build your record here.</p>}</section>
+    {nextMove && <section class="next-move"><div><span>Next move</span><h2>{nextMove.label}</h2><p>{nextMove.reason}</p></div>{nextTarget && <button class="primary-action" onClick={() => go(nextTarget)}>{nextMove.label} →</button>}</section>}
 
     {!mission && compass.data?.pick && <section class="empty-compass">
-      <span>{compass.data.pick.status === 'abstained' ? 'Weak Compass Pick · your decision' : `Compass Pick · ${compass.data.pick.strategy}`}</span><h2>{compass.data.pick.video_title || 'Compass Pick'}</h2><p>{compass.data.pick.rationale?.why_this || compass.data.pick.why_this}</p>
+      <span>{compass.data.pick.status === 'abstained' ? 'Weak Compass Pick · your decision' : `Compass Pick · ${compass.data.pick.strategy}`}</span><h2>{compass.data.pick.video_title || 'Compass Pick'}</h2><p>{compass.data.pick.context_brief || compass.data.pick.rationale?.why_this || compass.data.pick.why_this}</p>
       {compass.data.pick.status === 'abstained' && <div class="compass-weak-context"><strong>Not automatically recommended</strong><p>{compassWeakReason(compass.data.pick.rationale?.abstention_reason || compass.data.pick.stop_reason)} {compassWeakPickCanQueue(compass.data.pick) ? 'The source is reachable, but it did not meet the automatic recommendation threshold. You can still add it manually.' : 'No safe, reachable source is available to add.'} Score {Math.round(Number(compass.data.pick.rationale?.score || 0) * 100)}% · confidence {Math.round(Number(compass.data.pick.confidence || 0) * 100)}% · source {compass.data.pick.rationale?.source_check?.status || 'unknown'}.</p></div>}
       <div class="row-actions">
         {(compass.data.pick.status === 'ready' || (compass.data.pick.status === 'abstained' && compassWeakPickCanQueue(compass.data.pick))) && <button class="primary-action" disabled={compassWorking} onClick={async () => { setCompassWorking(true); const target = window.open('about:blank', '_blank'); try { const result = await api<any>(`/compass/pick/${compass.data.pick.id}/start`, { method: 'POST' }); localStorage.setItem('tm-active-session', JSON.stringify({ id: result.session_id, recommendationId: result.recommendation_id, title: compass.data.pick.video_title, sourceUrl: compass.data.pick.video_url })); if (target) target.location.replace(compass.data.pick.video_url); else location.assign(compass.data.pick.video_url); compass.reload() } catch (error: any) { target?.close(); window.alert(error.message) } finally { setCompassWorking(false) } }}>{compass.data.pick.status === 'abstained' ? 'Add to Queue anyway' : 'Start'}</button>}
@@ -358,7 +341,7 @@ function QueuePage() {
                   )}
                 </div>
                 <h3>{item.video_title}</h3>
-                <p>{formatSmartHook(item)}</p>
+                {item.context_brief?.trim() ? <p class="queue-brief">{item.context_brief}</p> : <p>{formatSmartHook(item)}</p>}
               </div>
 
               <div class="row-actions">
@@ -374,6 +357,71 @@ function QueuePage() {
       </div>
     </div>
   )
+}
+
+function BooksPage() {
+  const { data, error, loading, reload } = useData('/recommendations/books')
+  const [title, setTitle] = useState('')
+  const [author, setAuthor] = useState('')
+  const [isbn, setIsbn] = useState('')
+  const [status, setStatus] = useState('')
+  const [working, setWorking] = useState('')
+  const [expanded, setExpanded] = useState<string | null>(null)
+  if (loading) return <Loading />
+  if (error) return <ErrorState message={error} />
+  const books = data?.books || []
+  const inbox = books.filter((book: any) => book.status === 'active' && book.learning_state === 'inbox')
+  const active = books.filter((book: any) => book.status === 'active' && book.learning_state !== 'inbox')
+  const finished = books.filter((book: any) => book.status === 'consumed')
+  const addBook = async (event: Event) => {
+    event.preventDefault(); setStatus('Adding book…')
+    try { await api('/recommendations/books', { method: 'POST', body: JSON.stringify({ title, author, isbn }) }); setTitle(''); setAuthor(''); setIsbn(''); setStatus('Added to Inbox'); reload() }
+    catch (error: any) { setStatus(error.message) }
+  }
+  const queue = async (book: any) => {
+    setWorking(book.id); setStatus('')
+    try { await api(`/capture/${book.id}/triage`, { method: 'POST', body: JSON.stringify({ action: 'queue' }) }); reload() }
+    catch (error: any) { setStatus(error.message) }
+    finally { setWorking('') }
+  }
+  const visualise = async (book: any) => {
+    setWorking(book.id); setStatus('Preparing visual companion…')
+    try { await api(`/capture/${book.id}/visualise`, { method: 'POST', body: JSON.stringify({}) }); setStatus('Visual companion queued'); reload() }
+    catch (error: any) { setStatus(error.message) }
+    finally { setWorking('') }
+  }
+  const finishChapter = async (book: any, chapter: any) => {
+    setWorking(`${book.id}:${chapter.key}`)
+    try { await api(`/recommendations/books/${book.id}/chapters/${encodeURIComponent(chapter.key)}/complete`, { method: 'POST', body: JSON.stringify({ completed: !chapter.completed }) }); reload() }
+    catch (error: any) { setStatus(error.message) }
+    finally { setWorking('') }
+  }
+  const uploadFile = async (book: any, chapter: any, file: File, role: 'html' | 'pdf') => {
+    setWorking(`${book.id}:${chapter.key}:${role}`)
+    const form = new FormData()
+    form.append('file', file)
+    form.append('metadata', JSON.stringify({ recommendation_id: book.id, chapter_key: chapter.key, chapter_title: chapter.title, chapter_number: chapter.number || chapter.key, role, pair_id: `book_${book.id}` }))
+    try {
+      const res = await fetch('/artifacts', { method: 'POST', body: form })
+      const data: any = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Upload failed')
+      reload()
+    } catch (err: any) { setStatus(err.message) }
+    finally { setWorking('') }
+  }
+  const chapterList = (book: any) => {
+    const visual = book.visual || {}
+    if (!visual.chapters?.length) return null
+    const notebookUrl = book.notebook_url
+    return <div class="book-chapters">{visual.chapters.map((chapter: any) => <div class="chapter-row" key={chapter.key}><div class="chapter-info"><span class="chapter-num">{chapter.number || chapter.key}</span><span class="chapter-title">{chapter.title}</span><span class="chapter-status">{chapter.completed ? 'Done' : 'Not started'}</span></div><div class="chapter-actions">{chapter.html && <a href={`/artifacts/${chapter.html.id}/view`} target="_blank" rel="noreferrer">HTML</a>}{chapter.pdf && <a href={`/artifacts/${chapter.pdf.id}`} target="_blank" rel="noreferrer">PDF</a>}{!chapter.html && <label class="upload-btn"><input type="file" accept=".html,.htm" onChange={(e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (file) uploadFile(book, chapter, file, 'html') }} /><span>Upload HTML</span></label>}{!chapter.pdf && <label class="upload-btn"><input type="file" accept=".pdf" onChange={(e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (file) uploadFile(book, chapter, file, 'pdf') }} /><span>Upload PDF</span></label>}{notebookUrl && <a class="nblm-link" href={notebookUrl} target="_blank" rel="noreferrer">NBLM</a>}<button disabled={working === `${book.id}:${chapter.key}`} onClick={() => finishChapter(book, chapter)}>{chapter.completed ? 'Undo' : 'Finish'}</button></div></div>)}</div>
+  }
+  const visualActions = (book: any) => {
+    const visual = book.visual || {}
+    if (visual.status !== 'not_started') return <span class="meta">Visual {visual.status}</span>
+    return <button disabled={working === book.id || !book.video_url} onClick={() => visualise(book)}>Create visual</button>
+  }
+  const shelf = (label: string, items: any[], action?: (book: any) => ComponentChildren) => <section class="book-shelf"><div class="section-title"><div><span>{label}</span><h2>{items.length} {items.length === 1 ? 'book' : 'books'}</h2></div></div>{items.length ? <div class="book-list">{items.map((book: any) => <article class={`book-row${expanded === book.id ? ' expanded' : ''}`} key={book.id}><div class="book-spine" /><div class="book-copy"><span class="meta">{book.creator}</span><h3 class="book-title" onClick={() => setExpanded(expanded === book.id ? null : book.id)}>{book.video_title}</h3>{book.why_this && <p>{book.why_this}</p>}<small>{book.user_score != null ? `${book.user_score}/10` : book.learning_state || book.status}</small>{expanded === book.id && chapterList(book)}<div class="book-visual">{visualActions(book)}</div></div><div class="row-actions">{action?.(book)}<button onClick={() => { location.hash = `#/learn/notes?source=${encodeURIComponent(book.id)}` }}>Record</button></div></article>)}</div> : <p class="quiet-copy">Nothing on this shelf yet.</p>}</section>
+  return <div class="books-page"><form class="book-add" onSubmit={addBook}><div><span class="meta">Add a book</span><h2>Build a reading shelf with intent.</h2><p>Books enter Inbox first. Queue only the next one you are ready to read. When a source is ready, create its annotation-friendly HTML and PDF companion here.</p></div><div class="book-fields"><label>Title<input value={title} onInput={(event) => setTitle((event.target as HTMLInputElement).value)} required placeholder="e.g. The Righteous Mind" /></label><label>Author<input value={author} onInput={(event) => setAuthor((event.target as HTMLInputElement).value)} required placeholder="e.g. Jonathan Haidt" /></label><label>ISBN <span>(optional)</span><input value={isbn} onInput={(event) => setIsbn((event.target as HTMLInputElement).value)} placeholder="10 or 13 digits" /></label><button class="primary-action" type="submit">Add to Inbox</button></div>{status && <output>{status}</output>}</form>{shelf('Inbox', inbox, (book) => <button class="primary-action" disabled={working === book.id} onClick={() => queue(book)}>Queue</button>)}{shelf('Reading shelf', active, (book) => <a class="primary-action" href={book.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, book)}>Open source</a>)}{shelf('Finished', finished)}</div>
 }
 
 function InboxPage() {
@@ -485,9 +533,18 @@ function ArchivePage() {
 
 function SourceRecordPage({ record, onBack, onReload }: { record: any; onBack: () => void; onReload: () => void }) {
   const item = record.item || {}
+  let storedFeedback: any = {}
+  try { storedFeedback = JSON.parse(item.source_metadata_json || '{}').learning_feedback || {} } catch {}
   const reflection = (record.notes || []).find((note: any) => note.kind === 'reflection')
   const extracted = (record.notes || []).find((note: any) => note.kind !== 'reflection')
   const [feedback, setFeedback] = useState(reflection?.sections?.find((section: any) => section.section_key === 'reaction')?.content || item.user_review || '')
+  const [rating, setRating] = useState(item.user_score == null ? '' : String(item.user_score))
+  const [completionState, setCompletionState] = useState(storedFeedback.completion_state || (item.status === 'consumed' ? 'completed' : 'in_progress'))
+  const [reasonTags, setReasonTags] = useState<string[]>(storedFeedback.reason_tags || [])
+  const [expected, setExpected] = useState(storedFeedback.expected || '')
+  const [actual, setActual] = useState(storedFeedback.actual || '')
+  const [effort, setEffort] = useState(storedFeedback.effort || '')
+  const [lengthMinutes, setLengthMinutes] = useState(storedFeedback.length_minutes == null ? '' : String(storedFeedback.length_minutes))
   const [feedbackBeforeEnhancement, setFeedbackBeforeEnhancement] = useState<string | null>(null)
   const [sourceNote, setSourceNote] = useState(extracted)
   const [status, setStatus] = useState('')
@@ -502,7 +559,7 @@ function SourceRecordPage({ record, onBack, onReload }: { record: any; onBack: (
     if (!feedback.trim()) return
     setStatus('Saving feedback…')
     try {
-      await api('/feedback/record', { method: 'POST', body: JSON.stringify({ recommendation_id: item.id, feedback, rating: item.user_score, complete: item.learning_state === 'completed' || item.status === 'consumed' }) })
+      await api('/feedback/record', { method: 'POST', body: JSON.stringify({ recommendation_id: item.id, feedback, score: rating || undefined, completion_state: completionState, reason_tags: reasonTags, expected, actual, effort: effort || undefined, length_minutes: lengthMinutes || undefined }) })
       setStatus('Feedback saved'); onReload()
     } catch (error: any) { setStatus(error.message) }
   }
@@ -533,7 +590,7 @@ function SourceRecordPage({ record, onBack, onReload }: { record: any; onBack: (
   return <div class="source-record-page">
     <button class="back-link" onClick={onBack}>← All notes</button>
     <header class="source-record-head"><div><span class="meta">Source record</span><h2>{item.video_title || reflection?.title || extracted?.title || 'Learning source'}</h2><p>{item.creator || item.content_type || 'Source'} · {item.learning_state || item.status || 'saved'}</p></div><div class="row-actions">{item.notebook_url && <a href={item.notebook_url} target="_blank" rel="noreferrer">Open NotebookLM</a>}{item.video_url && <a class="primary-action" href={item.video_url} target="_blank" rel="noreferrer">Open original</a>}</div></header>
-    <section class="record-section"><div class="section-head"><h3>My Feedback</h3><span>{item.user_score != null ? `${item.user_score}/10` : 'Not rated'}</span></div><textarea class="note-editor feedback-editor" value={feedback} onInput={(event) => setFeedback((event.target as HTMLTextAreaElement).value)} placeholder="Your exact reaction is preserved here." /><div class="row-actions"><button onClick={saveFeedback} disabled={!feedback.trim()}>Save feedback</button><button onClick={enhanceFeedback} disabled={!feedback.trim() || status === 'Enhancing…'}>Enhance writing</button>{feedbackBeforeEnhancement !== null && <button onClick={undoEnhancement}>Undo enhancement</button>}</div></section>
+    <section class="record-section"><div class="section-head"><h3>My Feedback</h3><span>{rating ? `${rating}/10` : 'Not rated'}</span></div><textarea class="note-editor feedback-editor" value={feedback} onInput={(event) => setFeedback((event.target as HTMLTextAreaElement).value)} placeholder="Your exact reaction is preserved here." /><div class="feedback-fields"><label>Score (0–10)<input type="number" min="0" max="10" step="0.5" value={rating} onInput={(event) => setRating((event.target as HTMLInputElement).value)} /></label><label>Learning status<select value={completionState} onChange={(event) => setCompletionState((event.target as HTMLSelectElement).value)}><option value="completed">Completed</option><option value="in_progress">In progress</option><option value="stopped">Stopped</option></select></label><label>Effort<select value={effort} onChange={(event) => setEffort((event.target as HTMLSelectElement).value)}><option value="">Not set</option><option value="light">Light</option><option value="moderate">Moderate</option><option value="deep">Deep</option></select></label><label>Minutes spent<input type="number" min="0" value={lengthMinutes} onInput={(event) => setLengthMinutes((event.target as HTMLInputElement).value)} /></label></div><label>Reason tags<input value={reasonTags.join(', ')} onInput={(event) => setReasonTags((event.target as HTMLInputElement).value.split(',').map((tag) => tag.trim()).filter(Boolean))} placeholder="practical, too shallow, revisit" /></label><div class="feedback-fields"><label>Expected<textarea class="note-editor" value={expected} onInput={(event) => setExpected((event.target as HTMLTextAreaElement).value)} placeholder="What did you expect?" /></label><label>Actual<textarea class="note-editor" value={actual} onInput={(event) => setActual((event.target as HTMLTextAreaElement).value)} placeholder="What did you actually get?" /></label></div><div class="row-actions"><button onClick={saveFeedback} disabled={!feedback.trim()}>Save feedback</button><button onClick={enhanceFeedback} disabled={!feedback.trim() || status === 'Enhancing…'}>Enhance writing</button>{feedbackBeforeEnhancement !== null && <button onClick={undoEnhancement}>Undo enhancement</button>}</div></section>
     <section class="record-section"><div class="section-head"><h3>Extracted note</h3><span>{extracted?.status || 'Not created'}</span></div>{sourceNote ? <>{(sourceNote.sections || []).map((section: any) => <div dir={section.direction || 'auto'}><h4>{section.label}</h4><textarea class="note-editor" value={section.content} onInput={(event) => setSourceNote({ ...sourceNote, sections: sourceNote.sections.map((current: any) => current.section_key === section.section_key ? { ...current, content: (event.target as HTMLTextAreaElement).value } : current) })} /></div>)}<div class="row-actions"><button onClick={() => saveNote(sourceNote)}>Save extracted note</button></div></> : <p class="record-muted">A completed rating of 7–10 creates a bilingual source note and editable recall drafts.</p>}</section>
     <section class="record-section"><div class="section-head"><h3>Recall</h3><span>{record.srs?.cards?.length || 0} active</span></div><p>{record.srs?.drafts?.length || 0} editable drafts · {record.srs?.cards?.length || 0} approved cards</p></section>
     <section class="record-section"><div class="section-head"><h3>Files</h3><span>{record.artifacts?.length || 0}</span></div>{record.artifacts?.length ? record.artifacts.map((file: any) => <a class="record-line" href={`/artifacts/${file.id}`} target="_blank" rel="noreferrer"><strong>{file.filename}</strong><span>{file.media_type}{file.notebook_url ? ' · Open NotebookLM' : ''}</span></a>) : <p class="record-muted">No companion files yet.</p>}</section>
@@ -543,27 +600,68 @@ function SourceRecordPage({ record, onBack, onReload }: { record: any; onBack: (
   </div>
 }
 
+function NoteDocumentPage({ noteId, notes, onBack, onReload }: { noteId: string; notes: any[]; onBack: () => void; onReload: () => void }) {
+  const note = notes.find((candidate: any) => candidate.id === noteId)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<any>(note)
+  const [status, setStatus] = useState('')
+  useEffect(() => { setDraft(note); setEditing(false); setStatus('') }, [noteId, note])
+  if (!note) return <Empty title="Note not found" body="This extracted note is no longer available in the library." />
+  const sections = draft?.sections || []
+  const save = async () => {
+    setStatus('Saving…')
+    try {
+      await api(`/notes/${draft.id}`, { method: 'PUT', body: JSON.stringify({ title: draft.title, sections: sections.map((section: any) => ({ section_key: section.section_key, content: section.content, direction: section.direction })) }) })
+      setStatus('Saved'); setEditing(false); onReload()
+    } catch (error: any) { setStatus(error.message) }
+  }
+  const scrollTo = (sectionKey: string) => document.getElementById(`note-section-${sectionKey}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  return <div class="notes-layout">
+    <aside class="note-sidebar">
+      <button class="back-link" onClick={onBack}>← All notes</button>
+      <nav aria-label="Note sections">{sections.map((section: any) => <button key={section.section_key} onClick={() => scrollTo(section.section_key)}><span>{section.label}</span></button>)}</nav>
+      <div class="note-meta"><span>{labelize(note.status || 'draft')} · revision {note.revision || 1}</span><span>Updated {formatDate(note.updated_at)}</span></div>
+      {note.recommendation_id && <a class="source-context-link" href={`#/learn/notes?source=${encodeURIComponent(note.recommendation_id)}`}>Open source context →</a>}
+    </aside>
+    <div class="note-document">
+      <span class="note-kicker">Extracted note</span>
+      {editing ? <input class="note-title-input" value={draft.title} onInput={(event) => setDraft({ ...draft, title: (event.target as HTMLInputElement).value })} />
+        : <h2>{note.title}</h2>}
+      <p class="note-source">{note.source_url || 'Completed source'} · {formatDate(note.updated_at)}</p>
+      {sections.map((section: any) => <section id={`note-section-${section.section_key}`} key={section.section_key}>
+        <h3>{section.label}</h3>
+        {editing
+          ? <textarea class="note-editor" dir={section.direction || 'auto'} value={section.content} onInput={(event) => setDraft({ ...draft, sections: sections.map((current: any) => current.section_key === section.section_key ? { ...current, content: (event.target as HTMLTextAreaElement).value } : current) })} />
+          : <div class="note-copy" dir={section.direction || 'auto'}>{section.content}</div>}
+      </section>)}
+      <div class="note-actions">{status && <output class="note-status">{status}</output>}
+        {editing
+          ? <><button class="primary-action" onClick={save}>Save changes</button><button onClick={() => { setDraft(note); setEditing(false) }}>Cancel</button></>
+          : <button class="primary-action" onClick={() => setEditing(true)}>Edit note</button>}
+      </div>
+    </div>
+  </div>
+}
+
 function NotesPage() {
-  const { data, error, loading } = useData('/notes')
+  const { data, error, loading, reload } = useData('/notes?kind=guide')
   const [query, setQuery] = useState('')
-  const sourceMatch = location.href.match(/[?&]source=([^&]+)/)
-  const sourceId = sourceMatch ? decodeURIComponent(sourceMatch[1]) : ''
+  const params = new URLSearchParams(location.href.split('?')[1] || '')
+  const sourceId = params.get('source') || ''
+  const noteId = params.get('note') || ''
   const recordState = useData(sourceId ? `/capture/${sourceId}/record` : undefined)
+  useEffect(() => { reload() }, [sourceId, noteId])
   if (loading || recordState.loading) return <Loading />
   if (error || recordState.error) return <ErrorState message={error || recordState.error} />
   if (sourceId && recordState.data) return <SourceRecordPage record={recordState.data} onBack={() => { location.hash = '#/learn/notes' }} onReload={recordState.reload} />
   const notes = data?.notes || []
-  const groups = new Map<string, any>()
-  for (const note of notes) {
-    const key = note.recommendation_id || note.id
-    const current = groups.get(key) || { id: note.recommendation_id, title: note.title, notes: [] }
-    current.notes.push(note)
-    if (note.kind === 'reflection') current.title = note.title
-    groups.set(key, current)
-  }
-  if (!groups.size) return <Empty title="No source records yet" body="Finish a source or give Hermes feedback to create one clean learning record here." />
-  const visible = [...groups.values()].filter((group: any) => !query.trim() || group.title.toLowerCase().includes(query.trim().toLowerCase()))
-  return <div><label class="page-search">Search source notes<input value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="Title" /></label><div class="source-list notes-source-list">{visible.map((group: any) => <button class="source-record-link" onClick={() => { if (group.id) location.hash = `#/learn/notes?source=${encodeURIComponent(group.id)}` }}><div><span class="meta">{group.notes.some((note: any) => note.kind === 'reflection') ? 'Feedback saved' : 'Extracted note'}</span><h2>{group.title}</h2><p>{group.notes.length} linked note{group.notes.length === 1 ? '' : 's'} · open the complete source record</p></div><span>Open →</span></button>)}</div>{!visible.length && <Empty title="No matching source" body="Try a shorter title." />}</div>
+  if (noteId) return <NoteDocumentPage noteId={noteId} notes={notes} onBack={() => { location.hash = '#/learn/notes' }} onReload={reload} />
+  if (!notes.length) return <Empty title="No extracted notes yet" body="A completed rating of 7–10 mints a structured note here — Foundation, Case Studies, Exploitation, and Defense." />
+  const visible = notes.filter((note: any) => !query.trim() || (note.title || '').toLowerCase().includes(query.trim().toLowerCase()))
+  return <div><label class="page-search">Search extracted notes<input value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="Title" /></label><div class="source-list notes-source-list">{visible.map((note: any) => {
+    const preview = (note.sections || []).find((section: any) => section.content)?.content || ''
+    return <article class="note-row" key={note.id}><div><span class="meta">{note.sections?.length || 0} sections · updated {formatDate(note.updated_at)}</span><h2>{note.title}</h2>{preview && <p>{preview.slice(0, 140)}{preview.length > 140 ? '…' : ''}</p>}</div><div class="note-row-actions">{note.recommendation_id && <a href={`#/learn/notes?source=${encodeURIComponent(note.recommendation_id)}`}>Source context</a>}<button class="primary-action" onClick={() => { location.hash = `#/learn/notes?note=${encodeURIComponent(note.id)}` }}>Open note</button></div></article>
+  })}</div>{!visible.length && <Empty title="No matching note" body="Try a shorter title." />}</div>
 }
 
 function ReviewPage() {
@@ -1953,7 +2051,9 @@ function profileTags(value: unknown, limit = 12) {
     return ''
   }).filter(Boolean)
   if (parsed && typeof parsed === 'object') return Object.entries(parsed).slice(0, limit).map(([key, item]) => `${labelize(key)}${typeof item === 'string' || typeof item === 'number' ? ` · ${item}` : ''}`)
-  return String(parsed || '').split(/[.;·\n]+/).map((item) => item.trim()).filter(Boolean).slice(0, limit)
+  const raw = String(parsed || '').trim()
+  if ((raw.startsWith('{') || raw.startsWith('[')) && parsed === value) return ['Value needs repair']
+  return raw.split(/[.;·\n]+/).map((item) => item.trim()).filter(Boolean).slice(0, limit)
 }
 
 function ProfileField({ label, description, value, json = false }: { label: string; description: string; value: unknown; json?: boolean }) {
@@ -2082,7 +2182,7 @@ function ModelIndex({ items }: { items: Record<string, any> }) {
   return <nav class="model-index" aria-label="Model sections">
     <div class="model-index-head"><strong>Model index</strong><span>{entries.length} sections</span></div>
     {entries.map((entry) => <button class={active === entry.id ? 'active' : ''} onClick={() => openProfileSection(entry.id)}><span>{entry.label}</span><em>{entry.value}</em></button>)}
-    <div class="model-index-actions"><button onClick={() => setProfilePanels(true)}>Expand all</button><button onClick={() => setProfilePanels(false)}>Collapse all</button></div>
+    <div class="model-index-actions"><button onClick={() => setProfilePanels(true)}>Open sections</button><button onClick={() => setProfilePanels(false)}>Collapse all</button></div>
   </nav>
 }
 
@@ -2127,7 +2227,7 @@ function SettingsPage({ route }: { route: Destination }) {
   const profileRow = profile.data?.profile
   const profileItems = profile.data || {}
   return <div class={`settings-page ${route.slug === 'profile' ? 'profile-settings-page' : ''}`}><section>
-    {route.slug === 'profile' && <>{profile.loading ? <Loading /> : profile.error ? <ErrorState message={profile.error} /> : <div class="profile-page">
+    {route.slug === 'profile' && <>{profile.loading ? <Loading /> : profile.error ? <ErrorState message={profile.error} /> : <div class="profile-page profile-overview">
       {profileRow ? <><ModelHeader profile={profileRow} />
         <div class="model-layout"><ModelIndex items={profileItems} /><div class="model-sections">
           <div class="model-group"><h3 class="model-group-title">The model</h3>
@@ -2165,6 +2265,7 @@ function View({ route }: { route: Destination }) {
   if (route.key === 'today.momentum') return <TodayPage />
   if (route.key === 'curate.inbox') return <InboxPage />
   if (route.key === 'curate.queue') return <QueuePage />
+  if (route.key === 'curate.books') return <BooksPage />
   if (route.key === 'curate.collections') return <CollectionsPage scope="curate" />
   if (route.key === 'curate.archive') return <ArchivePage />
   if (route.key === 'map.atlas') return <Suspense fallback={<div class="atlas-loading"><div /><span>Preparing spatial canvas…</span></div>}><AtlasPage /></Suspense>
@@ -2220,19 +2321,26 @@ function ReturnDialog({ session, onClose, onComplete }: { session: ActiveSession
   const ref = useRef<HTMLDialogElement>(null)
   const [reflection, setReflection] = useState('')
   const [rating, setRating] = useState('8')
+  const [completionState, setCompletionState] = useState('completed')
+  const [reasonTags, setReasonTags] = useState('')
+  const [expected, setExpected] = useState('')
+  const [actual, setActual] = useState('')
+  const [effort, setEffort] = useState('moderate')
+  const [lengthMinutes, setLengthMinutes] = useState('')
   const [status, setStatus] = useState('')
-  useEffect(() => { if (session) { setReflection(''); setRating('8'); setStatus(''); ref.current?.showModal() } else ref.current?.close() }, [session?.id])
+  useEffect(() => { if (session) { setReflection(''); setRating('8'); setCompletionState('completed'); setReasonTags(''); setExpected(''); setActual(''); setEffort('moderate'); setLengthMinutes(''); setStatus(''); ref.current?.showModal() } else ref.current?.close() }, [session?.id])
   if (!session) return null
   const submit = async (complete: boolean) => {
     setStatus(complete ? 'Finishing and processing…' : 'Saving your place…')
     try {
-      await api(`/sessions/${session.id}/return`, { method: 'POST', body: JSON.stringify({ reflection, rating: rating ? Number(rating) : undefined, complete, auto_enqueue: complete }) })
-      if (complete) { localStorage.removeItem('tm-active-session'); onComplete() } else onClose()
+      const state = complete ? completionState : 'in_progress'
+      await api(`/sessions/${session.id}/return`, { method: 'POST', body: JSON.stringify({ reflection, score: rating ? Number(rating) : undefined, complete: state === 'completed', completion_state: state, reason_tags: reasonTags.split(',').map((tag) => tag.trim()).filter(Boolean), expected, actual, effort, length_minutes: lengthMinutes ? Number(lengthMinutes) : undefined, auto_enqueue: state === 'completed' }) })
+      if (state === 'completed') { localStorage.removeItem('tm-active-session'); onComplete() } else onClose()
       return true
     } catch (error: any) { setStatus(error.message); return false }
   }
   const dismiss = () => onClose()
-  return <dialog ref={ref} class="return-dialog" onClose={dismiss}><div class="dialog-head"><div><span>Learning handoff</span><h2>What changed after reading?</h2></div><button onClick={dismiss}>Later</button></div><p class="return-source">{session.title}</p><label>My notes & reaction<textarea autoFocus value={reflection} onInput={(event) => setReflection((event.target as HTMLTextAreaElement).value)} placeholder="What surprised you? What do you disagree with? What will you use?" /></label><label>Rating <span>{rating}/10</span><input type="range" min="1" max="10" value={rating} onInput={(event) => setRating((event.target as HTMLInputElement).value)} /></label><div class="return-actions"><a href={session.sourceUrl} target="_blank" rel="noreferrer">Resume source</a><button onClick={async () => { if (await submit(false)) localStorage.removeItem('tm-active-session') }}>Save for later</button><button class="primary-action" disabled={!reflection.trim()} onClick={() => submit(true)}>Finish and process</button></div>{status && <output>{status}</output>}</dialog>
+  return <dialog ref={ref} class="return-dialog" onClose={dismiss}><div class="dialog-head"><div><span>Learning handoff</span><h2>What changed after reading?</h2></div><button onClick={dismiss}>Later</button></div><p class="return-source">{session.title}</p><label>My notes & reaction<textarea autoFocus value={reflection} onInput={(event) => setReflection((event.target as HTMLTextAreaElement).value)} placeholder="What surprised you? What do you disagree with? What will you use?" /></label><label>Score <span>{rating}/10</span><input type="range" min="0" max="10" value={rating} onInput={(event) => setRating((event.target as HTMLInputElement).value)} /></label><div class="feedback-fields"><label>Status<select value={completionState} onChange={(event) => setCompletionState((event.target as HTMLSelectElement).value)}><option value="completed">Completed</option><option value="in_progress">Still in progress</option><option value="stopped">Stopped</option></select></label><label>Effort<select value={effort} onChange={(event) => setEffort((event.target as HTMLSelectElement).value)}><option value="light">Light</option><option value="moderate">Moderate</option><option value="deep">Deep</option></select></label><label>Minutes spent<input type="number" min="0" value={lengthMinutes} onInput={(event) => setLengthMinutes((event.target as HTMLInputElement).value)} /></label></div><label>Reason tags<input value={reasonTags} onInput={(event) => setReasonTags((event.target as HTMLInputElement).value)} placeholder="practical, too shallow, revisit" /></label><div class="feedback-fields"><label>Expected<textarea value={expected} onInput={(event) => setExpected((event.target as HTMLTextAreaElement).value)} placeholder="What did you expect?" /></label><label>Actual<textarea value={actual} onInput={(event) => setActual((event.target as HTMLTextAreaElement).value)} placeholder="What did you actually get?" /></label></div><div class="return-actions"><a href={session.sourceUrl} target="_blank" rel="noreferrer">Resume source</a><button onClick={async () => { if (await submit(false)) localStorage.removeItem('tm-active-session') }}>Save for later</button><button class="primary-action" disabled={!reflection.trim()} onClick={() => submit(true)}>{completionState === 'completed' ? 'Finish and process' : 'Save feedback'}</button></div>{status && <output>{status}</output>}</dialog>
 }
 
 function applyTheme(value = localStorage.getItem('tm-theme') || 'system') {

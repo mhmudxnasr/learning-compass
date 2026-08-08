@@ -16,6 +16,7 @@ test('profile proposal serialization preserves existing conventions', () => {
 
 test('unsupported proposal types are not in the approval contract', () => {
   assert.equal(isSupportedProposalType('operational_style'), true)
+  assert.equal(isSupportedProposalType('core_filter'), true)
   assert.equal(isSupportedProposalType('future_change'), false)
 })
 

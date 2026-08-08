@@ -19,6 +19,7 @@ export type Recommendation = {
   content_type: string | null
   video_url: string
   why_this: string | null
+  context_brief: string | null
   verified: string | null
   status: 'active' | 'consumed' | 'rejected'
   user_rating: string | null
