@@ -3,13 +3,13 @@
 Update this file whenever a milestone is completed, a contract changes, a deployment occurs, or a new blocker is discovered. Keep only current facts; remove resolved or superseded entries instead of accumulating a diary.
 
 **Last verified:** 2026-08-11
-**Production Worker version:** `fac1580f-ba5e-4f58-9563-339226f24470`
+**Production Worker version:** `a5b7918b-5e10-42dc-9104-ad7718ca0ffb`
 
 Production D1 migrations are applied through `0023_intelligence_v2.sql`.
 
 ## Latest Audit
 
-- **Navigation rail clarified and deployed** (2026-08-11): destination-specific icons now distinguish Momentum, Inbox, Files, Notes, Activity, Queue, and Atlas; Activity replaces Recall in the primary rail and mobile navigation; Queue sits directly before Atlas; Profile remains available beside Search and Settings; the header now uses a premium minimal compass mark served through explicit SVG asset routes. Worker version `fac1580f-ba5e-4f58-9563-339226f24470` passed build, E2E, `git diff --check`, live health, and live brand-asset checks.
+- **Navigation rail and tab icon deployed** (2026-08-11): destination-specific icons now distinguish Momentum, Queue, Files, Notes, Activity, Inbox, and Atlas; Activity replaces Recall in the primary rail and mobile navigation; Profile remains available beside Search and Settings; the header and browser tab use a premium minimal compass mark served through explicit SVG asset routes. Worker version `a5b7918b-5e10-42dc-9104-ad7718ca0ffb` passed build, `git diff --check`, live health, and cache-busted live HTML/brand-asset checks.
 
 - **Hermes skill graph consolidated and deployed** (2026-08-09): thirteen non-overlapping Learning Compass skills remain active; `learning-compass-self-evolution` is the sole evidence-gated evolution owner, and every specialist has a standard evolution handoff. Four redundant skills were disabled and moved to a recoverable archive. Legacy Discovery skill patches now stage revisions instead of editing installed files, and improvement receipts can close honestly as applied, failed/resumable, or evidence-backed no-change. Worker version `b8ba07cb-4917-4266-a5e9-820c59c17be1`, receipt `improvement_c7c9034a-0b33-450d-bdd7-19534b64b3eb`, the refreshed Hermes gateway, and a fresh-session routing check were verified live.
 - **Project guide created and queued** (2026-08-09): source-grounded HTML artifact `artifact_1786301092789_d72cca` / capture `cap_1786301110320_9eb22c` explains the current product, architecture, learning model, Compass recommendation system, Hermes graph, artifact pipeline, API boundaries, invariants, and verification. It was captured into Inbox, promoted to the active Queue with an explicit override because the normal five-item cap was full, and verified through its canonical source record. Worker version `ec86a4c1-dfe5-4d47-b705-f71ce7ec598f` also fixes source-record linkage for capture-attached artifacts.

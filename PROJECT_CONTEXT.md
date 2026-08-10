@@ -147,7 +147,7 @@ The route registry is the executable source of truth:
 - Insights: 3
 - Settings: 4
 
-Total: 19 purposeful views remain available, but the primary rail follows the loop: Momentum → Inbox → Files → Notes → Activity → Queue → Atlas. Settings → System exposes the complete API capability catalog, schedules, runtime services, storage, health, and safety boundaries without promoting infrastructure into the daily learning loop.
+Total: 19 purposeful views remain available, but the primary rail follows the loop: Momentum → Queue → Files → Notes → Activity → Inbox → Atlas. Settings → System exposes the complete API capability catalog, schedules, runtime services, storage, health, and safety boundaries without promoting infrastructure into the daily learning loop.
 
 ## Data and Migrations
 

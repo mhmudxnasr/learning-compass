@@ -52,7 +52,7 @@ function useRoute() {
 }
 
 function go(destination: Destination) { location.hash = `#/${destination.workspace}/${destination.slug}` }
-const loopNavigation = ['today.momentum', 'curate.inbox', 'learn.files', 'learn.notes', 'learn.activity', 'curate.queue', 'map.atlas']
+const loopNavigation = ['today.momentum', 'curate.queue', 'learn.files', 'learn.notes', 'learn.activity', 'curate.inbox', 'map.atlas']
   .map((key) => destinations.find((item) => item.key === key)!)
 const navIcons: Record<string, keyof typeof icons> = {
   'today.momentum': 'momentum', 'curate.inbox': 'inbox', 'learn.files': 'files', 'learn.notes': 'notes',

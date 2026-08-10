@@ -16,7 +16,7 @@ Calm editorial learning surface + precise research instrument. Information hiera
 
 ## Shell
 
-Collapsible desktop rail ordered by the loop: Momentum, Inbox, Files, Notes, Activity, Queue, Atlas. Mobile keeps Momentum, Queue, Activity, and More. Contextual sub-navigation preserves secondary tools. ⌘K search and global Capture remain available.
+Collapsible desktop rail ordered by the loop: Momentum, Queue, Files, Notes, Activity, Inbox, Atlas. Mobile keeps Momentum, Queue, Activity, and More. Contextual sub-navigation preserves secondary tools. ⌘K search and global Capture remain available.
 
 ## Content
 

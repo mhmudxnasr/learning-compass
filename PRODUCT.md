@@ -12,7 +12,7 @@ Manual captures, share targets, Telegram links, and subscribed RSS/Atom entries 
 
 ## Workspaces
 
-The primary interface follows the learning loop: Momentum → Inbox → Files → Notes → Activity → Queue → Atlas. Nineteen purposeful views remain available contextually, but they no longer compete as equal top-level workspaces. Momentum is a single-focus desk: one current source, two latest companion shortcuts, one compact Thread brief, and an expandable evidence/closure control. Settings → System is the complete user-visible control plane for API operations, schedules, services, storage, health, and safety boundaries.
+The primary interface follows the learning loop: Momentum → Queue → Files → Notes → Activity → Inbox → Atlas. Nineteen purposeful views remain available contextually, but they no longer compete as equal top-level workspaces. Momentum is a single-focus desk: one current source, two latest companion shortcuts, one compact Thread brief, and an expandable evidence/closure control. Settings → System is the complete user-visible control plane for API operations, schedules, services, storage, health, and safety boundaries.
 
 Settings → Profile leads with the typed adaptive model: health, active assertions, hypotheses, confidence, source, versions, direct editing, deactivation, and one-click revision undo. The old singleton fields remain a readable/editable compatibility projection. Stored JSON is never dumped in the normal overview.
 
