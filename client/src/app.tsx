@@ -11,13 +11,14 @@ const workspaceLabels: Record<WorkspaceKey, string> = {
   today: 'Momentum', curate: 'Curate', map: 'Map', learn: 'Learn', insights: 'Insights', settings: 'Settings',
 }
 
-const icons: Record<WorkspaceKey | 'search' | 'capture' | 'more', ComponentChildren> = {
+const icons: Record<WorkspaceKey | 'search' | 'capture' | 'more' | 'profile', ComponentChildren> = {
   today: <path d="M4 5h16M4 12h10M4 19h7" />,
   curate: <><path d="M4 4h16v16H4z" /><path d="M4 13h5l2 3h2l2-3h5" /></>,
   map: <><circle cx="5" cy="6" r="2" /><circle cx="19" cy="5" r="2" /><circle cx="12" cy="18" r="2" /><path d="m7 7 4 9m6-10-4 10M7 6h10" /></>,
   learn: <><path d="M4 5a3 3 0 0 1 3-3h13v18H7a3 3 0 0 0 0-6h13" /></>,
   insights: <><path d="M5 19V9m7 10V4m7 15v-7" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2" /></>,
+  profile: <><circle cx="12" cy="8" r="3.5" /><path d="M5 21a7 7 0 0 1 14 0" /></>,
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
   capture: <path d="M12 5v14M5 12h14" />,
   more: <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>,
@@ -44,7 +45,7 @@ function useRoute() {
 }
 
 function go(destination: Destination) { location.hash = `#/${destination.workspace}/${destination.slug}` }
-const loopNavigation = ['today.momentum', 'curate.inbox', 'curate.queue', 'learn.notes', 'learn.recall', 'map.atlas']
+const loopNavigation = ['today.momentum', 'curate.inbox', 'curate.queue', 'learn.files', 'learn.notes', 'learn.recall', 'map.atlas']
   .map((key) => destinations.find((item) => item.key === key)!)
 
 function playCompletionChime() {
@@ -129,12 +130,15 @@ function Shell({ route, children, onCapture, onSearch, onMore }: { route: Destin
   return <div class={`app-shell ${collapsed ? 'rail-collapsed' : ''}`}>
     <aside class="rail">
       <button class="brand" onClick={setRail} title="Toggle navigation"><span class="brand-mark">LC</span><span class="brand-name">Learning Compass</span></button>
+      <div class="rail-section-label">Learning loop</div>
       <nav class="rail-nav" aria-label="Learning loop">
-        {loopNavigation.map((item) => <button class={route.key === item.key ? 'active' : ''} onClick={() => go(item)} title={item.title}><Icon name={item.workspace} /><span>{item.title}</span></button>)}
+        {loopNavigation.map((item, index) => <button class={route.key === item.key ? 'active' : ''} onClick={() => go(item)} title={item.title}><span class="rail-icon"><Icon name={item.workspace} /></span><span>{item.title}</span><small>{String(index + 1).padStart(2, '0')}</small></button>)}
       </nav>
       <div class="rail-bottom">
-        <button onClick={onSearch}><Icon name="search" /><span>Search</span><kbd>⌘K</kbd></button>
-        <button class={route.workspace === 'settings' ? 'active' : ''} onClick={() => go(destinations.find((item) => item.workspace === 'settings')!)}><Icon name="settings" /><span>Settings</span></button>
+        <div class="rail-divider" />
+        <button onClick={onSearch}><span class="rail-icon"><Icon name="search" /></span><span>Search</span><kbd>⌘K</kbd></button>
+        <button class={route.key === 'settings.profile' ? 'active' : ''} onClick={() => go(destinations.find((item) => item.key === 'settings.profile')!)}><span class="rail-icon"><Icon name="profile" /></span><span>Profile</span></button>
+        <button class={route.workspace === 'settings' && route.key !== 'settings.profile' ? 'active' : ''} onClick={() => go(destinations.find((item) => item.workspace === 'settings')!)}><span class="rail-icon"><Icon name="settings" /></span><span>Settings</span></button>
       </div>
     </aside>
     <main class="main">
