@@ -4,7 +4,7 @@ Hermes ownership, endpoint permissions, side-effect tiers, routing policy, and s
 
 ## Canonical read models
 
-- `GET /dashboard/briefing` — Momentum workspace data: active Queue shelf, linked files, weekly completions/notes/recall, evidence-backed insight, recent wins, and streak telemetry (`streak`, `longest_streak`, `today_secured`, `last_activity_date`, `seconds_remaining`, `timezone`, and a 30-day `streak_days` series). Legacy next-action fields remain compatible.
+- `GET /dashboard/briefing` — Momentum source dossier data: active Queue shelf (including each source's Queue rationale), linked files, weekly completions/notes/recall, evidence-backed insight, recent wins, and actionable attention counts. Legacy streak and next-action fields remain compatible.
 - `GET /learning/heatmap`, `GET /learning/detail/:id`, and `/dashboard/briefing` use the canonical activity ledger. Briefing adds `next_action_detail` with the target, reason, and actionable kind while retaining `next_action` compatibility.
 - `GET /capture/queue` — five-item active queue read model. Items include optional `context_brief`, a compact source-grounded before-you-start topic breakdown.
 - `GET /recommendations/list` — archive and filtered recommendation records. Use `source=feed` for RSS/Atom captures or `source=manual` to keep feed entries out of the main archive.

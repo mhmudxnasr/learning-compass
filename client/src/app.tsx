@@ -186,67 +186,20 @@ function compassWeakPickCanQueue(pick: any) {
   return Boolean(pick?.video_url && pick?.video_title && ['verified', 'restricted'].includes(sourceStatus))
 }
 
-function ThreadWorkspace({ data, reload }: { data: any; reload: () => void }) {
-  const thread = data?.active_thread
-  const [creating, setCreating] = useState(false)
-  const [draft, setDraft] = useState({ title: '', thread_type: 'understand', guiding_question: '', definition_of_done: '', why_now: '' })
-  const [error, setError] = useState('')
-  const create = async () => {
-    setCreating(true); setError('')
-    try { await api('/learning/core/threads', { method: 'POST', body: JSON.stringify({ ...draft, activate: true }) }); setDraft({ title: '', thread_type: 'understand', guiding_question: '', definition_of_done: '', why_now: '' }); reload() }
-    catch (cause: any) { setError(cause.message) } finally { setCreating(false) }
-  }
-  if (!thread) return <section class="momentum-panel thread-brief thread-create"><span class="momentum-eyebrow">Learning Thread</span><h2>Define the outcome first</h2><p>Give this learning run one question and one observable finish line.</p><div class="settings-form"><label>Thread title<input value={draft.title} onInput={(event) => setDraft({ ...draft, title: (event.target as HTMLInputElement).value })} placeholder="Understand causal inference for product decisions" /></label><label>Type<select value={draft.thread_type} onChange={(event) => setDraft({ ...draft, thread_type: (event.target as HTMLSelectElement).value })}><option value="understand">Understand</option><option value="decide">Decide</option><option value="build">Build</option><option value="practice">Practice</option></select></label><label>Guiding question<textarea value={draft.guiding_question} onInput={(event) => setDraft({ ...draft, guiding_question: (event.target as HTMLTextAreaElement).value })} placeholder="What must I be able to explain or do?" /></label><label>Definition of done<textarea value={draft.definition_of_done} onInput={(event) => setDraft({ ...draft, definition_of_done: (event.target as HTMLTextAreaElement).value })} placeholder="The concrete evidence that proves completion" /></label><label>Why now<input value={draft.why_now} onInput={(event) => setDraft({ ...draft, why_now: (event.target as HTMLInputElement).value })} /></label><button class="primary-action" disabled={creating || !draft.title.trim() || !draft.guiding_question.trim() || !draft.definition_of_done.trim()} onClick={create}>{creating ? 'Creating…' : 'Start Thread'}</button>{error && <output>{error}</output>}</div></section>
-  const requirements = thread.evidence_requirements || []
-  const satisfied = requirements.filter((item: any) => item.status === 'satisfied').length
-  const threadTitle = thread.title.replace(/^Learn:\s*/i, '')
-  const sourceTitle = data?.active_items?.[0]?.video_title || ''
-  const displayTitle = threadTitle === sourceTitle ? `${thread.thread_type === 'understand' ? 'Understand' : labelize(thread.thread_type)} this source` : threadTitle
-  return <section class="momentum-panel thread-brief"><div class="thread-brief-head"><span class="momentum-eyebrow">Active Thread · {thread.thread_type}</span><strong>{satisfied}/{requirements.length} gates</strong></div><h2>{displayTitle}</h2><div class="thread-question"><span>Question</span><p>{thread.guiding_question}</p></div><div class="thread-finish"><span>Finish line</span><p>{thread.definition_of_done}</p>{requirements.map((item: any) => <small class={item.status === 'satisfied' ? 'done' : ''}>{item.status === 'satisfied' ? 'Done' : 'Open'} · {item.label}</small>)}</div>{(data?.open_cognitive_loops || []).length > 0 && <p class="thread-loop-note">{data.open_cognitive_loops.length} source{data.open_cognitive_loops.length === 1 ? '' : 's'} still consolidating.</p>}</section>
-}
-
-function WeeklyClosure({ threadId, onChanged }: { threadId?: string; onChanged: () => void }) {
-  const weekly = useData('/learning/core/weekly')
-  const thread = useData(threadId ? `/learning/core/threads/${threadId}` : undefined)
-  const counter = useData(threadId ? `/learning/core/counterevidence?thread_id=${encodeURIComponent(threadId)}` : undefined)
-  const [synthesis, setSynthesis] = useState('')
-  const [status, setStatus] = useState('')
-  useEffect(() => { setSynthesis(thread.data?.thread?.final_synthesis || '') }, [thread.data?.thread?.final_synthesis])
-  if (!threadId) return null
-  const detail = thread.data
-  const gaps = counter.data?.units_without_counterevidence || []
-  const act = async (action: 'pause' | 'abandon' | 'save' | 'verify') => {
-    setStatus('Saving…')
-    try {
-      if (action === 'save') await api(`/learning/core/threads/${threadId}`, { method: 'PATCH', body: JSON.stringify({ final_synthesis: synthesis }) })
-      else if (action === 'verify') { await api(`/learning/core/threads/${threadId}`, { method: 'PATCH', body: JSON.stringify({ final_synthesis: synthesis }) }); await api(`/learning/core/threads/${threadId}/verify`, { method: 'POST' }) }
-      else await api(`/learning/core/threads/${threadId}/status`, { method: 'POST', body: JSON.stringify({ status: action === 'pause' ? 'paused' : 'abandoned' }) })
-      setStatus(action === 'verify' ? 'Thread verified' : 'Saved'); thread.reload(); weekly.reload(); onChanged()
-    } catch (cause: any) { setStatus(cause.message) }
-  }
-  return <details class="momentum-panel thread-closeout"><summary><div><span class="momentum-eyebrow">Reflect & close</span><strong>Review evidence or finish this Thread</strong></div><span>{weekly.data?.due_recall || 0} recall due · {gaps.length} open challenges</span></summary>{thread.loading ? <Loading /> : <div class="closeout-body"><label>Final synthesis<textarea value={synthesis} onInput={(event) => setSynthesis((event.target as HTMLTextAreaElement).value)} placeholder="What changed in your model, decision, or capability?" /></label><div class="closeout-evidence"><div class="module-head"><h3>Evidence gates</h3><span>{gaps.length} counterevidence gaps</span></div>{(detail?.requirements || []).map((item: any) => <div class="record-line"><strong>{item.label}</strong><span>{item.status}</span></div>)}{gaps.length ? gaps.slice(0, 3).map((unit: any) => <div class="record-line"><strong>{unit.statement}</strong><span>Needs qualification</span></div>) : <p>Counterevidence coverage is complete.</p>}</div><div class="row-actions"><button onClick={() => act('pause')}>Pause</button><button onClick={() => act('abandon')}>Abandon</button><button onClick={() => act('save')}>Save synthesis</button><button class="primary-action" disabled={!synthesis.trim()} onClick={() => act('verify')}>Verify outcome</button></div>{status && <output>{status}</output>}</div>}</details>
-}
 
 function TodayPage() {
   const { data, error, loading, reload } = useData('/dashboard/briefing')
   const compass = useData('/compass/pick')
   const [compassWorking, setCompassWorking] = useState(false)
   const [compassFeedbackOpen, setCompassFeedbackOpen] = useState(false)
-  const [secondsLeft, setSecondsLeft] = useState(0)
-  useEffect(() => { setSecondsLeft(Number(data?.momentum?.seconds_remaining || 0)); const timer = window.setInterval(() => setSecondsLeft((value) => Math.max(0, value - 1)), 1000); return () => window.clearInterval(timer) }, [data?.momentum?.seconds_remaining])
+  const [focusedId, setFocusedId] = useState<string | null>(null)
+  const [queueSwitcherOpen, setQueueSwitcherOpen] = useState(false)
   if (loading) return <Loading />
   if (error) return <ErrorState message={error} />
   const items = data?.active_items || []
-  const mission = items[0]
+  const mission = items.find((item: any) => item.id === focusedId) || items[0]
   const filesFor = (id: string) => (data?.artifacts || []).filter((artifact: any) => artifact.recommendation_id === id)
   const fileLabel = (artifact: any) => artifact.role || (/pdf/i.test(artifact.media_type || artifact.filename) ? 'PDF' : /html/i.test(artifact.media_type || artifact.filename) ? 'HTML' : artifact.filename)
-  const completed = Number(data?.momentum?.completed || 0)
-  const streak = Number(data?.momentum?.streak || 0)
-  const streakDays = data?.momentum?.streak_days || []
-  const streakDates = new Set(streakDays.map((day: any) => day.date))
-  const streakToday = data?.momentum?.current_date
-  const streakCells = Array.from({ length: 14 }, (_, index) => { const date = new Date(`${streakToday}T12:00:00Z`); date.setUTCDate(date.getUTCDate() - (13 - index)); return date.toISOString().slice(0, 10) })
-  const countdown = `${Math.floor(secondsLeft / 3600)}h ${Math.floor((secondsLeft % 3600) / 60).toString().padStart(2, '0')}m`
   const sendCompassFeedback = async (outcome: 'dismissed' | 'declined', reason: string) => {
     setCompassWorking(true)
     try { await api(`/compass/pick/${compass.data.pick.id}/feedback`, { method: 'POST', body: JSON.stringify({ outcome, reason_tags: [reason] }) }); setCompassFeedbackOpen(false); compass.reload() }
@@ -254,33 +207,24 @@ function TodayPage() {
     finally { setCompassWorking(false) }
   }
   const missionFiles = mission ? filesFor(mission.id) : []
-  const focusFiles = missionFiles.slice(0, 2)
-  const waitingItems = items.slice(1)
+  const missionIndex = Math.max(0, items.findIndex((item: any) => item.id === mission?.id))
   return <div class="momentum-page">
     {compass.error && <div class="error-state"><strong>Compass Pick unavailable.</strong><span>{compass.error}</span></div>}
-    <section class="momentum-pulse" aria-label={`${streak}-day learning streak`}>
-      <div class="pulse-state"><i class={streakDates.has(streakToday) ? 'secured' : ''} /><div><span>{streakDates.has(streakToday) ? 'Today secured' : 'One action keeps today alive'}</span><small>Cairo · {countdown} remaining</small></div></div>
-      <div class="pulse-chain"><strong>{streak}</strong><span>day streak</span><small>best {data?.momentum?.longest_streak || 0}</small></div>
-      <div class="pulse-days" aria-label="Last 14 days">{streakCells.map((date) => <i title={date} class={streakDates.has(date) ? 'filled' : ''} />)}</div>
-      <div class="pulse-week"><span>This week</span><strong>{completed}<small> finished</small></strong><strong>{data?.momentum?.notes || 0}<small> notes</small></strong><strong>{data?.momentum?.reviews || 0}<small> recall</small></strong></div>
-    </section>
-
     <div class="momentum-workspace">
       <div class="momentum-primary">
         {mission ? <section class="focus-desk">
-          <div class="focus-desk-head"><span class="momentum-eyebrow">Now learning</span><span>{items.length}/5 in Queue</span></div>
-          <div class="focus-meta"><span>{mission.learning_state === 'in_progress' ? 'In progress' : 'Ready'}</span><span>{mission.content_type || 'Source'}</span><span>{mission.creator || 'Independent source'}</span></div>
+          <div class="focus-desk-head"><span class="momentum-eyebrow">Now learning</span><div class="focus-switcher"><span>Queue · {String(missionIndex + 1).padStart(2, '0')} / {items.length}</span><button onClick={() => setQueueSwitcherOpen((open) => !open)} aria-expanded={queueSwitcherOpen}>Switch source</button></div></div>
+          {queueSwitcherOpen && <div class="queue-switcher" role="listbox" aria-label="Choose a queued source">{items.map((item: any, index: number) => <button class={item.id === mission.id ? 'active' : ''} onClick={() => { setFocusedId(item.id); setQueueSwitcherOpen(false) }}><span>{String(index + 1).padStart(2, '0')}</span><strong>{item.video_title}</strong><small>{item.learning_state === 'in_progress' ? 'In progress' : 'Queued'}</small></button>)}</div>}
+          <div class="focus-meta"><span>{mission.content_type || 'Source'}</span><span>{mission.creator || 'Independent source'}</span><span>{mission.learning_state === 'in_progress' ? 'In progress' : 'Queued'}</span></div>
           <h2>{mission.video_title}</h2>
-          <p>{formatSmartHook(mission)}</p>
-          <div class="focus-actions"><a class="primary-action" href={mission.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, mission)}>{mission.learning_state === 'in_progress' ? 'Resume source ↗' : 'Open source ↗'}</a><button onClick={() => { location.hash = `#/learn/notes?source=${encodeURIComponent(mission.id)}` }}>Open record</button></div>
-          {(focusFiles.length > 0 || mission.note_count > 0 || mission.notebook_url) && <div class="focus-resources"><div class="focus-resources-head"><strong>Quick access</strong><button onClick={() => go(destinations.find((item) => item.key === 'learn.files')!)}>All {missionFiles.length} files →</button></div><div class="focus-resource-grid">
-            {focusFiles.map((artifact: any) => <a href={`/artifacts/${artifact.id}`} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, mission, `/artifacts/${artifact.id}`, /pdf/i.test(artifact.media_type || artifact.filename) ? 'pdf' : 'html', artifact.id)}><span>{fileLabel(artifact)}</span><strong>Latest {fileLabel(artifact)} companion</strong><small>Open ↗</small></a>)}
-            {mission.note_count > 0 && <a href={`#/learn/notes?source=${encodeURIComponent(mission.id)}`}><span>Notes</span><strong>Extracted knowledge</strong><small>Open →</small></a>}
-            {mission.notebook_url && <a href={mission.notebook_url} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, mission, mission.notebook_url, 'notebooklm')}><span>NotebookLM</span><strong>Grounded notebook</strong><small>Open ↗</small></a>}
-          </div></div>}
+          <div class="focus-why"><span>Why this is in your Queue</span><p>{mission.context_brief || formatSmartHook(mission)}</p></div>
+          <div class="focus-resources"><div class="focus-resources-head"><strong>Source desk</strong><button onClick={() => go(destinations.find((item) => item.key === 'learn.files')!)}>All files →</button></div><div class="focus-resource-grid">
+            {mission.video_url && <a class="resource-source" href={mission.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, mission)}><span>Original</span><strong>Open the source</strong><small>↗</small></a>}
+            {missionFiles.length ? missionFiles.map((artifact: any) => <a href={`/artifacts/${artifact.id}`} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, mission, `/artifacts/${artifact.id}`, /pdf/i.test(artifact.media_type || artifact.filename) ? 'pdf' : 'html', artifact.id)}><span>{fileLabel(artifact)}</span><strong>{artifact.filename || `${fileLabel(artifact)} companion`}</strong><small>↗</small></a>) : <div class="resource-empty"><span>Files</span><strong>No companion files yet</strong><small>—</small></div>}
+            {mission.note_count > 0 ? <a href={`#/learn/notes?source=${encodeURIComponent(mission.id)}`}><span>Notes</span><strong>Extracted knowledge</strong><small>→</small></a> : <div class="resource-empty"><span>Notes</span><strong>No extracted notes yet</strong><small>—</small></div>}
+            {mission.notebook_url ? <a class="resource-notebook" href={mission.notebook_url} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, mission, mission.notebook_url, 'notebooklm')}><span>NotebookLM</span><strong>Ask the grounded notebook</strong><small>↗</small></a> : <div class="resource-empty resource-notebook"><span>NotebookLM</span><strong>Not linked yet</strong><small>—</small></div>}
+          </div></div>
         </section> : <section class="focus-desk focus-empty"><span class="momentum-eyebrow">Focus desk</span><Empty title="Your Queue is clear" body="Choose one worthwhile source. Momentum should begin with intent, not volume." /></section>}
-
-        {waitingItems.length > 0 && <section class="waiting-list"><div class="section-title"><div><span>Up next</span><h2>Waiting in Queue</h2></div><button onClick={() => go(destinations.find((item) => item.key === 'curate.queue')!)}>Manage Queue →</button></div>{waitingItems.map((item: any, index: number) => <article><span>{String(index + 2).padStart(2, '0')}</span><div><strong>{item.video_title}</strong><small>{item.creator || item.content_type || 'Source'}</small></div></article>)}</section>}
 
         {!mission && compass.data?.pick && <section class="empty-compass">
           <span>{compass.data.pick.status === 'abstained' ? 'Weak Compass Pick · your decision' : `Compass Pick · ${compass.data.pick.strategy}`}</span><h2>{compass.data.pick.video_title || 'Compass Pick'}</h2><p>{compass.data.pick.context_brief || compass.data.pick.rationale?.why_this || compass.data.pick.why_this}</p>
@@ -294,11 +238,6 @@ function TodayPage() {
         </section>}
       </div>
 
-      <aside class="momentum-side">
-        <ThreadWorkspace data={data} reload={reload} />
-        <WeeklyClosure threadId={data?.active_thread?.id} onChanged={reload} />
-        <button class="queue-shortcut" onClick={() => go(destinations.find((item) => item.key === 'curate.queue')!)}><span><strong>Queue</strong><small>{items.length} active · {data?.inbox_count || 0} in Inbox</small></span><b>Open →</b></button>
-      </aside>
     </div>
 
   </div>

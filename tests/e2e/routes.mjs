@@ -166,12 +166,13 @@ if (!Array.isArray(proposals.proposals)) throw new Error('feedback proposal cont
 if (!Array.isArray(cards.cards)) throw new Error('SRS card management contract is invalid')
 if (!Array.isArray(momentum.active_items) || !Array.isArray(momentum.artifacts) || !momentum.momentum || !momentum.insight || !momentum.next_action_detail || !Array.isArray(momentum.recent_wins)) throw new Error('Momentum workspace contract is invalid')
 await page.goto(`${baseUrl}/#/today/momentum`, { waitUntil: 'networkidle' })
-await page.locator('.momentum-pulse').waitFor({ state: 'visible', timeout: 15000 })
+await page.locator('.focus-desk').waitFor({ state: 'visible', timeout: 15000 })
 const momentumBody = await page.locator('.page-content').innerText()
-for (const value of ['This week', 'Queue']) {
+for (const value of ['Queue', 'Focus desk']) {
   if (!momentumBody.toLowerCase().includes(value.toLowerCase())) throw new Error(`Momentum is missing ${value}: ${momentumBody}`)
 }
 if (await page.locator('.focus-desk').count() !== 1) throw new Error('Momentum must expose exactly one focus desk')
+if (await page.locator('.momentum-pulse').count()) throw new Error('Momentum must not surface the old streak/date strip')
 if (await page.locator('.queue-manifest').count()) throw new Error('Momentum must not duplicate the Queue or dump every file inline')
 
 const captured = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hermes-e2e', title: 'Hermes automation test' }) })

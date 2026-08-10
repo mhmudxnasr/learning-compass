@@ -34,7 +34,7 @@ The product is single-user, English-first, supports bilingual English/Egyptian-A
 The system is **Scholar's Instrument**: neutral, typographic, compact, precise, and calm.
 
 - Desktop uses a collapsible left rail.
-- Mobile prioritizes Momentum, Curate, Learn, and More.
+- Mobile prioritizes Momentum, Curate, Learn, and More. Momentum is source-first: the current source, its Queue rationale, all linked files and NotebookLM access, the active Thread question/evidence progress, and only actionable new attention changes.
 - IBM Plex Sans/Arabic is the UI family; IBM Plex Mono is for data; editorial typography is reserved for reading and notes.
 - Use neutral surfaces and one muted ink-blue accent. Semantic color is only for status/data.
 - Prefer lists, rules, timelines, tables, charts, and meaningful panels.

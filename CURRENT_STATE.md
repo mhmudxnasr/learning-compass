@@ -7,6 +7,10 @@ Update this file whenever a milestone is completed, a contract changes, a deploy
 
 Production D1 migrations are applied through `0023_intelligence_v2.sql`.
 
+## Current UI change
+
+- Momentum is being reshaped into a source-first dossier: the current source, Queue rationale, source/files/NotebookLM desk, Thread question and evidence progress, and only actionable attention changes. The streak/date/countdown strip is removed from the primary surface.
+
 ## Latest Audit
 
 - **Navigation rail and tab icon deployed** (2026-08-11): destination-specific icons now distinguish Momentum, Queue, Files, Notes, Activity, Inbox, and Atlas; Activity replaces Recall in the primary rail and mobile navigation; Profile remains available beside Search and Settings; the header and browser tab use a premium minimal compass mark served through explicit SVG asset routes. Worker version `a5b7918b-5e10-42dc-9104-ad7718ca0ffb` passed build, `git diff --check`, live health, and cache-busted live HTML/brand-asset checks.
