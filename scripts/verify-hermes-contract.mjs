@@ -1,10 +1,12 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 const root = new URL('..', import.meta.url).pathname
 const read = (file) => readFileSync(join(root, file), 'utf8')
 const required = [
   ['migrations/0006_hermes_upgrade.sql', 'Hermes upgrade migration'],
+  ['migrations/0023_intelligence_v2.sql', 'recommendation intelligence v2 migration'],
   ['src/api/intelligence.ts', '/analytics/hermes read model'],
   ['src/api/agent.ts', '/agent/memory and replay routes'],
   ['client/src/destinations.ts', 'Hermes destination'],
@@ -17,12 +19,18 @@ const missing = required.filter(([file]) => !existsSync(join(root, file))).map((
 if (missing.length) throw new Error(`Missing Hermes contract files: ${missing.join(', ')}`)
 
 const migrationNames = readdirSync(join(root, 'migrations')).filter((name) => /^\d+_.*\.sql$/.test(name)).sort()
-const expectedMigrations = ['0000_brain.sql', '0001_production_rebuild.sql', '0002_rss_feeds.sql', '0003_feedback_review.sql', '0004_discovery_engine.sql', '0005_recommendation_notebook_url.sql', '0006_hermes_upgrade.sql', '0007_sync_notifications.sql', '0008_compass_cascade.sql', '0009_proposal_dedup.sql', '0010_compass_queue_fill.sql', '0011_compass_adaptive_learning.sql', '0012_context_brief.sql', '0013_book_visual_chapters.sql', '0014_canonical_activity_ledger.sql', '0015_outcome_learning_integrity.sql']
+const expectedMigrations = ['0000_brain.sql', '0001_production_rebuild.sql', '0002_rss_feeds.sql', '0003_feedback_review.sql', '0004_discovery_engine.sql', '0005_recommendation_notebook_url.sql', '0006_hermes_upgrade.sql', '0007_sync_notifications.sql', '0008_compass_cascade.sql', '0009_proposal_dedup.sql', '0010_compass_queue_fill.sql', '0011_compass_adaptive_learning.sql', '0012_context_brief.sql', '0013_book_visual_chapters.sql', '0014_canonical_activity_ledger.sql', '0015_outcome_learning_integrity.sql', '0016_learning_integrity.sql', '0017_consolidation_workflows.sql', '0018_learning_threads.sql', '0019_learning_units.sql', '0020_mastery_evidence.sql', '0021_learning_outcomes_v2.sql', '0022_fsrs_and_thread_backfill.sql', '0023_intelligence_v2.sql']
 if (migrationNames.length !== expectedMigrations.length || expectedMigrations.some((name, index) => migrationNames[index] !== name)) throw new Error(`Migration order drift: expected ${expectedMigrations.join(', ')}, found ${migrationNames.join(', ')}`)
 
 const checks = [
   ['src/api/intelligence.ts', "app.get('/analytics/hermes'", 'Hermes analytics endpoint'],
   ['src/api/intelligence.ts', "app.post('/analytics/hermes/recalibrate'", 'bounded quality recalibration'],
+  ['src/api/intelligence.ts', "app.post('/analytics/hermes/repair'", 'snapshot-guarded history repair'],
+  ['src/api/intelligence.ts', "app.get('/analytics/hermes/engine'", 'v2 shadow rollout gate'],
+  ['src/api/intelligence.ts', "requestedStatus === 'no_change'", 'evidence-backed no-change improvement closure'],
+  ['src/api/intelligence.ts', "requestedStatus === 'failed'", 'failed resumable improvement closure'],
+  ['src/api/brain.ts', "app.put('/profile/assertions/:key'", 'editable typed profile assertions'],
+  ['src/api/product.ts', "app.post('/feedback/proposals/:id/revert'", 'reversible automatic profile changes'],
   ['src/api/intelligence.ts', "app.get('/analytics/hermes/weekly'", 'weekly evaluator report'],
   ['src/api/notebooklm.ts', "app.get('/health'", 'NotebookLM broker health'],
   ['src/api/agent.ts', "['POST', '/agent/memory/:id/approve'", 'memory approval capability'],
@@ -32,11 +40,15 @@ const checks = [
   ['docs/API.md', '/analytics/hermes', 'Hermes API documentation'],
   ['.hermes.md', '0006_hermes_upgrade.sql', 'migration contract synchronization'],
   ['.hermes.md', 'learning-compass-operating-system', 'procedural Hermes router contract'],
+  ['src/api/agent.ts', "['POST', '/learning/core/threads'", 'Learning Thread agent capability'],
+  ['.hermes.md', 'output_contract=learning_units_v1', 'anchored Learning Unit output contract'],
 ]
 const failed = checks.filter(([file, needle]) => !read(file).includes(needle)).map(([, , label]) => label)
 if (failed.length) throw new Error(`Hermes contract drift: ${failed.join(', ')}`)
+if (read('src/index.ts').includes('createHermesEvaluatorProposals')) throw new Error('Scheduled self-improvement remains enabled')
 
 const contract = JSON.parse(read('docs/hermes-contract.json'))
+if (contract.version !== 3) throw new Error('Canonical Hermes contract version drift')
 const requiredPolicy = [
   ['workflow', 'conversation-driven'],
   ['background_self_improvement', false],
@@ -50,11 +62,41 @@ if (contract.network?.private_urls !== 'deny_by_default' || contract.network?.lo
   throw new Error('Canonical Hermes network policy drift')
 }
 const evolution = contract.policies?.self_evolution
-if (evolution?.enabled !== true || evolution.scope !== 'verified_skill_procedure_memory' || evolution.persist_to !== 'D1 hermes_memory with evidence, validation, scope, and supersession' || evolution.skill_source_edits !== 'proposal_only') {
+if (evolution?.enabled !== true || evolution.scope !== 'verified_system_improvement' || evolution.persist_to !== 'canonical source plus D1 self_improvement_runs receipt; hermes_memory only for durable profile or skill_procedure evidence' || evolution.skill_source_edits !== 'automatic_after_replay_or_test_gate_in_active_conversation' || evolution.deployment !== 'automatic_after_release_verification_with_observed_live_smoke') {
   throw new Error('Canonical Hermes self-evolution policy drift')
 }
-for (const trigger of ['observed skill failure', 'validated better path']) {
+for (const trigger of ['specialist evolution handoff', 'observed skill failure', 'validated better path', 'explicit audit']) {
   if (!evolution.trigger?.includes(trigger)) throw new Error(`Self-evolution trigger missing: ${trigger}`)
+}
+if (contract.self_evolution_owner !== 'learning-compass-self-evolution') throw new Error('Canonical self-evolution owner drift')
+const activeSkills = contract.skill_graph?.active || []
+const retiredSkills = contract.skill_graph?.retired || []
+if (activeSkills.length !== 13 || new Set(activeSkills.map((skill) => skill.name)).size !== activeSkills.length) {
+  throw new Error('Canonical Hermes active skill graph is incomplete or duplicated')
+}
+for (const name of ['learning-compass-operating-system', 'learning-compass-self-evolution', 'learning-compass-site-operator', 'recommendations-worker-ops', 'taste-mapper', 'taste-rec', 'learning-notes-extractor', 'lite-visual', 'visual-mind', 'notebooklm', 'rss-feed', 'agent-cli-delegation', 'youtube-playlist-verification']) {
+  if (!activeSkills.some((skill) => skill.name === name && skill.path && skill.role)) throw new Error(`Canonical active skill missing: ${name}`)
+}
+for (const name of ['taste-enhancer', 'compass-queue-fill', 'learning-compass-curator-policy', 'master-editorial-synthesis']) {
+  if (!retiredSkills.includes(name)) throw new Error(`Canonical retired skill missing: ${name}`)
+}
+const localSkillsRoot = join(homedir(), '.hermes', 'skills')
+if (existsSync(localSkillsRoot)) {
+  for (const skill of activeSkills) {
+    const file = join(localSkillsRoot, skill.path, 'SKILL.md')
+    if (!existsSync(file)) throw new Error(`Active Hermes skill is not installed: ${skill.name}`)
+    const body = readFileSync(file, 'utf8')
+    if (!body.includes(`name: ${skill.name}`)) throw new Error(`Hermes skill name/path drift: ${skill.name}`)
+    if (!body.includes('## Evolution handoff')) throw new Error(`Hermes skill lacks evolution handoff: ${skill.name}`)
+  }
+  for (const name of retiredSkills) {
+    const stillActive = activeSkills.some((skill) => skill.name === name)
+      || readdirSync(localSkillsRoot, { withFileTypes: true }).some((entry) => entry.isDirectory() && entry.name === name)
+      || existsSync(join(localSkillsRoot, 'workflow', name, 'SKILL.md'))
+      || existsSync(join(localSkillsRoot, 'personal', name, 'SKILL.md'))
+      || existsSync(join(localSkillsRoot, 'productivity', name, 'SKILL.md'))
+    if (stillActive) throw new Error(`Retired Hermes skill remains active: ${name}`)
+  }
 }
 for (const tier of ['automatic', 'proposal_only', 'explicit_only']) {
   if (!contract.side_effect_tiers?.[tier]?.requires || !Array.isArray(contract.side_effect_tiers[tier].allows)) {

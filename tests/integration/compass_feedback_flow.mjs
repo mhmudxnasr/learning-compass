@@ -74,12 +74,35 @@ try {
   assert.equal(completedRecord.body.sessions[0].status, 'completed')
   assert.equal(completedRecord.body.item.user_score, 9)
 
+  await query(`
+    INSERT INTO recommendations (id,video_title,creator,content_type,video_url,status,dedup_key) VALUES ('rec_dismiss','Deferred source','Creator D','article','https://example.org/deferred','active','deferred-source');
+    INSERT INTO recommendation_meta (recommendation_id,learning_state) VALUES ('rec_dismiss','compass_pick');
+    INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,outcome_status) VALUES ('outcome_rec_dismiss','rec_dismiss','Creator D','article','active');
+    INSERT INTO compass_picks (id,request_id,strategy,status,recommendation_id,candidate_count) VALUES ('pick_dismiss','request_dismiss','bridge','ready','rec_dismiss',3);
+  `)
+  const badFitWithoutReason = await request('/compass/pick/pick_dismiss/feedback', { method: 'POST', body: JSON.stringify({ outcome: 'declined' }) })
+  assert.equal(badFitWithoutReason.status, 400)
+  assert.equal(badFitWithoutReason.body.error, 'bad_fit_reason_required')
+  const dismissed = await request('/compass/pick/pick_dismiss/feedback', { method: 'POST', body: JSON.stringify({ outcome: 'dismissed', reason_tags: ['not_now'] }) })
+  assert.equal(dismissed.status, 200)
+  assert.equal(dismissed.body.recommendation_state, 'inbox')
+  assert.equal(dismissed.body.feedback_job, null)
+  assert.equal(dismissed.body.learning_receipt.skipped, 'neutral_signal')
+  const dismissedRecord = await request('/capture/rec_dismiss/record')
+  assert.equal(dismissedRecord.body.item.status, 'active')
+  assert.equal(dismissedRecord.body.item.learning_state, 'inbox')
+  assert.equal(dismissedRecord.body.outcome.training_eligible, 0)
+  assert.equal(dismissedRecord.body.outcome.learning_value, null)
+
   const contextBrief = 'What it is: a primary-source research note.\n• Covers the method, evidence, and practical implication.\n• Expect a focused technical overview.'
+  const compassThread = await request('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Evaluate the Compass mechanism', thread_type: 'understand', guiding_question: 'Which source best explains the mechanism?', definition_of_done: 'Explain the mechanism with anchored evidence.', activate: true }) })
+  assert.equal(compassThread.status, 201)
   const submitted = await request('/compass/picks', {
     method: 'POST',
     body: JSON.stringify({
       request_id: 'request_context_brief',
       strategy: 'fit',
+      thread_id: compassThread.body.id,
       candidates: [
         { canonical_url: 'https://example.com/?context-brief=winner', title: 'Context brief primary research', creator: 'Research Lab', format: 'article', source_class: 'research', evidence: 'The original research explains its method, evidence, limitations, and practical implication.', context_brief: contextBrief },
         { canonical_url: 'https://example.com/?context-brief=alternate-one', title: 'Context brief alternate one', creator: 'Writer One', format: 'article', source_class: 'blog' },
@@ -96,7 +119,7 @@ try {
   assert.equal(startedSubmitted.status, 200)
   const submittedQueue = await request('/capture/queue')
   assert.equal(submittedQueue.body.items.find((item) => item.id === startedSubmitted.body.recommendation_id).context_brief, contextBrief)
-  await request(`/compass/pick/${submittedPick.body.pick.id}/feedback`, { method: 'POST', body: JSON.stringify({ outcome: 'declined' }) })
+  await request(`/compass/pick/${submittedPick.body.pick.id}/feedback`, { method: 'POST', body: JSON.stringify({ outcome: 'declined', reason_tags: ['wrong_topic'] }) })
 
   await query(`
     INSERT INTO compass_picks (id,request_id,strategy,status,candidate_count,confidence,stop_reason,rationale_json) VALUES ('pick_weak','request_weak','fit','abstained',3,0.61,'winner_below_score_threshold','{"why_this":"A promising but lightly evidenced source.","context_brief":"What it is: a compact source review.\\n• Covers the core argument and supporting evidence.\\n• Expect a cautious, practical overview.","score":0.63,"abstention_reason":"winner_below_score_threshold","source_check":{"status":"verified"}}');

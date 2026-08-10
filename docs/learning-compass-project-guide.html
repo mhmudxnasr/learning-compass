@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A source-grounded field guide to the Learning Compass product, architecture, learning model, recommendation system, Hermes workflows, and operating rules.">
+  <title>Learning Compass — Project Guide</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --paper: #f5f5f1;
+      --paper-2: #ecece6;
+      --ink: #20242b;
+      --muted: #68707c;
+      --line: #cfd2d3;
+      --accent: #4d628c;
+      --accent-soft: #dfe5ef;
+      --signal: #b56a35;
+      --max: 1120px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.7 "IBM Plex Sans", Inter, system-ui, sans-serif; }
+    a { color: var(--accent); }
+    .shell { max-width: var(--max); margin: 0 auto; padding: 0 28px 80px; }
+    header { padding: 64px 0 42px; border-bottom: 1px solid var(--line); }
+    .eyebrow { margin: 0 0 14px; color: var(--accent); font: 600 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .14em; text-transform: uppercase; }
+    h1, h2, h3 { color: var(--ink); line-height: 1.15; letter-spacing: -.025em; }
+    h1 { max-width: 820px; margin: 0; font: 700 clamp(42px, 7vw, 84px)/.98 Georgia, "Times New Roman", serif; }
+    .dek { max-width: 760px; margin: 24px 0 0; color: var(--muted); font-size: 20px; line-height: 1.45; }
+    .meta { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 28px; color: var(--muted); font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .meta span { padding-right: 18px; border-right: 1px solid var(--line); }
+    .meta span:last-child { border-right: 0; }
+    .toc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 28px 0 54px; border: 1px solid var(--line); background: var(--line); }
+    .toc a { display: block; min-height: 76px; padding: 14px 16px; background: var(--paper-2); text-decoration: none; color: var(--ink); }
+    .toc a:hover { background: var(--accent-soft); }
+    .toc b { display: block; color: var(--accent); font-size: 13px; }
+    .toc small { display: block; margin-top: 4px; color: var(--muted); line-height: 1.35; }
+    section { padding: 42px 0; border-bottom: 1px solid var(--line); }
+    section:last-of-type { border-bottom: 0; }
+    h2 { margin: 0 0 18px; font-size: 32px; }
+    h3 { margin: 28px 0 10px; font-size: 20px; }
+    p { max-width: 800px; margin: 0 0 14px; }
+    ul, ol { max-width: 820px; padding-left: 24px; }
+    li { margin: 7px 0; }
+    .lead { max-width: 820px; font-size: 19px; line-height: 1.55; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 22px; }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .panel { padding: 20px; border: 1px solid var(--line); background: color-mix(in srgb, var(--paper-2) 65%, transparent); }
+    .panel h3 { margin-top: 0; }
+    .panel p:last-child, .panel ul:last-child { margin-bottom: 0; }
+    .label { display: inline-block; margin-bottom: 9px; color: var(--accent); font: 600 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase; }
+    .flow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: 24px 0 14px; border: 1px solid var(--line); }
+    .flow div { min-height: 112px; padding: 15px; border-right: 1px solid var(--line); background: var(--paper-2); }
+    .flow div:last-child { border-right: 0; }
+    .flow strong { display: block; color: var(--accent); font-size: 15px; }
+    .flow span { display: block; margin-top: 7px; color: var(--muted); font-size: 13px; line-height: 1.4; }
+    .callout { margin: 24px 0; padding: 18px 20px; border-left: 4px solid var(--accent); background: var(--accent-soft); }
+    .callout.warn { border-left-color: var(--signal); }
+    .callout p { margin: 0; }
+    table { width: 100%; margin: 20px 0; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 11px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--accent); background: var(--paper-2); font: 600 12px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em; text-transform: uppercase; }
+    code, .mono { font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    code { padding: 2px 5px; background: var(--paper-2); }
+    pre { overflow-x: auto; padding: 16px; border: 1px solid var(--line); background: #20242b; color: #e9edf2; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    details { margin: 10px 0; border: 1px solid var(--line); }
+    summary { cursor: pointer; padding: 13px 16px; color: var(--accent); font-weight: 650; }
+    details > div { padding: 0 16px 16px; }
+    .skill { display: grid; grid-template-columns: 245px 1fr; gap: 18px; padding: 14px 0; border-top: 1px solid var(--line); }
+    .skill:first-child { border-top: 0; }
+    .skill strong { color: var(--ink); }
+    .skill p { margin: 0; color: var(--muted); }
+    footer { padding-top: 34px; color: var(--muted); font-size: 13px; }
+    @media (max-width: 780px) {
+      .shell { padding: 0 18px 54px; }
+      header { padding-top: 42px; }
+      .toc, .grid, .grid.three { grid-template-columns: 1fr 1fr; }
+      .flow { grid-template-columns: 1fr 1fr 1fr; }
+      .flow div:nth-child(3) { border-right: 0; }
+      .flow div:nth-child(n+4) { border-top: 1px solid var(--line); }
+      .skill { grid-template-columns: 1fr; gap: 4px; }
+    }
+    @media (max-width: 500px) {
+      .toc, .grid, .grid.three, .flow { grid-template-columns: 1fr; }
+      .flow div, .flow div:nth-child(3) { border-right: 0; border-top: 1px solid var(--line); }
+      .flow div:first-child { border-top: 0; }
+      .meta { display: block; }
+      .meta span { display: inline-block; margin: 0 12px 8px 0; padding-right: 12px; }
+    }
+    @media print {
+      body { background: #fff; color: #222; }
+      .shell { max-width: none; padding: 0; }
+      header { padding-top: 0; }
+      .toc { display: none; }
+      section { break-inside: avoid; }
+      a { color: #222; text-decoration: none; }
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --paper: #171a1e; --paper-2: #22272e; --ink: #e8ebef; --muted: #a4abb5; --line: #3a424d; --accent-soft: #273449; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <p class="eyebrow">Learning Compass · project field guide</p>
+      <h1>How the whole system fits together.</h1>
+      <p class="dek">A current, source-grounded explanation of the product, its learning model, recommendation intelligence, Hermes operating system, storage boundaries, and the rules that keep it honest.</p>
+      <div class="meta"><span>Updated 2026-08-09</span><span>Worker b8ba07cb</span><span>19 purposeful views</span><span>13 active Hermes skills</span></div>
+    </header>
+
+    <nav class="toc" aria-label="Guide contents">
+      <a href="#thesis"><b>01 · Thesis</b><small>What Learning Compass is for</small></a>
+      <a href="#loop"><b>02 · Learning loop</b><small>The user-facing operating cycle</small></a>
+      <a href="#architecture"><b>03 · Architecture</b><small>Client, Worker, D1, R2, Hermes</small></a>
+      <a href="#surfaces"><b>04 · Product map</b><small>The 19 purposeful destinations</small></a>
+      <a href="#learning"><b>05 · Learning model</b><small>Threads, units, mastery, recall</small></a>
+      <a href="#recommendations"><b>06 · Recommendations</b><small>Compass, profile, queue rules</small></a>
+      <a href="#hermes"><b>07 · Hermes</b><small>Skills and self-evolution</small></a>
+      <a href="#artifacts"><b>08 · Artifacts</b><small>HTML, PDF, NotebookLM, Obsidian</small></a>
+      <a href="#operations"><b>09 · Operations</b><small>API, jobs, schedules, deployment</small></a>
+      <a href="#safety"><b>10 · Invariants</b><small>What must never drift</small></a>
+      <a href="#verification"><b>11 · Verification</b><small>How changes become trustworthy</small></a>
+      <a href="#glossary"><b>12 · Glossary</b><small>Names used in the system</small></a>
+    </nav>
+
+    <main>
+      <section id="thesis">
+        <p class="eyebrow">01 · Thesis</p>
+        <h2>Learning Compass is a learning operating system.</h2>
+        <p class="lead">It turns scattered sources into a repeatable loop: define what matters, select useful material, consume it at the real source, reflect, consolidate what was learned, retrieve it later, and use evidence to decide what should resurface.</p>
+        <div class="callout"><p><strong>The core distinction:</strong> a source is an input, not proof of learning. Learning becomes real when a Thread has anchored units and evidence of retrieval, explanation, transfer, decision, creation, or application.</p></div>
+        <div class="grid three">
+          <div class="panel"><span class="label">Product</span><h3>Purpose before volume</h3><p>Learning Threads hold the question, urgency, definition of done, evidence requirements, and source roles. The system is organized around decisions and capabilities, not an endless content list.</p></div>
+          <div class="panel"><span class="label">Intelligence</span><h3>Evidence before adaptation</h3><p>Ratings, fit labels, dispositions, completion, retrieval, and transfer stay separate. Recommendation and profile changes only use the signals they can honestly support.</p></div>
+          <div class="panel"><span class="label">Operating style</span><h3>Explicit, reversible, auditable</h3><p>Hermes can act inside an explicit workflow, but consequential changes carry receipts, confidence, provenance, validation, and an undo or rollback path.</p></div>
+        </div>
+      </section>
+
+      <section id="loop">
+        <p class="eyebrow">02 · Learning loop</p>
+        <h2>Capture → curate → consume → reflect → consolidate → retrieve → resurface.</h2>
+        <div class="flow" aria-label="Learning Compass loop">
+          <div><strong>Define</strong><span>Open or refine a Learning Thread.</span></div>
+          <div><strong>Capture</strong><span>Put URL, text, PDF, HTML, video, book, Telegram, share-target, RSS, or Atom input in Inbox.</span></div>
+          <div><strong>Curate</strong><span>Queue a source when it fits the current purpose and cap.</span></div>
+          <div><strong>Consume</strong><span>Start the real source and track the learning session.</span></div>
+          <div><strong>Reflect</strong><span>Return with a verbatim personal reflection and structured feedback.</span></div>
+          <div><strong>Verify</strong><span>Extract units, retrieve, apply, and resurface evidence.</span></div>
+        </div>
+        <p>Every capture enters the unlimited Inbox. The active Queue normally holds at most five queued or in-progress items. Queue overflow needs an explicit override. Starting, returning, and completing a source remain explicit actions.</p>
+        <div class="callout warn"><p><strong>Feedback stops the loop before recommendation.</strong> Processing a reflection can update proposals, the map, or profile evidence, but it never silently requests another recommendation.</p></div>
+      </section>
+
+      <section id="architecture">
+        <p class="eyebrow">03 · Architecture</p>
+        <h2>One canonical product, clear storage boundaries.</h2>
+        <div class="grid">
+          <div class="panel"><span class="label">Client</span><h3>Vite + Preact + TypeScript</h3><p>The browser provides the Scholar's Instrument interface: compact, typographic, neutral, precise, responsive, and centered on the learning loop. The route registry contains 19 purposeful views.</p></div>
+          <div class="panel"><span class="label">Worker</span><h3>Hono on Cloudflare Workers</h3><p><code>src/index.ts</code> owns routing, rate limits, write protection, request receipts, scheduled product maintenance, API composition, and the D1/R2 bindings.</p></div>
+          <div class="panel"><span class="label">D1</span><h3>Canonical structured state</h3><p>Recommendations, captures, sessions, Threads, Learning Units, notes, ratings, SRS cards, map data, settings, feedback, memory provenance, jobs, and improvement receipts live here.</p></div>
+          <div class="panel"><span class="label">R2</span><h3>Large artifacts</h3><p>HTML, PDF, transcripts, and generated companions live in the <code>taste-map-artifacts</code> bucket. D1 keeps their identity, source relationship, role, checksum, and metadata.</p></div>
+          <div class="panel"><span class="label">Hermes</span><h3>Explicit workflow executor</h3><p>Hermes reads the product through the allow-listed agent API, claims only the work created by the active workflow, runs one focused specialist, verifies the result, and records a receipt.</p></div>
+          <div class="panel"><span class="label">Archive</span><h3>Obsidian is a one-way note export</h3><p>Obsidian receives extracted notes only. It is not a second canonical database and must never overwrite D1.</p></div>
+        </div>
+        <pre>Preact client ── HTTP ──&gt; Hono Worker ──&gt; D1 (canonical structured state)
+                              └──────────────&gt; R2 (large artifacts)
+
+Hermes explicit workflow &lt;── /agent/jobs ──┘
+    ├── site operator
+    ├── recommendation and taste specialists
+    ├── note and visual specialists
+    └── self-evolution owner</pre>
+      </section>
+
+      <section id="surfaces">
+        <p class="eyebrow">04 · Product map</p>
+        <h2>The interface follows the loop.</h2>
+        <table>
+          <thead><tr><th>Area</th><th>Views</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>Momentum</td><td>Momentum</td><td>Current-source focus desk, activity pulse, active Thread brief, and one concrete next action.</td></tr>
+            <tr><td>Curate</td><td>Queue · Inbox · Collections · Archive · Books</td><td>Capture, triage, source selection, saved groups, archived feeds, and canonical book records.</td></tr>
+            <tr><td>Map</td><td>Atlas · Coverage</td><td>Navigate the knowledge graph and see attention, retention, gaps, and branch health.</td></tr>
+            <tr><td>Learn</td><td>Files · Notes · Recall · Activity</td><td>Read companions, edit extracted knowledge, retrieve approved cards, and inspect the learning history.</td></tr>
+            <tr><td>Insights</td><td>Overview · Taste · Hermes</td><td>Understand learning balance, recommendation signals, profile evidence, memory, receipts, and rollout gates.</td></tr>
+            <tr><td>Settings</td><td>Profile · Preferences · Data · System</td><td>Edit the personal learning record, control behavior, repair offline data, and inspect the complete operational boundary.</td></tr>
+          </tbody>
+        </table>
+        <p>Legacy routes remain compatibility redirects. Infrastructure is visible in System for control and trust, but job plumbing is not promoted into the daily learning loop.</p>
+      </section>
+
+      <section id="learning">
+        <p class="eyebrow">05 · Learning model</p>
+        <h2>Learning is a graph of purpose, claims, and evidence.</h2>
+        <div class="grid">
+          <div class="panel"><h3>Learning Threads</h3><p>A Thread is the purpose-first container for one question, decision, build, or capability. It has a guiding question, definition of done, evidence requirements, source roles, a final synthesis, and a verified state.</p></div>
+          <div class="panel"><h3>Learning Units</h3><p>Units are atomic claims, concepts, methods, examples, questions, applications, and counterclaims. Each unit carries exact source anchors, personal synthesis, stance, confidence, and typed relations.</p></div>
+          <div class="panel"><h3>Mastery</h3><p>Taste rating is not mastery. Verified mastery comes from retrieval, explanation, transfer, decision, artifact, or application evidence. A completed source can be enjoyable without being retained.</p></div>
+          <div class="panel"><h3>Recall</h3><p>Approved SRS drafts become cards. FSRS-6 schedules the cards through the official <code>ts-fsrs</code> implementation. A failed review never advances mastery.</p></div>
+          <div class="panel"><h3>Consolidation</h3><p>Explicit completion can create a durable consolidation run with a visible terminal state: closed, repair required, or waived. There is no hidden learning-core timer.</p></div>
+          <div class="panel"><h3>Map and balance</h3><p>Atlas stores branches, edges, evidence, contradictions, coverage, health, and attention. Learning Balance is the shared read model for the site and Hermes.</p></div>
+        </div>
+        <div class="callout"><p><strong>Notes are projections, not the whole knowledge model.</strong> The Notes library is the readable extracted view. The source record still links the original source, personal feedback, sessions, artifacts, units, evidence, recall, and memory influence.</p></div>
+      </section>
+
+      <section id="recommendations">
+        <p class="eyebrow">06 · Recommendations</p>
+        <h2>Compass chooses the next useful source under evidence and constraint.</h2>
+        <p class="lead">The current recommendation path is Thread-first and shadow-scored. It looks at the active purpose, source reachability, duplicates, mastered and consumed sources, typed profile assertions, creator and format utility, learning balance, branch contribution, evidence quality, and exploration lanes.</p>
+        <div class="grid three">
+          <div class="panel"><span class="label">Fit</span><h3>Does this serve the Thread?</h3><p>Fit candidates advance the current goal directly and satisfy its source role.</p></div>
+          <div class="panel"><span class="label">Bridge</span><h3>Does this connect fields?</h3><p>Bridge candidates add a useful adjacent concept without drifting into generic novelty.</p></div>
+          <div class="panel"><span class="label">Challenge</span><h3>Does this test a belief?</h3><p>Challenge candidates create productive counter-evidence and expose weak assumptions.</p></div>
+        </div>
+        <h3>Serving rules</h3>
+        <ul>
+          <li>Recommendations happen only on an explicit request.</li>
+          <li>Normal requests expose one strong pick and wait for explicit Start.</li>
+          <li>Explicit Queue-fill requests can run bounded waves and start only Worker-returned <code>ready</code> picks.</li>
+          <li>A withheld weak pick needs its own exact <strong>Add to Queue anyway</strong> override.</li>
+          <li>The five-item Queue cap still applies unless the user explicitly overrides it.</li>
+          <li><strong>Not now</strong> is neutral. <strong>Bad fit</strong> is a reasoned eligibility signal. Administrative exclusion is not negative taste.</li>
+          <li>Consumed and mastered sources are checked before anything is proposed.</li>
+        </ul>
+        <h3>Evidence gates</h3>
+        <p>Compass V2 remains shadow until it has 20 clean global learning-value outcomes, eight per lane, ten shadow decisions, and zero invalid-evidence winners. Adaptation stays bounded while evidence is thin.</p>
+        <p>The learning-value signal combines available rating (25%), explicit disposition (25%), and strongest retrieval/transfer/application evidence (50%). Missing components are not silently treated as zero.</p>
+      </section>
+
+      <section id="hermes">
+        <p class="eyebrow">07 · Hermes</p>
+        <h2>Hermes is the procedural operating system; self-evolution has one owner.</h2>
+        <p class="lead">The router classifies every Learning Compass request into one verified procedure, calls one focused specialist, and ends with one compact evolution handoff. Specialists do not independently rewrite the system.</p>
+        <div class="skill">
+          <strong>learning-compass-operating-system</strong><p>Routes every request, preserves the product loop, prevents feedback from auto-recommending, and sends one end-of-turn evolution handoff.</p>
+        </div>
+        <div class="skill"><strong>learning-compass-self-evolution</strong><p>The sole owner for evidence deduplication, thresholds, profile/procedure/system candidates, skill graph health, rollout decisions, receipts, rollback, and no-change decisions.</p></div>
+        <div class="skill"><strong>learning-compass-site-operator</strong><p>Reads before writes through the allow-listed Worker API, uses the Hermes User-Agent, verifies after mutations, and reports the canonical receipt.</p></div>
+        <div class="skill"><strong>recommendations-worker-ops</strong><p>Owns health, migrations, deployment gates, live smoke, job recovery, release receipts, and operational failure handling.</p></div>
+        <div class="skill"><strong>taste-mapper</strong><p>Processes explicit feedback into typed profile, map, creator, format, or scoring proposals with evidence and confidence.</p></div>
+        <div class="skill"><strong>taste-rec</strong><p>Runs explicit recommendation work, reads the full context, applies exclusions and deduplication, and returns a bounded Compass pick.</p></div>
+        <div class="skill"><strong>learning-notes-extractor</strong><p>Turns an explicit source or artifact into structured, editable, bilingual-aware notes. It never runs automatically after Lite Visual.</p></div>
+        <div class="skill"><strong>lite-visual</strong><p>Creates source-grounded HTML/PDF reading companions, complete evidence packets, checksum metadata, and canonical artifact verification.</p></div>
+        <div class="skill"><strong>visual-mind</strong><p>Plans source-proportional diagrams, tables, images, and other visual assets with provenance and deterministic fallback behavior.</p></div>
+        <div class="skill"><strong>notebooklm</strong><p>Handles grounded corpus Q&amp;A and explicit Studio requests through the native NotebookLM MCP workflow and its direct API backup.</p></div>
+        <div class="skill"><strong>rss-feed</strong><p>Subscribes, refreshes, paginates, and reports RSS/Atom sources. Feed items still enter Inbox and do not bypass triage.</p></div>
+        <div class="skill"><strong>agent-cli-delegation</strong><p>Delegates repository edits and verification to Codex while preserving scope, evidence, and release boundaries.</p></div>
+        <div class="skill"><strong>youtube-playlist-verification</strong><p>Verifies playlist sources and records stable source identity before they enter the product workflow.</p></div>
+        <div class="callout"><p><strong>Self-improvement rule:</strong> a specialist may surface a candidate only with <code>owner → observation → evidence → replay → smallest_candidate → confidence → scope</code>. No reproducible evidence means receipt-only <code>no_change</code>. Applied, failed/resumable, and no-change outcomes are all first-class.</p></div>
+        <p>The four redundant skills—<code>taste-enhancer</code>, <code>compass-queue-fill</code>, <code>learning-compass-curator-policy</code>, and <code>master-editorial-synthesis</code>—are retired outside the active graph. Their archive copies remain recoverable for audit.</p>
+      </section>
+
+      <section id="artifacts">
+        <p class="eyebrow">08 · Artifacts</p>
+        <h2>Generated reading material is still tied to a source.</h2>
+        <h3>Lite Visual</h3>
+        <ol>
+          <li>Resolve the exact source and existing pair.</li>
+          <li>Mine the complete source and record an evidence packet plus coverage matrix.</li>
+          <li>Run Visual Mind first when visual assets are needed.</li>
+          <li>Produce source-proportional HTML and a real tablet/print PDF.</li>
+          <li>Upload linked roles with checksums, revision metadata, and source identity.</li>
+          <li>Re-read both artifacts and verify the canonical source record.</li>
+        </ol>
+        <p>There is no subjective Lite Visual QA score or release gate, and Lite Visual never queues Notes Extractor automatically. The PDF is the reading companion; the HTML is the responsive reading surface.</p>
+        <h3>This guide</h3>
+        <p>This document is itself a normal HTML artifact: stored in R2, registered in D1, linked to a canonical source record, and placed in the Queue. It does not become an untracked file dump or a special infrastructure object.</p>
+        <h3>NotebookLM and Obsidian</h3>
+        <p>The Master Corpus receives original sources and Mahmood-authored reflections during explicit feedback workflows. Generated translations and companions are not treated as his thoughts. Obsidian receives extracted-note archive copies only.</p>
+      </section>
+
+      <section id="operations">
+        <p class="eyebrow">09 · Operations</p>
+        <h2>Every mutation stays inside a visible contract.</h2>
+        <table>
+          <thead><tr><th>Operation</th><th>Canonical route</th><th>Guardrail</th></tr></thead>
+          <tbody>
+            <tr><td>Capture</td><td><code>POST /capture</code></td><td>Always lands in Inbox; deduplicates by source identity.</td></tr>
+            <tr><td>Queue</td><td><code>POST /capture/:id/triage</code></td><td>Requires an active Thread and enforces the five-item cap.</td></tr>
+            <tr><td>Artifact</td><td><code>POST /artifacts</code></td><td>Validates media signature, role, pair identity, source metadata, and R2 write.</td></tr>
+            <tr><td>Feedback</td><td><code>POST /feedback/record</code></td><td>One exact tracked/untracked feedback mutation and receipt.</td></tr>
+            <tr><td>Profile</td><td><code>PUT /brain/profile/assertions/:key</code></td><td>Typed, versioned, reversible assertions with evidence gates.</td></tr>
+            <tr><td>Agent action</td><td><code>POST /agent/request</code></td><td>Allow-listed operation, product validation, audit log, and optional API token.</td></tr>
+            <tr><td>Self-improvement</td><td><code>POST /intelligence/improvements</code></td><td>Conversation-bound receipt, validation, rollback state, and explicit terminal status.</td></tr>
+          </tbody>
+        </table>
+        <h3>Runtime cadence</h3>
+        <p>The Worker has a six-hour product maintenance schedule for enabled RSS/Atom refresh, due reminders, search synchronization, neglected-branch surfacing, and undo-window expiry. Hermes workflows, learning consolidation, recommendations, Lite Visual, NotebookLM, and self-improvement remain on-demand and conversation-driven.</p>
+        <h3>Deployment identity</h3>
+        <p>Production deploys only from this repository with:</p>
+        <pre>npx wrangler deploy --config wrangler.toml</pre>
+        <p>Current verified Worker: <code>b8ba07cb-4917-4266-a5e9-820c59c17be1</code>.</p>
+      </section>
+
+      <section id="safety">
+        <p class="eyebrow">10 · Invariants</p>
+        <h2>These rules protect the system from becoming noisy or dishonest.</h2>
+        <div class="grid">
+          <div class="panel"><h3>D1 is canonical</h3><p>R2 holds large files. Obsidian is an extracted-note archive. No secondary store may silently become authoritative.</p></div>
+          <div class="panel"><h3>Inbox is universal</h3><p>Telegram, share-target, URL, text, PDF, HTML, video, books, RSS, and Atom captures all enter Inbox.</p></div>
+          <div class="panel"><h3>Queue is finite</h3><p>Five active items is the default. Overflow is explicit. Weak recommendations never bypass their own override.</p></div>
+          <div class="panel"><h3>Consumption is real</h3><p>The source is consumed externally and tracked through a learning session. A generated companion is not a substitute for the source.</p></div>
+          <div class="panel"><h3>Notes are editable</h3><p>Structured notes are searchable, readable, editable, and support per-block English/Egyptian-Arabic direction.</p></div>
+          <div class="panel"><h3>Review is approved</h3><p>Ratings 7–10 create editable SRS drafts. Approval is required before a card enters Recall.</p></div>
+          <div class="panel"><h3>Feedback does not recommend</h3><p>Reflection processing updates evidence and proposals, then stops. A new recommendation needs a new explicit request.</p></div>
+          <div class="panel"><h3>No background self-editing</h3><p>Hermes evolves through explicit workflow evidence, not a hidden cron, poller, or unbounded autonomous loop.</p></div>
+        </div>
+        <div class="callout warn"><p><strong>Hard content filters remain active:</strong> no book-derived Islamic content; theoretical/philosophical death content only; no dopamine/habit-neuroscience hits; real-life/business storytelling rather than fiction craft; Mathur/ProPublica dark-pattern framing; practical applied AI and agent workflows rather than low-level training math.</p></div>
+      </section>
+
+      <section id="verification">
+        <p class="eyebrow">11 · Verification</p>
+        <h2>Change is complete only when implementation and operating memory agree.</h2>
+        <div class="grid three">
+          <div class="panel"><span class="label">Code</span><h3>Unit and type checks</h3><p><code>npm test</code> covers domain/API behavior and TypeScript.</p></div>
+          <div class="panel"><span class="label">Product</span><h3>Build and E2E</h3><p><code>npm run build</code> and <code>npm run test:e2e</code> protect the client shell, destinations, and responsive behavior.</p></div>
+          <div class="panel"><span class="label">Schema</span><h3>Migration rehearsal</h3><p><code>npm run verify:migrations</code> checks clean apply and idempotent re-apply.</p></div>
+          <div class="panel"><span class="label">Hermes</span><h3>Contract verification</h3><p><code>npm run verify:hermes</code> checks migration order, routes, docs, active skills, and synchronized contract data.</p></div>
+          <div class="panel"><span class="label">Release</span><h3>Rollback and smoke</h3><p>Capture rollback identity, deploy with the repository config, then observe live health and critical routes.</p></div>
+          <div class="panel"><span class="label">Handoff</span><h3>Current state</h3><p>Update project context, active Hermes skills, memory, docs, and <code>CURRENT_STATE.md</code> in the same task.</p></div>
+        </div>
+        <p>The latest project milestone verified the 13 active skill validators, Hermes configuration, 62 unit tests plus TypeScript, production build, 19-destination E2E, migration rehearsal, focused integration flows, contract checks, live Worker smoke, gateway restart, and a fresh-session routing check.</p>
+      </section>
+
+      <section id="glossary">
+        <p class="eyebrow">12 · Glossary</p>
+        <h2>Names worth keeping straight.</h2>
+        <details open><summary>Inbox</summary><div><p>The unlimited landing place for every capture before triage.</p></div></details>
+        <details><summary>Queue</summary><div><p>The finite set of sources currently queued or in progress. Default cap: five.</p></div></details>
+        <details><summary>Learning Thread</summary><div><p>A purpose-first question, decision, build, or capability with evidence requirements and source roles.</p></div></details>
+        <details><summary>Learning Unit</summary><div><p>An atomic piece of knowledge with source anchors, personal synthesis, confidence, and typed relations.</p></div></details>
+        <details><summary>Compass</summary><div><p>The Thread-first recommendation system with fit, bridge, and challenge lanes and shadow evidence gates.</p></div></details>
+        <details><summary>Hermes</summary><div><p>The explicit workflow agent and procedural operating system that operates Learning Compass through validated APIs and specialist skills.</p></div></details>
+        <details><summary>Self-evolution</summary><div><p>The evidence-gated process that decides whether a repeated, reproducible observation merits a profile, procedure, skill, code, workflow, or rollout change.</p></div></details>
+        <details><summary>Source record</summary><div><p>The canonical joined view of a source, its feedback, sessions, notes, artifacts, recall, units, evidence, proposals, memory influence, and outcome.</p></div></details>
+        <details><summary>Receipt</summary><div><p>A durable record of intent, target, before state, mutation or job, after state, evidence, and blocker or terminal decision.</p></div></details>
+      </section>
+    </main>
+
+    <footer>
+      <p>Learning Compass · Scholar's Instrument · Source-grounded project guide · Updated 2026-08-09</p>
+    </footer>
+  </div>
+</body>
+</html>

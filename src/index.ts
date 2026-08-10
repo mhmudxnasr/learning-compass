@@ -27,14 +27,14 @@ import { createInboxCapture } from './services/capture'
 import { syncAllFeeds } from './services/rss'
 import notificationsApi from './api/notifications'
 import { deliverScheduledReminders } from './api/notifications'
-import { createHermesEvaluatorProposals } from './services/hermes-intelligence'
 import compassApi from './api/compass'
+import learningCoreApi from './api/learning-core'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
 const RATE_LIMIT_WINDOW = 60000
 const RATE_LIMIT_MAX_READS = 300
-const RATE_LIMIT_MAX_WRITES = 20
+const RATE_LIMIT_MAX_WRITES = 60
 const rateLimitStore = new Map<string, { reads: number[]; writes: number[] }>()
 
 function getClientIp(c: any): string {
@@ -84,7 +84,7 @@ app.use('/*', async (c, next) => {
   }
 })
 
-app.use('/*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] }))
+app.use('/*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }))
 
 app.use('/*', async (c, next) => {
   await next()
@@ -176,6 +176,7 @@ app.route('/recommendations', recsApi)
 app.route('/brain', brainApi)
 app.route('/html', vaultApi)
 app.route('/learning', learningApi)
+app.route('/learning/core', learningCoreApi)
 app.route('/stats', statsApi)
 app.route('/search', searchApi)
 app.route('/ai', enhanceApi)
@@ -329,17 +330,6 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
     await syncAllFeeds(DB)
     await deliverScheduledReminders(env)
 
-    // Weekly evaluator is idempotent and creates proposals only; it never mutates taste directly.
-    const currentDate = new Date()
-    const weekStart = new Date(currentDate)
-    weekStart.setUTCDate(currentDate.getUTCDate() - ((currentDate.getUTCDay() + 6) % 7))
-    const weekKey = weekStart.toISOString().slice(0, 10)
-    const evaluatorState = await DB.prepare("SELECT value FROM kv_store WHERE key='hermes.evaluator.last_run'").first<any>()
-    if (evaluatorState?.value !== weekKey) {
-      await createHermesEvaluatorProposals(DB)
-      await DB.prepare("INSERT OR REPLACE INTO kv_store (key,value) VALUES ('hermes.evaluator.last_run',?)").bind(weekKey).run()
-    }
-
     // 1. Clean expired undo rows
     await DB.prepare("DELETE FROM undo_queue WHERE expires_at < datetime('now')").run()
 
@@ -405,6 +395,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
         SELECT ?,'stale',date('now'),? WHERE NOT EXISTS (SELECT 1 FROM resurfacing WHERE recommendation_id=? AND resolved_at IS NULL)`)
         .bind(rec.id, `Branch ${branch} has been inactive for 30 days.`, rec.id).run()
     }
+
   } catch (e) {
     console.error('cron failed', e)
   }

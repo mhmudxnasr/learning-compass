@@ -36,7 +36,7 @@ app.get('/vector', async (c) => {
     const data = await cached('taste.vector', 60000, async () => {
     const rawScores = await DB.prepare(`
       SELECT
-        COALESCE(m.branch_id, SUBSTR(r.dedup_key, 1, INSTR(r.dedup_key || '-', '-') - 1), 'general') as topic,
+        COALESCE(m.branch_id, 'unmapped') as topic,
         COUNT(*) as total_consumed,
         SUM(CASE WHEN user_rating = 'love' THEN 5 WHEN user_rating = 'like' THEN 3 WHEN user_rating = 'meh' THEN 1 WHEN user_rating = 'dislike' THEN -2 ELSE 0 END) as total_points,
         MAX(consumed_date) as last_consumed
@@ -92,7 +92,7 @@ app.get('/vector', async (c) => {
 app.post('/rerank', async (c) => {
   const { DB } = c.env
   try {
-    const active = await DB.prepare("SELECT * FROM recommendations WHERE status = 'active' ORDER BY created_at DESC").all<any>()
+    const active = await DB.prepare("SELECT r.*,m.branch_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status = 'active' ORDER BY r.created_at DESC").all<any>()
     const headers: Record<string, string> = {}
     const token = c.req.header('x-api-token')
     if (token) headers['x-api-token'] = token
@@ -104,7 +104,7 @@ app.post('/rerank', async (c) => {
     }
 
     const reranked = (active.results || []).map((item: any) => {
-      const topic = canonicalTasteIdentity(item.dedup_key ? item.dedup_key.split('-')[0] : 'general')
+      const topic = canonicalTasteIdentity(item.branch_id, 'unmapped')
       const affinity = vMap.get(topic) || 1.0
       const score = affinity * (item.why_this ? 1.2 : 1.0)
       return { ...item, topic, rank_score: parseFloat(score.toFixed(2)) }

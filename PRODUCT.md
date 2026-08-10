@@ -4,15 +4,17 @@ Learning Compass is Mahmood’s private learning operating system. D1 is canonic
 
 ## Core loop
 
-Capture a strong source → curate a five-item queue → consume externally → preserve reflection → apply evidence-qualified intelligence changes → extract a structured note → approve recall cards → review → update the Atlas → resurface what matters.
+Define a question, decision, build, or capability as a Learning Thread → attach deliberate sources → consume externally → preserve reflection → consolidate anchored Learning Units → retrieve or apply them → satisfy the Thread evidence contract → verify the outcome.
+
+Sources are inputs. Notes are readable projections. Ratings train taste. Only delayed retrieval, explanation, transfer, decisions, artifacts, or application results count as learning evidence.
 
 Manual captures, share targets, Telegram links, and subscribed RSS/Atom entries all land in the unlimited Inbox. Web feeds refresh every six hours and never bypass triage or the five-item Queue limit. Archive keeps a pinned RSS/Atom shelf above the manual archive so feed volume never buries finished sources.
 
 ## Workspaces
 
-Momentum, Curate, Map, Learn, Insights, and Settings contain 18 purposeful destinations. Momentum is the action-first home: a 14-day streak runway with weekly totals, the current source and complete reading kit, a five-source queue manifest exposing every original/HTML/PDF/Notes/NotebookLM link, and one concrete next move. Curate includes Inbox, Queue, Collections, Archive, and Books. Map includes Atlas and Coverage. Learn includes Files, the extracted Notes library, Recall, and Activity; the full per-source record (feedback, proposals, files, recall, sessions) stays one hop away as source context. Insights includes Overview, Taste, and Hermes. Legacy Discovery remains inside Archive; mobile keeps Momentum, Curate, Learn, and More in primary navigation.
+The primary interface follows the learning loop: Momentum → Inbox → Queue → Notes → Recall → Atlas. Nineteen purposeful views remain available contextually, but they no longer compete as equal top-level workspaces. Momentum is a single-focus desk: one current source, two latest companion shortcuts, one compact Thread brief, and an expandable evidence/closure control. The complete tracked library remains in Files instead of being dumped into the home view. Settings → System is the complete user-visible control plane for API operations, schedules, services, storage, health, and safety boundaries.
 
-Settings → Profile is a visual learning model: topic and rule tags, compact record cards, and expandable categories. Stored JSON is never shown in the normal view; advanced editing remains available when needed.
+Settings → Profile leads with the typed adaptive model: health, active assertions, hypotheses, confidence, source, versions, direct editing, deactivation, and one-click revision undo. The old singleton fields remain a readable/editable compatibility projection. Stored JSON is never dumped in the normal overview.
 
 ## User context
 
@@ -22,9 +24,11 @@ Single user in Egypt. Desktop is for curation and synthesis; tablet/phone are fo
 
 - Active queue target is five, with an explicit override.
 - Feedback processing is explicit and never auto-recommends.
-- Every rating and reflection creates auditable Taste Mapper proposals. During the active conversation Hermes auto-applies evidence-qualified improvements under Mahmood's standing authorization; uncertain hypotheses remain reviewable.
-- Every Hermes conversation ends with one evidence-based self-improvement pass across any Learning Compass layer. It never runs on a schedule and makes no change without evidence and verification.
-- Ratings 7–10 automatically create a separate extracted source note and editable SRS drafts.
+- Recommendation feedback has distinct semantics: Not now is neutral; Bad fit requires a reason; rating, retain/apply/reference/drop disposition, and later learning evidence remain separate signals.
+- Compass optimizes expected learning value inside the active Thread using fit, bridge, and challenge lanes. V2 runs in shadow until global, lane, and evidence-quality gates pass.
+- Every rating and reflection creates an auditable Taste Mapper decision. During the active conversation Hermes auto-applies strong typed profile improvements under Mahmood's standing authorization; weak evidence remains pending and every applied change can be undone.
+- Every Hermes conversation ends with one compact specialist handoff to `learning-compass-self-evolution`, the sole owner of cross-layer improvement. It records applied, failed/resumable, or evidence-backed no-change decisions for evaluated candidates, never runs on a schedule, and makes no change without evidence and verification.
+- Completion records a separate `retain`, `apply`, `reference`, or `drop` disposition. Retain/apply creates anchored extraction and editable recall work regardless of enjoyment score.
 - Handwritten PDF annotations count as personal reflection while printed source text remains source material.
 - Invisible AI may enrich, rank, classify, and explain; user-authored reflections are never rewritten.
 - Real source URLs stay recommendations; owned PDFs/HTML/transcripts stay artifacts.

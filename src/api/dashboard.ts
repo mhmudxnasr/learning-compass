@@ -10,6 +10,7 @@ app.get('/briefing', async (c) => {
     const [active, due, inbox, pending, drafts, momentum, bestWeek, recent, latestSignal, topFormat, activityDates, streakDays] = await Promise.all([
       DB.prepare(`SELECT r.id,r.video_title,r.creator,r.content_type,r.video_url,r.why_this,r.notebook_url,r.created_at,
         m.learning_state,m.priority_rank,m.progress_percent,m.estimated_minutes,m.started_at,m.last_opened_at,
+        (SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads lt ON lt.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND lt.status='active' LIMIT 1) thread_id,
         (SELECT COUNT(*) FROM notes n WHERE n.recommendation_id=r.id) note_count
         FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
         WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')
@@ -30,11 +31,15 @@ app.get('/briefing', async (c) => {
       DB.prepare(`SELECT id,video_title,content_type,creator,user_score,consumed_date AS created_at FROM recommendations WHERE status='consumed' ORDER BY consumed_date DESC LIMIT 6`).all<any>(),
       DB.prepare(`SELECT summary FROM update_log ORDER BY ts DESC LIMIT 1`).first<any>(),
       DB.prepare(`SELECT content_type,COUNT(*) count,ROUND(AVG(user_score),1) average FROM recommendations WHERE status='consumed' AND user_score IS NOT NULL GROUP BY content_type HAVING COUNT(*)>=2 ORDER BY average DESC,count DESC LIMIT 1`).first<any>(),
-      DB.prepare(`SELECT DISTINCT activity_date AS date FROM learning_activity_ledger ORDER BY activity_date DESC`).all<any>(),
-      DB.prepare(`SELECT activity_date AS date,COUNT(*) count FROM learning_activity_ledger WHERE activity_date>=date('now','+3 hours','-29 days') GROUP BY activity_date ORDER BY activity_date`).all<any>(),
+      DB.prepare(`SELECT date FROM (SELECT date(occurred_at,'+3 hours') date FROM learning_events WHERE evidence_weight>0 UNION SELECT activity_date date FROM learning_activity_ledger WHERE event_type IN ('feedback_recorded','recall_reviewed')) ORDER BY date DESC`).all<any>(),
+      DB.prepare(`SELECT date,COUNT(*) count FROM (SELECT id,date(occurred_at,'+3 hours') date FROM learning_events WHERE evidence_weight>0 UNION ALL SELECT event_key id,activity_date date FROM learning_activity_ledger WHERE event_type IN ('feedback_recorded','recall_reviewed')) WHERE date>=date('now','+3 hours','-29 days') GROUP BY date ORDER BY date`).all<any>(),
     ])
 
     const activeItems = active.results || []
+    const activeThread = await DB.prepare(`SELECT * FROM learning_threads WHERE status='active' ORDER BY priority DESC,updated_at DESC LIMIT 1`).first<any>()
+    const threadRequirements = activeThread ? await DB.prepare(`SELECT * FROM thread_evidence_requirements WHERE thread_id=? ORDER BY rowid`).bind(activeThread.id).all<any>() : { results: [] as any[] }
+    const openConsolidations = await DB.prepare(`SELECT cr.id,cr.recommendation_id,cr.state,cr.failure_reason,r.video_title FROM consolidation_runs cr JOIN recommendations r ON r.id=cr.recommendation_id WHERE cr.state NOT IN ('closed','waived') ORDER BY cr.requested_at LIMIT 10`).all<any>()
+    const verifiedOutcomes = await DB.prepare(`SELECT COUNT(*) count FROM learning_threads WHERE status='verified' AND verified_at>=datetime('now','-30 days')`).first<any>()
     let artifacts: any[] = []
     if (activeItems.length) {
       const placeholders = activeItems.map(() => '?').join(',')
@@ -113,6 +118,9 @@ app.get('/briefing', async (c) => {
       queue_count: activeItems.length,
       recent: recent.results || [],
       recent_signal: latestSignal?.summary || null,
+      active_thread: activeThread ? { ...activeThread, evidence_requirements: threadRequirements.results || [] } : null,
+      open_cognitive_loops: openConsolidations.results || [],
+      verified_learning_outcomes_30d: Number(verifiedOutcomes?.count || 0),
     })
   } catch (error) { return c.json(safeError('Momentum failed')(error), 500) }
 })

@@ -1,7 +1,26 @@
 {
-  "version": 1,
+  "version": 3,
   "name": "learning-compass-hermes",
   "router": "learning-compass-operating-system",
+  "self_evolution_owner": "learning-compass-self-evolution",
+  "skill_graph": {
+    "active": [
+      {"name": "learning-compass-operating-system", "path": "workflow/learning-compass-operating-system", "role": "router"},
+      {"name": "learning-compass-self-evolution", "path": "workflow/learning-compass-self-evolution", "role": "self_evolution"},
+      {"name": "learning-compass-site-operator", "path": "workflow/learning-compass-site-operator", "role": "api_execution"},
+      {"name": "recommendations-worker-ops", "path": "workflow/recommendations-worker-ops", "role": "product_operations"},
+      {"name": "taste-mapper", "path": "taste-mapper", "role": "feedback_profile"},
+      {"name": "taste-rec", "path": "personal/taste-rec", "role": "recommendations"},
+      {"name": "learning-notes-extractor", "path": "learning-notes-extractor", "role": "notes_units_recall"},
+      {"name": "lite-visual", "path": "lite-visual", "role": "reading_companions"},
+      {"name": "visual-mind", "path": "visual-mind", "role": "visual_assets"},
+      {"name": "notebooklm", "path": "notebooklm", "role": "grounding_studio"},
+      {"name": "rss-feed", "path": "productivity/rss-feed", "role": "feeds"},
+      {"name": "agent-cli-delegation", "path": "workflow/agent-cli-delegation", "role": "explicit_agy_delegation"},
+      {"name": "youtube-playlist-verification", "path": "workflow/youtube-playlist-verification", "role": "youtube_source_verification"}
+    ],
+    "retired": ["taste-enhancer", "compass-queue-fill", "learning-compass-curator-policy", "master-editorial-synthesis"]
+  },
   "canonical_sources": {
     "structured_state": "D1",
     "artifacts": "R2",
@@ -18,19 +37,23 @@
     "background_self_improvement": false,
     "self_evolution": {
       "enabled": true,
-      "scope": "verified_skill_procedure_memory",
-      "trigger": ["observed skill failure", "validated better path"],
+      "scope": "verified_system_improvement",
+      "trigger": ["specialist evolution handoff", "observed skill failure", "validated better path", "explicit audit"],
       "automatic_when": [
         "the current conversation provides evidence",
         "the improvement is reversible and narrowly scoped",
         "the relevant replay, test, or validator passes",
         "confidence >= 0.9 or the same issue is observed twice"
       ],
-      "persist_to": "D1 hermes_memory with evidence, validation, scope, and supersession",
-      "skill_source_edits": "proposal_only",
-      "never": ["unverified rules", "silent policy weakening", "code/schema/runtime changes", "deployment", "destructive deletion", "external publication", "background jobs"]
+      "persist_to": "canonical source plus D1 self_improvement_runs receipt; hermes_memory only for durable profile or skill_procedure evidence",
+      "skill_source_edits": "automatic_after_replay_or_test_gate_in_active_conversation",
+      "code_schema_workflow_edits": "automatic_after_full_verification_in_active_conversation",
+      "deployment": "automatic_after_release_verification_with_observed_live_smoke",
+      "never": ["unverified rules", "silent policy weakening", "destructive deletion", "external publication", "scheduled self-improvement", "background self-improvement"]
     },
-    "feedback": "preserve exact reflection, then create one auditable Taste Mapper proposal set",
+    "feedback": "preserve exact reflection, then record proposals or evidence-backed no_change; auto-apply only through profile_v2 policy and never recommend",
+    "recommendation_objective": "learning_value_v2: available rating 25%, explicit disposition 25%, strongest downstream evidence 50%; administrative exclusion and not_now are non-utility",
+    "profile_automation": "automatic at confidence >= 0.8 with direct user statement or two evidence items; explicit assertion supersession requires direct contradiction or confidence >= 0.95 with three evidence items; all changes reversible",
     "notebooklm": "explicit feedback grounding or explicit Studio request only",
     "recommendations": "explicit request only; feedback never creates a recommendation",
     "ai_routing": {
@@ -43,34 +66,57 @@
   },
   "side_effect_tiers": {
     "automatic": {
-      "requires": "explicit request or feedback plus evidence confidence >= 0.8",
-      "allows": ["profile", "map", "scoring", "feedback receipts", "durable job completion", "verified skill procedure memory"]
+      "requires": "active conversation plus profile_v2 evidence policy, or fully verified reversible system change",
+      "allows": ["profile", "map", "scoring", "feedback receipts", "durable job completion", "verified skills", "verified prompts", "verified code", "verified tests", "additive schema migrations", "verified workflows", "verified Learning Compass deployment"]
     },
     "proposal_only": {
       "requires": "reviewable proposal and evidence receipt",
-      "allows": ["skills", "prompts", "code", "tests", "schema", "runtime configuration"]
+      "allows": ["broad or insufficiently verified skills", "prompts", "code", "tests", "schema", "runtime configuration"]
     },
     "explicit_only": {
       "requires": "separate explicit user instruction for the exact target",
-      "allows": ["deployment", "destructive deletion", "external publication"]
+      "allows": ["destructive deletion", "external publication"]
     }
   },
   "specialist_receipt": ["intent", "target", "before", "mutation_or_job", "after", "evidence", "blocker"],
   "route_ownership": {
     "GET /agent/capabilities": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "GET /agent/system": {"owner": "learning-compass-site-operator", "permission": "read"},
     "GET /agent/context": {"owner": "learning-compass-site-operator", "permission": "read"},
     "POST /feedback/record": {"owner": "learning-compass-operating-system", "permission": "explicit_feedback"},
+    "POST /learning/core/threads": {"owner": "learning-compass-operating-system", "permission": "explicit_learning_objective"},
+    "POST /learning/core/evidence": {"owner": "learning-compass-site-operator", "permission": "explicit_user_evidence"},
+    "POST /learning/core/threads/:id/verify": {"owner": "learning-compass-site-operator", "permission": "evidence_gated"},
     "POST /recommendations/map": {"owner": "learning-compass-site-operator", "permission": "explicit_map_maintenance"},
-    "POST /feedback/proposals/:id/approve": {"owner": "learning-compass-site-operator", "permission": "automatic_evidence_only"},
+    "POST /feedback/proposals/:id/approve": {"owner": "learning-compass-site-operator", "permission": "explicit_user_override"},
+    "POST /feedback/proposals/:id/apply": {"owner": "taste-mapper", "permission": "profile_v2_policy"},
+    "POST /feedback/proposals/:id/revert": {"owner": "learning-compass-site-operator", "permission": "reversible_profile_change"},
+    "GET /brain/profile/intelligence": {"owner": "learning-compass-operating-system", "permission": "read"},
+    "PUT /brain/profile/assertions/:key": {"owner": "learning-compass-site-operator", "permission": "explicit_profile_edit"},
+    "POST /brain/profile/revisions/:id/revert": {"owner": "learning-compass-site-operator", "permission": "explicit_profile_undo"},
     "GET /compass/pick": {"owner": "taste-rec", "permission": "explicit_recommendation"},
     "POST /compass/picks": {"owner": "taste-rec", "permission": "explicit_recommendation"},
+    "POST /compass/evaluate": {"owner": "taste-rec", "permission": "shadow_dry_run"},
     "POST /compass/pick/:id/start": {"owner": "learning-compass-site-operator", "permission": "explicit_start"},
     "POST /compass/pick/:id/feedback": {"owner": "learning-compass-site-operator", "permission": "explicit_feedback"},
+    "GET /analytics/hermes/engine": {"owner": "learning-compass-self-evolution", "permission": "read"},
+    "POST /analytics/hermes/engine/activate": {"owner": "learning-compass-self-evolution", "permission": "evidence_gated_rollout"},
+    "POST /analytics/hermes/engine/rollback": {"owner": "learning-compass-self-evolution", "permission": "conversation_bound_rollback"},
+    "POST /analytics/hermes/recalibrate": {"owner": "learning-compass-self-evolution", "permission": "conversation_bound_evidence_gate"},
+    "GET /analytics/hermes/weekly": {"owner": "learning-compass-self-evolution", "permission": "read"},
+    "POST /analytics/hermes/evaluate": {"owner": "learning-compass-self-evolution", "permission": "conversation_bound_review_proposals"},
+    "POST /analytics/hermes/backfill": {"owner": "learning-compass-self-evolution", "permission": "dry_run_or_conversation_bound_apply"},
+    "GET /analytics/hermes/repair": {"owner": "learning-compass-self-evolution", "permission": "dry_run"},
+    "POST /analytics/hermes/repair": {"owner": "learning-compass-self-evolution", "permission": "snapshot_guarded"},
+    "GET /analytics/hermes/improvements": {"owner": "learning-compass-self-evolution", "permission": "read"},
+    "POST /analytics/hermes/improvements": {"owner": "learning-compass-self-evolution", "permission": "active_conversation"},
+    "POST /analytics/hermes/improvements/:id/complete": {"owner": "learning-compass-self-evolution", "permission": "verification_failure_or_no_change_gated"},
+    "POST /analytics/hermes/improvements/:id/revert": {"owner": "learning-compass-self-evolution", "permission": "rollback_receipt"},
     "POST /agent/jobs/:id/claim": {"owner": "focused_specialist", "permission": "exact_job_only"},
     "POST /agent/jobs/:id/complete": {"owner": "focused_specialist", "permission": "claimed_job_only"},
     "POST /agent/jobs/:id/fail": {"owner": "focused_specialist", "permission": "claimed_job_only"},
-    "GET /agent/memory": {"owner": "learning-compass-operating-system", "permission": "read_or_verified_skill_evolution"},
-    "POST /agent/memory": {"owner": "learning-compass-operating-system", "permission": "verified_skill_evolution_only"},
+    "GET /agent/memory": {"owner": "learning-compass-self-evolution", "permission": "read_or_verified_skill_evolution"},
+    "POST /agent/memory": {"owner": "learning-compass-self-evolution", "permission": "verified_skill_evolution_only"},
     "POST /artifacts": {"owner": "learning-compass-site-operator", "permission": "explicit_media_request"},
     "npx wrangler deploy --config wrangler.toml": {"owner": "recommendations-worker-ops", "permission": "explicit_deployment"}
   }

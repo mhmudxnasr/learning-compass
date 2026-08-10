@@ -41,22 +41,40 @@ try {
       ('api-quality', 'quality_rule', 'Quality rule', '{"rule":"cite evidence"}', 'pending'),
       ('api-style', 'operational_style', 'Operational style', '{"tone":"direct","format":"compact"}', 'pending'),
       ('api-unknown', 'future_change', 'Unknown', '"value"', 'pending');
+    INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,status,trigger_kind) VALUES
+      ('api-no-change','process_feedback','{"conversation_id":"feedback-integration"}','feedback-no-change','pending','explicit_user_action');
   `])
 
   assert.equal((await request('/feedback/proposals/api-quality/approve', { method: 'POST' })).status, 200)
   const qualityProfile = await request('/brain/profile?recent_limit=49')
   assert.deepEqual(JSON.parse(qualityProfile.body.profile.quality_rules_json), ['existing rule', { rule: 'cite evidence' }])
+  const qualityReceipt = await request('/agent/memory?q=self_improvement%3Aproposal%3Aapi-quality')
+  assert.equal(qualityReceipt.body.memories[0]?.source, 'feedback_proposal:api-quality')
+  assert.equal(qualityReceipt.body.memories[0]?.status, 'approved')
 
   assert.equal((await request('/feedback/proposals/api-style/approve', { method: 'POST' })).status, 200)
   const styleProfile = await request('/brain/profile?recent_limit=48')
   assert.deepEqual(JSON.parse(styleProfile.body.profile.operational_style_json), { tone: 'direct', format: 'compact' })
 
   assert.equal((await request('/feedback/proposals/api-quality/approve', { method: 'POST' })).status, 404)
+  const revertedQuality = await request('/feedback/proposals/api-quality/revert', { method: 'POST' })
+  assert.equal(revertedQuality.status, 200)
+  assert.equal(revertedQuality.body.compatibility_reverted, true)
+  const revertedProfile = await request('/brain/profile?recent_limit=49')
+  assert.deepEqual(JSON.parse(revertedProfile.body.profile.quality_rules_json), ['existing rule'])
   const unsupported = await request('/feedback/proposals/api-unknown/approve', { method: 'POST' })
   assert.equal(unsupported.status, 422)
   const pending = await request('/feedback/proposals?status=pending')
   assert.ok(pending.body.proposals.some((proposal) => proposal.id === 'api-unknown'))
-  console.log('Feedback proposal approval integration passed')
+  assert.equal((await request('/agent/jobs/api-no-change/claim', { method: 'POST', body: JSON.stringify({ worker: 'feedback-integration' }) })).status, 200)
+  const noChange = await request('/agent/jobs/api-no-change/complete', { method: 'POST', body: JSON.stringify({ worker: 'feedback-integration', no_change: { confidence: 0.93, reason: 'The conversation supplied no durable profile update.', evidence: [{ source: 'feedback-integration', finding: 'no repeated signal' }] } }) })
+  assert.equal(noChange.status, 200)
+  const improvements = await request('/analytics/hermes/improvements')
+  const noChangeRun = improvements.body.runs.find((run) => run.id === 'improvement_api-no-change')
+  assert.equal(noChangeRun.status, 'validated')
+  assert.equal(noChangeRun.validation.no_change, true)
+  assert.equal(noChangeRun.after.changed, false)
+  console.log('Feedback proposal integration passed: apply, guarded types, and evidence-backed no-change')
 } finally {
   if (server && server.exitCode === null) {
     const exited = new Promise((resolve) => server.once('exit', resolve))

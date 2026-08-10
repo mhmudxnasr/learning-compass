@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
-import { mergeArtifactMultipartMetadata, normalizeQualityAssurance } from '../artifact-metadata'
+import { mergeArtifactMultipartMetadata, normalizeQualityAssurance, validateArtifactIntegrity } from '../artifact-metadata'
 import { Bindings, escapeHtml, safeError } from '../lib'
 
 const app = new Hono<{ Bindings: Bindings }>()
+const artifactCsp = "default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'none'; img-src data: https:; font-src data: https:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline'"
 
 function markdownToHtml(markdown: string, title: string) {
   const inline = (value: string) => escapeHtml(value).replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
@@ -83,7 +84,25 @@ app.post('/', async (c) => {
       catch { return c.json({ error: 'metadata must be valid JSON' }, 400) }
     }
     const validation = mergeArtifactMultipartMetadata(metadata, form, file)
-    if (!validation.ok) return c.json({ error: 'quality_assurance_validation_failed', quality_assurance: { status: 'repair_required', failures: validation.failures, repair_status: 'required' } }, 422)
+    const bytes = await file.arrayBuffer()
+    const integrityFailures = validateArtifactIntegrity(metadata, file, bytes)
+    if (!validation.ok || integrityFailures.length) {
+      const failures = [...new Set([...(validation.ok ? [] : validation.failures), ...integrityFailures])]
+      return c.json({ error: 'artifact_metadata_validation_failed', failures }, 422)
+    }
+    const pairId = String(metadata.pair_id || '')
+    const role = String(metadata.role || '').toLowerCase()
+    if (pairId && ['html', 'pdf'].includes(role)) {
+      const conflict = await c.env.DB.prepare(`SELECT id,metadata_json FROM artifacts WHERE json_extract(metadata_json,'$.pair_id')=?`).bind(pairId).all<any>()
+      for (const row of conflict.results || []) {
+        let existing: any = {}
+        try { existing = JSON.parse(row.metadata_json || '{}') } catch {}
+        if (existing.role === role) return c.json({ error: 'artifact_pair_role_exists', pair_id: pairId, role }, 409)
+        for (const key of ['recommendation_id', 'source_checksum']) {
+          if (existing[key] && metadata[key] && existing[key] !== metadata[key]) return c.json({ error: 'artifact_pair_source_mismatch', pair_id: pairId, field: key }, 409)
+        }
+      }
+    }
     const id = `artifact_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
     const key = `${new Date().toISOString().slice(0, 10)}/${id}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
     if (c.env.ARTIFACTS) await c.env.ARTIFACTS.put(key, file.stream(), { httpMetadata: { contentType: file.type || 'application/octet-stream' } })
@@ -144,7 +163,9 @@ app.get('/:id', async (c) => {
   if (!c.env.ARTIFACTS || !row.r2_key) return c.json({ artifact: row })
   const object = await c.env.ARTIFACTS.get(row.r2_key)
   if (!object) return c.json({ error: 'artifact missing' }, 404)
-  return new Response(object.body, { headers: { 'content-type': row.media_type, 'content-disposition': `inline; filename="${row.filename.replace(/"/g, '')}"` } })
+  const headers: Record<string, string> = { 'content-type': row.media_type, 'content-disposition': `inline; filename="${row.filename.replace(/"/g, '')}"` }
+  if (/html/i.test(row.media_type || '') || /\.html?$/i.test(row.filename || '')) headers['content-security-policy'] = artifactCsp
+  return new Response(object.body, { headers })
 })
 
 app.delete('/:id', async (c) => {

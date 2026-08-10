@@ -11,7 +11,7 @@ const workspaces = {
   map: ['atlas','coverage'],
   learn: ['files','notes','recall','activity'],
   insights: ['overview','taste','hermes'],
-  settings: ['profile','preferences','data'],
+  settings: ['profile','preferences','data','system'],
 }
 
 const wrangler = './node_modules/.bin/wrangler'
@@ -112,7 +112,20 @@ for (const [workspace, views] of Object.entries(workspaces)) {
   }
 }
 
-if (count !== 18) throw new Error(`expected 18 routes, checked ${count}`)
+if (count !== 19) throw new Error(`expected 19 routes, checked ${count}`)
+const [capabilities, systemInventory] = await Promise.all([
+  requestJson('/agent/capabilities'),
+  requestJson('/agent/system'),
+])
+if (!capabilities.capabilities?.some((operation) => operation.method === 'GET' && operation.path === '/agent/system')) throw new Error('agent capabilities omitted the System inventory route')
+if (!Array.isArray(systemInventory.schedule) || systemInventory.schedule.length !== 1 || systemInventory.schedule[0].cron !== '0 */6 * * *') throw new Error('System inventory omitted the configured maintenance schedule')
+if (!Array.isArray(systemInventory.on_demand_only) || !systemInventory.storage?.length || !systemInventory.safety?.length) throw new Error('System inventory contract is incomplete')
+await page.goto(`${baseUrl}/#/settings/system`, { waitUntil: 'networkidle' })
+await page.locator('.system-console').waitFor({ state: 'visible', timeout: 15000 })
+if (await page.locator('.api-operation-list article').count() !== capabilities.capabilities.length) throw new Error('System page does not expose every allow-listed API operation')
+await page.getByPlaceholder('Search path or capability').fill('schedule')
+if (await page.locator('.api-operation-list article').count() < 1) throw new Error('System API search did not return matching operations')
+await page.getByPlaceholder('Search path or capability').fill('')
 await page.goto(`${baseUrl}/#/settings/preferences`, { waitUntil: 'networkidle' })
 await page.goto(`${baseUrl}/#/settings/profile`, { waitUntil: 'networkidle' })
 await page.locator('.profile-overview').waitFor({ state: 'visible' })
@@ -143,7 +156,7 @@ const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards, mo
   fetch(`${baseUrl}/learning/balance?window=90`).then((response) => response.json()),
 ])
 if (settings.resolved?.learning?.retention !== 90 || settings.resolved?.learning?.queue_cap !== 5) throw new Error('settings defaults are not resolved')
-if (settings.resolved?.srs_drafts?.minimum_rating !== 7 || settings.resolved?.profile_proposals?.review_required !== true) throw new Error('learning automation defaults are incorrect')
+if (settings.resolved?.srs_drafts?.minimum_rating !== 7 || settings.resolved?.profile_proposals?.review_required !== false || settings.resolved?.profile_automation?.mode !== 'automatic' || settings.resolved?.recommendation_engine?.mode !== 'shadow') throw new Error('learning automation defaults are incorrect')
 if (!manifest.icons?.some((icon) => icon.src === '/icon.svg')) throw new Error('manifest is missing the local app icon')
 if (!Array.isArray(artifacts.artifacts)) throw new Error('artifact library contract is invalid')
 if (!Array.isArray(feeds.feeds)) throw new Error('feed subscriptions contract is invalid')
@@ -153,22 +166,26 @@ if (!Array.isArray(proposals.proposals)) throw new Error('feedback proposal cont
 if (!Array.isArray(cards.cards)) throw new Error('SRS card management contract is invalid')
 if (!Array.isArray(momentum.active_items) || !Array.isArray(momentum.artifacts) || !momentum.momentum || !momentum.insight || !momentum.next_action_detail || !Array.isArray(momentum.recent_wins)) throw new Error('Momentum workspace contract is invalid')
 await page.goto(`${baseUrl}/#/today/momentum`, { waitUntil: 'networkidle' })
-await page.getByText('Learning runway', { exact: true }).waitFor({ state: 'visible', timeout: 15000 })
+await page.locator('.momentum-pulse').waitFor({ state: 'visible', timeout: 15000 })
 const momentumBody = await page.locator('.page-content').innerText()
-for (const value of ['Learning runway', 'Queue manifest', 'Every source and file', 'Next move']) {
+for (const value of ['This week', 'Queue']) {
   if (!momentumBody.toLowerCase().includes(value.toLowerCase())) throw new Error(`Momentum is missing ${value}: ${momentumBody}`)
 }
+if (await page.locator('.focus-desk').count() !== 1) throw new Error('Momentum must expose exactly one focus desk')
+if (await page.locator('.queue-manifest').count()) throw new Error('Momentum must not duplicate the Queue or dump every file inline')
 
 const captured = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hermes-e2e', title: 'Hermes automation test' }) })
 const preRecord = await requestJson(`/capture/${captured.id}/record`)
 if (!preRecord.item) throw new Error('source record API did not return the captured source')
-await requestJson(`/capture/${captured.id}/triage`, { method: 'POST', body: JSON.stringify({ action: 'queue' }) })
+const thread = await requestJson('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Test a decision with evidence', thread_type: 'decide', guiding_question: 'Should this mechanism be used?', definition_of_done: 'Record a source-backed decision and synthesis.', activate: true }) })
+await requestJson(`/capture/${captured.id}/triage`, { method: 'POST', body: JSON.stringify({ action: 'queue', thread_id: thread.id }) })
+await requestJson(`/learning/core/threads/${thread.id}/sources`, { method: 'POST', body: JSON.stringify({ recommendation_id: captured.id, role: 'primary', expected_contribution: 'Supply the mechanism and its limits.' }) })
 await page.goto(`${baseUrl}/#/learn/notes?source=${captured.id}`, { waitUntil: 'networkidle' })
 await page.locator('.source-record-page').waitFor({ state: 'visible', timeout: 15000 })
 if (!await page.getByRole('heading', { name: 'My Feedback' }).isVisible()) throw new Error('source record is missing feedback section')
-const started = await requestJson('/sessions/start', { method: 'POST', body: JSON.stringify({ recommendation_id: captured.id }) })
-const returned = await requestJson(`/sessions/${started.session_id}/return`, { method: 'POST', body: JSON.stringify({ reflection: 'The mechanism is useful and I will apply it.', rating: 7, complete: true, auto_enqueue: true }) })
-if (returned.status !== 'completed' || !returned.reflection_note_id || !returned.srs_eligible) throw new Error('rating 7 did not close the reflection workflow')
+const started = await requestJson('/sessions/start', { method: 'POST', body: JSON.stringify({ recommendation_id: captured.id, thread_id: thread.id, target_kind: 'original' }) })
+const returned = await requestJson(`/sessions/${started.session_id}/return`, { method: 'POST', body: JSON.stringify({ reflection: 'The mechanism is useful and I will apply it.', rating: 7, disposition: 'apply', complete: true, auto_enqueue: true }) })
+if (returned.status !== 'completed' || returned.disposition !== 'apply' || !returned.reflection_note_id || !returned.recall_eligible || !returned.consolidation?.id) throw new Error('explicit application disposition did not start consolidation')
 const sourceRecord = await requestJson(`/capture/${captured.id}/record`)
 if (!sourceRecord.notes.some((note) => note.kind === 'reflection' && note.sections.some((section) => section.content.includes('The mechanism is useful')))) throw new Error('source record did not return the exact reflection')
 const initialJobs = (await requestJson('/agent/jobs?status=pending')).jobs.filter((job) => job.payload.recommendation_id === captured.id)
@@ -179,12 +196,17 @@ const claim = async (jobType) => {
   return (await requestJson(`/agent/jobs/${job.id}/claim`, { method: 'POST', body: JSON.stringify({ worker: 'e2e' }) })).job
 }
 const feedbackJob = await claim('process_feedback')
-await requestJson(`/agent/jobs/${feedbackJob.id}/complete`, { method: 'POST', body: JSON.stringify({ worker: 'e2e', proposals: [{ change_type: 'profile_signal', target_label: 'Learning priority', current: 'old', proposed: 'new', evidence: 'The reflection explicitly values the mechanism.', reasoning: 'Positive signal at rating 7.', confidence: 0.9 }] }) })
-const pendingProposal = (await requestJson('/feedback/proposals?status=pending')).proposals[0]
-if (!pendingProposal) throw new Error('feedback job did not persist a pending proposal')
-await requestJson(`/feedback/proposals/${pendingProposal.id}/approve`, { method: 'POST' })
-const appliedProposal = (await requestJson('/feedback/proposals')).proposals.find((proposal) => proposal.id === pendingProposal.id)
-if (appliedProposal?.status !== 'applied') throw new Error('Activity did not apply the approved proposal directly')
+const feedbackCompletion = await requestJson(`/agent/jobs/${feedbackJob.id}/complete`, { method: 'POST', body: JSON.stringify({ worker: 'e2e', proposals: [{ change_type: 'profile_signal', target_label: 'Learning priority', current: 'old', proposed: 'new', evidence: 'The reflection explicitly values the mechanism.', reasoning: 'Positive signal at rating 7.', confidence: 0.9 }] }) })
+const proposalId = feedbackCompletion.proposals?.created?.[0]
+const appliedProposal = (await requestJson('/feedback/proposals')).proposals.find((proposal) => proposal.id === proposalId)
+if (appliedProposal?.status !== 'applied' || appliedProposal?.decision_source !== 'hermes_auto') throw new Error('strong direct feedback did not auto-apply through the profile policy')
+const agentContextAfterApply = await requestJson('/agent/context')
+if (!agentContextAfterApply.profile?.assertions?.some((assertion) => assertion.assertion_key === appliedProposal.validation?.assertion_key)) throw new Error('agent context omitted the typed adaptive profile')
+const feedbackContextAfterApply = await requestJson('/feedback/context')
+if (!feedbackContextAfterApply.profile_assertions?.some((assertion) => assertion.assertion_key === appliedProposal.validation?.assertion_key)) throw new Error('Taste Mapper context omitted the typed adaptive profile')
+await requestJson(`/feedback/proposals/${proposalId}/revert`, { method: 'POST' })
+const revertedProposal = (await requestJson('/feedback/proposals')).proposals.find((proposal) => proposal.id === proposalId)
+if (revertedProposal?.status !== 'reverted') throw new Error('Activity did not revert the automatic profile change')
 if ((await requestJson('/agent/jobs?status=pending')).jobs.some((job) => job.job_type === 'apply_feedback_proposal')) throw new Error('proposal approval created a redundant application job')
 const extractJob = await claim('extract_notes')
 await requestJson(`/agent/jobs/${extractJob.id}/complete`, { method: 'POST', body: JSON.stringify({ worker: 'e2e',
@@ -195,12 +217,19 @@ await requestJson(`/agent/jobs/${extractJob.id}/complete`, { method: 'POST', bod
     { section_key: 'defense', label: 'Defense', content: 'Check the evidence before acting. *من الآخر راجع الدليل قبل ما تتحرك.*' },
   ] },
   srs_drafts: [{ question: 'What is the test mechanism?', answer: 'A test mechanism.', topic: 'Testing' }],
+  learning_units: [{ id: 'e2e_unit', unit_type: 'method', statement: 'Check the available evidence before applying the mechanism.', user_synthesis: 'I should test the evidence before using it.', stance: 'accept', confidence: 0.9, role: 'core', anchors: [{ anchor_type: 'section', locator: 'Foundation', excerpt: 'A test mechanism.' }] }],
   reflection: { content: 'Handwritten margin note from page 2.', recommendation_id: captured.id, source_url: 'https://example.com/hermes-e2e' },
 }) })
 const extractedNotes = (await requestJson('/notes')).notes
 if (!extractedNotes.some((note) => note.id === 'e2e_source_note') || !extractedNotes.some((note) => note.kind === 'reflection' && note.sections.some((section) => section.content.includes('Handwritten margin note')))) throw new Error('extractor did not keep source note and handwritten reflection separate')
 const guideNotes = (await requestJson('/notes?kind=guide')).notes
 if (!guideNotes.some((note) => note.id === 'e2e_source_note') || guideNotes.some((note) => note.kind === 'reflection')) throw new Error('guide notes library leaked reflections into the extracted scope')
+const consolidatedRecord = await requestJson(`/capture/${captured.id}/record`)
+if (consolidatedRecord.consolidation?.state !== 'closed' || !consolidatedRecord.learning_units.some((unit) => unit.id === 'e2e_unit' && unit.anchors.length === 1) || !consolidatedRecord.threads.some((item) => item.id === thread.id)) throw new Error('learning core did not preserve the thread, anchored unit, and terminal consolidation receipt')
+await requestJson('/learning/core/evidence', { method: 'POST', body: JSON.stringify({ thread_id: thread.id, unit_id: 'e2e_unit', evidence_type: 'decision', result: 'recorded', response: 'Use the mechanism only when its evidence checks pass.', score: 1 }) })
+await requestJson(`/learning/core/threads/${thread.id}`, { method: 'PATCH', body: JSON.stringify({ final_synthesis: 'The mechanism is useful only when its evidence and failure modes are checked first.' }) })
+const verifiedThread = await requestJson(`/learning/core/threads/${thread.id}/verify`, { method: 'POST' })
+if (verifiedThread.status !== 'verified') throw new Error('evidence-backed Thread did not verify')
 await page.goto(`${baseUrl}/#/learn/notes`, { waitUntil: 'networkidle' })
 await page.getByRole('heading', { name: 'Hermes source note' }).waitFor({ state: 'visible', timeout: 15000 })
 if (await page.getByText('Handwritten margin note').count()) throw new Error('Notes library leaked personal reflection content into the extracted library')

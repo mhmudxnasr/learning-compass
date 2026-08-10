@@ -1,3 +1,5 @@
+import { canonicalCreatorKey, canonicalFormat, structuredEvidenceStatus, type CompassLane } from './intelligence-v2.ts'
+
 export type TrustSignal = { average: number; count: number }
 export type KnownSource = { url: string; title: string; creator: string; status: string }
 export type SourceCheck = { status: 'verified' | 'restricted' | 'unknown' | 'unavailable' | 'invalid'; http_status?: number; final_url?: string }
@@ -11,6 +13,9 @@ export type CompassContext = {
   recentFormats: string[]
   featureWeights?: Map<string, Record<string, number>>
   branchSignals?: Map<string, { state: string; attentionShare: number; priorityShare: number | null }>
+  profileAssertions?: Array<{ assertion_key: string; category: string; value: unknown; weight?: number | null; confidence: number; status: string }>
+  thread?: { id: string; title?: string | null; guiding_question?: string | null; why_now?: string | null; definition_of_done?: string | null; evidence_requirements_json?: string | null }
+  laneEvidence?: Map<string, number>
 }
 
 const EMPTY_CONTEXT: CompassContext = { knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [], featureWeights: new Map(), branchSignals: new Map() }
@@ -18,7 +23,6 @@ const clamp = (value: unknown, fallback = 0) => { const n = Number(value); retur
 const norm = (value: unknown) => String(value || '').trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
 const STOP_WORDS = new Set(['and', 'the', 'with', 'from', 'into', 'for', 'this', 'that', 'how', 'why', 'what'])
 const tokens = (value: unknown) => new Set(norm(value).split(' ').filter((token) => token.length >= 3 && !STOP_WORDS.has(token)).map((token) => token.length > 3 && token.endsWith('s') && !token.endsWith('ss') ? token.slice(0, -1) : token))
-const evidencePresent = (value: unknown) => typeof value === 'string' ? value.trim().length >= 24 : Boolean(value && typeof value === 'object' && Object.keys(value as object).length)
 const shrunk = (signal?: TrustSignal) => signal ? ((clamp(signal.average / 10, .5) * signal.count) + 1.5) / (signal.count + 3) : .5
 
 export function canonicalizeUrl(value: unknown) {
@@ -54,9 +58,10 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
   const url = urlOf(item)
   const title = String(item.title || '').trim()
   const creator = String(item.creator || '').trim()
-  const format = norm(item.format || item.source_class || 'unknown')
+  const creatorKey = canonicalCreatorKey(creator) || ''
+  const format = canonicalFormat(item.format || item.source_class || 'unknown')
   const sourceClass = norm(item.source_class || '')
-  const explicitTopics = Array.isArray(item.topics) ? item.topics : [item.topic, item.branch]
+  const explicitTopics = Array.isArray(item.topics) ? item.topics : [item.topic, item.branch_id, item.branch]
   const candidateTopics: string[] = [...explicitTopics, sourceClass, ...(explicitTopics.some(Boolean) ? [] : [title])].map((value: unknown) => norm(value)).filter(Boolean)
   const corpus = `${title} ${creator} ${candidateTopics.join(' ')}`
   const knownSimilarity = context.knownSources.reduce((max, source) => Math.max(max, semanticSimilarity(`${title} ${creator}`, `${source.title} ${source.creator}`)), 0)
@@ -65,9 +70,13 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
   const topicSignals = candidateTopics.flatMap((topic) => [...context.topicAffinities.entries()].filter(([known]) => topicMatches(topic, known)).map(([, score]) => clamp(score / 5, .5)))
   const topicAffinity = topicSignals.length ? Math.max(...topicSignals) : .5
   const priorityMatch = candidateTopics.some((topic) => [...context.priorityTopics].some((priority) => topicMatches(topic, priority)))
+  const profileSignals = (context.profileAssertions || [])
+    .filter((assertion) => assertion.status === 'active' && !['blacklist','hard_rule','exclusion'].includes(assertion.category))
+    .map((assertion) => ({ text: typeof assertion.value === 'string' ? assertion.value : JSON.stringify(assertion.value), confidence: clamp(assertion.confidence, .5), weight: assertion.weight == null ? 1 : Math.max(0, Number(assertion.weight)) }))
+  const profileMatch = profileSignals.reduce((max, signal) => Math.max(max, topicMatches(corpus, signal.text) ? Math.min(1, .55 + signal.confidence * .35 + Math.min(signal.weight, 2) * .05) : semanticSimilarity(corpus, signal.text) * signal.confidence), 0)
   const branchSignal = [...(context.branchSignals || [])].filter(([branch]) => candidateTopics.some((topic) => topicMatches(topic, branch))).map(([, signal]) => signal).sort((a, b) => Number(b.attentionShare) - Number(a.attentionShare))[0]
   const balanceBoost = branchSignal?.state === 'at-risk' || branchSignal?.state === 'uncovered' ? .08 : branchSignal?.state === 'over-focused' && !priorityMatch ? -.06 : 0
-  const creatorSignal = context.creatorTrust.get(norm(creator))
+  const creatorSignal = context.creatorTrust.get(creatorKey)
   const formatSignal = context.formatOutcomes.get(format)
   const recentFormatCount = context.recentFormats.filter((recent) => recent === format).length
   const host = (() => { try { return new URL(url).hostname } catch { return '' } })()
@@ -76,27 +85,47 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
   const duration = Number(item.duration_minutes || item.duration || 0)
   const friction = clamp((item.paywalled === true ? .45 : 0) + (duration > 120 ? .25 : duration > 60 ? .12 : 0) + (sourceCheck.status === 'restricted' ? .12 : 0), 0)
   const novelty = clamp(1 - knownSimilarity * .75, 0)
+  const threadCorpus = context.thread ? `${context.thread.title || ''} ${context.thread.guiding_question || ''} ${context.thread.why_now || ''} ${context.thread.definition_of_done || ''}` : ''
+  const contributionCorpus = `${title} ${candidateTopics.join(' ')} ${String(item.expected_contribution || item.expected_learning || '')}`
+  const threadSimilarity = threadCorpus ? semanticSimilarity(contributionCorpus, threadCorpus) : .5
+  const explicitContribution = String(item.expected_contribution || item.expected_learning || '').trim().length >= 12
+  const threadContribution = context.thread ? clamp(.32 + threadSimilarity * .48 + (explicitContribution ? .20 : 0), .32) : .5
+  const evidenceStatus = structuredEvidenceStatus(item.evidence || item.rationale || item.why_this)
+  const evidenceQuality = evidenceStatus === 'structured' ? .92 : evidenceStatus === 'legacy' ? .58 : evidenceStatus === 'invalid' ? .08 : .20
   return {
     topic_value: clamp(.40 + topicAffinity * .35 + (priorityMatch ? .20 : 0) + balanceBoost, 0),
-    personal_relevance: clamp(.38 + topicAffinity * .40 + (priorityMatch ? .17 : 0) + balanceBoost, 0),
+    personal_relevance: clamp(.38 + topicAffinity * .40 + (priorityMatch ? .17 : 0) + profileMatch * .12 + balanceBoost, 0),
     source_quality: clamp(authority * .72 + shrunk(creatorSignal) * .28, 0),
     information_gain: clamp(novelty * .70 + (topicSignals.length ? .15 : .28), 0),
     novelty,
     format_fit: clamp(shrunk(formatSignal) * .70 + .30 - Math.min(recentFormatCount, 3) * .08, 0),
-    evidence_quality: evidencePresent(item.evidence || item.rationale || item.why_this) ? .80 : .25,
+    evidence_quality: evidenceQuality,
+    thread_contribution: threadContribution,
     friction,
     _valid_url: Boolean(url),
     _has_identity: Boolean(title && url),
-    _hard_excluded: knownUrl || knownSimilarity >= .84 || blocked || sourceCheck.status === 'unavailable' || sourceCheck.status === 'invalid',
-    _exclusion_reason: knownUrl ? 'known_url' : knownSimilarity >= .84 ? 'semantic_duplicate' : blocked ? 'blocked_or_mastered' : sourceCheck.status === 'unavailable' ? 'source_unavailable' : sourceCheck.status === 'invalid' ? 'invalid_url' : null,
+    _hard_excluded: knownUrl || knownSimilarity >= .84 || blocked || sourceCheck.status === 'unavailable' || sourceCheck.status === 'invalid' || evidenceStatus === 'invalid',
+    _exclusion_reason: knownUrl ? 'known_url' : knownSimilarity >= .84 ? 'semantic_duplicate' : blocked ? 'blocked_or_mastered' : sourceCheck.status === 'unavailable' ? 'source_unavailable' : sourceCheck.status === 'invalid' ? 'invalid_url' : evidenceStatus === 'invalid' ? 'invalid_evidence' : null,
     _topic_affinity: topicAffinity,
+    _profile_match: profileMatch,
     _known_similarity: knownSimilarity,
     _source_check: sourceCheck.status,
     _branch_state: branchSignal?.state || 'unmapped',
+    _branch_id: item.branch_id || null,
+    _creator_key: creatorKey || null,
+    _format_key: format,
+    _evidence_status: evidenceStatus,
+    _thread_id: context.thread?.id || null,
   }
 }
 
 export const DEFAULT_FEATURE_WEIGHTS: Record<string, Record<string, number>> = {
+  fit: { topic_value: .16, personal_relevance: .17, source_quality: .14, information_gain: .10, novelty: .06, format_fit: .06, evidence_quality: .11, thread_contribution: .20 },
+  bridge: { topic_value: .12, personal_relevance: .13, source_quality: .13, information_gain: .18, novelty: .12, format_fit: .05, evidence_quality: .07, thread_contribution: .20 },
+  challenge: { topic_value: .10, personal_relevance: .10, source_quality: .14, information_gain: .17, novelty: .18, format_fit: .04, evidence_quality: .07, thread_contribution: .20 },
+}
+
+export const LEGACY_FEATURE_WEIGHTS: Record<string, Record<string, number>> = {
   fit: { topic_value: .23, personal_relevance: .22, source_quality: .19, information_gain: .13, novelty: .08, format_fit: .07, evidence_quality: .08 },
   bridge: { topic_value: .17, personal_relevance: .16, source_quality: .17, information_gain: .22, novelty: .15, format_fit: .06, evidence_quality: .07 },
   challenge: { topic_value: .14, personal_relevance: .13, source_quality: .18, information_gain: .20, novelty: .23, format_fit: .05, evidence_quality: .07 },
@@ -109,7 +138,7 @@ export function serverScore(features: Record<string, unknown>, strategy = 'fit',
 }
 
 export function pairwiseDominance(candidate: Record<string, any>, peers: Record<string, any>[]) {
-  const dimensions = ['topic_value', 'personal_relevance', 'source_quality', 'information_gain', 'novelty', 'format_fit', 'evidence_quality']
+  const dimensions = ['topic_value', 'personal_relevance', 'source_quality', 'information_gain', 'novelty', 'format_fit', 'evidence_quality', 'thread_contribution']
   if (peers.length <= 1) return .5
   let wins = 0; let comparisons = 0
   for (const peer of peers) for (const key of dimensions) { comparisons++; if (Number(candidate[key]) > Number(peer[key])) wins++; else if (Number(candidate[key]) === Number(peer[key])) wins += .5 }
@@ -118,5 +147,17 @@ export function pairwiseDominance(candidate: Record<string, any>, peers: Record<
 
 export function calibratedConfidence(score: number, uncertainty: number, margin: number, dominance: number) {
   return clamp(score * .55 + (1 - uncertainty) * .22 + clamp(margin / .06, 0) * .13 + dominance * .10, 0)
+}
+export const decisionConfidence = calibratedConfidence
+
+export function laneExplorationBonus(lane: CompassLane, laneEvidence: Map<string, number> = new Map()) {
+  const total = [...laneEvidence.values()].reduce((sum, value) => sum + Number(value || 0), 0)
+  const count = Number(laneEvidence.get(lane) || 0)
+  if (total <= 0) return lane === 'fit' ? 0 : .025
+  return Math.min(.05, .018 * Math.sqrt(Math.log(total + 2) / (count + 1)))
+}
+
+export function expectedLearningValue(features: Record<string, unknown>, lane: CompassLane, customWeights?: Record<string, number>) {
+  return Math.round(serverScore(features, lane, customWeights) * 1000) / 1000
 }
 export const compassPickIsUnresolved = (pickStatus: string, recommendationStatus?: string | null) => ['ready', 'started', 'abstained'].includes(pickStatus) && !['consumed', 'rejected'].includes(String(recommendationStatus || 'active'))

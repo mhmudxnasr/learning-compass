@@ -16,13 +16,19 @@ Calm editorial learning surface + precise research instrument. Information hiera
 
 ## Shell
 
-Collapsible desktop rail. Mobile bottom bar: Momentum, Curate, Learn, More. Contextual sub-navigation lives below the page heading. ⌘K opens the command palette. Capture is available globally.
+Collapsible desktop rail ordered by the loop: Momentum, Inbox, Queue, Notes, Recall, Atlas. Mobile keeps Momentum, Queue, Recall, and More. Contextual sub-navigation preserves secondary tools. ⌘K search and global Capture remain available.
 
 ## Content
 
-Momentum begins with a compact streak runway and honest weekly totals, then prioritizes the current Queue source and its linked HTML, PDF, Notes, and NotebookLM files. A linear queue manifest exposes the original source and every companion file for all five items; one evidence-backed next move replaces vague pattern and recent-win cards. Motivation comes from recorded work, never quotes or decorative gamification. Queue owns start, resume, and finish. Legacy Discovery is available inside Archive; a Compass Pick appears on Momentum only when the queue is empty. Learn begins with Files; Notes is the extracted-knowledge library (only Notes Extractor source notes, read in a dedicated typographic reader with section navigation, plus in-place editing), and each note keeps one explicit Source context hop back to the full source record that presents personal feedback before extractor-created Notes. Activity shows only pending proposals with explicit Approve and Reject actions; reviewed changes belong to history. Internal jobs never appear in the user interface. Notes use Foundation → Case Studies → Exploitation → Defense plus My Notes & Reaction.
+Momentum begins with a compact honest activity pulse and one dominant focus desk for the current source. The active Thread sits beside it as a concise question/finish-line brief; evidence and closure controls stay collapsed until requested. Show at most two recent companion shortcuts and route the complete library to Files. Never repeat the active source in a Queue manifest or render a chapter-file dump on Momentum. Every original, HTML, PDF, artifact, and NotebookLM open action still enters the same server-backed session. Source records show Thread roles, exact reflection, consolidation state, anchored Units, recall/application evidence, and files. Infrastructure job details remain hidden; user-facing states are waiting, consolidating, repair required, closed, or waived.
 
-Profile is the deliberate exception to list-heavy management views: use a bounded card matrix to turn personal rules, topics, evidence, and counts into scan-friendly objects. Represent structured values as tags and labeled facts, not JSON or raw database rows. Keep the full editor behind an explicit advanced action.
+Notes remain readable editorial documents, but their knowledge layer is a set of atomic anchored Learning Units. Atlas visualizes topic navigation and typed Unit relations; contradictory ratings are never presented as contradictory claims.
+
+Profile is the deliberate exception to list-heavy management views: lead with a compact model-health strip and bounded assertion matrix showing category, source, confidence, status, and version. Every assertion is editable or deactivatable; revision history exposes Undo. Represent structured values as readable text/tags, not database rows. Keep compatibility-field editing behind an advanced action.
+
+Compass feedback must visually separate “Not now” from “Bad fit.” Not now is one neutral action. Bad fit opens compact reason chips; never label the neutral action “Not for me.” Insights → Hermes separates utility-labeled outcomes, explicit fit labels, and administrative exclusions, and shows shadow rollout gates plus reversible self-improvement receipts.
+
+Settings → System uses a restrained cloud-console layout: compact service status, the exact active schedule, explicitly on-demand workflows, storage ownership, safety boundaries, and searchable operation rows. It is a descriptive control plane, not a raw mutation console; secrets and infrastructure-only controls never render.
 
 ## Atlas
 

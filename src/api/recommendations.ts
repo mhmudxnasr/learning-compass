@@ -2,6 +2,8 @@ import { Hono } from 'hono'
 import { Bindings, Recommendation, VALID_STATUS, VALID_RATINGS, isValidUrl, isNonEmptyStr, safeError, normalizeRating, deriveDedupKey, normalizeUrlForDedup } from '../lib'
 import { activateWaitingRun } from './discovery'
 import { normalizeQualityAssurance } from '../artifact-metadata'
+import { classifyRecommendationFeedback } from '../intelligence-v2'
+import { recordRecommendationSignal, syncRecommendationFeedbackSignals } from '../services/intelligence-v2'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -89,7 +91,7 @@ app.get('/books', async (c) => {
   const status = c.req.query('status')
   const allowed = new Set(['active', 'consumed', 'rejected'])
   if (status && !allowed.has(status)) return c.json({ error: 'invalid status' }, 400)
-  const query = `SELECT r.*,m.learning_state,m.priority_rank FROM recommendations r
+  const query = `SELECT r.*,m.learning_state,m.priority_rank,(SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND t.status NOT IN ('verified','abandoned') ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 1) thread_id FROM recommendations r
     LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
     WHERE r.content_type='book' ${status ? 'AND r.status=?' : ''}
     ORDER BY r.updated_at DESC, r.created_at DESC`
@@ -282,6 +284,8 @@ app.post('/action', async (c) => {
     user_review?: string
     consumed_date?: string
     notebook_url?: string
+    reason_code?: string
+    feedback_kind?: 'bad_fit' | 'administrative' | 'not_now'
   }
 
   try {
@@ -295,6 +299,9 @@ app.post('/action', async (c) => {
   }
   if (!VALID_STATUS.has(body.status)) {
     return c.json({ error: 'invalid status' }, 400)
+  }
+  if (body.status === 'rejected' && (body.feedback_kind === 'not_now' || body.reason_code === 'not_now')) {
+    return c.json({ error: 'not_now is neutral and cannot reject a recommendation' }, 400)
   }
   // DATA QUALITY: consuming requires a review, but only when transitioning TO consumed
   // (moved after ids resolve, below)
@@ -364,6 +371,13 @@ app.post('/action', async (c) => {
           await DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,branch_id,actual_score,outcome_status,consumed_at,evaluated_at) VALUES (?,?,?,?,?,?, 'consumed', ?, datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET actual_score=COALESCE(excluded.actual_score,recommendation_outcomes.actual_score),outcome_status='consumed',consumed_at=excluded.consumed_at,evaluated_at=datetime('now')`)
             .bind(`outcome_${id}`, id, item?.creator || null, item?.content_type || null, item?.branch_id || null, norm.score, consumedDate).run()
         } catch (e) { console.warn('quality ledger failed', e) }
+        await syncRecommendationFeedbackSignals(DB, {
+          recommendationId: id,
+          sourceKey: `recommendation-action:${id}:${consumedDate}`,
+          rating: norm.score,
+          completed: true,
+          reflection: body.user_review || null,
+        })
       }
     }
     if (body.status === 'rejected') {
@@ -371,6 +385,18 @@ app.post('/action', async (c) => {
         await DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,branch_id,outcome_status,evaluated_at)
           SELECT ?,r.id,r.creator,r.content_type,m.branch_id,'rejected',datetime('now') FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?
           ON CONFLICT(recommendation_id) DO UPDATE SET outcome_status='rejected',evaluated_at=datetime('now')`).bind(`outcome_${id}`, id).run()
+        const explicitFit = body.feedback_kind === 'bad_fit' || Boolean(body.reason_code)
+        const classified = classifyRecommendationFeedback(body.feedback_kind === 'not_now' ? 'dismissed' : 'declined', [body.reason_code || (explicitFit ? 'bad_fit' : 'other')])
+        await recordRecommendationSignal(DB, {
+          idempotencyKey: `recommendation-action:${id}:rejected:${body.reason_code || body.feedback_kind || 'administrative'}`,
+          eventType: explicitFit ? classified.eventType : 'administrative_exclusion',
+          recommendationId: id,
+          signalScope: explicitFit ? classified.signalScope : 'none',
+          reasonCode: explicitFit ? classified.reasonCodes[0] : null,
+          explicit: explicitFit,
+          origin: explicitFit ? 'recommendation_feedback' : 'administrative_exclusion',
+          payload: { feedback_kind: body.feedback_kind || 'administrative' },
+        })
       }
     }
   } catch (err) {
@@ -425,10 +451,10 @@ app.post('/delete', async (c) => {
       await DB.batch([
         DB.prepare("INSERT OR REPLACE INTO undo_queue (id, table_name, row_id, snapshot_json, expires_at) VALUES (?, 'recommendations', ?, ?, datetime('now', '+30 seconds'))")
           .bind(body.id, body.id, JSON.stringify(row)),
-        DB.prepare('DELETE FROM recommendations WHERE id = ?').bind(body.id),
+        DB.prepare("UPDATE recommendations SET status='deleted',deleted_at=datetime('now'),updated_at=datetime('now') WHERE id=?").bind(body.id),
       ])
     } else {
-      await DB.prepare('DELETE FROM recommendations WHERE id = ?').bind(body.id).run()
+      await DB.prepare("UPDATE recommendations SET status='deleted',deleted_at=datetime('now'),updated_at=datetime('now') WHERE id=?").bind(body.id).run()
     }
     try { await activateWaitingRun(DB) } catch {}
     return c.json({ ok: true })
@@ -447,9 +473,7 @@ app.post('/undo', async (c) => {
 
     if (row.table_name === 'recommendations') {
       const snap = JSON.parse(row.snapshot_json)
-      await DB.prepare(`INSERT OR REPLACE INTO recommendations (id, video_title, creator, content_type, video_url, why_this, verified, status, user_rating, user_score, user_review, dedup_key, synergy_bundle_id, consumed_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(snap.id, snap.video_title, snap.creator, snap.content_type, snap.video_url, snap.why_this, snap.verified, snap.status, snap.user_rating, snap.user_score, snap.user_review, snap.dedup_key, snap.synergy_bundle_id, snap.consumed_date).run()
+      await DB.prepare(`UPDATE recommendations SET status=?,deleted_at=?,updated_at=datetime('now') WHERE id=?`).bind(snap.status, snap.deleted_at || null, snap.id).run()
     }
     await DB.prepare('DELETE FROM undo_queue WHERE id = ?').bind(body.id).run()
     return c.json({ ok: true })

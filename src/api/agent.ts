@@ -16,6 +16,7 @@ type AgentMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
  */
 const CAPABILITIES = [
   ['GET', '/agent/context', 'Read the compact taste and learning context.'],
+  ['GET', '/agent/system', 'Read the user-visible runtime, storage, schedule, and service inventory.'],
   ['GET', '/dashboard/briefing', 'Read Momentum, active Queue files, weekly progress, and current insight.'],
   ['GET', '/capture', 'Read the unlimited Inbox.'],
   ['POST', '/capture', 'Capture a URL, text, or artifact into Inbox.'],
@@ -32,6 +33,7 @@ const CAPABILITIES = [
   ['GET', '/capture/:id/record', 'Read the canonical source record with exact feedback, extracted note sections, jobs, proposals, files, recall, sessions, memory influence, and outcome.'],
   ['GET', '/compass/pick', 'Read the newest active ready/started Compass Pick; multiple concurrent picks may exist.'],
   ['POST', '/compass/picks', 'Submit 3–8 candidates for server-owned adaptive Compass Pick selection while queued/in-progress Queue count is below five; does not auto-start.'],
+  ['POST', '/compass/evaluate', 'Dry-run v1 and v2 scoring for 3–8 candidates without creating a pick.'],
   ['POST', '/compass/pick/:id/candidates', 'Expand an abstained Compass Pick with additional candidates and rescore the complete set up to eight.'],
   ['POST', '/compass/pick/:id/start', 'Explicitly start any ready Compass Pick through the normal Queue/session workflow; the five-item cap is enforced.'],
   ['POST', '/compass/pick/:id/feedback', 'Record explicit Compass Pick outcome, rating, reason tags, and reflection.'],
@@ -44,6 +46,9 @@ const CAPABILITIES = [
   ['POST', '/recommendations/undo', 'Undo a reversible recommendation deletion.'],
   ['GET', '/brain/profile', 'Read profile, priorities, patterns, blacklist, and audit history.'],
   ['POST', '/brain/profile', 'Edit any editable profile field.'],
+  ['GET', '/brain/profile/intelligence', 'Read typed profile assertions, health, and reversible revisions.'],
+  ['PUT', '/brain/profile/assertions/:key', 'Create or replace a typed profile assertion as an explicit user edit.'],
+  ['POST', '/brain/profile/revisions/:id/revert', 'Undo one typed profile revision.'],
   ['POST', '/brain/priorities', 'Replace priorities.'],
   ['GET', '/brain/tree', 'Read the knowledge tree.'],
   ['POST', '/brain/node', 'Create a knowledge node.'],
@@ -68,9 +73,31 @@ const CAPABILITIES = [
   ['DELETE', '/srs/drafts/:id', 'Delete a draft.'],
   ['GET', '/learning/srs/cards', 'Read every active recall card.'],
   ['DELETE', '/learning/srs/cards/:id', 'Delete an active recall card.'],
+  ['GET', '/learning/core/integrity/health', 'Read canonical relationship integrity and quarantined legacy records.'],
+  ['GET', '/learning/core/threads', 'Read Learning Threads.'],
+  ['GET', '/learning/core/weekly', 'Read the weekly closure review for stale Threads, cognitive loops, and due recall.'],
+  ['GET', '/learning/core/counterevidence', 'Find important Thread Units without contradiction or qualification evidence.'],
+  ['POST', '/learning/core/threads', 'Create a purpose-first Learning Thread with evidence requirements.'],
+  ['GET', '/learning/core/threads/:id', 'Read a Thread workspace, sources, units, requirements, and evidence.'],
+  ['GET', '/learning/core/threads/:id/export', 'Export a complete evidence packet as JSON or Markdown.'],
+  ['PATCH', '/learning/core/threads/:id', 'Edit a Thread or its final synthesis.'],
+  ['POST', '/learning/core/threads/:id/status', 'Activate, pause, or abandon a Thread.'],
+  ['POST', '/learning/core/threads/:id/sources', 'Attach a source to a Thread with an explicit role.'],
+  ['DELETE', '/learning/core/threads/:id/sources/:sourceId', 'Remove a source from a Thread without deleting it.'],
+  ['POST', '/learning/core/threads/:id/verify', 'Verify a Thread only after synthesis and evidence gates are satisfied.'],
+  ['GET', '/learning/core/units', 'Read atomic anchored Learning Units.'],
+  ['POST', '/learning/core/units', 'Create an anchored Learning Unit.'],
+  ['POST', '/learning/core/units/:id/relations', 'Create a typed relationship between Learning Units.'],
+  ['POST', '/learning/core/evidence', 'Record retrieval, explanation, transfer, application, decision, or artifact evidence.'],
+  ['GET', '/learning/core/consolidation/open', 'Read open cognitive loops.'],
+  ['GET', '/learning/core/consolidation/:sourceId', 'Read one source consolidation run and its steps.'],
+  ['POST', '/learning/core/consolidation/:id/retry', 'Retry a repair-required consolidation run.'],
+  ['POST', '/learning/core/consolidation/:id/waive', 'Explicitly waive a consolidation run with a reason.'],
   ['GET', '/feedback/proposals', 'Read pending and reviewed Hermes change proposals.'],
   ['POST', '/feedback/record', 'Resolve or capture a source, preserve feedback verbatim, update completion and rating, create idempotent analysis/extraction work, and return one exact receipt.'],
   ['POST', '/feedback/proposals/:id/approve', 'Approve a proposed profile or map change for Hermes application.'],
+  ['POST', '/feedback/proposals/:id/apply', 'Policy-check and automatically apply a Hermes profile proposal.'],
+  ['POST', '/feedback/proposals/:id/revert', 'Revert one applied proposal and its typed profile revision.'],
   ['POST', '/feedback/proposals/:id/reject', 'Reject a proposed profile or map change.'],
   ['GET', '/collections', 'Read collections.'],
   ['POST', '/collections', 'Create a collection.'],
@@ -120,7 +147,16 @@ const CAPABILITIES = [
   ['GET', '/analytics/heatmaps', 'Read learning heatmaps.'],
   ['GET', '/analytics/forecast', 'Read forecast analytics.'],
   ['GET', '/analytics/hermes', 'Read Hermes operations, quality, memory, alerts, and engine metrics.'],
-  ['POST', '/analytics/hermes/recalibrate', 'Apply a slow, evidence-gated recommendation weight recalibration.'],
+  ['POST', '/analytics/hermes/recalibrate', 'Apply conversation-bound, slow, evidence-gated recommendation weight recalibration.'],
+  ['GET', '/analytics/hermes/engine', 'Read v2 shadow-rollout gates and current engine mode.'],
+  ['POST', '/analytics/hermes/engine/activate', 'Switch from shadow to v2 only after every evidence gate passes.'],
+  ['POST', '/analytics/hermes/engine/rollback', 'Return recommendation serving to shadow mode with a receipt.'],
+  ['GET', '/analytics/hermes/repair', 'Preview deterministic recommendation and profile history repair.'],
+  ['POST', '/analytics/hermes/repair', 'Apply a conversation-bound, snapshot-guarded deterministic history repair.'],
+  ['GET', '/analytics/hermes/improvements', 'Read self-improvement run receipts and rollback status.'],
+  ['POST', '/analytics/hermes/improvements', 'Open a conversation-bound self-improvement run.'],
+  ['POST', '/analytics/hermes/improvements/:id/complete', 'Record validated application or deployment of a self-improvement run.'],
+  ['POST', '/analytics/hermes/improvements/:id/revert', 'Record rollback of an applied or deployed self-improvement run.'],
   ['GET', '/notifications', 'Read browser and Telegram reminder controls and delivery history.'],
   ['GET', '/notifications/vapid', 'Read browser push configuration status.'],
   ['POST', '/notifications/push/subscribe', 'Enable browser reminder delivery for this device.'],
@@ -128,8 +164,8 @@ const CAPABILITIES = [
   ['POST', '/notifications/telegram', 'Enable or disable Telegram reminder delivery.'],
   ['POST', '/notifications/test', 'Send and record a reminder delivery test.'],
   ['GET', '/analytics/hermes/weekly', 'Read the weekly Hermes evaluator report.'],
-  ['POST', '/analytics/hermes/evaluate', 'Create reviewable evaluator proposals from weekly evidence.'],
-  ['POST', '/analytics/hermes/backfill', 'Backfill missing intelligence records without mutating taste silently.'],
+  ['POST', '/analytics/hermes/evaluate', 'Create conversation-bound reviewable evaluator proposals from weekly evidence.'],
+  ['POST', '/analytics/hermes/backfill', 'Dry-run or conversation-bound apply of missing intelligence records.'],
   ['GET', '/notebooklm/health', 'Read NotebookLM broker, grounding, fallback, and session health.'],
   ['POST', '/notebooklm/health', 'Record a NotebookLM broker heartbeat and grounding result.'],
   ['POST', '/notebooklm/recover', 'Record a NotebookLM session recovery request.'],
@@ -172,6 +208,7 @@ app.get('/context', async (c) => {
   let creatorTrust: any = { results: [] }
   let tasteVectors: any = { results: [] }
   let reflections: any = { results: [] }
+  let profileAssertions: any = { results: [] }
   let learningBalance: any = null
 
   try { profile = await DB.prepare('SELECT identity_json, mega_priority_json, core_filter, reaction_style_json, quality_rules_json, patterns_summary_json FROM profile WHERE id = 1').first<any>() } catch {}
@@ -227,6 +264,7 @@ app.get('/context', async (c) => {
   } catch {}
   try { tasteVectors = await DB.prepare('SELECT topic, affinity_score FROM taste_vectors ORDER BY affinity_score DESC LIMIT 15').all() } catch {}
   try { reflections = await DB.prepare("SELECT reflection FROM learning_sessions WHERE reflection IS NOT NULL AND reflection != '' ORDER BY completed_at DESC LIMIT 5").all() } catch {}
+  try { profileAssertions = await DB.prepare("SELECT assertion_key,category,scope,value_json,weight,confidence,status,source_kind,version,updated_at FROM profile_assertions WHERE status IN ('active','hypothesis') ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,confidence DESC,updated_at DESC LIMIT 100").all() } catch {}
   try {
     const balance = await buildLearningBalance(DB, 90)
     const branches = balance.branches || []
@@ -259,7 +297,13 @@ app.get('/context', async (c) => {
     profile: {
       core_filter: profile?.core_filter || null,
       identity: identityParsed,
-      patterns: patternsParsed
+      patterns: patternsParsed,
+      model_version: 'profile_v2',
+      assertions: (profileAssertions?.results || []).map((assertion: any) => {
+        let value: any = assertion.value_json
+        try { value = JSON.parse(assertion.value_json) } catch {}
+        return { ...assertion, value, value_json: undefined }
+      }),
     },
     priorities: priorities?.results || [],
     active_queue: activeQueue?.results || [],
@@ -319,6 +363,7 @@ app.post('/memory', async (c) => {
     reason: item.reason ? String(item.reason).slice(0, 500) : undefined,
     confidence: item.confidence == null ? undefined : Math.max(0, Math.min(1, Number(item.confidence))),
   })) : []
+  if (['durable', 'hypothesis'].includes(memoryKind) && !evidence.length) return c.json({ error: 'validated memory requires evidence' }, 400)
   const statements: D1PreparedStatement[] = []
   if (existing) statements.push(c.env.DB.prepare(`UPDATE hermes_memory SET status='superseded',updated_at=datetime('now') WHERE id=?`).bind(existing.id))
   statements.push(c.env.DB.prepare(`INSERT INTO hermes_memory (id,memory_key,memory_kind,value_json,confidence,source,status,supersedes_id,expires_at,evidence_json) VALUES (?,?,?,?,?,?,'active',?,?,?)`)
@@ -350,7 +395,7 @@ app.post('/alerts/:id/ack', async (c) => {
 })
 
 app.get('/capabilities', (c) => c.json({
-  version: '2026-07-29',
+  version: '2026-08-09',
   protocol: 'taste-map-agent-http/1',
   description: 'Complete allow-listed control surface for the Learning Compass website.',
   authentication: 'Writes require x-api-token when API_TOKEN is configured.',
@@ -358,9 +403,56 @@ app.get('/capabilities', (c) => c.json({
   capabilities: CAPABILITIES.map(([method, path, description]) => ({ method, path, description })),
 }))
 
+app.get('/system', async (c) => {
+  const DB = c.env.DB
+  const [lastSearchSync, feedCount, sourceCount, noteCount, artifactCount, jobCount] = await Promise.all([
+    DB.prepare("SELECT value FROM kv_store WHERE key='fts_last_sync'").first<{ value: string }>(),
+    DB.prepare('SELECT COUNT(*) count FROM feed_sources WHERE enabled=1').first<{ count: number }>(),
+    DB.prepare("SELECT COUNT(*) count FROM recommendations WHERE deleted_at IS NULL").first<{ count: number }>(),
+    DB.prepare('SELECT COUNT(*) count FROM notes').first<{ count: number }>(),
+    DB.prepare('SELECT COUNT(*) count FROM artifacts').first<{ count: number }>(),
+    DB.prepare("SELECT COUNT(*) count FROM agent_jobs WHERE status IN ('pending','running','retry')").first<{ count: number }>(),
+  ])
+  return c.json({
+    status: 'active',
+    service: 'Learning Compass Worker',
+    environment: 'Cloudflare edge',
+    timezone: 'Africa/Cairo',
+    protocol: 'taste-map-agent-http/1',
+    storage: [
+      { name: 'D1', purpose: 'Canonical sources, Threads, notes, recall, settings, jobs, and audit history', status: 'connected' },
+      { name: 'R2', purpose: 'PDF, HTML, transcript, and generated companion files', status: c.env.ARTIFACTS ? 'connected' : 'unavailable' },
+      { name: 'Browser', purpose: 'Local preferences and recoverable offline mutations', status: 'client managed' },
+    ],
+    schedule: [{
+      id: 'worker-maintenance',
+      cron: '0 */6 * * *',
+      cadence: 'Every 6 hours',
+      timezone: 'UTC',
+      responsibilities: ['Refresh enabled RSS/Atom feeds', 'Deliver due reminders', 'Synchronize search indexes', 'Surface neglected knowledge branches', 'Expire reversible undo windows'],
+      last_search_sync: lastSearchSync?.value || null,
+    }],
+    on_demand_only: [
+      'Hermes job execution',
+      'Learning Thread closure and verification',
+      'Recommendations and Compass Picks',
+      'Lite Visual and NotebookLM generation',
+      'Hermes self-improvement and deployment',
+    ],
+    counts: {
+      active_feeds: Number(feedCount?.count || 0),
+      sources: Number(sourceCount?.count || 0),
+      notes: Number(noteCount?.count || 0),
+      artifacts: Number(artifactCount?.count || 0),
+      active_jobs: Number(jobCount?.count || 0),
+    },
+    safety: ['No arbitrary SQL', 'No arbitrary outbound proxy', 'Validated mutations only', 'Agent mutations are audit logged'],
+  })
+})
+
 app.get('/openapi.json', (c) => c.json({
   openapi: '3.1.0',
-  info: { title: 'Learning Compass Agent API', version: '2026-07-29' },
+  info: { title: 'Learning Compass Agent API', version: '2026-08-09' },
   servers: [{ url: new URL(c.req.url).origin }],
   paths: CAPABILITIES.reduce<Record<string, Record<string, unknown>>>((paths, [method, path, description]) => {
     const operation = method.toLowerCase()

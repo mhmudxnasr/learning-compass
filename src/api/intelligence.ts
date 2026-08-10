@@ -3,10 +3,32 @@ import { adaptAndNormalizeWeights, computeDecayedAffinity } from '../domain'
 import { Bindings, safeError } from '../lib'
 import { backfillHermesIntelligence, createHermesEvaluatorProposals, hermesWeeklyReport } from '../services/hermes-intelligence'
 import { canonicalTasteIdentity, tasteEvidence } from './taste'
+import { applyRecommendationRepair, profileIntelligenceSnapshot, recommendationRepairPreview } from '../services/intelligence-v2'
+import { LEARNING_OBJECTIVE_VERSION } from '../intelligence-v2'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const all = async (statement: D1PreparedStatement) => (await statement.all<any>()).results || []
 const allOr = async (statement: D1PreparedStatement) => { try { return await all(statement) } catch { return [] } }
+
+async function engineReadiness(DB: D1Database) {
+  const [setting, shadow, outcomes, lanes, invalid] = await Promise.all([
+    DB.prepare(`SELECT value_json,updated_at FROM user_settings WHERE setting_key='recommendation_engine'`).first<any>(),
+    DB.prepare(`SELECT COUNT(*) count,SUM(CASE WHEN json_extract(shadow_json,'$.disagreement')=1 THEN 1 ELSE 0 END) disagreements FROM compass_picks WHERE engine_version='v1' AND objective_version='learning_value_v2'`).first<any>(),
+    DB.prepare(`SELECT COUNT(*) count FROM recommendation_training_outcomes_v2`).first<any>(),
+    DB.prepare(`SELECT p.strategy,COUNT(DISTINCT o.recommendation_id) count FROM recommendation_training_outcomes_v2 o JOIN compass_picks p ON p.recommendation_id=o.recommendation_id GROUP BY p.strategy`).all<any>(),
+    DB.prepare(`SELECT COUNT(*) count FROM compass_picks WHERE objective_version='learning_value_v2' AND json_extract(shadow_json,'$.v2.evidence_status')='invalid'`).first<any>(),
+  ])
+  let resolved: any = { mode: 'shadow', engine_version: 'v2', objective_version: LEARNING_OBJECTIVE_VERSION }
+  try { resolved = { ...resolved, ...JSON.parse(setting?.value_json || '{}') } } catch {}
+  const laneCounts = Object.fromEntries((lanes.results || []).map((row: any) => [row.strategy, Number(row.count || 0)]))
+  const gates = {
+    global_learning_outcomes: { observed: Number(outcomes?.count || 0), required: 20, passed: Number(outcomes?.count || 0) >= 20 },
+    lane_learning_outcomes: { observed: laneCounts, required_each: 8, passed: ['fit','bridge','challenge'].every((lane) => Number(laneCounts[lane] || 0) >= 8) },
+    shadow_decisions: { observed: Number(shadow?.count || 0), required: 10, passed: Number(shadow?.count || 0) >= 10, disagreements: Number(shadow?.disagreements || 0) },
+    invalid_winners: { observed: Number(invalid?.count || 0), required: 0, passed: Number(invalid?.count || 0) === 0 },
+  }
+  return { setting: resolved, updated_at: setting?.updated_at || null, gates, ready: Object.values(gates).every((gate: any) => gate.passed) }
+}
 
 app.get('/knowledge/graph', async (c) => {
   const [nodes, explicit, hierarchy] = await Promise.all([
@@ -27,7 +49,7 @@ app.get('/knowledge/blind-spots', async (c) => {
 })
 
 app.get('/learning/health', async (c) => {
-  const branches = await all(c.env.DB.prepare(`SELECT COALESCE(m.branch_id, substr(r.dedup_key,1,instr(r.dedup_key||'-','-')-1),'unmapped') branch,COUNT(*) total,SUM(CASE WHEN r.status='consumed' THEN 1 ELSE 0 END) consumed,MAX(r.consumed_date) last_activity FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id GROUP BY branch ORDER BY total DESC`))
+  const branches = await all(c.env.DB.prepare(`SELECT COALESCE(m.branch_id,'unmapped') branch,COUNT(*) total,SUM(CASE WHEN r.status='consumed' THEN 1 ELSE 0 END) consumed,MAX(r.consumed_date) last_activity FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id GROUP BY branch ORDER BY total DESC`))
   const health = branches.map((row: any) => ({ ...row, health: !row.last_activity ? 'neglected' : row.consumed >= 3 ? 'healthy' : 'growing' }))
   return c.json({ health, healthy: health.filter((row: any) => row.health === 'healthy').length, neglected: health.filter((row: any) => row.health === 'neglected').length })
 })
@@ -96,16 +118,16 @@ app.get('/analytics/forecast', async (c) => {
 app.get('/analytics/hermes', async (c) => {
   const { DB } = c.env
   try {
-    const calibrationRows = await allOr(DB.prepare(`SELECT o.predicted_score,o.actual_score,o.format,o.creator,p.strategy
+    const calibrationRows = await allOr(DB.prepare(`SELECT p.expected_learning_value predicted_value,o.learning_value actual_value,o.format_key format,o.creator_key creator,p.strategy
       FROM recommendation_outcomes o LEFT JOIN compass_picks p ON p.recommendation_id=o.recommendation_id
-      WHERE o.actual_score IS NOT NULL`))
+      WHERE o.training_eligible=1 AND o.learning_value IS NOT NULL AND o.objective_version='learning_value_v2'`))
     const [jobCounts, stale, retryQueue, deadLetters, quality, qualityByFormat, memory, alerts, failures, weights, proposals, compassPriors, compassWeights] = await Promise.all([
       DB.prepare(`SELECT status,COUNT(*) count FROM agent_jobs GROUP BY status`).all<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM agent_jobs WHERE status='running' AND lease_expires_at < datetime('now')`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM agent_job_retries WHERE dead_lettered_at IS NULL AND next_attempt_at > datetime('now')`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM agent_job_retries WHERE dead_lettered_at IS NOT NULL`).first<any>(),
-      DB.prepare(`SELECT COUNT(*) total, SUM(CASE WHEN outcome_status='consumed' THEN 1 ELSE 0 END) consumed, SUM(CASE WHEN outcome_status='rejected' THEN 1 ELSE 0 END) rejected, SUM(CASE WHEN outcome_status IN ('deleted','abandoned') THEN 1 ELSE 0 END) abandoned, ROUND(AVG(actual_score),2) average_actual, ROUND(AVG(CASE WHEN predicted_score IS NOT NULL AND actual_score IS NOT NULL THEN ABS(predicted_score-actual_score) END),2) prediction_error FROM recommendation_outcomes`).first<any>(),
-      DB.prepare(`SELECT COALESCE(format,'unknown') format,COUNT(*) total,SUM(CASE WHEN outcome_status='consumed' THEN 1 ELSE 0 END) consumed,SUM(CASE WHEN outcome_status='rejected' THEN 1 ELSE 0 END) rejected,ROUND(AVG(actual_score),2) average_actual,ROUND(AVG(CASE WHEN predicted_score IS NOT NULL AND actual_score IS NOT NULL THEN ABS(predicted_score-actual_score) END),2) prediction_error FROM recommendation_outcomes GROUP BY format ORDER BY total DESC`).all<any>(),
+      DB.prepare(`SELECT COUNT(*) total,SUM(CASE WHEN outcome_status='consumed' THEN 1 ELSE 0 END) consumed,SUM(CASE WHEN outcome_status='rejected' THEN 1 ELSE 0 END) rejected,SUM(CASE WHEN outcome_status IN ('deleted','abandoned') THEN 1 ELSE 0 END) abandoned,ROUND(AVG(learning_value),3) average_learning_value,ROUND(AVG(CASE WHEN expected_learning_value IS NOT NULL THEN ABS(expected_learning_value-learning_value) END),3) prediction_error FROM recommendation_outcomes o LEFT JOIN compass_picks p ON p.recommendation_id=o.recommendation_id WHERE o.training_eligible=1 AND o.learning_value IS NOT NULL AND o.objective_version='learning_value_v2'`).first<any>(),
+      DB.prepare(`SELECT COALESCE(format_key,'other') format,COUNT(*) total,SUM(CASE WHEN outcome_status='consumed' THEN 1 ELSE 0 END) consumed,SUM(CASE WHEN outcome_status='rejected' THEN 1 ELSE 0 END) rejected,ROUND(AVG(learning_value),3) average_learning_value,ROUND(AVG(CASE WHEN expected_learning_value IS NOT NULL THEN ABS(expected_learning_value-learning_value) END),3) prediction_error FROM recommendation_outcomes o LEFT JOIN compass_picks p ON p.recommendation_id=o.recommendation_id WHERE o.training_eligible=1 AND o.learning_value IS NOT NULL AND o.objective_version='learning_value_v2' GROUP BY format_key ORDER BY total DESC`).all<any>(),
       DB.prepare(`SELECT memory_kind, status, COUNT(*) count FROM hermes_memory GROUP BY memory_kind,status ORDER BY memory_kind,status`).all<any>(),
       DB.prepare(`SELECT id,kind,severity,title,body,created_at FROM hermes_alerts WHERE acknowledged_at IS NULL ORDER BY created_at DESC LIMIT 12`).all<any>(),
       DB.prepare(`SELECT id,job_type,attempts,error,updated_at FROM agent_jobs WHERE status='failed' ORDER BY updated_at DESC LIMIT 12`).all<any>(),
@@ -113,6 +135,15 @@ app.get('/analytics/hermes', async (c) => {
       DB.prepare(`SELECT COUNT(*) count FROM feedback_proposals WHERE status='pending'`).first<any>(),
       DB.prepare(`SELECT strategy,alpha,beta,explicit_evidence_count,updated_at FROM compass_strategy_priors ORDER BY strategy`).all<any>().catch(() => ({ results: [] })),
       DB.prepare(`SELECT strategy,dimension,current_weight,baseline_weight,evidence_count,updated_at FROM compass_feature_weights ORDER BY strategy,current_weight DESC`).all<any>().catch(() => ({ results: [] })),
+    ])
+    const [signalPopulation, profileIntelligence, improvementRuns] = await Promise.all([
+      DB.prepare(`SELECT COUNT(*) total,
+        SUM(CASE WHEN training_eligible=1 THEN 1 ELSE 0 END) utility_labeled,
+        SUM(CASE WHEN outcome_origin='administrative_exclusion' THEN 1 ELSE 0 END) administrative_exclusions,
+        SUM(CASE WHEN EXISTS (SELECT 1 FROM learning_events e WHERE e.recommendation_id=recommendation_outcomes.recommendation_id AND e.is_explicit=1 AND e.signal_scope IN ('eligibility','both')) THEN 1 ELSE 0 END) explicit_fit_labels
+        FROM recommendation_outcomes`).first<any>(),
+      profileIntelligenceSnapshot(DB),
+      DB.prepare(`SELECT id,conversation_id,trigger_kind,layer,risk_level,status,confidence,validation_json,deployment_json,error,created_at,completed_at FROM self_improvement_runs ORDER BY created_at DESC LIMIT 25`).all<any>(),
     ])
     const statuses: Record<string, number> = {}
     for (const row of jobCounts.results || []) statuses[row.status] = Number(row.count || 0)
@@ -122,28 +153,30 @@ app.get('/analytics/hermes', async (c) => {
         const value = key === 'creator' ? canonicalTasteIdentity(row[key], 'unknown') : String(row[key] || 'unknown').toLowerCase()
         const group = groups.get(value) || { rated: 0, paired: 0, error: 0 }
         group.rated += 1
-        if (row.predicted_score != null) { group.paired += 1; group.error += Math.abs(Number(row.predicted_score) - Number(row.actual_score)) }
+        if (row.predicted_value != null) { group.paired += 1; group.error += Math.abs(Number(row.predicted_value) - Number(row.actual_value)) }
         groups.set(value, group)
       }
       return [...groups.entries()].map(([label, group]) => ({ [key]: label, rated_outcomes: group.rated, predicted_and_rated_outcomes: group.paired, coverage_percent: group.rated ? Math.round(group.paired / group.rated * 100) : 0, mae: group.paired ? Math.round(group.error / group.paired * 100) / 100 : null, evidence_status: group.paired >= 5 ? 'usable' : 'insufficient' }))
     }
-    const paired = calibrationRows.filter((row: any) => row.predicted_score != null)
+    const paired = calibrationRows.filter((row: any) => row.predicted_value != null)
     const calibration = {
       rated_outcomes: calibrationRows.length,
       predicted_and_rated_outcomes: paired.length,
       coverage_percent: calibrationRows.length ? Math.round(paired.length / calibrationRows.length * 100) : 0,
-      mae: paired.length ? Math.round(paired.reduce((sum: number, row: any) => sum + Math.abs(Number(row.predicted_score) - Number(row.actual_score)), 0) / paired.length * 100) / 100 : null,
+      mae: paired.length ? Math.round(paired.reduce((sum: number, row: any) => sum + Math.abs(Number(row.predicted_value) - Number(row.actual_value)), 0) / paired.length * 1000) / 1000 : null,
       evidence_status: paired.length >= 5 ? 'usable' : 'insufficient',
       by_strategy: summarizeCalibration('strategy'), by_format: summarizeCalibration('format'), by_creator: summarizeCalibration('creator'),
     }
     return c.json({
       checked_at: new Date().toISOString(),
       jobs: { statuses, stale_running: Number(stale?.count || 0), delayed_retries: Number(retryQueue?.count || 0), dead_letters: Number(deadLetters?.count || 0), recent_failures: failures.results || [] },
-      quality: { ...(quality || {}), completion_rate: Number(quality?.consumed || 0) + Number(quality?.rejected || 0) + Number(quality?.abandoned || 0) ? Math.round((Number(quality?.consumed || 0) / (Number(quality?.consumed || 0) + Number(quality?.rejected || 0) + Number(quality?.abandoned || 0))) * 100) : null, abandonment_rate: Number(quality?.total || 0) ? Math.round((Number(quality?.abandoned || 0) / Number(quality.total)) * 100) : null, by_format: qualityByFormat.results || [] },
+      quality: { ...(quality || {}), objective_version: LEARNING_OBJECTIVE_VERSION, population: signalPopulation || {}, completion_rate: Number(quality?.consumed || 0) + Number(quality?.rejected || 0) + Number(quality?.abandoned || 0) ? Math.round((Number(quality?.consumed || 0) / (Number(quality?.consumed || 0) + Number(quality?.rejected || 0) + Number(quality?.abandoned || 0))) * 100) : null, abandonment_rate: Number(quality?.total || 0) ? Math.round((Number(quality?.abandoned || 0) / Number(quality.total)) * 100) : null, by_format: qualityByFormat.results || [] },
       memory: { entries: memory.results || [], active: (memory.results || []).filter((row: any) => row.status === 'active').reduce((sum: number, row: any) => sum + Number(row.count || 0), 0) },
       alerts: alerts.results || [],
       engine_weights: weights.results || [],
       compass_learning: { strategies: compassPriors.results || [], feature_weights: compassWeights.results || [], calibration },
+      profile_intelligence: profileIntelligence,
+      self_improvement: { runs: improvementRuns.results || [] },
       pending_proposals: Number(proposals?.count || 0),
     })
   } catch (error) {
@@ -154,9 +187,12 @@ app.get('/analytics/hermes', async (c) => {
 app.post('/analytics/hermes/recalibrate', async (c) => {
   const { DB } = c.env
   try {
-    const outcomes = await DB.prepare(`SELECT actual_score,predicted_components_json FROM recommendation_outcomes WHERE actual_score IS NOT NULL AND predicted_components_json IS NOT NULL AND predicted_components_json!='{}'`).all<any>()
+    const body = await c.req.json<any>().catch(() => ({}))
+    const conversationId = String(body.conversation_id || '').trim().slice(0, 200)
+    if (!conversationId) return c.json({ error: 'conversation_id required; recalibration is conversation-bound' }, 400)
+    const outcomes = await DB.prepare(`SELECT learning_value,predicted_components_json FROM recommendation_outcomes WHERE training_eligible=1 AND learning_value IS NOT NULL AND objective_version=? AND predicted_components_json IS NOT NULL AND predicted_components_json!='{}'`).bind(LEARNING_OBJECTIVE_VERSION).all<any>()
     const sample = outcomes.results || []
-    if (sample.length < 5) return c.json({ error: 'insufficient_evidence', message: `At least 5 rated discovery outcomes are required; found ${sample.length}.` }, 409)
+    if (sample.length < 20) return c.json({ error: 'insufficient_evidence', message: `At least 20 learning-value outcomes are required; found ${sample.length}.`, required: 20, observed: sample.length }, 409)
     const dimensions = ['frontier_potential', 'info_gain', 'personal_pull', 'real_life_relevance', 'source_quality', 'format_exploration']
     const deltas: Record<string, number> = {}
     for (const dimension of dimensions) {
@@ -165,23 +201,56 @@ app.post('/analytics/hermes/recalibrate', async (c) => {
         let components: any = {}
         try { components = JSON.parse(row.predicted_components_json || '{}') } catch {}
         const component = Math.max(0, Math.min(1, Number(components[dimension] ?? 0.5)))
-        signal += component * ((Number(row.actual_score) - 5) / 5)
+        signal += component * ((Number(row.learning_value) - .5) * 2)
       }
       // Slow, bounded adaptation. The feedback loop must be evidence-led, never twitchy.
       deltas[dimension] = Math.max(-0.01, Math.min(0.01, (signal / sample.length) * 0.03))
     }
     const current = (await DB.prepare(`SELECT id,dimension,baseline_weight,current_weight,evidence_count,audit_history_json FROM engine_weights`).all<any>()).results || []
     const updated = adaptAndNormalizeWeights(current, deltas)
-    await DB.batch(updated.map((item: any) => {
+    const runId = `improvement_${crypto.randomUUID()}`
+    const statements = updated.map((item: any) => {
       let history: any[] = []
       try { history = JSON.parse(current.find((row: any) => row.id === item.id)?.audit_history_json || '[]') } catch {}
-      history.push({ source: 'recommendation_outcomes', sample_size: sample.length, delta: deltas[item.dimension], at: new Date().toISOString() })
+      history.push({ source: 'recommendation_training_outcomes_v2', objective_version: LEARNING_OBJECTIVE_VERSION, sample_size: sample.length, delta: deltas[item.dimension], at: new Date().toISOString() })
       return DB.prepare(`UPDATE engine_weights SET current_weight=?,evidence_count=?,audit_history_json=?,updated_at=datetime('now') WHERE id=?`).bind(item.current_weight, item.evidence_count, JSON.stringify(history.slice(-20)), item.id)
-    }).concat([DB.prepare(`INSERT INTO update_log (kind,summary,details_json) VALUES ('system',?,?)`).bind(`Hermes recalibrated discovery weights from ${sample.length} rated outcomes`, JSON.stringify({ deltas, sample_size: sample.length }))]))
-    return c.json({ ok: true, sample_size: sample.length, deltas, weights: updated })
+    })
+    statements.push(
+      DB.prepare(`INSERT INTO update_log (kind,summary,details_json) VALUES ('system',?,?)`).bind(`Hermes recalibrated discovery weights from ${sample.length} rated outcomes`, JSON.stringify({ deltas, sample_size: sample.length, run_id: runId })),
+      DB.prepare(`INSERT INTO self_improvement_runs(id,conversation_id,trigger_kind,layer,risk_level,status,confidence,evidence_json,before_json,after_json,validation_json,completed_at)
+        VALUES (?,?,'conversation_recalibration','recommendation','low','applied',?,?,?,?,?,datetime('now'))`).bind(
+          runId, conversationId, Math.min(1, sample.length / 40), JSON.stringify([{ source: 'recommendation_training_outcomes_v2', sample_size: sample.length }]),
+          JSON.stringify({ weights: current }), JSON.stringify({ weights: updated, deltas }), JSON.stringify({ passed: true, required: 20, observed: sample.length, objective_version: LEARNING_OBJECTIVE_VERSION }),
+        ),
+    )
+    await DB.batch(statements)
+    return c.json({ ok: true, run_id: runId, sample_size: sample.length, deltas, weights: updated })
   } catch (error) {
     return c.json(safeError('Hermes recalibration failed')(error), 500)
   }
+})
+
+app.get('/analytics/hermes/engine', async (c) => c.json(await engineReadiness(c.env.DB)))
+
+app.post('/analytics/hermes/engine/activate', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  if (!String(body.conversation_id || '').trim()) return c.json({ error: 'conversation_id required; rollout is conversation-bound' }, 400)
+  const readiness = await engineReadiness(c.env.DB)
+  if (!readiness.ready) return c.json({ error: 'shadow_validation_incomplete', ...readiness }, 409)
+  const runId = `improvement_${crypto.randomUUID()}`
+  await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO user_settings(setting_key,value_json) VALUES ('recommendation_engine',?) ON CONFLICT(setting_key) DO UPDATE SET value_json=excluded.value_json,updated_at=datetime('now')`).bind(JSON.stringify({ mode: 'v2', engine_version: 'v2', objective_version: LEARNING_OBJECTIVE_VERSION })),
+    c.env.DB.prepare(`INSERT INTO self_improvement_runs(id,conversation_id,trigger_kind,layer,risk_level,status,confidence,evidence_json,before_json,after_json,validation_json,completed_at) VALUES (?,?,?,'recommendation','medium','applied',1,?,?,?,?,datetime('now'))`).bind(runId, String(body.conversation_id).slice(0, 200), 'shadow_activation', JSON.stringify([readiness.gates]), JSON.stringify(readiness.setting), JSON.stringify({ mode: 'v2' }), JSON.stringify({ passed: true, gates: readiness.gates })),
+  ])
+  return c.json({ ok: true, mode: 'v2', run_id: runId, readiness })
+})
+
+app.post('/analytics/hermes/engine/rollback', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  if (!String(body.conversation_id || '').trim()) return c.json({ error: 'conversation_id required; rollback is conversation-bound' }, 400)
+  await c.env.DB.prepare(`INSERT INTO user_settings(setting_key,value_json) VALUES ('recommendation_engine',?) ON CONFLICT(setting_key) DO UPDATE SET value_json=excluded.value_json,updated_at=datetime('now')`).bind(JSON.stringify({ mode: 'shadow', engine_version: 'v2', objective_version: LEARNING_OBJECTIVE_VERSION })).run()
+  await c.env.DB.prepare(`INSERT INTO self_improvement_runs(id,conversation_id,trigger_kind,layer,risk_level,status,confidence,evidence_json,before_json,after_json,validation_json,completed_at) VALUES (?,?,?,'recommendation','medium','reverted',1,?,?,?,?,datetime('now'))`).bind(`improvement_${crypto.randomUUID()}`, String(body.conversation_id).slice(0, 200), 'engine_rollback', JSON.stringify(body.evidence || []), JSON.stringify({ mode: 'v2' }), JSON.stringify({ mode: 'shadow' }), JSON.stringify({ reason: String(body.reason || 'manual rollback').slice(0, 1000) })).run()
+  return c.json({ ok: true, mode: 'shadow' })
 })
 
 app.get('/analytics/hermes/weekly', async (c) => {
@@ -190,15 +259,118 @@ app.get('/analytics/hermes/weekly', async (c) => {
 })
 
 app.post('/analytics/hermes/evaluate', async (c) => {
-  try { return c.json({ ok: true, ...(await createHermesEvaluatorProposals(c.env.DB)) }) }
+  try {
+    const body = await c.req.json<any>().catch(() => ({}))
+    const conversationId = String(body.conversation_id || '').trim().slice(0, 200)
+    if (!conversationId) return c.json({ error: 'conversation_id required; evaluation is conversation-bound' }, 400)
+    return c.json({ ok: true, ...(await createHermesEvaluatorProposals(c.env.DB, conversationId)) })
+  }
   catch (error) { return c.json(safeError('Hermes evaluator failed')(error), 500) }
 })
 
 app.post('/analytics/hermes/backfill', async (c) => {
   try {
-    const body = await c.req.json<{ dry_run?: boolean }>().catch((): { dry_run?: boolean } => ({}))
-    return c.json({ ok: true, ...(await backfillHermesIntelligence(c.env.DB, body.dry_run !== false)) })
+    const body = await c.req.json<{ dry_run?: boolean; conversation_id?: string }>().catch((): { dry_run?: boolean; conversation_id?: string } => ({}))
+    const dryRun = body.dry_run !== false
+    if (dryRun) return c.json({ ok: true, ...(await backfillHermesIntelligence(c.env.DB, true)) })
+    const conversationId = String(body.conversation_id || '').trim().slice(0, 200)
+    if (!conversationId) return c.json({ error: 'conversation_id required; backfill application is conversation-bound' }, 400)
+    const before = await backfillHermesIntelligence(c.env.DB, true)
+    const result = await backfillHermesIntelligence(c.env.DB, false)
+    const runId = `improvement_${crypto.randomUUID()}`
+    await c.env.DB.prepare(`INSERT INTO self_improvement_runs(id,conversation_id,trigger_kind,layer,risk_level,status,confidence,evidence_json,before_json,after_json,validation_json,completed_at)
+      VALUES (?,?,'historical_backfill','recommendation_profile','medium','applied',1,?,?,?,?,datetime('now'))`).bind(
+        runId, conversationId, JSON.stringify([{ source: 'legacy_derived_records' }]), JSON.stringify(before), JSON.stringify(result), JSON.stringify({ passed: true, inserted: result.inserted }),
+      ).run()
+    return c.json({ ok: true, run_id: runId, ...result })
   } catch (error) { return c.json(safeError('Hermes backfill failed')(error), 500) }
+})
+
+app.get('/analytics/hermes/repair', async (c) => {
+  try { return c.json({ dry_run: true, ...(await recommendationRepairPreview(c.env.DB)) }) }
+  catch (error) { return c.json(safeError('History repair preview failed')(error), 500) }
+})
+
+app.post('/analytics/hermes/repair', async (c) => {
+  try {
+    const body = await c.req.json<{ snapshot_id?: string; apply?: boolean; conversation_id?: string }>().catch((): { snapshot_id?: string; apply?: boolean; conversation_id?: string } => ({}))
+    const preview = await recommendationRepairPreview(c.env.DB)
+    if (body.apply !== true) return c.json({ dry_run: true, ...preview })
+    if (!body.snapshot_id) return c.json({ error: 'snapshot_id required to apply repair', preview }, 400)
+    const conversationId = String(body.conversation_id || '').trim().slice(0, 200)
+    if (!conversationId) return c.json({ error: 'conversation_id required; repair application is conversation-bound' }, 400)
+    const result = await applyRecommendationRepair(c.env.DB, body.snapshot_id, conversationId)
+    return result.ok ? c.json(result) : c.json(result, 409)
+  } catch (error) { return c.json(safeError('History repair failed')(error), 500) }
+})
+
+app.get('/analytics/hermes/improvements', async (c) => {
+  const rows = await c.env.DB.prepare(`SELECT * FROM self_improvement_runs ORDER BY created_at DESC LIMIT 100`).all<any>()
+  return c.json({ runs: (rows.results || []).map((row: any) => ({
+    ...row,
+    evidence: (() => { try { return JSON.parse(row.evidence_json || '[]') } catch { return [] } })(),
+    before: (() => { try { return JSON.parse(row.before_json || '{}') } catch { return {} } })(),
+    after: (() => { try { return JSON.parse(row.after_json || '{}') } catch { return {} } })(),
+    validation: (() => { try { return JSON.parse(row.validation_json || '{}') } catch { return {} } })(),
+    deployment: (() => { try { return JSON.parse(row.deployment_json || '{}') } catch { return {} } })(),
+    evidence_json: undefined, before_json: undefined, after_json: undefined, validation_json: undefined, deployment_json: undefined,
+  })) })
+})
+
+app.post('/analytics/hermes/improvements', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  if (!String(body.conversation_id || '').trim()) return c.json({ error: 'conversation_id required; self-improvement is conversation-bound' }, 400)
+  const id = `improvement_${crypto.randomUUID()}`
+  const layer = ['profile','recommendation','system','code','hermes'].includes(body.layer) ? body.layer : 'system'
+  const risk = ['low','medium','high'].includes(body.risk_level) ? body.risk_level : layer === 'code' ? 'high' : 'medium'
+  await c.env.DB.prepare(`INSERT INTO self_improvement_runs(id,conversation_id,trigger_kind,layer,risk_level,status,confidence,evidence_json,before_json,baseline_version,rollback_version) VALUES (?,?,?,?,?,'evaluating',?,?,?,?,?)`).bind(
+    id, String(body.conversation_id).slice(0, 200), 'conversation_self_improvement', layer, risk,
+    Math.max(0, Math.min(1, Number(body.confidence || 0))), JSON.stringify(body.evidence || []), JSON.stringify(body.before || {}), body.baseline_version || null, body.rollback_version || null,
+  ).run()
+  return c.json({ ok: true, id, status: 'evaluating' }, 201)
+})
+
+app.post('/analytics/hermes/improvements/:id/complete', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  const run = await c.env.DB.prepare(`SELECT * FROM self_improvement_runs WHERE id=? AND status IN ('observed','evaluating','validated','applied')`).bind(c.req.param('id')).first<any>()
+  if (!run) return c.json({ error: 'open improvement run not found' }, 404)
+  const requestedStatus = String(body.status || 'applied')
+  if (requestedStatus === 'failed') {
+    if (run.status === 'applied') return c.json({ error: 'applied improvement must be reverted, not failed' }, 409)
+    const message = String(body.error || '').trim().slice(0, 2000)
+    if (!message) return c.json({ error: 'error required for failed improvement' }, 400)
+    await c.env.DB.prepare(`UPDATE self_improvement_runs SET status='failed',confidence=?,after_json=?,validation_json=?,deployment_json=?,error=?,updated_at=datetime('now'),completed_at=datetime('now') WHERE id=?`).bind(
+      Math.max(Number(run.confidence || 0), Math.min(1, Number(body.confidence || 0))), JSON.stringify(body.after || {}), JSON.stringify(body.validation || {}), JSON.stringify(body.deployment || {}), message, run.id,
+    ).run()
+    return c.json({ ok: true, id: run.id, status: 'failed', resumable: body.validation?.resumable === true })
+  }
+  if (requestedStatus === 'no_change') {
+    if (run.status === 'applied') return c.json({ error: 'applied improvement must be reverted, not closed as no-change' }, 409)
+    let evidence: unknown[] = []
+    try { evidence = JSON.parse(run.evidence_json || '[]') } catch {}
+    if (body.validation?.no_change !== true || body.after?.changed !== false || evidence.length === 0) {
+      return c.json({ error: 'no-change requires evidence, after.changed=false, and validation.no_change=true' }, 409)
+    }
+    await c.env.DB.prepare(`UPDATE self_improvement_runs SET status='validated',confidence=?,after_json=?,validation_json=?,deployment_json='{}',error=NULL,updated_at=datetime('now'),completed_at=datetime('now') WHERE id=?`).bind(
+      Math.max(Number(run.confidence || 0), Math.min(1, Number(body.confidence || 0))), JSON.stringify(body.after), JSON.stringify(body.validation), run.id,
+    ).run()
+    return c.json({ ok: true, id: run.id, status: 'validated', decision: 'no_change' })
+  }
+  const validationPassed = body.validation?.passed === true
+  const deploymentRequested = requestedStatus === 'deployed'
+  if (['code','system','hermes'].includes(run.layer) && !validationPassed) return c.json({ error: 'validated checks are required for system changes' }, 409)
+  if (deploymentRequested && !String(body.rollback_version || run.rollback_version || '').trim()) return c.json({ error: 'rollback_version required before deployment' }, 409)
+  const status = deploymentRequested ? 'deployed' : 'applied'
+  await c.env.DB.prepare(`UPDATE self_improvement_runs SET status=?,confidence=?,after_json=?,validation_json=?,deployment_json=?,deployed_version=?,rollback_version=COALESCE(?,rollback_version),error=NULL,updated_at=datetime('now'),completed_at=datetime('now') WHERE id=?`).bind(
+    status, Math.max(Number(run.confidence || 0), Math.min(1, Number(body.confidence || 0))), JSON.stringify(body.after || {}), JSON.stringify(body.validation || {}), JSON.stringify(body.deployment || {}), body.deployed_version || null, body.rollback_version || null, run.id,
+  ).run()
+  return c.json({ ok: true, id: run.id, status })
+})
+
+app.post('/analytics/hermes/improvements/:id/revert', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  const result = await c.env.DB.prepare(`UPDATE self_improvement_runs SET status='reverted',deployment_json=?,error=NULL,updated_at=datetime('now'),completed_at=datetime('now') WHERE id=? AND status IN ('applied','deployed','failed')`).bind(JSON.stringify({ reverted: true, ...(body || {}) }), c.req.param('id')).run()
+  return result.meta.changes ? c.json({ ok: true, status: 'reverted' }) : c.json({ error: 'revertible improvement run not found' }, 404)
 })
 
 export default app

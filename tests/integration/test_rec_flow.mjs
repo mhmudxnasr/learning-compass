@@ -195,6 +195,8 @@ try {
   })
   assert.equal(resolveRes.status, 200)
   assert.equal(resolveRes.body.lifecycle, 'resolved')
+  assert.equal(resolveRes.body.skill_revision.status, 'staged')
+  assert.equal(resolveRes.body.skill_revision.backup_path, null)
   console.log('✓ Discovery resolved. Bounded engine weights adapted.')
 
   console.log('\nStep 12: Checking Drift & Skill Self-Improvement...')

@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
+import { advanceConsolidationForExtraction, failConsolidationForJob } from '../services/learning-core'
+import { applyFeedbackProposal } from '../services/intelligence-v2'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const hasArabic = (value: string) => /[\u0600-\u06ff]/.test(value)
@@ -10,7 +12,7 @@ const proposalFingerprint = (recommendationId: unknown, noteId: unknown, proposa
 
 app.get('/', async (c) => {
   const status = c.req.query('status') || 'pending'
-  const rows = await c.env.DB.prepare(`SELECT id,job_type,status,payload_json,attempts,created_at,updated_at,error FROM agent_jobs WHERE status=? ORDER BY created_at LIMIT 25`).bind(status).all<any>()
+  const rows = await c.env.DB.prepare(`SELECT id,job_type,status,payload_json,recommendation_id,trigger_kind,workflow_run_id,workflow_step,attempts,created_at,updated_at,error FROM agent_jobs WHERE status=? ORDER BY created_at LIMIT 25`).bind(status).all<any>()
   return c.json({ jobs: (rows.results || []).map((row) => ({ ...row, payload: JSON.parse(row.payload_json || '{}'), payload_json: undefined })) })
 })
 
@@ -43,7 +45,7 @@ app.get('/health', async (c) => {
 })
 
 app.get('/:id', async (c) => {
-  const job = await c.env.DB.prepare(`SELECT id,job_type,status,payload_json,result_json,attempts,error,created_at,updated_at FROM agent_jobs WHERE id=?`).bind(c.req.param('id')).first<any>()
+  const job = await c.env.DB.prepare(`SELECT id,job_type,status,payload_json,result_json,recommendation_id,trigger_kind,workflow_run_id,workflow_step,attempts,error,created_at,updated_at FROM agent_jobs WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!job) return c.json({ error: 'job not found' }, 404)
   return c.json({ job: { ...job, payload: JSON.parse(job.payload_json || '{}'), result: job.result_json ? JSON.parse(job.result_json) : null, payload_json: undefined, result_json: undefined } })
 })
@@ -87,13 +89,22 @@ app.post('/:id/complete', async (c) => {
     const job = await DB.prepare(`SELECT * FROM agent_jobs WHERE id=? AND status='running' AND lease_owner=? AND (lease_expires_at IS NULL OR lease_expires_at>=datetime('now'))`).bind(c.req.param('id'), worker).first<any>()
     if (!job) return c.json({ error: 'job unavailable' }, 409)
     const payload = JSON.parse(job.payload_json || '{}')
-    if (job.job_type === 'process_feedback' && (!Array.isArray(body.proposals) || body.proposals.length === 0)) {
-      return c.json({ error: 'feedback processing must return at least one reviewable proposal' }, 400)
+    if (job.job_type === 'extract_notes' && payload.output_contract === 'learning_units_v1' && (!Array.isArray(body.learning_units) || body.learning_units.length === 0)) {
+      return c.json({ error: 'learning_units_v1 extraction must return at least one anchored learning unit' }, 400)
+    }
+    if (job.job_type === 'process_feedback' && (!Array.isArray(body.proposals) || body.proposals.length === 0) && !body.no_change) {
+      return c.json({ error: 'feedback processing must return proposals or an evidence-backed no_change decision' }, 400)
     }
     if (job.job_type === 'process_feedback' && (body.note || body.srs_drafts?.length)) {
       return c.json({ error: 'Taste Mapper may propose changes but Notes Extractor exclusively owns source notes and recall drafts' }, 400)
     }
     const statements: D1PreparedStatement[] = []
+    const conversationId = payload.conversation_id || `feedback-job:${job.id}`
+    if (job.job_type === 'process_feedback' && body.no_change && (!Array.isArray(body.proposals) || !body.proposals.length)) {
+      statements.push(DB.prepare(`INSERT OR REPLACE INTO self_improvement_runs(id,conversation_id,trigger_kind,layer,risk_level,status,confidence,evidence_json,before_json,after_json,validation_json,completed_at,updated_at) VALUES (?,?,?,'profile','low','validated',?,?,?,? ,?,datetime('now'),datetime('now'))`).bind(
+        `improvement_${job.id}`, conversationId, 'conversation_feedback', Math.max(0, Math.min(1, Number(body.no_change.confidence ?? 1))), JSON.stringify(body.no_change.evidence || []), JSON.stringify({ job_id: job.id }), JSON.stringify({ changed: false, reason: String(body.no_change.reason || 'No durable profile change warranted').slice(0, 2000) }), JSON.stringify({ policy_version: 'profile_v2', no_change: true }),
+      ))
+    }
     if (body.note) {
       const note = body.note
       if (job.job_type === 'extract_notes' && note.kind === 'reflection') return c.json({ error: 'extracted source notes must not replace personal reflections' }, 400)
@@ -107,9 +118,29 @@ app.post('/:id/complete', async (c) => {
       const noteId = note.id || `note_${crypto.randomUUID()}`
       statements.push(DB.prepare(`INSERT OR REPLACE INTO notes (id,recommendation_id,title,kind,branch_id,source_url,source_artifact_id,status,updated_at) VALUES (?,?,?,?,?,?,?,'draft',datetime('now'))`).bind(noteId, note.recommendation_id || null, note.title, note.kind || 'guide', note.branch_id || null, note.source_url || null, note.source_artifact_id || null))
       for (const [index, section] of (note.sections || []).entries()) statements.push(DB.prepare(`INSERT OR REPLACE INTO note_sections (id,note_id,section_key,label,content,direction,position,updated_at) VALUES (?,?,?,?,?,?,?,datetime('now'))`).bind(`${noteId}_${section.section_key}`, noteId, section.section_key, section.label, section.content || '', section.direction || 'auto', index))
-      const score = Number(payload.rating || 0)
-      if (score >= 7) {
-        for (const draft of body.srs_drafts || []) statements.push(DB.prepare(`INSERT INTO srs_drafts (id,recommendation_id,note_id,question,answer,topic) VALUES (?,?,?,?,?,?)`).bind(`draft_${crypto.randomUUID()}`, note.recommendation_id || null, noteId, draft.question, draft.answer, draft.topic || note.branch_id || 'general'))
+      const retain = payload.disposition === 'retain' || payload.disposition === 'apply' || (!payload.disposition && Number(payload.rating || 0) >= 7)
+      if (retain) {
+        for (const draft of body.srs_drafts || []) statements.push(DB.prepare(`INSERT INTO srs_drafts (id,recommendation_id,note_id,question,answer,topic,unit_id,thread_id) VALUES (?,?,?,?,?,?,?,?)`).bind(`draft_${crypto.randomUUID()}`, note.recommendation_id || null, noteId, draft.question, draft.answer, draft.topic || note.branch_id || 'general', draft.unit_id || null, payload.thread_id || null))
+      }
+    }
+    if (job.job_type === 'extract_notes' && Array.isArray(body.learning_units)) {
+      const allowedTypes = new Set(['claim','concept','method','example','question','application','counterclaim'])
+      for (const [index, unit] of body.learning_units.slice(0, 100).entries()) {
+        const unitType = String(unit.unit_type || '').trim()
+        const statement = String(unit.statement || '').trim().slice(0, 12000)
+        const anchors = Array.isArray(unit.anchors) ? unit.anchors.slice(0, 20) : []
+        if (!allowedTypes.has(unitType) || !statement) return c.json({ error: 'learning unit requires valid unit_type and statement', index }, 400)
+        if (['claim','method','counterclaim'].includes(unitType) && !anchors.length) return c.json({ error: 'claim-like learning units require anchors', index }, 400)
+        const unitId = unit.id || `unit_${job.id}_${index + 1}`
+        const semanticKey = String(unit.semantic_key || `${unitType}:${statement.toLowerCase().replace(/\s+/g, ' ').slice(0, 200)}`)
+        statements.push(DB.prepare(`INSERT OR IGNORE INTO learning_units (id,unit_type,statement,user_synthesis,stance,confidence,recommendation_id,source_artifact_id,source_revision_checksum,created_by,status,semantic_key) VALUES (?,?,?,?,?,?,?,?,?,'extractor','draft',?)`).bind(unitId, unitType, statement, String(unit.user_synthesis || '').trim() || null, ['accept','question','reject','uncertain'].includes(unit.stance) ? unit.stance : 'uncertain', Math.max(0, Math.min(1, Number(unit.confidence ?? .5))), payload.recommendation_id || null, unit.source_artifact_id || payload.source_artifact_id || null, unit.source_revision_checksum || null, semanticKey))
+        for (const [anchorIndex, anchor] of anchors.entries()) {
+          const anchorType = ['page','timestamp','section','quote','url_fragment','user_observation'].includes(anchor.anchor_type) ? anchor.anchor_type : 'section'
+          const locator = String(anchor.locator || '').trim().slice(0, 1000)
+          if (!locator || !payload.recommendation_id) return c.json({ error: 'learning unit anchor requires locator and recommendation_id', index, anchor_index: anchorIndex }, 400)
+          statements.push(DB.prepare(`INSERT OR IGNORE INTO unit_anchors (id,unit_id,recommendation_id,artifact_id,anchor_type,locator,excerpt,checksum) VALUES (?,?,?,?,?,?,?,?)`).bind(`anchor_${job.id}_${index + 1}_${anchorIndex + 1}`, unitId, payload.recommendation_id, anchor.artifact_id || payload.source_artifact_id || null, anchorType, locator, String(anchor.excerpt || '').slice(0, 4000) || null, anchor.checksum || null))
+        }
+        if (payload.thread_id) statements.push(DB.prepare(`INSERT OR IGNORE INTO thread_units (thread_id,unit_id,role,importance,position) VALUES (?,?,?,?,?)`).bind(payload.thread_id, unitId, ['core','supporting','counterevidence','application'].includes(unit.role) ? unit.role : 'supporting', Math.max(0, Math.min(1, Number(unit.importance ?? .5))), index))
       }
     }
     if (body.reflection?.content?.trim()) {
@@ -143,10 +174,19 @@ app.post('/:id/complete', async (c) => {
         review_required: true,
       }), `handwriting-feedback:${job.id}`))
     }
+    const proposalIds: string[] = []
+    const improvementRunId = (body.proposals || []).length ? `improvement_${job.id}` : null
+    if (improvementRunId) statements.push(DB.prepare(`INSERT OR IGNORE INTO self_improvement_runs(id,conversation_id,trigger_kind,layer,risk_level,status,confidence,evidence_json,before_json) VALUES (?,?,?,'profile','low','observed',?,?,?)`).bind(
+      improvementRunId, conversationId, 'conversation_feedback', Math.max(0, Math.min(1, Number(body.proposals.reduce((max: number, item: any) => Math.max(max, Number(item.confidence || 0)), 0)))), JSON.stringify([{ job_id: job.id, recommendation_id: payload.recommendation_id || null }]), JSON.stringify({ job_id: job.id }),
+    ))
     for (const proposal of body.proposals || []) {
       if (!proposal.change_type || !proposal.target_label || proposal.proposed === undefined) return c.json({ error: 'proposal requires change_type, target_label, and proposed' }, 400)
-      statements.push(DB.prepare(`INSERT OR IGNORE INTO feedback_proposals (id,recommendation_id,note_id,job_id,change_type,target_label,current_json,proposed_json,evidence,reasoning,confidence,fingerprint) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
-        proposal.id || `proposal_${crypto.randomUUID()}`,
+      const proposalId = proposal.id || `proposal_${crypto.randomUUID()}`
+      proposalIds.push(proposalId)
+      const evidence = Array.isArray(proposal.evidence) ? proposal.evidence.slice(0, 20) : proposal.evidence ? [{ source: 'agent', quote: String(proposal.evidence).slice(0, 4000) }] : []
+      if (payload.reflection) evidence.unshift({ kind: 'user_statement', direct_user_statement: true, recommendation_id: payload.recommendation_id || null, quote: String(payload.reflection).slice(0, 4000) })
+      statements.push(DB.prepare(`INSERT OR IGNORE INTO feedback_proposals (id,recommendation_id,note_id,job_id,change_type,target_label,current_json,proposed_json,evidence,reasoning,confidence,fingerprint,conversation_id,improvement_run_id,layer,risk_level,evidence_json,policy_version,target_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+        proposalId,
         payload.recommendation_id || null,
         payload.note_id || null,
         job.id,
@@ -154,18 +194,29 @@ app.post('/:id/complete', async (c) => {
         String(proposal.target_label).slice(0, 200),
         proposal.current === undefined ? null : JSON.stringify(proposal.current),
         JSON.stringify(proposal.proposed),
-        String(proposal.evidence || '').slice(0, 4000) || null,
+        typeof proposal.evidence === 'string' ? String(proposal.evidence).slice(0, 4000) : proposal.evidence ? JSON.stringify(proposal.evidence).slice(0, 4000) : null,
         String(proposal.reasoning || '').slice(0, 4000) || null,
         Math.max(0, Math.min(1, Number(proposal.confidence ?? 0.5))),
         proposalFingerprint(payload.recommendation_id, payload.note_id, proposal),
+        conversationId,
+        improvementRunId,
+        String(proposal.layer || 'profile').slice(0, 40),
+        String(proposal.risk_level || 'low').slice(0, 20),
+        JSON.stringify(evidence),
+        'profile_v2',
+        proposal.target_version == null ? null : Number(proposal.target_version),
       ))
-    }
-    if (job.job_type === 'apply_feedback_proposal' && payload.proposal_id) {
-      statements.push(DB.prepare(`UPDATE feedback_proposals SET status='applied',applied_at=datetime('now') WHERE id=? AND status='approved'`).bind(payload.proposal_id))
     }
     statements.push(DB.prepare(`UPDATE agent_jobs SET status='completed',result_json=?,error=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=?`).bind(JSON.stringify(body), job.id))
     await DB.batch(statements)
-    return c.json({ ok: true })
+    if (job.job_type === 'extract_notes') await advanceConsolidationForExtraction(DB, job.id, body)
+    const automation = await DB.prepare(`SELECT value_json FROM user_settings WHERE setting_key='profile_automation'`).first<any>().catch(() => null)
+    let automatic = true
+    try { automatic = JSON.parse(automation?.value_json || '{}').mode !== 'manual' } catch {}
+    const autoApplied: any[] = []
+    if (automatic) for (const proposalId of proposalIds) autoApplied.push(await applyFeedbackProposal(DB, proposalId, 'hermes_auto'))
+    if (job.job_type === 'apply_feedback_proposal' && payload.proposal_id) autoApplied.push(await applyFeedbackProposal(DB, payload.proposal_id, 'hermes_auto'))
+    return c.json({ ok: true, proposals: { created: proposalIds, auto_applied: autoApplied } })
   } catch (error) { return c.json(safeError('Job completion failed')(error), 500) }
 })
 
@@ -182,6 +233,7 @@ app.post('/:id/fail', async (c) => {
   const delay = Number(job.attempts || 0) <= 1 ? 30 : Number(job.attempts || 0) === 2 ? 120 : 300
   await c.env.DB.prepare(`INSERT INTO agent_job_retries (job_id,next_attempt_at,retry_count,dead_lettered_at,last_error,updated_at) VALUES (?,?,?,?,?,datetime('now')) ON CONFLICT(job_id) DO UPDATE SET next_attempt_at=excluded.next_attempt_at,retry_count=agent_job_retries.retry_count+1,dead_lettered_at=excluded.dead_lettered_at,last_error=excluded.last_error,updated_at=datetime('now')`).bind(c.req.param('id'), terminal ? null : sqliteTime(delay * 1000), 1, terminal ? sqliteTime() : null, error).run()
   if (terminal) await c.env.DB.prepare(`INSERT INTO hermes_alerts (id,kind,severity,title,body,fingerprint) SELECT ?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM hermes_alerts WHERE fingerprint=? AND acknowledged_at IS NULL)`).bind(`alert_${crypto.randomUUID()}`, 'dead_letter', 'critical', 'Hermes job failed permanently', `${c.req.param('id')}: ${error}`, `dead_letter:${c.req.param('id')}`, `dead_letter:${c.req.param('id')}`).run()
+  await failConsolidationForJob(c.env.DB, c.req.param('id'), error, terminal)
   return c.json({ ok: true })
 })
 

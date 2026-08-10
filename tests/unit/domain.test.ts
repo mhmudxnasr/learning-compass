@@ -34,20 +34,15 @@ test('note direction follows meaningful Arabic content', () => {
 
 test('review scheduling is deterministic for new cards', () => {
   const now = new Date('2026-07-29T12:00:00Z')
-  assert.deepEqual(scheduleReview({ difficulty: 5, stability: 1, repetitions: 0 }, 1, now), {
-    difficulty: 5.4,
-    stability: 1,
-    repetitions: 0,
-    intervalDays: 1,
-    dueAt: '2026-07-30',
-  })
-  assert.deepEqual(scheduleReview({ difficulty: 5, stability: 1, repetitions: 0 }, 4, now), {
-    difficulty: 4.9,
-    stability: 3,
-    repetitions: 1,
-    intervalDays: 3,
-    dueAt: '2026-08-01',
-  })
+  const again = scheduleReview({ difficulty: 5, stability: 1, repetitions: 0 }, 1, now)
+  const good = scheduleReview({ difficulty: 5, stability: 1, repetitions: 0 }, 4, now)
+  assert.equal(again.schedulerVersion, 'fsrs-6-ts-fsrs-5.4.1')
+  assert.equal(again.intervalDays, 1)
+  assert.equal(again.dueAt, '2026-07-30')
+  assert.equal(good.intervalDays, 3)
+  assert.equal(good.dueAt, '2026-08-01')
+  assert.equal(good.fsrsState, 2)
+  assert.ok(good.stability > again.stability)
 })
 
 test('higher retention shortens a successful review interval', () => {
@@ -98,4 +93,3 @@ test('cleanRawSourceText cleans YouTube timestamps, PDF page numbers, and web bo
   const webRaw = "<p>Clean main text</p>\nCookie Policy\nPrivacy Policy"
   assert.equal(cleanRawSourceText(webRaw, 'web'), "Clean main text")
 })
-

@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { Bindings, Recommendation, safeError, isNonEmptyStr, isValidLength, VALID_LOG_KINDS } from '../lib'
 import { cached } from '../cache'
+import { applyProfileAssertion, profileIntelligenceSnapshot, revertProfileRevision } from '../services/intelligence-v2'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -44,14 +45,14 @@ app.get('/node/:id', async (c) => {
   }
 })
 
-// ---- /brain/profile — full profile snapshot (cached 30s TTL)
+// ---- /brain/profile — full profile snapshot; profile edits require an immediate confirming reread.
 app.get('/profile', async (c) => {
   const { DB } = c.env
   c.header('Cache-Control', 'no-store')
   const recentLimit = Math.min(Math.max(parseInt(c.req.query('recent_limit') || '10'), 1), 50)
   try {
-    const data = await cached('brain.profile.' + recentLimit, 30000, async () => {
-      const [profile, priorities, mastered, blacklist, patterns, recent, feedSources, srsCards, srsDrafts, sessions, notes, creators, tasteVectors, reflections, ratings, artifactsCount, proposalsCount] = await Promise.all([
+    const data = await cached('brain.profile.' + recentLimit, 0, async () => {
+      const [profile, priorities, mastered, blacklist, patterns, recent, feedSources, srsCards, srsDrafts, sessions, notes, creators, tasteVectors, reflections, ratings, artifactsCount, proposalsCount, intelligence] = await Promise.all([
         DB.prepare('SELECT * FROM profile WHERE id = 1').first(),
         DB.prepare('SELECT * FROM priorities ORDER BY rank ASC').all(),
         DB.prepare('SELECT * FROM mastered ORDER BY mastered_at DESC').all(),
@@ -69,6 +70,7 @@ app.get('/profile', async (c) => {
         DB.prepare("SELECT id, video_title, creator, user_rating, user_score, user_review, consumed_date FROM recommendations WHERE status='consumed' AND (user_rating IS NOT NULL OR user_score IS NOT NULL OR user_review IS NOT NULL) ORDER BY consumed_date DESC LIMIT 30").all().catch(() => ({ results: [] })),
         DB.prepare("SELECT COUNT(*) as count FROM artifacts").first<{ count: number }>().catch(() => ({ count: 0 })),
         DB.prepare("SELECT COUNT(*) as count FROM feedback_proposals WHERE status = 'pending'").first<{ count: number }>().catch(() => ({ count: 0 })),
+        profileIntelligenceSnapshot(DB).catch(() => ({ assertions: [], revisions: [], health: { status: 'unavailable' } })),
       ])
       return {
         profile: profile || null,
@@ -97,6 +99,10 @@ app.get('/profile', async (c) => {
           database_name: 'recommendations-db',
           worker_environment: 'production',
         },
+        model_version: 'profile_v2',
+        profile_assertions: intelligence.assertions,
+        profile_revisions: intelligence.revisions,
+        profile_health: intelligence.health,
       }
     })
     return c.json(data)
@@ -425,10 +431,50 @@ app.post('/profile', async (c) => {
     if (fields.length === 0) return c.json({ ok: true, count: 0 })
     fields.push("last_synced_at = datetime('now')")
     await DB.prepare(`UPDATE profile SET ${fields.join(', ')} WHERE id = 1`).bind(...bindings).run()
-    return c.json({ ok: true, count: fields.length - 1 })
+    const typedUpdates: Array<[string, string, unknown]> = [
+      ['core_filter', 'core_filter', body.core_filter],
+      ['priority', 'priority', body.mega_priority],
+      ['identity', 'identity', body.identity],
+      ['reaction_style', 'reaction_style', body.reaction_style_json ?? body.reaction_style],
+      ['quality_rule', 'quality_rule', body.quality_rules_json ?? body.quality_rules],
+      ['operational_style', 'operational_style', body.operational_style_json ?? body.operational_style],
+      ['pattern', 'pattern', body.patterns_summary_json ?? body.patterns_summary],
+      ['profile_signal', 'profile_signal', body.recent_signal],
+    ]
+    for (const [key, category, value] of typedUpdates) if (value !== undefined) await applyProfileAssertion(DB, {
+      assertionKey: `user.profile.${key}`, category, value, confidence: 1, sourceKind: 'user', evidence: [{ source: 'brain_profile_edit', field: key }],
+      actorType: 'user', decisionSource: 'user', directUserStatement: true,
+    })
+    return c.json({ ok: true, count: fields.length - 1, model_version: 'profile_v2' })
   } catch (err) {
     return c.json(safeError('Profile update failed')(err), 500)
   }
+})
+
+app.get('/profile/intelligence', async (c) => {
+  try { return c.json({ model_version: 'profile_v2', ...(await profileIntelligenceSnapshot(c.env.DB)) }) }
+  catch (err) { return c.json(safeError('Profile intelligence failed')(err), 500) }
+})
+
+app.put('/profile/assertions/:key', async (c) => {
+  try {
+    const body = await c.req.json<any>().catch(() => ({}))
+    if (body.value === undefined || !String(body.category || '').trim()) return c.json({ error: 'category and value required' }, 400)
+    const result = await applyProfileAssertion(c.env.DB, {
+      assertionKey: c.req.param('key'), category: String(body.category).slice(0, 80), scope: String(body.scope || 'global').slice(0, 120),
+      value: body.value, weight: body.weight == null ? null : Number(body.weight), confidence: 1, status: body.status === 'inactive' ? 'inactive' : 'active',
+      sourceKind: 'user', evidence: [{ source: 'profile_assertion_edit', note: String(body.reason || '').slice(0, 500) }],
+      actorType: 'user', decisionSource: 'user', directUserStatement: true, targetVersion: body.target_version == null ? null : Number(body.target_version),
+    })
+    return result.ok ? c.json(result) : c.json(result, result.error === 'profile_version_conflict' ? 409 : 422)
+  } catch (err) { return c.json(safeError('Profile assertion update failed')(err), 500) }
+})
+
+app.post('/profile/revisions/:id/revert', async (c) => {
+  try {
+    const result = await revertProfileRevision(c.env.DB, c.req.param('id'), 'user')
+    return result.ok ? c.json(result) : c.json(result, 404)
+  } catch (err) { return c.json(safeError('Profile revision revert failed')(err), 500) }
 })
 
 // ---- /brain/priorities — bulk replace priority list

@@ -15,7 +15,7 @@ const define = (workspace: WorkspaceKey, entries: Array<[string, string, string,
   entries.map(([slug, title, purpose, kind, endpoint]) => ({ key: `${workspace}.${slug}`, workspace, slug, title, purpose, kind, endpoint }))
 
 export const destinations: Destination[] = [
-  ...define('today', [['momentum', 'Momentum', 'See your streak, continue the queue, and open every source file.', 'briefing', '/dashboard/briefing']]),
+  ...define('today', [['momentum', 'Momentum', 'Continue one source, protect your streak, and close the learning loop.', 'briefing', '/dashboard/briefing']]),
   ...define('curate', [
     ['queue', 'Queue', 'Choose the five items worth doing next.', 'board', '/capture/queue'],
     ['inbox', 'Inbox', 'Capture, subscribe, refresh, and triage sources before the queue.', 'list', '/capture'],
@@ -42,6 +42,7 @@ export const destinations: Destination[] = [
     ['profile', 'Profile', 'Review priorities, exclusions, and learning patterns.', 'settings', '/brain/profile'],
     ['preferences', 'Preferences', 'Configure appearance, learning defaults, and curation behavior.', 'settings', '/settings'],
     ['data', 'Data', 'Export your library and check synchronization.', 'settings', '/settings'],
+    ['system', 'System', 'See every API capability, schedule, service, and safety boundary.', 'settings', '/agent/system'],
   ]),
 ]
 

@@ -1,10 +1,28 @@
-const stringFields = ['pair_id', 'role', 'recommendation_id', 'source_url', 'source_title', 'generator', 'revision', 'supersedes_pair_id', 'coverage_status', 'qa_status', 'qa_checked_at', 'repair_status', 'repair_reason', 'video_format']
+const stringFields = ['pair_id', 'role', 'recommendation_id', 'source_url', 'source_title', 'generator', 'revision', 'supersedes_pair_id', 'qa_status', 'video_format']
 const booleanFields = ['custom_prompt_applied', 'notebook_url_linked', 'source_indexed', 'download_verified']
-const jsonFields = ['qa_checks_json']
+const jsonFields: string[] = []
 
 export type ArtifactMetadataValidation =
   | { ok: true; metadata: Record<string, unknown>; failures: [] }
   | { ok: false; metadata: Record<string, unknown>; failures: string[] }
+
+export function validateArtifactIntegrity(metadata: Record<string, unknown>, file: { name?: string; type?: string; size?: number }, bytes: ArrayBuffer) {
+  const failures: string[] = []
+  if (!bytes.byteLength) failures.push('artifact must not be empty')
+  const role = String(metadata.role || '').toLowerCase()
+  const filename = String(file.name || '').toLowerCase()
+  const mediaType = String(file.type || '').toLowerCase()
+  const view = new Uint8Array(bytes)
+  if (role === 'pdf' || mediaType.includes('pdf') || filename.endsWith('.pdf')) {
+    const signature = new TextDecoder().decode(view.slice(0, 5))
+    if (signature !== '%PDF-') failures.push('PDF artifact must have a valid PDF signature')
+  }
+  if (role === 'html' || mediaType.includes('html') || /\.html?$/.test(filename)) {
+    const head = new TextDecoder().decode(view.slice(0, 4096)).toLowerCase()
+    if (!/<\s*!doctype\s+html|<\s*html[\s>]/.test(head)) failures.push('HTML artifact must contain a document root')
+  }
+  return failures
+}
 
 function parseBoolean(value: unknown, key: string) {
   if (typeof value === 'boolean') return value
@@ -53,24 +71,6 @@ function mediaRoleFailures(metadata: Record<string, unknown>, file?: { name?: st
 export function validateArtifactQuality(metadata: Record<string, unknown>, file?: { name?: string; type?: string }) {
   const failures: string[] = mediaRoleFailures(metadata, file)
   const generator = String(metadata.generator || '')
-  const checks = metadata.qa_checks_json as any
-  if (generator === 'lite-visual' && isHtml(metadata, file)) {
-    if (typeof metadata.quality_score !== 'number' || metadata.quality_score < 8) failures.push('quality_score must be at least 8 for Lite Visual HTML')
-    if (metadata.coverage_status !== 'complete') failures.push('coverage_status must be complete for Lite Visual HTML')
-    if (metadata.qa_status !== 'passed') failures.push('qa_status must be passed for Lite Visual HTML')
-    const dimensions = ['source_fidelity', 'learning_value', 'composition', 'visual_intelligence', 'source_fit']
-    if (!checks || typeof checks !== 'object' || Array.isArray(checks)) failures.push('qa_checks_json must contain the five Lite Visual score dimensions')
-    else {
-      const values = dimensions.map((key) => checks[key])
-      if (values.some((value) => typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 2)) failures.push('qa_checks_json score dimensions must be numeric values from 0 to 2')
-      if (values.every((value) => typeof value === 'number') && Math.abs(values.reduce((sum, value) => sum + value, 0) - Number(metadata.quality_score)) > 1e-9) failures.push('qa_checks_json score dimensions must sum to quality_score')
-      if (!Array.isArray(checks.defects) || checks.defects.length !== 0) failures.push('qa_checks_json.defects must be an empty array')
-    }
-  }
-  if (generator === 'lite-visual' && isPdf(metadata, file)) {
-    if (metadata.qa_status !== 'passed') failures.push('qa_status must be passed for the linked Lite Visual PDF')
-    if (!checks || checks.pdf_render_check !== 'passed') failures.push('qa_checks_json.pdf_render_check must be passed for the linked Lite Visual PDF')
-  }
   if (generator === 'notebooklm' && isVideo(metadata, file)) {
     if (metadata.video_format !== 'cinematic') failures.push('video_format must be cinematic for NotebookLM video')
     for (const key of ['custom_prompt_applied', 'source_indexed', 'notebook_url_linked', 'download_verified']) if (metadata[key] !== true) failures.push(`${key} must be true for NotebookLM video`)
@@ -84,14 +84,6 @@ export function mergeArtifactMultipartMetadata(metadata: Record<string, unknown>
   for (const key of stringFields) {
     const value = form.get(key)
     if (typeof value === 'string' && value.trim()) metadata[key] = value.trim()
-  }
-  const qualityScore = form.get('quality_score')
-  if (qualityScore !== null) metadata.quality_score = qualityScore
-  if (metadata.quality_score !== undefined) {
-    const raw = String(metadata.quality_score).trim()
-    const parsed = typeof metadata.quality_score === 'number' ? metadata.quality_score : raw ? Number(raw) : Number.NaN
-    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 10) failures.push('quality_score must be a numeric value between 0 and 10')
-    else metadata.quality_score = parsed
   }
   for (const key of booleanFields) {
     const value = form.get(key)
@@ -109,16 +101,17 @@ export function mergeArtifactMultipartMetadata(metadata: Record<string, unknown>
 
 export function normalizeQualityAssurance(metadata: Record<string, unknown> = {}, legacy = false) {
   const contractFailures = validateArtifactQuality(metadata)
-  const explicitRepair = metadata.repair_status === 'required' || metadata.qa_status === 'failed' || metadata.qa_status === 'repair_required'
+  const explicitRepair = false
   const repairRequired = explicitRepair || (Boolean(metadata.qa_status) && contractFailures.length > 0)
+  const notebookVideo = String(metadata.generator || '') === 'notebooklm' && isVideo(metadata)
   const failures = repairRequired
     ? [...new Set([...(metadata.repair_reason ? [String(metadata.repair_reason)] : []), ...contractFailures])]
     : []
   return {
-    status: legacy || !metadata.qa_status ? 'unverified' : repairRequired ? 'repair_required' : metadata.qa_status === 'passed' ? 'passed' : 'unverified',
-    score: typeof metadata.quality_score === 'number' ? metadata.quality_score : null,
+    status: legacy || !notebookVideo ? 'unverified' : repairRequired ? 'repair_required' : metadata.qa_status === 'passed' ? 'passed' : 'unverified',
+    score: null,
     video_format: metadata.video_format || null,
-    repair_status: repairRequired ? 'required' : metadata.qa_status === 'passed' ? 'not_needed' : null,
+    repair_status: repairRequired ? 'required' : null,
     failures,
   }
 }

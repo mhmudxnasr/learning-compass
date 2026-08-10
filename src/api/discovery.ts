@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { safeError, type Bindings } from '../lib'
 import { createInboxCapture } from '../services/capture'
 import { adaptAndNormalizeWeights, computeDialecticDivergenceScore } from '../domain'
+import { canonicalCreatorKey, canonicalFormat } from '../intelligence-v2'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -52,7 +53,7 @@ const SKILL_PATH = '/home/mahmud/.hermes/skills/personal/taste-rec/SKILL.md'
 const ACTIVE_SKILL_PATHS = [
   SKILL_PATH,
   '/home/mahmud/.hermes/skills/taste-mapper/SKILL.md',
-  '/home/mahmud/.hermes/skills/taste-enhancer/SKILL.md',
+  '/home/mahmud/.hermes/skills/workflow/learning-compass-self-evolution/SKILL.md',
   '/home/mahmud/.hermes/skills/workflow/recommendations-worker-ops/SKILL.md',
 ]
 
@@ -66,30 +67,6 @@ async function computeSha256(text: string): Promise<string> {
     return createHash('sha256').update(text).digest('hex')
   } catch {
     return 'unknown'
-  }
-}
-
-async function updateSkillFile(skillPath: string, patch: string) {
-  try {
-    const fs = await import('node:fs')
-    if (!fs.existsSync || !fs.existsSync(skillPath)) return null
-    const content = fs.readFileSync(skillPath, 'utf-8')
-    const hashBefore = await computeSha256(content)
-    const backupPath = `${skillPath}.bak.${Date.now()}`
-    fs.copyFileSync(skillPath, backupPath)
-
-    let newContent = content
-    if (content.includes('## Learned heuristics')) {
-      newContent = content.replace(/## Learned heuristics[\s\S]*$/, `## Learned heuristics\n\n${patch}\n`)
-    } else {
-      newContent = `${content}\n\n## Learned heuristics\n\n${patch}\n`
-    }
-
-    const hashAfter = await computeSha256(newContent)
-    fs.writeFileSync(skillPath, newContent, 'utf-8')
-    return { hashBefore, hashAfter, backupPath }
-  } catch {
-    return null
   }
 }
 
@@ -167,13 +144,16 @@ export async function activateWaitingRun(DB: D1Database, targetRunId?: string) {
   await DB.batch([
     DB.prepare(`UPDATE recommendations SET creator = ?, content_type = ?, why_this = ? WHERE id = ?`)
       .bind(candidate.creator || null, candidate.format || null, receipt?.why_this || 'Activated via Discovery Engine V2', capture.id),
-    DB.prepare(`INSERT OR REPLACE INTO recommendation_meta (recommendation_id, priority_rank, branch_id, learning_state, updated_at) VALUES (?, 1, ?, 'queued', datetime('now'))`)
+    DB.prepare(`INSERT INTO recommendation_meta (recommendation_id, priority_rank, branch_id, learning_state, updated_at) VALUES (?, 1, ?, 'queued', datetime('now'))
+      ON CONFLICT(recommendation_id) DO UPDATE SET priority_rank=excluded.priority_rank,branch_id=excluded.branch_id,learning_state='queued',updated_at=datetime('now')`)
       .bind(capture.id, run.selected_branch_id || 'general'),
     DB.prepare(`UPDATE recommendations SET status = 'active', updated_at = datetime('now') WHERE id = ?`).bind(capture.id),
     DB.prepare(`INSERT INTO learning_sessions (id, recommendation_id, status, intent, started_at) VALUES (?, ?, 'active', ?, datetime('now'))`)
       .bind(sessionId, capture.id, `Explore discovery frontier: ${candidate.title}`),
-    DB.prepare(`INSERT OR REPLACE INTO recommendation_outcomes (id,recommendation_id,discovery_run_id,source_class,format,creator,branch_id,predicted_score,predicted_confidence,predicted_components_json,outcome_status) VALUES (?,?,?,?,?,?,?,?,?,?,'active')`)
-      .bind(`outcome_${capture.id}`, capture.id, run.id, candidate.source_class || null, candidate.format || null, candidate.creator || null, run.selected_branch_id || 'general', Number(candidate.total_score || 0), receipt?.confidence == null ? null : Number(receipt.confidence), JSON.stringify(candidate.score_components || candidate.score_components_json || {})),
+    DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,discovery_run_id,source_class,format,creator,branch_id,predicted_score,predicted_confidence,predicted_components_json,outcome_status,outcome_origin,training_eligible,objective_version,format_key,creator_key)
+      VALUES (?,?,?,?,?,?,?,?,?,?,'active','discovery_prediction',0,'taste_v1',?,?)
+      ON CONFLICT(recommendation_id) DO UPDATE SET discovery_run_id=excluded.discovery_run_id,source_class=excluded.source_class,format=excluded.format,creator=excluded.creator,branch_id=excluded.branch_id,predicted_score=excluded.predicted_score,predicted_confidence=excluded.predicted_confidence,predicted_components_json=excluded.predicted_components_json,format_key=excluded.format_key,creator_key=excluded.creator_key,evaluated_at=datetime('now')`)
+      .bind(`outcome_${capture.id}`, capture.id, run.id, candidate.source_class || null, candidate.format || null, candidate.creator || null, run.selected_branch_id || 'general', Number(candidate.total_score || 0), receipt?.confidence == null ? null : Number(receipt.confidence), JSON.stringify(candidate.score_components || candidate.score_components_json || {}), canonicalFormat(candidate.format || candidate.source_class), canonicalCreatorKey(candidate.creator)),
   ])
 
   return {
@@ -881,17 +861,15 @@ app.post('/runs/:id/resolve', async (c) => {
     let skillRevision = null
     if (body.learned_heuristics_patch) {
       const patch = body.learned_heuristics_patch
-      const updateResult = await updateSkillFile(SKILL_PATH, patch)
-      const fileHash = updateResult?.hashAfter || (await computeSha256(patch))
-      const backupPath = updateResult?.backupPath || null
-      const validationStatus = updateResult ? 'valid' : 'staged'
+      const fileHash = await computeSha256(patch)
+      const validationStatus = 'staged'
 
       const revId = `rev_${crypto.randomUUID()}`
       await DB.prepare(
         `INSERT INTO skill_revisions (id, live_version, file_hash, backup_path, learned_changes_json, validation_result, triggering_interview_id) VALUES (?, '2.0.0', ?, ?, ?, ?, ?)`
-      ).bind(revId, fileHash, backupPath, JSON.stringify({ patch }), validationStatus, interview.id).run()
+      ).bind(revId, fileHash, null, JSON.stringify({ patch, owner: 'learning-compass-self-evolution', target: 'taste-rec' }), validationStatus, interview.id).run()
 
-      skillRevision = { id: revId, file_hash: fileHash, status: validationStatus, backup_path: backupPath }
+      skillRevision = { id: revId, file_hash: fileHash, status: validationStatus, backup_path: null }
     }
 
     // Auto-recover capacity for any run waiting for queue capacity

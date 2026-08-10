@@ -20,7 +20,7 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 - Notes are structured, editable, searchable, and support per-block English/Egyptian-Arabic direction.
 - Ratings of 7–10 create editable SRS drafts; approval is required before Review.
 - Feedback processing never requests another recommendation automatically.
-- Lite Visual creates one linked HTML+PDF R2 pair for normal sources. For books, it creates one linked pair per chapter with stable chapter metadata, mines the complete source into a checksum-backed evidence packet and coverage matrix, passes measured metadata/responsive/print validation and an 8/10 HTML quality gate, queues Notes Extractor once per HTML chapter, verifies each extraction to terminal state, and verifies the canonical source record. The PDF is the reading companion.
+- Lite Visual creates one linked HTML+PDF R2 pair for normal sources. For books, it creates one linked pair per chapter with stable chapter metadata, mines the complete source into a checksum-backed evidence packet and coverage matrix, reuses cached mining, runs Visual Mind first, and verifies the canonical source record. There is no Lite Visual QA gate and no automatic Notes Extractor chain. The PDF is the reading companion.
 - All destinations in `client/src/destinations.ts` must resolve to a purposeful real view. No generic fallback screens or tabs that expose only infrastructure.
 
 ## Architecture Boundaries
@@ -50,12 +50,15 @@ When behavior changes, update its contract in the same task:
 
 Active Hermes files:
 
+- `~/.hermes/SOUL.md` and its checked-in source `docs/learning-compass-hermes-soul.md` for the compact layer map, routing ownership, source-of-truth order, and voice.
 - `~/.hermes/skills/workflow/learning-compass-operating-system/SKILL.md`
+- `~/.hermes/skills/workflow/learning-compass-self-evolution/SKILL.md`
 - `~/.hermes/skills/workflow/recommendations-worker-ops/SKILL.md`
 - `~/.hermes/skills/workflow/learning-compass-site-operator/SKILL.md`
+- `~/.hermes/skills/workflow/agent-cli-delegation/SKILL.md`
+- `~/.hermes/skills/workflow/youtube-playlist-verification/SKILL.md`
 - `~/.hermes/skills/taste-mapper/SKILL.md`
 - `~/.hermes/skills/personal/taste-rec/SKILL.md`
-- `~/.hermes/skills/taste-enhancer/SKILL.md`
 - `~/.hermes/skills/learning-notes-extractor/SKILL.md`
 - `~/.hermes/skills/lite-visual/SKILL.md`
 - `~/.hermes/skills/visual-mind/SKILL.md`
@@ -87,7 +90,7 @@ Antigravity (AGY) understands and handles all Hermes capabilities and skills:
 
 1. **Hermes CLI Execution**: AGY can invoke `hermes chat -q "..."` or `hermes -z "..."` directly on behalf of the user.
 2. **Worker API & Job Delegation**: Hermes can call the Worker API (`/agent/request`, `/capture/:id/triage`), check/claim/process `agent_jobs`, and trigger only Learning Compass workflows.
-3. **Skill Awareness**: `learning-compass-operating-system` routes every request before `taste-rec`, `taste-mapper`, `taste-enhancer`, `learning-notes-extractor`, `lite-visual`, `notebooklm`, `rss-feed`, or `recommendations-worker-ops` runs.
+3. **Skill Awareness**: `learning-compass-operating-system` routes every request before a focused specialist runs. `learning-compass-self-evolution` alone owns the end-of-turn improvement pass, explicit skill audits, evaluator/repair/recalibration/rollout decisions, and verified skill/product evolution.
 
 ## Verification
 

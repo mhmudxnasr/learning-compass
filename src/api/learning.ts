@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
-import { scheduleReview } from '../domain'
+import { FSRS_SCHEDULER_VERSION, scheduleReview } from '../domain'
 import { loadSettings } from '../services/settings'
 import { buildLearningBalance } from '../services/learning-balance'
+import { recordLearningEvent } from '../services/learning-core'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -126,12 +127,8 @@ app.get('/srs/due', async (c) => {
   }
 })
 
-// POST /learning/srs/review — Update card after active recall attempt (FSRS v5 approximation)
-// FSRS is the modern Anki default — 20-30% fewer reviews for same retention vs SM-2.
-// This implementation uses a simplified FSRS-style model:
-//   - difficulty: tracks item inherent difficulty (1.3-10.0, starts at 5.0)
-//   - stability: interval in days, grows with recall success, decays on forget
-//   - retrievability: computed from elapsed / stability (for future enhance)
+// POST /learning/srs/review — Update card after active recall attempt.
+// Reference FSRS-6 scheduling through the official ts-fsrs implementation.
 app.post('/srs/review', async (c) => {
   const { DB } = c.env
   try {
@@ -144,16 +141,30 @@ app.post('/srs/review', async (c) => {
     if (!card) return c.json({ error: 'card not found' }, 404)
 
     const settings = await loadSettings(DB)
-    const next = scheduleReview({ difficulty: Number(card.difficulty ?? card.ease_factor ?? 5), stability: Number(card.stability ?? card.interval_days ?? 1), repetitions: Number(card.repetitions || 0) }, grade, new Date(), settings.learning.retention)
+    const next = scheduleReview({ difficulty: Number(card.difficulty ?? card.ease_factor ?? 5), stability: Number(card.stability ?? card.interval_days ?? 1), repetitions: Number(card.repetitions || 0), lapses: Number(card.lapses || 0), learningSteps: Number(card.learning_steps || 0), scheduledDays: Number(card.scheduled_days ?? card.interval_days ?? 0), fsrsState: Number(card.fsrs_state || 0), dueAt: card.due_at, lastReviewedAt: card.last_reviewed_at }, grade, new Date(), settings.learning.retention)
 
     await DB.prepare(`
       UPDATE srs_cards
-      SET ease_factor = ?, difficulty = ?, stability = ?, interval_days = ?, repetitions = ?, due_at = ?, last_reviewed_at = datetime('now')
+      SET ease_factor = ?, difficulty = ?, stability = ?, interval_days = ?, repetitions = ?, lapses=?, learning_steps=?, scheduled_days=?, fsrs_state=?, scheduler_version=?, due_at = ?, last_reviewed_at = datetime('now')
       WHERE id = ?
-    `).bind(next.difficulty, next.difficulty, next.stability, next.intervalDays, next.repetitions, next.dueAt, card_id).run()
+    `).bind(next.difficulty, next.difficulty, next.stability, next.intervalDays, next.repetitions, next.lapses, next.learningSteps, next.scheduledDays, next.fsrsState, next.schedulerVersion, next.dueAt, card_id).run()
     await DB.prepare(`INSERT INTO srs_review_events (card_id,grade,previous_state_json,next_state_json) VALUES (?,?,?,?)`).bind(card_id, grade, JSON.stringify(card), JSON.stringify(next)).run()
+    let evidenceId: string | null = null
+    if (card.unit_id || card.thread_id) {
+      evidenceId = `evidence_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
+      const result = grade >= 3 ? 'pass' : 'fail'
+      const delayDays = card.last_reviewed_at ? Math.max(0, (Date.now() - new Date(card.last_reviewed_at).getTime()) / 86_400_000) : null
+      await DB.prepare(`INSERT INTO learning_evidence (id,thread_id,unit_id,evidence_type,result,score,evaluator,delay_days,context_json) VALUES (?,?,?,'free_recall',?,?,'user',?,?)`).bind(evidenceId, card.thread_id || null, card.unit_id || null, result, grade / 5, delayDays, JSON.stringify({ card_id, grade })).run()
+      if (result === 'pass' && card.thread_id) {
+        await DB.prepare(`UPDATE thread_evidence_requirements SET status='satisfied',satisfied_by_evidence_id=?,updated_at=datetime('now') WHERE thread_id=? AND evidence_type='free_recall' AND status='open' AND (minimum_score IS NULL OR ? >= minimum_score) AND (SELECT COUNT(*) FROM learning_evidence WHERE thread_id=? AND evidence_type='free_recall' AND result IN ('pass','recorded')) >= minimum_count`).bind(evidenceId, card.thread_id, grade / 5, card.thread_id).run()
+      }
+      if (result === 'pass' && card.unit_id) {
+        await DB.prepare(`INSERT INTO unit_mastery_state (unit_id,stage,due_at,last_retrieved_at,delayed_retrievals) VALUES (?,'retrieved',?,datetime('now'),1) ON CONFLICT(unit_id) DO UPDATE SET stage=CASE WHEN unit_mastery_state.stage IN ('exposed','encoded') THEN 'retrieved' ELSE unit_mastery_state.stage END,due_at=excluded.due_at,last_retrieved_at=datetime('now'),delayed_retrievals=unit_mastery_state.delayed_retrievals+1,updated_at=datetime('now')`).bind(card.unit_id, next.dueAt).run()
+      }
+      await recordLearningEvent(DB, { eventType: 'recall_attempted', actorType: 'user', evidenceWeight: 1, idempotencyKey: `core-recall:${card_id}:${evidenceId}`, threadId: card.thread_id || null, recommendationId: card.recommendation_id || null, unitId: card.unit_id || null, evidenceId, payload: { grade, result } })
+    }
 
-    return c.json({ ok: true, next_due: next.dueAt, interval_days: next.intervalDays, ease_factor: next.difficulty, fsrs: true })
+    return c.json({ ok: true, next_due: next.dueAt, interval_days: next.intervalDays, ease_factor: next.difficulty, scheduler: FSRS_SCHEDULER_VERSION, evidence_id: evidenceId })
   } catch (err) {
     return c.json(safeError('SRS review failed')(err), 500)
   }

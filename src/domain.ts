@@ -1,3 +1,5 @@
+import { fsrs, generatorParameters, Rating, State, type CardInput } from 'ts-fsrs'
+
 export type QueueDecision = {
   allowed: boolean
   slotsRemaining: number
@@ -30,20 +32,37 @@ export function directionForText(text: string): 'rtl' | 'ltr' | 'auto' {
   return rtl / meaningful.length >= 0.3 ? 'rtl' : 'ltr'
 }
 
-export type ReviewState = { difficulty: number; stability: number; repetitions: number }
+export const FSRS_SCHEDULER_VERSION = 'fsrs-6-ts-fsrs-5.4.1'
+export type ReviewState = { difficulty: number; stability: number; repetitions: number; lapses?: number; learningSteps?: number; scheduledDays?: number; fsrsState?: number; dueAt?: string | null; lastReviewedAt?: string | null }
 
 export function scheduleReview(state: ReviewState, grade: number, now = new Date(), targetRetention = 90) {
-  const success = grade >= 3
-  const difficulty = Number(Math.max(1.3, Math.min(10, state.difficulty + (success ? (3 - grade) * 0.1 : (3 - grade) * 0.2))).toFixed(2))
-  const repetitions = success ? state.repetitions + 1 : 0
-  const stability = Number((success
-    ? state.repetitions === 0 ? Math.max(1, grade - 1) : state.stability * (1 + grade * 0.45)
-    : Math.max(1, state.stability * 0.5)).toFixed(2))
-  const retentionFactor = Math.max(.7, Math.min(1.3, 1 - (targetRetention - 90) * .04))
-  const intervalDays = Math.max(1, Math.min(1825, Math.round(stability * retentionFactor)))
-  const due = new Date(now)
-  due.setUTCDate(due.getUTCDate() + intervalDays)
-  return { difficulty, stability, repetitions, intervalDays, dueAt: due.toISOString().slice(0, 10) }
+  const rating = grade <= 1 ? Rating.Again : grade === 2 ? Rating.Hard : grade === 5 ? Rating.Easy : Rating.Good
+  const card: CardInput = {
+    due: state.dueAt || now,
+    stability: state.repetitions > 0 ? Math.max(.01, Number(state.stability || 1)) : 0,
+    difficulty: state.repetitions > 0 ? Math.max(1, Math.min(10, Number(state.difficulty || 5))) : 0,
+    elapsed_days: 0,
+    scheduled_days: Math.max(0, Number(state.scheduledDays ?? 0)),
+    learning_steps: Math.max(0, Number(state.learningSteps ?? 0)),
+    reps: Math.max(0, Number(state.repetitions || 0)),
+    lapses: Math.max(0, Number(state.lapses || 0)),
+    state: state.repetitions > 0 ? (state.fsrsState ?? State.Review) : State.New,
+    last_review: state.lastReviewedAt || undefined,
+  }
+  const scheduler = fsrs(generatorParameters({ request_retention: Math.max(.7, Math.min(.97, targetRetention / 100)), maximum_interval: 1825, enable_fuzz: false, enable_short_term: false }))
+  const next = scheduler.next(card, now, rating).card
+  return {
+    difficulty: next.difficulty,
+    stability: next.stability,
+    repetitions: next.reps,
+    lapses: next.lapses,
+    learningSteps: next.learning_steps,
+    scheduledDays: next.scheduled_days,
+    fsrsState: next.state,
+    intervalDays: Math.max(1, next.scheduled_days),
+    dueAt: next.due.toISOString().slice(0, 10),
+    schedulerVersion: FSRS_SCHEDULER_VERSION,
+  }
 }
 
 export const VALID_RECOMMENDATION_MODES = ['note_answer', 'blind_spot_bridge', 'counter_evidence', 'academic_paper', 'auto'] as const
@@ -141,4 +160,3 @@ export function cleanRawSourceText(rawText: string, sourceType: 'youtube' | 'pdf
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
-

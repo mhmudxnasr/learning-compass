@@ -11,7 +11,7 @@ const parseJson = (value: unknown) => {
  * repeated signals before proposing profile or map changes.
  */
 export async function loadFeedbackContext(db: FeedbackDb) {
-  const [recommendations, reflections, profile, nodes] = await Promise.all([
+  const [recommendations, reflections, profile, assertions, nodes] = await Promise.all([
     db.prepare(`SELECT r.id,r.video_title,r.creator,r.content_type,r.video_url,r.status,r.user_rating,r.user_score,r.user_review,r.consumed_date,r.updated_at,m.branch_id,m.source_metadata_json
       FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
       WHERE NULLIF(TRIM(r.user_review),'') IS NOT NULL OR json_extract(m.source_metadata_json,'$.learning_feedback') IS NOT NULL
@@ -21,6 +21,7 @@ export async function loadFeedbackContext(db: FeedbackDb) {
       WHERE n.kind='reflection' AND TRIM(COALESCE(s.content,''))!=''
       ORDER BY n.updated_at ASC`).all<any>(),
     db.prepare(`SELECT core_filter,mega_priority_json,identity_json,reaction_style_json,quality_rules_json,operational_style_json,patterns_summary_json,recent_signal FROM profile WHERE id=1`).first<any>(),
+    db.prepare(`SELECT assertion_key,category,scope,value_json,weight,confidence,status,source_kind,version,updated_at FROM profile_assertions WHERE status IN ('active','hypothesis') ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,confidence DESC,updated_at DESC`).all<any>(),
     db.prepare(`SELECT id,type,label,parent_id,super_category,status,round_label,meta_json FROM tree_nodes WHERE type IN ('root','category','branch','leaf') ORDER BY label`).all<any>(),
   ])
 
@@ -54,6 +55,7 @@ export async function loadFeedbackContext(db: FeedbackDb) {
     feedback,
     feedback_count: feedback.length,
     profile: profile ? Object.fromEntries(Object.entries(profile).map(([key, value]) => [key.endsWith('_json') ? key.slice(0, -5) : key, key.endsWith('_json') ? parseJson(value) : value])) : null,
+    profile_assertions: (assertions.results || []).map((assertion: any) => ({ ...assertion, value: parseJson(assertion.value_json), value_json: undefined })),
     nodes: nodes.results || [],
   }
 }
