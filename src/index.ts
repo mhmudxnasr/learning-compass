@@ -91,7 +91,7 @@ app.use('/*', async (c, next) => {
   if (c.req.method === 'GET' || c.req.method === 'HEAD') {
     const path = new URL(c.req.url).pathname
     const already = c.res.headers.get('Cache-Control')
-    const isAsset = path === '/' || path === '/ui' || path === '/manifest.json' || path === '/sw.js' || path.startsWith('/assets/')
+    const isAsset = path === '/' || path === '/ui' || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path.startsWith('/assets/')
     if (!isAsset && !already) c.res.headers.set('Cache-Control', 'no-store')
   }
 })
@@ -210,6 +210,8 @@ app.get('/ui', async (c) => {
   return new Response(asset.body, { status: asset.status, headers })
 })
 app.get('/assets/*', (c) => c.env.ASSETS.fetch(c.req.raw))
+app.get('/icon.svg', (c) => c.env.ASSETS.fetch(c.req.raw))
+app.get('/brand-mark.svg', (c) => c.env.ASSETS.fetch(c.req.raw))
 app.get('/favicon.ico', (c) => c.body(null, 204))
 
 // Manifest for PWA

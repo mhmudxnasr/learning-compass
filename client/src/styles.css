@@ -53,7 +53,7 @@ kbd { font-family: var(--font-mono); font-size: 10px; font-weight: 400; }
 .app-shell.rail-collapsed { --rail: 72px; }
 .rail { position: sticky; top: 0; height: 100vh; padding: 18px 12px 14px; border-right: 1px solid var(--line); background: color-mix(in oklch, var(--bg) 88%, var(--surface)); display: flex; flex-direction: column; overflow: hidden; }
 .brand { height: 42px; padding: 0 10px; display: flex; align-items: center; gap: 11px; background: transparent; white-space: nowrap; }
-.brand-mark { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--ink); border-radius: 8px; font: 600 11px var(--font-mono); letter-spacing: -.05em; }
+.brand-image { display: block; width: 30px; height: 30px; flex: none; }
 .brand-name { font-weight: 600; font-size: 15px; }
 .rail-section-label { margin: 28px 10px 9px; color: var(--ink-3); font: 500 9px var(--font-mono); letter-spacing: .12em; text-transform: uppercase; }
 .rail-collapsed .brand-name, .rail-collapsed .rail-nav button > span:not(.rail-icon), .rail-collapsed .rail-bottom button > span:not(.rail-icon), .rail-collapsed .rail kbd, .rail-collapsed .rail-section-label, .rail-collapsed .rail small { display: none; }
@@ -63,9 +63,10 @@ kbd { font-family: var(--font-mono); font-size: 10px; font-weight: 400; }
 .rail-nav button:hover, .rail-bottom button:hover { color: var(--ink); background: var(--surface-2); }
 .rail-nav button.active, .rail-bottom button.active { color: var(--ink); background: var(--accent-soft); }
 .rail-nav button.active::before, .rail-bottom button.active::before { content: ''; position: absolute; left: 0; top: 9px; bottom: 9px; width: 2px; border-radius: 2px; background: var(--accent); }
-.rail-nav button:focus-visible, .rail-bottom button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
-.rail-icon { display: grid; place-items: center; width: 22px; height: 22px; color: var(--ink-3); }
+.rail-nav button:focus-visible, .rail-bottom button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rail-icon { display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid transparent; border-radius: 6px; color: var(--ink-3); transition: background 120ms ease, border-color 120ms ease, color 120ms ease; }
 .rail-nav button:hover .rail-icon, .rail-nav button.active .rail-icon, .rail-bottom button:hover .rail-icon, .rail-bottom button.active .rail-icon { color: var(--accent); }
+.rail-nav button.active .rail-icon, .rail-bottom button.active .rail-icon { background: color-mix(in oklch, var(--accent-soft) 72%, transparent); border-color: color-mix(in oklch, var(--accent) 24%, transparent); }
 .rail-nav button small { margin-left: auto; color: var(--ink-3); font: 10px var(--font-mono); opacity: .7; }
 .rail-bottom { margin-top: auto; display: grid; gap: 3px; }
 .rail-divider { height: 1px; margin: 0 10px 10px; background: var(--line); }

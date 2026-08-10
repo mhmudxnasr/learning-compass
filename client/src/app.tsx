@@ -11,11 +11,18 @@ const workspaceLabels: Record<WorkspaceKey, string> = {
   today: 'Momentum', curate: 'Curate', map: 'Map', learn: 'Learn', insights: 'Insights', settings: 'Settings',
 }
 
-const icons: Record<WorkspaceKey | 'search' | 'capture' | 'more' | 'profile', ComponentChildren> = {
+const icons: Record<WorkspaceKey | 'momentum' | 'inbox' | 'queue' | 'files' | 'notes' | 'activity' | 'atlas' | 'search' | 'capture' | 'more' | 'profile', ComponentChildren> = {
   today: <path d="M4 5h16M4 12h10M4 19h7" />,
   curate: <><path d="M4 4h16v16H4z" /><path d="M4 13h5l2 3h2l2-3h5" /></>,
   map: <><circle cx="5" cy="6" r="2" /><circle cx="19" cy="5" r="2" /><circle cx="12" cy="18" r="2" /><path d="m7 7 4 9m6-10-4 10M7 6h10" /></>,
   learn: <><path d="M4 5a3 3 0 0 1 3-3h13v18H7a3 3 0 0 0 0-6h13" /></>,
+  momentum: <><circle cx="12" cy="12" r="8" /><path d="m14.8 9.2-2 5.6-3.6 1.1 2-5.6z" /></>,
+  inbox: <><path d="M4 5h16v14H4z" /><path d="M4 13h4l2 3h4l2-3h4" /></>,
+  queue: <><path d="M5 6h14M5 12h14M5 18h8" /><circle cx="18" cy="18" r="2" /></>,
+  files: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></>,
+  notes: <><path d="M5 4h14v16H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
+  activity: <path d="M4 13h3l2-6 4 12 2-6h5" />,
+  atlas: <><circle cx="5" cy="6" r="2" /><circle cx="19" cy="5" r="2" /><circle cx="12" cy="18" r="2" /><path d="m7 7 4 9m6-10-4 10M7 6h10" /></>,
   insights: <><path d="M5 19V9m7 10V4m7 15v-7" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2" /></>,
   profile: <><circle cx="12" cy="8" r="3.5" /><path d="M5 21a7 7 0 0 1 14 0" /></>,
@@ -45,8 +52,12 @@ function useRoute() {
 }
 
 function go(destination: Destination) { location.hash = `#/${destination.workspace}/${destination.slug}` }
-const loopNavigation = ['today.momentum', 'curate.inbox', 'curate.queue', 'learn.files', 'learn.notes', 'learn.recall', 'map.atlas']
+const loopNavigation = ['today.momentum', 'curate.inbox', 'learn.files', 'learn.notes', 'learn.activity', 'curate.queue', 'map.atlas']
   .map((key) => destinations.find((item) => item.key === key)!)
+const navIcons: Record<string, keyof typeof icons> = {
+  'today.momentum': 'momentum', 'curate.inbox': 'inbox', 'learn.files': 'files', 'learn.notes': 'notes',
+  'learn.activity': 'activity', 'curate.queue': 'queue', 'map.atlas': 'atlas',
+}
 
 function playCompletionChime() {
   try {
@@ -129,10 +140,10 @@ function Shell({ route, children, onCapture, onSearch, onMore }: { route: Destin
   const setRail = () => setCollapsed((value) => { localStorage.setItem('tm-rail', value ? 'open' : 'collapsed'); return !value })
   return <div class={`app-shell ${collapsed ? 'rail-collapsed' : ''}`}>
     <aside class="rail">
-      <button class="brand" onClick={setRail} title="Toggle navigation"><span class="brand-mark">LC</span><span class="brand-name">Learning Compass</span></button>
+      <button class="brand" onClick={setRail} title="Toggle navigation"><img class="brand-image" src="/brand-mark.svg" alt="" /><span class="brand-name">Learning Compass</span></button>
       <div class="rail-section-label">Learning loop</div>
       <nav class="rail-nav" aria-label="Learning loop">
-        {loopNavigation.map((item, index) => <button class={route.key === item.key ? 'active' : ''} onClick={() => go(item)} title={item.title}><span class="rail-icon"><Icon name={item.workspace} /></span><span>{item.title}</span><small>{String(index + 1).padStart(2, '0')}</small></button>)}
+        {loopNavigation.map((item, index) => <button class={route.key === item.key ? 'active' : ''} onClick={() => go(item)} title={item.title}><span class="rail-icon"><Icon name={navIcons[item.key]} /></span><span>{item.title}</span><small>{String(index + 1).padStart(2, '0')}</small></button>)}
       </nav>
       <div class="rail-bottom">
         <div class="rail-divider" />
@@ -152,7 +163,7 @@ function Shell({ route, children, onCapture, onSearch, onMore }: { route: Destin
       <div class="page-content">{children}</div>
     </main>
     <nav class="mobile-nav">
-      {['today.momentum', 'curate.queue', 'learn.recall'].map((key) => { const item = destinations.find((candidate) => candidate.key === key)!; return <button class={route.key === item.key ? 'active' : ''} onClick={() => go(item)}><Icon name={item.workspace} /><span>{item.title}</span></button> })}
+      {['today.momentum', 'curate.queue', 'learn.activity'].map((key) => { const item = destinations.find((candidate) => candidate.key === key)!; return <button class={route.key === item.key ? 'active' : ''} onClick={() => go(item)}><Icon name={navIcons[item.key]} /><span>{item.title}</span></button> })}
       <button class={['map', 'insights', 'settings'].includes(route.workspace) ? 'active' : ''} onClick={onMore}><Icon name="more" /><span>More</span></button>
     </nav>
   </div>
