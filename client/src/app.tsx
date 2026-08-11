@@ -186,60 +186,194 @@ function compassWeakPickCanQueue(pick: any) {
   return Boolean(pick?.video_url && pick?.video_title && ['verified', 'restricted'].includes(sourceStatus))
 }
 
+function buildStreakTrail(momentum: any) {
+  const current = String(momentum?.current_date || '')
+  if (!current) return [] as Array<{ date: string; count: number; isToday: boolean; label: string }>
+  const counts = new Map<string, number>((momentum?.streak_days || []).map((row: any) => [String(row.date), Number(row.count || 0)]))
+  const cursor = new Date(`${current}T12:00:00Z`)
+  return Array.from({ length: 14 }, (_, index) => {
+    const day = new Date(cursor)
+    day.setUTCDate(cursor.getUTCDate() - (13 - index))
+    const date = day.toISOString().slice(0, 10)
+    return {
+      date,
+      count: counts.get(date) || 0,
+      isToday: date === current,
+      label: day.toLocaleDateString('en-GB', { weekday: 'narrow', timeZone: 'UTC' }),
+    }
+  })
+}
+
+function formatRemaining(seconds: number) {
+  const total = Math.max(0, Math.floor(seconds))
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m`
+  return `${minutes}m`
+}
+
+function formatCairoDay(value?: string | null) {
+  if (!value) return '—'
+  const date = new Date(`${value}T12:00:00Z`)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+}
 
 function TodayPage() {
-  const { data, error, loading, reload } = useData('/dashboard/briefing')
+  const { data, error, loading } = useData('/dashboard/briefing')
   const compass = useData('/compass/pick')
   const [compassWorking, setCompassWorking] = useState(false)
   const [compassFeedbackOpen, setCompassFeedbackOpen] = useState(false)
   const [focusedId, setFocusedId] = useState<string | null>(null)
   const [queueSwitcherOpen, setQueueSwitcherOpen] = useState(false)
+  const [remaining, setRemaining] = useState(0)
+
+  useEffect(() => {
+    const seconds = Number(data?.momentum?.seconds_remaining || 0)
+    setRemaining(seconds)
+    if (!seconds) return
+    const timer = window.setInterval(() => setRemaining((value) => Math.max(0, value - 1)), 1000)
+    return () => window.clearInterval(timer)
+  }, [data?.momentum?.seconds_remaining, data?.momentum?.current_date])
+
   if (loading) return <Loading />
   if (error) return <ErrorState message={error} />
+
   const items = data?.active_items || []
   const mission = items.find((item: any) => item.id === focusedId) || items[0]
+  const momentum = data?.momentum || {}
+  const trail = buildStreakTrail(momentum)
   const filesFor = (id: string) => (data?.artifacts || []).filter((artifact: any) => artifact.recommendation_id === id)
   const fileLabel = (artifact: any) => artifact.role || (/pdf/i.test(artifact.media_type || artifact.filename) ? 'PDF' : /html/i.test(artifact.media_type || artifact.filename) ? 'HTML' : artifact.filename)
   const sendCompassFeedback = async (outcome: 'dismissed' | 'declined', reason: string) => {
     setCompassWorking(true)
-    try { await api(`/compass/pick/${compass.data.pick.id}/feedback`, { method: 'POST', body: JSON.stringify({ outcome, reason_tags: [reason] }) }); setCompassFeedbackOpen(false); compass.reload() }
-    catch (feedbackError: any) { window.alert(feedbackError.message) }
-    finally { setCompassWorking(false) }
+    try {
+      await api(`/compass/pick/${compass.data.pick.id}/feedback`, { method: 'POST', body: JSON.stringify({ outcome, reason_tags: [reason] }) })
+      setCompassFeedbackOpen(false)
+      compass.reload()
+    } catch (feedbackError: any) {
+      window.alert(feedbackError.message)
+    } finally {
+      setCompassWorking(false)
+    }
   }
   const missionFiles = mission ? filesFor(mission.id) : []
   const missionIndex = Math.max(0, items.findIndex((item: any) => item.id === mission?.id))
+  const streak = Number(momentum.streak || 0)
+  const longest = Number(momentum.longest_streak || 0)
+  const secured = Boolean(momentum.today_secured)
+  const weekDone = Number(momentum.completed || 0)
+  const weekNotes = Number(momentum.notes || 0)
+  const weekReviews = Number(momentum.reviews || 0)
+
   return <div class="momentum-page">
     {compass.error && <div class="error-state"><strong>Compass Pick unavailable.</strong><span>{compass.error}</span></div>}
+
+    <section class="streak-overview" aria-label="Streak overview">
+      <div class="streak-readout">
+        <div class="streak-figure">
+          <strong>{streak}</strong>
+          <span>{streak === 1 ? 'day' : 'days'}</span>
+        </div>
+        <div class="streak-status">
+          <em class={secured ? 'secured' : 'open'}>{secured ? 'Today secured' : 'Today open'}</em>
+          <small>{secured ? `Day holds for ${formatRemaining(remaining)}` : `Secure by midnight · ${formatRemaining(remaining)} left`}</small>
+        </div>
+      </div>
+
+      <div class="streak-trail" aria-label="Last 14 days">
+        <div class="streak-trail-head">
+          <span>14-day chain</span>
+          <span>Africa/Cairo</span>
+        </div>
+        <div class="streak-days">
+          {trail.map((day) => (
+            <div class={`streak-day${day.count ? ' active' : ''}${day.isToday ? ' today' : ''}`} title={`${day.date}${day.count ? ` · ${day.count} signals` : ''}`}>
+              <i style={day.count ? { ['--fill' as any]: `${Math.min(100, 28 + day.count * 8)}%` } : undefined} />
+              <span>{day.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div class="streak-metrics">
+        <div><strong>{longest || '—'}</strong><span>Best streak</span></div>
+        <div><strong>{weekDone}</strong><span>Done this week</span></div>
+        <div><strong>{weekNotes}</strong><span>Notes</span></div>
+        <div><strong>{weekReviews}</strong><span>Reviews</span></div>
+        <div class="streak-last"><strong>{formatCairoDay(momentum.last_activity_date)}</strong><span>Last activity</span></div>
+      </div>
+    </section>
+
     <div class="momentum-workspace">
       <div class="momentum-primary">
         {mission ? <section class="focus-desk">
-          <div class="focus-desk-head"><span class="momentum-eyebrow">Now learning</span><div class="focus-switcher"><span>Queue · {String(missionIndex + 1).padStart(2, '0')} / {items.length}</span><button onClick={() => setQueueSwitcherOpen((open) => !open)} aria-expanded={queueSwitcherOpen}>Switch source</button></div></div>
+          <div class="focus-desk-head">
+            <div class="focus-identity">
+              <span class="momentum-eyebrow">Now learning</span>
+              <div class="focus-meta">
+                <span>{mission.content_type || 'Source'}</span>
+                <span>{mission.creator || 'Independent source'}</span>
+                <span class={mission.learning_state === 'in_progress' ? 'state-live' : ''}>{mission.learning_state === 'in_progress' ? 'In progress' : 'Queued'}</span>
+              </div>
+            </div>
+            <div class="focus-switcher">
+              <span>Queue · {String(missionIndex + 1).padStart(2, '0')} / {String(items.length).padStart(2, '0')}</span>
+              <button onClick={() => setQueueSwitcherOpen((open) => !open)} aria-expanded={queueSwitcherOpen}>Switch source</button>
+            </div>
+          </div>
+
           {queueSwitcherOpen && <div class="queue-switcher" role="listbox" aria-label="Choose a queued source">{items.map((item: any, index: number) => <button class={item.id === mission.id ? 'active' : ''} onClick={() => { setFocusedId(item.id); setQueueSwitcherOpen(false) }}><span>{String(index + 1).padStart(2, '0')}</span><strong>{item.video_title}</strong><small>{item.learning_state === 'in_progress' ? 'In progress' : 'Queued'}</small></button>)}</div>}
-          <div class="focus-meta"><span>{mission.content_type || 'Source'}</span><span>{mission.creator || 'Independent source'}</span><span>{mission.learning_state === 'in_progress' ? 'In progress' : 'Queued'}</span></div>
-          <h2>{mission.video_title}</h2>
-          <div class="focus-why"><span>Why this is in your Queue</span><p>{mission.context_brief || formatSmartHook(mission)}</p></div>
-          <div class="focus-resources"><div class="focus-resources-head"><strong>Source desk</strong><button onClick={() => go(destinations.find((item) => item.key === 'learn.files')!)}>All files →</button></div><div class="focus-resource-grid">
-            {mission.video_url && <a class="resource-source" href={mission.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, mission)}><span>Original</span><strong>Open the source</strong><small>↗</small></a>}
-            {missionFiles.length ? missionFiles.map((artifact: any) => <a href={`/artifacts/${artifact.id}`} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, mission, `/artifacts/${artifact.id}`, /pdf/i.test(artifact.media_type || artifact.filename) ? 'pdf' : 'html', artifact.id)}><span>{fileLabel(artifact)}</span><strong>{artifact.filename || `${fileLabel(artifact)} companion`}</strong><small>↗</small></a>) : <div class="resource-empty"><span>Files</span><strong>No companion files yet</strong><small>—</small></div>}
-            {mission.note_count > 0 ? <a href={`#/learn/notes?source=${encodeURIComponent(mission.id)}`}><span>Notes</span><strong>Extracted knowledge</strong><small>→</small></a> : <div class="resource-empty"><span>Notes</span><strong>No extracted notes yet</strong><small>—</small></div>}
-            {mission.notebook_url ? <a class="resource-notebook" href={mission.notebook_url} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, mission, mission.notebook_url, 'notebooklm')}><span>NotebookLM</span><strong>Ask the grounded notebook</strong><small>↗</small></a> : <div class="resource-empty resource-notebook"><span>NotebookLM</span><strong>Not linked yet</strong><small>—</small></div>}
-          </div></div>
+
+          <div class="focus-body">
+            <h2>{mission.video_title}</h2>
+            <div class="focus-why">
+              <span>Why this is in your Queue</span>
+              <p>{mission.context_brief || formatSmartHook(mission)}</p>
+            </div>
+            {mission.video_url && (
+              <div class="focus-actions">
+                <a class="primary-action" href={mission.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, mission)}>
+                  {mission.learning_state === 'in_progress' ? 'Resume source' : 'Open source'}
+                </a>
+                <button onClick={() => go(destinations.find((item) => item.key === 'curate.queue')!)}>Full queue</button>
+              </div>
+            )}
+          </div>
+
+          <div class="focus-resources">
+            <div class="focus-resources-head">
+              <strong>Source desk</strong>
+              <button onClick={() => go(destinations.find((item) => item.key === 'learn.files')!)}>All files →</button>
+            </div>
+            <div class="focus-resource-grid">
+              {mission.video_url
+                ? <a class="resource-source" href={mission.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, mission)}><span>Original</span><strong>Open the source</strong><small>↗</small></a>
+                : <div class="resource-empty"><span>Original</span><strong>No source URL</strong><small>—</small></div>}
+              {missionFiles.length
+                ? missionFiles.map((artifact: any) => <a href={`/artifacts/${artifact.id}`} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, mission, `/artifacts/${artifact.id}`, /pdf/i.test(artifact.media_type || artifact.filename) ? 'pdf' : 'html', artifact.id)}><span>{fileLabel(artifact)}</span><strong>{artifact.filename || `${fileLabel(artifact)} companion`}</strong><small>↗</small></a>)
+                : <div class="resource-empty"><span>Files</span><strong>No companion files yet</strong><small>—</small></div>}
+              {mission.notebook_url
+                ? <a class="resource-notebook" href={mission.notebook_url} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, mission, mission.notebook_url, 'notebooklm')}><span>NotebookLM</span><strong>Ask the grounded notebook</strong><small>↗</small></a>
+                : <div class="resource-empty resource-notebook"><span>NotebookLM</span><strong>Not linked yet</strong><small>—</small></div>}
+            </div>
+          </div>
         </section> : <section class="focus-desk focus-empty"><span class="momentum-eyebrow">Focus desk</span><Empty title="Your Queue is clear" body="Choose one worthwhile source. Momentum should begin with intent, not volume." /></section>}
 
         {!mission && compass.data?.pick && <section class="empty-compass">
-          <span>{compass.data.pick.status === 'abstained' ? 'Weak Compass Pick · your decision' : `Compass Pick · ${compass.data.pick.strategy}`}</span><h2>{compass.data.pick.video_title || 'Compass Pick'}</h2><p>{compass.data.pick.context_brief || compass.data.pick.rationale?.why_this || compass.data.pick.why_this}</p>
+          <span>{compass.data.pick.status === 'abstained' ? 'Weak Compass Pick · your decision' : `Compass Pick · ${compass.data.pick.strategy}`}</span>
+          <h2>{compass.data.pick.video_title || 'Compass Pick'}</h2>
+          <p>{compass.data.pick.context_brief || compass.data.pick.rationale?.why_this || compass.data.pick.why_this}</p>
           {compass.data.pick.status === 'abstained' && <div class="compass-weak-context"><strong>Not automatically recommended</strong><p>{compassWeakReason(compass.data.pick.rationale?.abstention_reason || compass.data.pick.stop_reason)} {compassWeakPickCanQueue(compass.data.pick) ? 'The source is reachable, but it did not meet the automatic recommendation threshold. You can still add it manually.' : 'No safe, reachable source is available to add.'} Score {Math.round(Number(compass.data.pick.rationale?.score || 0) * 100)}% · confidence {Math.round(Number(compass.data.pick.confidence || 0) * 100)}% · source {compass.data.pick.rationale?.source_check?.status || 'unknown'}.</p></div>}
           <div class="row-actions">
-            {(compass.data.pick.status === 'ready' || (compass.data.pick.status === 'abstained' && compassWeakPickCanQueue(compass.data.pick))) && <button class="primary-action" disabled={compassWorking} onClick={async () => { setCompassWorking(true); const target = window.open('about:blank', '_blank'); try { const result = await api<any>(`/compass/pick/${compass.data.pick.id}/start`, { method: 'POST' }); localStorage.setItem('tm-active-session', JSON.stringify({ id: result.session_id, recommendationId: result.recommendation_id, title: compass.data.pick.video_title, sourceUrl: compass.data.pick.video_url })); if (target) target.location.replace(compass.data.pick.video_url); else location.assign(compass.data.pick.video_url); compass.reload() } catch (error: any) { target?.close(); window.alert(error.message) } finally { setCompassWorking(false) } }}>{compass.data.pick.status === 'abstained' ? 'Add to Queue anyway' : 'Start'}</button>}
+            {(compass.data.pick.status === 'ready' || (compass.data.pick.status === 'abstained' && compassWeakPickCanQueue(compass.data.pick))) && <button class="primary-action" disabled={compassWorking} onClick={async () => { setCompassWorking(true); const target = window.open('about:blank', '_blank'); try { const result = await api<any>(`/compass/pick/${compass.data.pick.id}/start`, { method: 'POST' }); localStorage.setItem('tm-active-session', JSON.stringify({ id: result.session_id, recommendationId: result.recommendation_id, title: compass.data.pick.video_title, sourceUrl: compass.data.pick.video_url })); if (target) target.location.replace(compass.data.pick.video_url); else location.assign(compass.data.pick.video_url); compass.reload() } catch (startError: any) { target?.close(); window.alert(startError.message) } finally { setCompassWorking(false) } }}>{compass.data.pick.status === 'abstained' ? 'Add to Queue anyway' : 'Start'}</button>}
             <button disabled={compassWorking} onClick={() => sendCompassFeedback('dismissed', 'not_now')}>Not now</button>
             <button disabled={compassWorking} onClick={() => setCompassFeedbackOpen((value) => !value)}>Bad fit</button>
           </div>
           {compassFeedbackOpen && <div class="compass-feedback-reasons"><span>What missed?</span>{[['wrong_topic', 'Wrong topic'], ['too_familiar', 'Too familiar'], ['too_shallow', 'Too shallow'], ['too_long', 'Too long'], ['poor_source', 'Poor source'], ['wrong_format', 'Wrong format'], ['already_mastered', 'Already mastered'], ['other', 'Other']].map(([reason, label]) => <button disabled={compassWorking} onClick={() => sendCompassFeedback('declined', reason)}>{label}</button>)}</div>}
         </section>}
       </div>
-
     </div>
-
   </div>
 }
 
@@ -537,6 +671,7 @@ function SourceRecordPage({ record, onBack, onReload }: { record: any; onBack: (
   const [lengthMinutes, setLengthMinutes] = useState(storedFeedback.length_minutes == null ? '' : String(storedFeedback.length_minutes))
   const [feedbackBeforeEnhancement, setFeedbackBeforeEnhancement] = useState<string | null>(null)
   const [sourceNote, setSourceNote] = useState(extracted)
+  const [noteEditing, setNoteEditing] = useState(false)
   const [status, setStatus] = useState('')
   const saveNote = async (note: any, content?: string) => {
     if (!note) return
@@ -579,16 +714,13 @@ function SourceRecordPage({ record, onBack, onReload }: { record: any; onBack: (
   }
   return <div class="source-record-page">
     <button class="back-link" onClick={onBack}>← All notes</button>
-    <header class="source-record-head"><div><span class="meta">Source record</span><h2>{item.video_title || reflection?.title || extracted?.title || 'Learning source'}</h2><p>{item.creator || item.content_type || 'Source'} · {item.learning_state || item.status || 'saved'}</p></div><div class="row-actions">{item.notebook_url && <a href={item.notebook_url} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, { ...item, thread_id: record.threads?.find((thread: any) => thread.status === 'active')?.id || record.threads?.[0]?.id }, item.notebook_url, 'notebooklm')}>Open NotebookLM</a>}{item.video_url && <a class="primary-action" href={item.video_url} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, { ...item, thread_id: record.threads?.find((thread: any) => thread.status === 'active')?.id || record.threads?.[0]?.id }, item.video_url, 'original')}>Open original</a>}</div></header>
-    <section class="record-section"><div class="section-head"><h3>Learning core</h3><span>{record.consolidation?.state?.replace(/_/g, ' ') || 'not consolidated'}</span></div>{record.threads?.length ? record.threads.map((thread: any) => <div class="record-line"><strong>{thread.title}</strong><span>{thread.thread_type} · {thread.status}</span></div>) : <p class="record-muted">This source is not assigned to a Learning Thread.</p>}{record.consolidation?.failure_reason && <p class="error-state">{record.consolidation.failure_reason}</p>}</section>
-    <section class="record-section"><div class="section-head"><h3>What I learned</h3><span>{record.learning_units?.length || 0} units</span></div>{record.learning_units?.length ? record.learning_units.map((unit: any) => <article class="record-line"><div><span class="meta">{unit.unit_type} · {unit.stance} · {Math.round(Number(unit.confidence || 0) * 100)}%</span><strong>{unit.statement}</strong>{unit.user_synthesis && <p>{unit.user_synthesis}</p>}</div><span>{unit.anchors?.length || 0} anchors</span></article>) : <p class="record-muted">No anchored Learning Units yet.</p>}</section>
-    <section class="record-section"><div class="section-head"><h3>Learning disposition</h3><span>Separate from score</span></div><label>Keep this knowledge?<select value={disposition} onChange={(event) => setDisposition((event.target as HTMLSelectElement).value)}><option value="retain">Retain and review</option><option value="apply">Apply in real work</option><option value="reference">Keep as reference</option><option value="drop">Drop after reflection</option></select></label></section>
-    <section class="record-section"><div class="section-head"><h3>My Feedback</h3><span>{rating ? `${rating}/10` : 'Not rated'}</span></div><textarea class="note-editor feedback-editor" value={feedback} onInput={(event) => setFeedback((event.target as HTMLTextAreaElement).value)} placeholder="Your exact reaction is preserved here." /><div class="feedback-fields"><label>Score (0–10)<input type="number" min="0" max="10" step="0.5" value={rating} onInput={(event) => setRating((event.target as HTMLInputElement).value)} /></label><label>Learning status<select value={completionState} onChange={(event) => setCompletionState((event.target as HTMLSelectElement).value)}><option value="completed">Completed</option><option value="in_progress">In progress</option><option value="stopped">Stopped</option></select></label><label>Effort<select value={effort} onChange={(event) => setEffort((event.target as HTMLSelectElement).value)}><option value="">Not set</option><option value="light">Light</option><option value="moderate">Moderate</option><option value="deep">Deep</option></select></label><label>Minutes spent<input type="number" min="0" value={lengthMinutes} onInput={(event) => setLengthMinutes((event.target as HTMLInputElement).value)} /></label></div><label>Reason tags<input value={reasonTags.join(', ')} onInput={(event) => setReasonTags((event.target as HTMLInputElement).value.split(',').map((tag) => tag.trim()).filter(Boolean))} placeholder="practical, too shallow, revisit" /></label><div class="feedback-fields"><label>Expected<textarea class="note-editor" value={expected} onInput={(event) => setExpected((event.target as HTMLTextAreaElement).value)} placeholder="What did you expect?" /></label><label>Actual<textarea class="note-editor" value={actual} onInput={(event) => setActual((event.target as HTMLTextAreaElement).value)} placeholder="What did you actually get?" /></label></div><div class="row-actions"><button onClick={saveFeedback} disabled={!feedback.trim()}>Save feedback</button><button onClick={enhanceFeedback} disabled={!feedback.trim() || status === 'Enhancing…'}>Enhance writing</button>{feedbackBeforeEnhancement !== null && <button onClick={undoEnhancement}>Undo enhancement</button>}</div></section>
-    <section class="record-section"><div class="section-head"><h3>Extracted note</h3><span>{extracted?.status || 'Not created'}</span></div>{sourceNote ? <>{(sourceNote.sections || []).map((section: any) => <div dir={section.direction || 'auto'}><h4>{section.label}</h4><textarea class="note-editor" value={section.content} onInput={(event) => setSourceNote({ ...sourceNote, sections: sourceNote.sections.map((current: any) => current.section_key === section.section_key ? { ...current, content: (event.target as HTMLTextAreaElement).value } : current) })} /></div>)}<div class="row-actions"><button onClick={() => saveNote(sourceNote)}>Save extracted note</button></div></> : <p class="record-muted">Retain or apply sends this source to Hermes for anchored Unit extraction and editable recall drafts.</p>}</section>
-    <section class="record-section"><div class="section-head"><h3>Recall</h3><span>{record.srs?.cards?.length || 0} active</span></div><p>{record.srs?.drafts?.length || 0} editable drafts · {record.srs?.cards?.length || 0} approved cards</p></section>
-    <section class="record-section"><div class="section-head"><h3>Files</h3><span>{record.artifacts?.length || 0}</span></div>{record.artifacts?.length ? record.artifacts.map((file: any) => <a class="record-line" href={`/artifacts/${file.id}`} target="_blank" rel="noreferrer"><strong>{file.filename}</strong><span>{file.media_type}{file.notebook_url ? ' · Open NotebookLM' : ''}</span></a>) : <p class="record-muted">No companion files yet.</p>}</section>
+    <header class="source-record-head"><div><span class="meta">Source context</span><h2>{item.video_title || reflection?.title || extracted?.title || 'Learning source'}</h2><p>{item.creator || item.content_type || 'Source'} · {item.learning_state || item.status || 'saved'}</p></div><div class="row-actions">{item.notebook_url && <a href={item.notebook_url} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, { ...item, thread_id: record.threads?.find((thread: any) => thread.status === 'active')?.id || record.threads?.[0]?.id }, item.notebook_url, 'notebooklm')}>Open NotebookLM</a>}{item.video_url && <a class="primary-action" href={item.video_url} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, { ...item, thread_id: record.threads?.find((thread: any) => thread.status === 'active')?.id || record.threads?.[0]?.id }, item.video_url, 'original')}>Open original</a>}</div></header>
+    <section class="record-section"><div class="section-head"><h3>Extracted note</h3><span>{sourceNote ? `${extracted?.status || 'draft'} · ${(sourceNote.sections || []).length} sections` : 'Not created'}</span></div>{sourceNote ? <div class="note-reader">{(sourceNote.sections || []).map((section: any) => noteEditing ? <div dir={section.direction || 'auto'}><h4>{section.label}</h4><textarea class="note-editor" value={section.content} onInput={(event) => setSourceNote({ ...sourceNote, sections: (sourceNote.sections || []).map((current: any) => current.section_key === section.section_key ? { ...current, content: (event.target as HTMLTextAreaElement).value } : current) })} /></div> : <div class="note-document" dir={section.direction || 'auto'}><div class="section-key">{section.label}</div><div class="note-copy">{section.content}</div></div>)}<div class="row-actions">{noteEditing ? <><button class="primary-action" onClick={() => saveNote(sourceNote)}>Save changes</button><button onClick={() => { setSourceNote(extracted); setNoteEditing(false) }}>Cancel</button></> : <button onClick={() => setNoteEditing(true)}>Edit note</button>}</div></div> : <p class="record-muted">Retain or apply sends this source to Hermes for anchored Unit extraction and editable recall drafts.</p>}</section>
+    <section class="record-section"><div class="section-head"><h3>My Feedback</h3><span>{rating ? `${rating}/10` : 'Not rated'}</span></div><textarea class="note-editor feedback-editor" value={feedback} onInput={(event) => setFeedback((event.target as HTMLTextAreaElement).value)} placeholder="Your exact reaction is preserved here." /><div class="row-actions"><button onClick={saveFeedback} disabled={!feedback.trim()}>Save feedback</button><button onClick={enhanceFeedback} disabled={!feedback.trim() || status === 'Enhancing…'}>Enhance writing</button>{feedbackBeforeEnhancement !== null && <button onClick={undoEnhancement}>Undo enhancement</button>}</div><details class="feedback-details"><summary>Detailed feedback and disposition</summary><div class="feedback-fields"><label>Score (0–10)<input type="number" min="0" max="10" step="0.5" value={rating} onInput={(event) => setRating((event.target as HTMLInputElement).value)} /></label><label>Learning status<select value={completionState} onChange={(event) => setCompletionState((event.target as HTMLSelectElement).value)}><option value="completed">Completed</option><option value="in_progress">In progress</option><option value="stopped">Stopped</option></select></label><label>Effort<select value={effort} onChange={(event) => setEffort((event.target as HTMLSelectElement).value)}><option value="">Not set</option><option value="light">Light</option><option value="moderate">Moderate</option><option value="deep">Deep</option></select></label><label>Minutes spent<input type="number" min="0" value={lengthMinutes} onInput={(event) => setLengthMinutes((event.target as HTMLInputElement).value)} /></label></div><label>Keep this knowledge?<select value={disposition} onChange={(event) => setDisposition((event.target as HTMLSelectElement).value)}><option value="retain">Retain and review</option><option value="apply">Apply in real work</option><option value="reference">Keep as reference</option><option value="drop">Drop after reflection</option></select></label><label>Reason tags<input value={reasonTags.join(', ')} onInput={(event) => setReasonTags((event.target as HTMLInputElement).value.split(',').map((tag) => tag.trim()).filter(Boolean))} placeholder="practical, too shallow, revisit" /></label><div class="feedback-fields"><label>Expected<textarea class="note-editor" value={expected} onInput={(event) => setExpected((event.target as HTMLTextAreaElement).value)} placeholder="What did you expect?" /></label><label>Actual<textarea class="note-editor" value={actual} onInput={(event) => setActual((event.target as HTMLTextAreaElement).value)} placeholder="What did you actually get?" /></label></div></details></section>
+    {record.artifacts?.length ? <section class="record-section"><div class="section-head"><h3>Files</h3><span>{record.artifacts.length}</span></div>{record.artifacts.map((file: any) => <a class="record-line" href={`/artifacts/${file.id}`} target="_blank" rel="noreferrer"><strong>{file.filename}</strong><span>{file.media_type}{file.notebook_url ? ' · Open NotebookLM' : ''}</span></a>)}</section> : null}
     {record.proposals?.length ? <section class="record-section"><div class="section-head"><h3>Suggested profile changes</h3><span>{record.proposals.length}</span></div><p>Review these suggestions in Activity before they affect your profile.</p><a href="#/learn/activity">Open Activity</a></section> : null}
-    <section class="record-section"><div class="section-head"><h3>Session history</h3><span>{record.sessions?.length || 0}</span></div>{record.sessions?.map((session: any) => <div class="record-line"><strong>{session.status} session</strong><span>{formatDate(session.started_at)}{session.completed_at ? ` → ${formatDate(session.completed_at)}` : ''}</span></div>)}</section>
+    {record.threads?.length || record.learning_units?.length || record.consolidation?.state ? <section class="record-section"><div class="section-head"><h3>Learning core</h3><span>{record.consolidation?.state?.replace(/_/g, ' ') || 'open'}</span></div>{record.threads?.length ? record.threads.map((thread: any) => <div class="record-line"><strong>{thread.title}</strong><span>{thread.thread_type} · {thread.status}</span></div>) : null}{record.learning_units?.length ? record.learning_units.map((unit: any) => <article class="record-line"><div><span class="meta">{unit.unit_type} · {unit.stance} · {Math.round(Number(unit.confidence || 0) * 100)}%</span><strong>{unit.statement}</strong>{unit.user_synthesis && <p>{unit.user_synthesis}</p>}</div><span>{unit.anchors?.length || 0} anchors</span></article>) : null}{record.consolidation?.failure_reason ? <p class="error-state">{record.consolidation.failure_reason}</p> : null}</section> : null}
+    {record.sessions?.length ? <section class="record-section"><div class="section-head"><h3>Session history</h3><span>{record.sessions.length}</span></div>{record.sessions?.map((session: any) => <div class="record-line"><strong>{session.status} session</strong><span>{formatDate(session.started_at)}{session.completed_at ? ` → ${formatDate(session.completed_at)}` : ''}</span></div>)}</section> : null}
     {status && <output class="note-status">{status}</output>}
   </div>
 }
@@ -614,7 +746,6 @@ function NoteDocumentPage({ noteId, notes, onBack, onReload }: { noteId: string;
       <button class="back-link" onClick={onBack}>← All notes</button>
       <nav aria-label="Note sections">{sections.map((section: any) => <button key={section.section_key} onClick={() => scrollTo(section.section_key)}><span>{section.label}</span></button>)}</nav>
       <div class="note-meta"><span>{labelize(note.status || 'draft')} · revision {note.revision || 1}</span><span>Updated {formatDate(note.updated_at)}</span></div>
-      {note.recommendation_id && <a class="source-context-link" href={`#/learn/notes?source=${encodeURIComponent(note.recommendation_id)}`}>Open source context →</a>}
     </aside>
     <div class="note-document">
       <span class="note-kicker">Extracted note</span>
@@ -653,7 +784,7 @@ function NotesPage() {
   const visible = notes.filter((note: any) => !query.trim() || (note.title || '').toLowerCase().includes(query.trim().toLowerCase()))
   return <div><label class="page-search">Search extracted notes<input value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="Title" /></label><div class="source-list notes-source-list">{visible.map((note: any) => {
     const preview = (note.sections || []).find((section: any) => section.content)?.content || ''
-    return <article class="note-row" key={note.id}><div><span class="meta">{note.sections?.length || 0} sections · updated {formatDate(note.updated_at)}</span><h2>{note.title}</h2>{preview && <p>{preview.slice(0, 140)}{preview.length > 140 ? '…' : ''}</p>}</div><div class="note-row-actions">{note.recommendation_id && <a href={`#/learn/notes?source=${encodeURIComponent(note.recommendation_id)}`}>Source context</a>}<button class="primary-action" onClick={() => { location.hash = `#/learn/notes?note=${encodeURIComponent(note.id)}` }}>Open note</button></div></article>
+    return <article class="note-row" key={note.id}><div><span class="meta">{note.sections?.length || 0} sections · updated {formatDate(note.updated_at)}</span><h2>{note.title}</h2>{preview && <p>{preview.slice(0, 140)}{preview.length > 140 ? '…' : ''}</p>}</div><div class="note-row-actions"><button class="primary-action" onClick={() => { location.hash = `#/learn/notes?note=${encodeURIComponent(note.id)}` }}>Open note</button></div></article>
   })}</div>{!visible.length && <Empty title="No matching note" body="Try a shorter title." />}</div>
 }
 
@@ -772,6 +903,14 @@ function ArtifactsPage() {
     return { id, files, html, pdf, markdown, primary, notebookUrl, qualityAssurance, metadata: primary.metadata || {} }
   })
   if (!pairs.length) return <Empty title="No files yet" body="Uploaded documents and generated reading companions will appear here." />
+  const sorted = [...pairs].sort((a, b) => String(b.primary.created_at).localeCompare(String(a.primary.created_at)))
+  const RECENT_COUNT = 5
+  const recent = sorted.slice(0, RECENT_COUNT)
+  const rest = sorted.slice(RECENT_COUNT)
+  const [showAll, setShowAll] = useState(false)
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+  const matches = (pair: any) => !q || `${pair.metadata.source_title || ''} ${pair.metadata.source_url || ''}`.toLowerCase().includes(q)
   const process = async (file: any) => { setWorking(file.id); setStatus('Asking Hermes to extract the full bilingual note…'); try { const result = await api<{ status: string }> (`/artifacts/${file.id}/process`, { method: 'POST' }); setStatus(result.status === 'retry' ? 'Extraction retry queued.' : 'Extraction queued.'); reload() } catch (processError: any) { setStatus(processError.message) } finally { setWorking('') } }
   const remove = async (pair: any) => {
     const files = pair.files
@@ -1840,6 +1979,15 @@ Never:
     }
   }
 
+const domain = (url?: string) => { try { return new URL(url || '').hostname.replace(/^www\./, '') } catch { return '' } }
+  const renderPair = (pair: any, featured: boolean) => {
+    const title = pair.metadata.source_title || pair.primary.filename?.replace(/\.(html?|pdf|md)$/i, '') || 'Untitled file'
+    const href = (file: any) => file.legacy ? `/html/download/${file.id}` : /markdown|text\/plain/i.test(file.media_type || '') || /\.md$/i.test(file.filename || '') ? `/artifacts/${file.id}/view` : `/artifacts/${file.id}`
+    const qa = pair.qualityAssurance
+    const qaLabel = qa.status === 'repair_required' ? 'Needs repair' : qa.status === 'passed' && pair.html && qa.score != null ? `Verified ${qa.score}/10` : qa.status === 'passed' && qa.video_format === 'cinematic' ? 'Verified cinematic' : null
+    const sub = featured && pair.metadata.source_url ? domain(pair.metadata.source_url) : (pair.metadata.source_url || `${pair.files.length} ${pair.files.length === 1 ? 'file' : 'linked files'}`)
+    return <article class={featured ? 'artifact-card' : undefined}><div class="artifact-kind"><span>{artifactKind(pair)}</span><small>{formatDate(pair.primary.created_at)}</small></div><div class="artifact-copy"><h3>{title}</h3><p>{sub}</p></div><div class="artifact-actions">{qaLabel && <span class={`qa-label qa-${qa.status}`}>{qaLabel}</span>}{pair.metadata.source_url && <a href={pair.metadata.source_url} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url, video_title: title }, pair.metadata.source_url, 'original')}>Original</a>}{pair.html && <a class="primary-action" href={href(pair.html)} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url || href(pair.html), video_title: title }, href(pair.html), 'html', pair.html.id)}>Read</a>}{pair.markdown && !pair.html && <a class="primary-action" href={href(pair.markdown)} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url || href(pair.markdown), video_title: title }, href(pair.markdown), 'html', pair.markdown.id)}>Read</a>}{pair.pdf && <a href={href(pair.pdf)} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url || href(pair.pdf), video_title: title }, href(pair.pdf), 'pdf', pair.pdf.id)}>PDF</a>}{pair.notebookUrl && <a class="nblm-link" href={pair.notebookUrl} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url || pair.notebookUrl, video_title: title }, pair.notebookUrl, 'notebooklm')}>NBLM</a>}{pair.files.length > 0 && <button class="artifact-remove" disabled={working === pair.id} onClick={() => remove(pair)}>Remove</button>}</div></article>
+  }
   return <div class="artifact-library">
     <div class="artifact-library-head">
       <div>
@@ -1847,13 +1995,9 @@ Never:
         <span>Reading files and companions stay together.</span>
       </div>
     </div>
-    <div class="artifact-table">{pairs.map((pair) => {
-      const title = pair.metadata.source_title || pair.primary.filename?.replace(/\.(html?|pdf|md)$/i, '') || 'Untitled file'
-      const href = (file: any) => file.legacy ? `/html/download/${file.id}` : /markdown|text\/plain/i.test(file.media_type || '') || /\.md$/i.test(file.filename || '') ? `/artifacts/${file.id}/view` : `/artifacts/${file.id}`
-      const qa = pair.qualityAssurance
-      const qaLabel = qa.status === 'repair_required' ? 'Needs repair' : qa.status === 'passed' && pair.html && qa.score != null ? `Verified ${qa.score}/10` : qa.status === 'passed' && qa.video_format === 'cinematic' ? 'Verified cinematic' : null
-      return <article><div class="artifact-kind"><span>{artifactKind(pair)}</span><small>{formatDate(pair.primary.created_at)}</small></div><div class="artifact-copy"><h3>{title}</h3><p>{pair.metadata.source_url || `${pair.files.length} ${pair.files.length === 1 ? 'file' : 'linked files'}`}</p></div><div class="artifact-actions">{qaLabel && <span class={`qa-label qa-${qa.status}`}>{qaLabel}</span>}{pair.metadata.source_url && <a href={pair.metadata.source_url} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url, video_title: title }, pair.metadata.source_url, 'original')}>Original</a>}{pair.html && <a class="primary-action" href={href(pair.html)} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url || href(pair.html), video_title: title }, href(pair.html), 'html', pair.html.id)}>Read</a>}{pair.markdown && !pair.html && <a class="primary-action" href={href(pair.markdown)} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url || href(pair.markdown), video_title: title }, href(pair.markdown), 'html', pair.markdown.id)}>Read</a>}{pair.pdf && <a href={href(pair.pdf)} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url || href(pair.pdf), video_title: title }, href(pair.pdf), 'pdf', pair.pdf.id)}>PDF</a>}{pair.notebookUrl && <a class="nblm-link" href={pair.notebookUrl} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url || pair.notebookUrl, video_title: title }, pair.notebookUrl, 'notebooklm')}>NBLM</a>}{pair.files.length > 0 && <button class="artifact-remove" disabled={working === pair.id} onClick={() => remove(pair)}>Remove</button>}</div></article>
-    })}</div>{status && <output class="sticky-status">{status}</output>}
+    {recent.filter(matches).length > 0 && <section class="artifact-recent"><div class="section-head"><h2>Latest</h2><span>Your 5 most recent reading files</span></div><div class="artifact-cards">{recent.filter(matches).map((pair) => renderPair(pair, true))}</div></section>}
+    {rest.length > 0 && <section class="artifact-archive"><button class="artifact-archive-toggle" onClick={() => setShowAll((open) => !open)}>{showAll ? 'Collapse all files' : `Show all files (${rest.length})`}<span class="artifact-archive-chevron">{showAll ? '▾' : '▸'}</span></button>{showAll && <><div class="artifact-search-wrap"><input class="artifact-search" aria-label="Search files" type="search" placeholder="Search files…" value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} /></div>{query.trim() && rest.filter(matches).length === 0 ? <div class="artifact-none">No files match “{query}”.</div> : <div class="artifact-table">{rest.filter(matches).map((pair) => renderPair(pair, false))}</div>}</>}</section>}
+    {status && <output class="sticky-status">{status}</output>}
   </div>
 }
 

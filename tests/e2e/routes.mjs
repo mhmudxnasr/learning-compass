@@ -175,6 +175,18 @@ if (await page.locator('.focus-desk').count() !== 1) throw new Error('Momentum m
 if (await page.locator('.momentum-pulse').count()) throw new Error('Momentum must not surface the old streak/date strip')
 if (await page.locator('.queue-manifest').count()) throw new Error('Momentum must not duplicate the Queue or dump every file inline')
 
+await page.goto(`${baseUrl}/#/learn/files`, { waitUntil: 'networkidle' })
+if (artifacts.artifacts.length === 0) {
+  await page.locator('.empty-state').waitFor({ state: 'visible', timeout: 15000 })
+} else {
+  await page.locator('.artifact-library').waitFor({ state: 'visible', timeout: 15000 })
+  if (!(await page.locator('.artifact-library').innerText()).includes('Reading files and companions stay together.')) throw new Error('files page is missing the library header')
+  const recentCards = await page.locator('.artifact-card').count()
+  if (recentCards > 5) throw new Error(`files recent shelf must cap at 5 cards, got ${recentCards}`)
+  const filesToggle = page.locator('.artifact-archive-toggle')
+  if (await filesToggle.count() === 1 && !(await filesToggle.innerText()).includes('Show all files')) throw new Error('files archive is not collapsed behind a toggle')
+}
+
 const captured = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hermes-e2e', title: 'Hermes automation test' }) })
 const preRecord = await requestJson(`/capture/${captured.id}/record`)
 if (!preRecord.item) throw new Error('source record API did not return the captured source')
@@ -237,11 +249,7 @@ if (await page.getByText('Handwritten margin note').count()) throw new Error('No
 await page.goto(`${baseUrl}/#/learn/notes?note=e2e_source_note`, { waitUntil: 'networkidle' })
 await page.locator('.note-document').waitFor({ state: 'visible', timeout: 15000 })
 await page.getByRole('heading', { name: 'Foundation' }).waitFor({ state: 'visible', timeout: 15000 })
-await page.locator(`.note-sidebar a[href="#/learn/notes?source=${captured.id}"]`).waitFor({ state: 'attached', timeout: 15000 })
-if (await page.locator(`.note-sidebar a[href="#/learn/notes?source=${captured.id}"]`).count() !== 1) throw new Error('note reader is missing the source-context link')
-await page.locator(`.note-sidebar a[href="#/learn/notes?source=${captured.id}"]`).click()
-await page.waitForLoadState('networkidle')
-await page.locator('.source-record-page').waitFor({ state: 'visible', timeout: 15000 })
+if (await page.locator('.note-sidebar a[href*="/learn/notes?source="]').count() !== 0) throw new Error('note reader must not show a source-context link')
 const draft = (await requestJson('/srs/drafts')).drafts.find((item) => item.id)
 if (!draft || draft.status !== 'draft') throw new Error('rating 7 did not create an editable card draft')
 await requestJson(`/srs/drafts/${draft.id}/approve`, { method: 'POST' })
