@@ -42,8 +42,16 @@ app.get('/', async (c) => {
 })
 
 app.get('/queue', async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.priority_rank,m.progress_percent,m.estimated_minutes,m.tags_json,m.started_at,m.last_opened_at,(SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND t.status NOT IN ('verified','abandoned') ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 1) thread_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all()
-  return c.json({ items: rows.results || [], count: rows.results?.length || 0, cap: 5 })
+  const rows = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.priority_rank,m.progress_percent,m.estimated_minutes,m.tags_json,m.started_at,m.last_opened_at,o.predicted_score,o.predicted_confidence,o.predicted_components_json,(SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND t.status NOT IN ('verified','abandoned') ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 1) thread_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN recommendation_outcomes o ON o.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all()
+  // Surface Compass's persisted prediction on each row so the queue can show
+  // why a source was chosen (score, confidence, feature breakdown) — the data
+  // already lives in recommendation_outcomes from the pick.
+  const items = (rows.results || []).map((row: any) => {
+    let breakdown: any = null
+    try { breakdown = row.predicted_components_json ? JSON.parse(row.predicted_components_json) : null } catch {}
+    return { ...row, compass: row.predicted_score != null ? { score: Number(row.predicted_score), confidence: Number(row.predicted_confidence ?? 0), breakdown } : null }
+  })
+  return c.json({ items, count: items.length, cap: 5 })
 })
 
 app.get('/feeds', async (c) => {
@@ -114,16 +122,17 @@ app.delete('/feeds/:id', async (c) => {
 })
 
 app.post('/:id/triage', async (c) => {
-  const body: { action?: 'queue' | 'exclude'; thread_id?: string; override_queue_cap?: boolean } = await c.req.json().catch(() => ({}))
+  const body: { action?: 'queue' | 'exclude'; thread_id?: string; override_queue_cap?: boolean; reason?: string } = await c.req.json().catch(() => ({}))
   const item = await c.env.DB.prepare(`SELECT id,video_url,video_title FROM recommendations WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
   if (body.action === 'exclude') {
+    const exclusionReason = String(body.reason || 'inbox_triage').trim().slice(0, 120) || 'inbox_triage'
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE recommendations SET status='rejected',updated_at=datetime('now') WHERE id=?`).bind(c.req.param('id')),
       c.env.DB.prepare(`UPDATE recommendation_meta SET learning_state='excluded',updated_at=datetime('now') WHERE recommendation_id=?`).bind(c.req.param('id')),
-      c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,branch_id,outcome_status,evaluated_at)
-        SELECT ?,r.id,r.creator,r.content_type,m.branch_id,'rejected',datetime('now') FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?
-        ON CONFLICT(recommendation_id) DO UPDATE SET outcome_status='rejected',evaluated_at=datetime('now')`).bind(`outcome_${c.req.param('id')}`, c.req.param('id')),
+      c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,branch_id,outcome_status,rejection_reason,evaluated_at)
+        SELECT ?,r.id,r.creator,r.content_type,m.branch_id,'rejected',?,datetime('now') FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?
+        ON CONFLICT(recommendation_id) DO UPDATE SET outcome_status='rejected',rejection_reason=COALESCE(excluded.rejection_reason,recommendation_outcomes.rejection_reason),evaluated_at=datetime('now')`).bind(`outcome_${c.req.param('id')}`, exclusionReason, c.req.param('id')),
     ])
     await recordRecommendationSignal(c.env.DB, {
       idempotencyKey: `capture-excluded:${c.req.param('id')}`,
@@ -133,7 +142,7 @@ app.post('/:id/triage', async (c) => {
       signalScope: 'none',
       explicit: false,
       origin: 'administrative_exclusion',
-      payload: { surface: 'inbox_triage' },
+      payload: { surface: 'inbox_triage', rejection_reason: exclusionReason },
     })
     try { await activateWaitingRun(c.env.DB) } catch {}
     return c.json({ ok: true, state: 'excluded' })

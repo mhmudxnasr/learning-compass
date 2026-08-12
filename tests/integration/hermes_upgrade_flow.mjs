@@ -9,15 +9,19 @@ const persistDir = mkdtempSync(join(tmpdir(), 'learning-compass-hermes-test-'))
 let server
 
 try {
-  for (const args of [
-    ['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--file', 'schema.sql'],
-    ['d1', 'migrations', 'apply', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir],
-  ]) {
+  const run = async (args) => {
     const child = spawn(wrangler, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    let output = ''
+    child.stdout.on('data', (chunk) => { output += chunk })
+    child.stderr.on('data', (chunk) => { output += chunk })
     const status = await new Promise((resolve) => child.on('close', resolve))
-    if (status !== 0) throw new Error(`D1 setup failed (${status})`)
+    if (status !== 0) throw new Error(`D1 setup failed (${status}): ${output.slice(0, 400)}`)
   }
+  await run(['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--file', 'schema.sql'])
+  await run(['d1', 'migrations', 'apply', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir])
   server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8789'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true })
+  server.stdout.on('data', () => {})
+  server.stderr.on('data', () => {})
   for (let attempt = 0; attempt < 60; attempt++) {
     try { if ((await fetch('http://127.0.0.1:8789/health')).ok) break } catch {}
     if (attempt === 59) throw new Error('Worker did not start')
@@ -26,6 +30,16 @@ try {
   const req = async (path, options = {}) => {
     const response = await fetch(`http://127.0.0.1:8789${path}`, { headers: { 'content-type': 'application/json' }, ...options })
     return { status: response.status, body: await response.json() }
+  }
+  const query = async (command) => {
+    const child = spawn(wrangler, ['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--command', command], { stdio: ['ignore', 'pipe', 'pipe'] })
+    let output = ''
+    child.stdout.on('data', (chunk) => { output += chunk })
+    child.stderr.on('data', (chunk) => { output += chunk })
+    const status = await new Promise((resolve) => child.on('close', resolve))
+    if (status !== 0) throw new Error(`D1 query failed (${status}): ${output.slice(0, 400)}`)
+    const json = JSON.parse(output.slice(output.indexOf('{'), output.lastIndexOf('}') + 1))
+    return json
   }
 
   const captureOptions = { method: 'POST', headers: { 'content-type': 'application/json', 'x-client-mutation-id': 'integration-capture-1' }, body: JSON.stringify({ source: 'https://example.com/integration-source', title: 'Integration source' }) }
@@ -39,6 +53,9 @@ try {
   assert.equal(record.body.item.id, captured.body.id)
   const excluded = await req(`/capture/${captured.body.id}/triage`, { method: 'POST', body: JSON.stringify({ action: 'exclude' }) })
   assert.equal(excluded.status, 200)
+  // Phase 1 observability: inbox-triage exclusions must record a learnable reason.
+  const excludedOutcome = (await query(`SELECT rejection_reason FROM recommendation_outcomes WHERE recommendation_id='${captured.body.id}'`)).results[0]
+  assert.ok(excludedOutcome && excludedOutcome.rejection_reason, 'triage exclusion should record a rejection_reason')
 
   const analytics = await req('/analytics/hermes')
   assert.equal(analytics.status, 200)

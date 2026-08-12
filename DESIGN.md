@@ -34,6 +34,10 @@ Compass feedback must visually separate “Not now” from “Bad fit.” Not no
 
 Settings → System uses a restrained cloud-console layout: compact service status, the exact active schedule, explicitly on-demand workflows, storage ownership, safety boundaries, and searchable operation rows. It is a descriptive control plane, not a raw mutation console; secrets and infrastructure-only controls never render.
 
+## Branch Deck
+
+Branch Deck is a review desk, not a card game. A two-column list + inspector: the left side is a bounded decision queue (waiting-on-you rows with a one-line state, round, category, and evidence count, then a decided section), and the right is a sticky inspector showing the selected branch's description, topics, contrast boundary, and real evidence (mapped sources, units, attention share, SRS load, recall) before an explicit action pad. Every row carries live evidence from the map; nothing is a guess. Actions are labeled buttons (Keep / Prune / Promote / Hold), not gestures; Undo is always available and reverses the system side effects, not just the row. Surprise suggestions arrive as reviewable candidate rows from a grounded server endpoint and write nothing until Add. A compact profile-effect strip shows what changed on the map and Compass.
+
 ## Atlas
 
 Atlas is the immersive exception to compact management layouts. Its default state shows only major R1 branches as freely navigable organic constellations. Deeper rounds expand on demand, unrelated nodes fade during focus, and subtle low-chroma cluster colors aid orientation in both themes. Search, zoom, overview, and selection inspection remain visible alternatives to gestures.

@@ -57,6 +57,15 @@ try {
   assert.equal(declinedRecord.body.sessions[0].status, 'returned')
   assert.equal(declinedRecord.body.notes[0].sections.find((section) => section.section_key === 'reaction').content, 'Too shallow for where I am now.')
   assert.ok(declinedRecord.body.jobs.some((job) => job.job_type === 'process_feedback'))
+  // Observability (Phase 1): the rejection must now be learnable — a non-NULL
+  // rejection_reason on the outcome and exposure context on the feedback row.
+  const parseJson = (output) => JSON.parse(output.slice(output.indexOf('{'), output.lastIndexOf('}') + 1))
+  const declinedOutcome = parseJson(await query(`SELECT rejection_reason FROM recommendation_outcomes WHERE recommendation_id='rec_decline'`)).results[0]
+  assert.equal(declinedOutcome.rejection_reason, 'too_shallow')
+  const declinedFeedback = parseJson(await query(`SELECT exposure_json FROM compass_feedback WHERE pick_id='pick_decline'`)).results[0]
+  const declinedExposure = JSON.parse(declinedFeedback.exposure_json)
+  assert.equal(declinedExposure.engine, 'v1')
+  assert.equal(declinedExposure.lane, 'fit')
 
   await query(`
     INSERT INTO recommendations (id,video_title,creator,content_type,video_url,status,dedup_key) VALUES ('rec_complete','Completed source','Creator B','lecture','https://example.org/completed','active','completed-source');
@@ -101,16 +110,17 @@ try {
     method: 'POST',
     body: JSON.stringify({
       request_id: 'request_context_brief',
+      intent: 'deepen_thread',
       strategy: 'fit',
       thread_id: compassThread.body.id,
       candidates: [
-        { canonical_url: 'https://example.com/?context-brief=winner', title: 'Context brief primary research', creator: 'Research Lab', format: 'article', source_class: 'research', evidence: 'The original research explains its method, evidence, limitations, and practical implication.', context_brief: contextBrief },
-        { canonical_url: 'https://example.com/?context-brief=alternate-one', title: 'Context brief alternate one', creator: 'Writer One', format: 'article', source_class: 'blog' },
-        { canonical_url: 'https://example.com/?context-brief=alternate-two', title: 'Context brief alternate two', creator: 'Writer Two', format: 'article', source_class: 'blog' },
+        { canonical_url: 'https://example.com/?context-brief=winner', title: 'Context brief primary research', creator: 'Research Lab', format: 'article', source_class: 'research', evidence: [{ claim: 'The original research explains its method, evidence, limitations, and practical implication.', source_url: 'https://example.com/?context-brief=winner' }], editorial_review: { verdict: 'recommend', why_worth_time: 'It directly explains the mechanism with evidence and limitations.', unique_value: 'It connects the mechanism to a practical learning decision.', depth: 'substantive' }, context_brief: contextBrief },
+        { canonical_url: 'https://example.com/?context-brief=alternate-one', title: 'Context brief alternate one', creator: 'Writer One', format: 'article', source_class: 'blog', evidence: [{ claim: 'This source provides a second explanation of the mechanism and its limits.', source_url: 'https://example.com/?context-brief=alternate-one' }], editorial_review: { verdict: 'recommend', why_worth_time: 'It offers a useful second explanation of the mechanism.', unique_value: 'It provides a contrasting practical example for comparison.', depth: 'substantive' } },
+        { canonical_url: 'https://example.com/?context-brief=alternate-two', title: 'Context brief alternate two', creator: 'Writer Two', format: 'article', source_class: 'blog', evidence: [{ claim: 'This source presents a distinct account of the mechanism and supporting evidence.', source_url: 'https://example.com/?context-brief=alternate-two' }], editorial_review: { verdict: 'recommend', why_worth_time: 'It presents a distinct account worth comparing.', unique_value: 'It adds another evidence-backed angle to the thread.', depth: 'substantive' } },
       ],
     }),
   })
-  assert.equal(submitted.status, 200)
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.body))
   assert.ok(submitted.body.recommendation_id || submitted.body.reviewable_weak_pick)
   const submittedPick = await request('/compass/pick')
   assert.equal(submittedPick.status, 200)
@@ -140,6 +150,16 @@ try {
   const queue = await request('/capture/queue')
   assert.equal(queue.body.items.find((item) => item.id === acceptedWeak.body.recommendation_id).context_brief, 'What it is: a compact source review.\n• Covers the core argument and supporting evidence.\n• Expect a cautious, practical overview.')
   assert.equal((await request('/compass/pick')).body.pick.status, 'started')
+
+  // Legacy/manual rows must not make the singular Compass read fail because a
+  // receipt column contains malformed JSON.
+  await query(`
+    INSERT INTO compass_picks (id,request_id,strategy,status,candidate_count,rationale_json,shadow_json) VALUES ('pick_malformed','request_malformed','fit','abstained',0,'not-json','[broken');
+  `)
+  const malformed = await request('/compass/pick')
+  assert.equal(malformed.status, 200, JSON.stringify(malformed.body))
+  assert.deepEqual(malformed.body.pick.rationale, {})
+  assert.deepEqual(malformed.body.pick.shadow, {})
   console.log('Compass feedback state transitions integration passed')
 } finally {
   if (server && server.exitCode === null) {

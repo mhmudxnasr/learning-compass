@@ -11,21 +11,55 @@ const all = async (statement: D1PreparedStatement) => (await statement.all<any>(
 const allOr = async (statement: D1PreparedStatement) => { try { return await all(statement) } catch { return [] } }
 
 async function engineReadiness(DB: D1Database) {
-  const [setting, shadow, outcomes, lanes, invalid] = await Promise.all([
+  const [setting, shadow, outcomes, lanes, invalid, shadowPicks] = await Promise.all([
     DB.prepare(`SELECT value_json,updated_at FROM user_settings WHERE setting_key='recommendation_engine'`).first<any>(),
-    DB.prepare(`SELECT COUNT(*) count,SUM(CASE WHEN json_extract(shadow_json,'$.disagreement')=1 THEN 1 ELSE 0 END) disagreements FROM compass_picks WHERE engine_version='v1' AND objective_version='learning_value_v2'`).first<any>(),
+    DB.prepare(`SELECT COUNT(*) count,SUM(CASE WHEN json_valid(shadow_json) AND json_extract(shadow_json,'$.disagreement')=1 THEN 1 ELSE 0 END) disagreements FROM compass_picks WHERE engine_version='v1' AND objective_version='learning_value_v2'`).first<any>(),
     DB.prepare(`SELECT COUNT(*) count FROM recommendation_training_outcomes_v2`).first<any>(),
     DB.prepare(`SELECT p.strategy,COUNT(DISTINCT o.recommendation_id) count FROM recommendation_training_outcomes_v2 o JOIN compass_picks p ON p.recommendation_id=o.recommendation_id GROUP BY p.strategy`).all<any>(),
-    DB.prepare(`SELECT COUNT(*) count FROM compass_picks WHERE objective_version='learning_value_v2' AND json_extract(shadow_json,'$.v2.evidence_status')='invalid'`).first<any>(),
+    DB.prepare(`SELECT COUNT(*) count FROM compass_picks WHERE objective_version='learning_value_v2' AND shadow_json IS NOT NULL AND json_valid(shadow_json) AND json_extract(shadow_json,'$.v2.evidence_status')='invalid'`).first<any>(),
+    DB.prepare(`SELECT p.shadow_json,o.outcome_status FROM compass_picks p LEFT JOIN recommendation_outcomes o ON o.recommendation_id=p.recommendation_id WHERE p.shadow_json IS NOT NULL AND p.shadow_json != '{}' AND json_valid(p.shadow_json)`).all<any>(),
   ])
   let resolved: any = { mode: 'shadow', engine_version: 'v2', objective_version: LEARNING_OBJECTIVE_VERSION }
   try { resolved = { ...resolved, ...JSON.parse(setting?.value_json || '{}') } } catch {}
   const laneCounts = Object.fromEntries((lanes.results || []).map((row: any) => [row.strategy, Number(row.count || 0)]))
+
+  // Canary gate (F3): v2 must discriminate between consumed and rejected
+  // outcomes strictly better than v1 on the shadow corpus before it is served.
+  // Both read-models are logged on every pick, so this is free A/B data.
+  const discrimination = (() => {
+    const consumed = { v1: [] as number[], v2: [] as number[] }
+    const rejected = { v1: [] as number[], v2: [] as number[] }
+    for (const row of shadowPicks.results || []) {
+      let shadow: any = {}
+      try { shadow = JSON.parse(row.shadow_json) } catch { continue }
+      const v1 = shadow.v1 && typeof shadow.v1 === 'object' && shadow.v1.score != null ? Number(shadow.v1.score) : null
+      const v2 = shadow.v2 && typeof shadow.v2 === 'object' && shadow.v2.score != null ? Number(shadow.v2.score) : null
+      if (v1 == null || v2 == null) continue
+      if (shadow.v1.abstention_reason) continue
+      if (row.outcome_status === 'consumed') { consumed.v1.push(v1); consumed.v2.push(v2) }
+      else if (row.outcome_status === 'rejected') { rejected.v1.push(v1); rejected.v2.push(v2) }
+    }
+    const mean = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null
+    const gap = (engine: 'v1' | 'v2') => {
+      const consumedMean = mean(consumed[engine])
+      const rejectedMean = mean(rejected[engine])
+      return consumedMean != null && rejectedMean != null ? consumedMean - rejectedMean : null
+    }
+    const v1Gap = gap('v1')
+    const v2Gap = gap('v2')
+    const resolvedWithShadow = consumed.v1.length + rejected.v1.length
+    // Strictly better: v2's gap is positive and larger than v1's, on a corpus
+    // large enough that a single pick can't drive the verdict.
+    const passed = resolvedWithShadow >= 8 && v2Gap != null && v1Gap != null && v2Gap > v1Gap && v2Gap > 0
+    return { observed: resolvedWithShadow, required: 8, v1_gap: v1Gap == null ? null : Math.round(v1Gap * 1000) / 1000, v2_gap: v2Gap == null ? null : Math.round(v2Gap * 1000) / 1000, passed }
+  })()
+
   const gates = {
     global_learning_outcomes: { observed: Number(outcomes?.count || 0), required: 20, passed: Number(outcomes?.count || 0) >= 20 },
     lane_learning_outcomes: { observed: laneCounts, required_each: 8, passed: ['fit','bridge','challenge'].every((lane) => Number(laneCounts[lane] || 0) >= 8) },
     shadow_decisions: { observed: Number(shadow?.count || 0), required: 10, passed: Number(shadow?.count || 0) >= 10, disagreements: Number(shadow?.disagreements || 0) },
     invalid_winners: { observed: Number(invalid?.count || 0), required: 0, passed: Number(invalid?.count || 0) === 0 },
+    v2_outperforms_v1: discrimination,
   }
   return { setting: resolved, updated_at: setting?.updated_at || null, gates, ready: Object.values(gates).every((gate: any) => gate.passed) }
 }

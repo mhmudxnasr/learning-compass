@@ -267,6 +267,19 @@ app.post('/push', async (c) => {
       const row = await DB.prepare(`SELECT id FROM recommendations WHERE dedup_key=?`).bind(dedupKey).first<{ id: string }>()
       if (row) await DB.prepare(`INSERT OR IGNORE INTO recommendation_meta (recommendation_id,learning_state,source_metadata_json,updated_at) VALUES (?,'inbox',?,datetime('now'))`).bind(row.id, JSON.stringify({ imported: true })).run()
     }
+
+    // Incremental FTS5: index pushed recommendations immediately
+    for (const item of items) {
+      if (!item.video_title || !item.video_url) continue
+      const ftsDedup = deriveDedupKey({ video_url: normalizeUrlForDedup(item.video_url), video_title: item.video_title, content_type: item.content_type })
+      const ftsRow = await DB.prepare(`SELECT id,video_title,creator,why_this FROM recommendations WHERE dedup_key=?`).bind(ftsDedup).first<any>()
+      if (ftsRow) {
+        try {
+          const ftsText = [ftsRow.video_title, ftsRow.creator, ftsRow.why_this].filter(Boolean).join(' ')
+          await DB.prepare("INSERT OR REPLACE INTO search_idx(source, ref_id, text) VALUES ('rec', ?, ?)").bind(ftsRow.id, ftsText).run()
+        } catch { /* FTS best-effort */ }
+      }
+    }
   } catch (err) {
     return c.json(safeError('Push failed')(err), 500)
   }
@@ -348,6 +361,7 @@ app.post('/action', async (c) => {
            user_review = COALESCE(?, user_review),
            consumed_date = COALESCE(?, consumed_date),
            notebook_url = COALESCE(?, notebook_url),
+           activated_at = CASE WHEN status != 'active' AND ? = 'active' THEN datetime('now') ELSE activated_at END,
            updated_at = datetime('now')
        WHERE id = ?`
     ).bind(
@@ -357,6 +371,7 @@ app.post('/action', async (c) => {
       body.user_review || null,
       consumedDate,
       body.notebook_url || null,
+      body.status,
       id
     ))
     for (let i = 0; i < stmts.length; i += 50) await DB.batch(stmts.slice(i, i + 50))
@@ -382,11 +397,12 @@ app.post('/action', async (c) => {
     }
     if (body.status === 'rejected') {
       for (const id of ids) {
-        await DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,branch_id,outcome_status,evaluated_at)
-          SELECT ?,r.id,r.creator,r.content_type,m.branch_id,'rejected',datetime('now') FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?
-          ON CONFLICT(recommendation_id) DO UPDATE SET outcome_status='rejected',evaluated_at=datetime('now')`).bind(`outcome_${id}`, id).run()
         const explicitFit = body.feedback_kind === 'bad_fit' || Boolean(body.reason_code)
-        const classified = classifyRecommendationFeedback(body.feedback_kind === 'not_now' ? 'dismissed' : 'declined', [body.reason_code || (explicitFit ? 'bad_fit' : 'other')])
+        const rejectionReason = body.reason_code || (explicitFit ? 'bad_fit' : 'administrative_exclusion')
+        await DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,branch_id,outcome_status,rejection_reason,evaluated_at)
+          SELECT ?,r.id,r.creator,r.content_type,m.branch_id,'rejected',?,datetime('now') FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?
+          ON CONFLICT(recommendation_id) DO UPDATE SET outcome_status='rejected',rejection_reason=COALESCE(excluded.rejection_reason,recommendation_outcomes.rejection_reason),evaluated_at=datetime('now')`).bind(`outcome_${id}`, rejectionReason, id).run()
+        const classified = classifyRecommendationFeedback(body.feedback_kind === 'not_now' ? 'dismissed' : 'declined', [rejectionReason])
         await recordRecommendationSignal(DB, {
           idempotencyKey: `recommendation-action:${id}:rejected:${body.reason_code || body.feedback_kind || 'administrative'}`,
           eventType: explicitFit ? classified.eventType : 'administrative_exclusion',
@@ -395,7 +411,7 @@ app.post('/action', async (c) => {
           reasonCode: explicitFit ? classified.reasonCodes[0] : null,
           explicit: explicitFit,
           origin: explicitFit ? 'recommendation_feedback' : 'administrative_exclusion',
-          payload: { feedback_kind: body.feedback_kind || 'administrative' },
+          payload: { feedback_kind: body.feedback_kind || 'administrative', rejection_reason: rejectionReason },
         })
       }
     }

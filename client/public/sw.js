@@ -1,4 +1,4 @@
-const CACHE = 'taste-map-scholar-v4'
+const CACHE = 'taste-map-scholar-v5'
 const DATA_CACHE = 'taste-map-data-v2'
 self.addEventListener('install', (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.add('/')).then(() => self.skipWaiting())))
 self.addEventListener('activate', (event) => event.waitUntil(Promise.all([self.clients.claim(), caches.keys().then((keys) => Promise.all(keys.filter((key) => ![CACHE, DATA_CACHE].includes(key)).map((key) => caches.delete(key))))])))

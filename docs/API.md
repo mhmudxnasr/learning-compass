@@ -124,6 +124,23 @@ Agent mutations reuse product validation, require `x-api-token` when configured,
 
 `GET /brain/profile` includes the compatibility profile plus typed `profile_assertions`, reversible `profile_revisions`, and `profile_health`. `GET /brain/profile/intelligence` returns only that typed model. `PUT /brain/profile/assertions/:key` creates or replaces any assertion with optimistic `target_version`; `POST /brain/profile/revisions/:id/revert` undoes a revision. `POST /brain/profile` remains the editable compatibility API and mirrors supplied fields into explicit typed assertions.
 
+`GET /brain/branch-deck` returns the evidence-driven branch review deck — every branch row on the map with real evidence, no hardcoded candidates. Each item carries `state`, `consumed_count`, `mapped_count`, `unmapped_count`, `attention_share`, `priority_rank`, `last_consumed_at`, `learning_units`, `srs_due`, `recall_strength`, and a `reasons` summary from the learning-balance model. `is_candidate` marks `candidate|active|fresh` branches that are still waiting on a decision. Pruned branches stay visible (reversible), and mastered/excluded topics are surfaced as blocked rather than silently dropped.
+
+`POST /brain/branch-explanations` applies AGY-authored `{ explanations: [{ id, explanation }] }` as metadata-only descriptions to waiting `branch`/`leaf` nodes. It refuses decided branches and never changes status, priorities, taste signals, or learning evidence.
+
+`POST /brain/branch-swipe` accepts `keep`, `prune`, `priority`, `hold`, `add`, or `undo`. Every decision writes the canonical `tree_nodes` state plus one reversible typed `user.profile.branch_preference.*` assertion, a taste signal, and a `recent_signal` refresh; the response includes `profile_sync.synced_at`, `profile_sync.assertion_updated_at`, and a `context_refresh` note so the next `GET /compass/context` read includes the decision. Semantics are explicit and reversible:
+
+- `keep` → `status='love'`, strong positive taste (5.0), `topic_affinity` assertion.
+- `prune` → `status='pruned'` + `branch_exploration.is_pruned=1` + priority removed; taste set to a negative signal (0.5/5), assertion category `exclusion` (Compass blocks it). Prune never fabricates a `feedback_proposals` row as "applied" — it is a reversible user exclusion, not a confirmed taste fact.
+- `priority` → `status='love'` + one explicit renumbered priority list (this branch becomes rank 1 and the rest shift down, not an unbounded `MAX(rank)+1` tail), `priority` assertion.
+- `hold` → `status='held'`, neutral taste (2.5), weak `hypothesis` assertion (confidence 0.6).
+- `add` → inserts an `active` exploration branch with `meta_json`; no taste signal until evidence exists. Clients may send `description`, `leaves_sample`, `contrast_hook`, and `parent_id`, stored as branch metadata for future deck reads and agent context.
+- `undo` → reverses the tree row *and* the assertion/taste/priority side effects. When the previous decision was `add`, the branch did not exist before, so `restore_status: "candidate"` removes it entirely.
+
+`POST /brain/branch-suggest` returns review-before-commit new-branch candidates. Input `{ count?: 1..6, mode?: 'surprise'|'expand'|'bridge'|'challenge' }` (default `surprise`/3). The server builds a bounded grounding packet from `loadCompassContext` plus the live branch deck — loved/held/pruned branches, known categories, priority topics, blocked entities, strongest topic affinities, highest-trust creators, recent formats — and asks the LLM (the same `freeAi` wrapper as `/ai/suggest`) for concrete new branch candidates. Each returned item includes a decision brief: `{ id, label, round_label, super_category, description, plain_language, leaves_sample, contrast_hook, why_now, evidence_grounding, evidence_confidence, overlap_candidates, suggested_next_move, uncertainty_note, status:'candidate', source:'suggest', mode }`. **Nothing is written**: suggestions never mutate the map or profile; only the user's explicit `add` swipe commits them. If the LLM is unavailable the endpoint succeeds with an empty `suggestions` list and `fallback: true`, and the client offers the grounded copy-prompt instead.
+
+Branch preference is a curation signal only; agents must not infer mastery from it. The agent capability catalog exposes all three branch endpoints so Hermes can inspect and update the map through the same validated path as the UI.
+
 ## Settings and organization
 
 - `GET /settings` — stored preferences plus fully resolved defaults, including `profile_automation.mode=automatic` and `recommendation_engine.mode=shadow`; `PUT /settings/:key` updates one preference group.

@@ -122,11 +122,19 @@ test('Compass uses learning balance as a bounded branch signal', () => {
 })
 
 test('the product exposes purposeful distinct destinations', () => {
-  assert.equal(destinations.length, 19)
-  assert.equal(new Set(destinations.map((item) => item.key)).size, 19)
+  assert.equal(destinations.length, 20)
+  assert.equal(new Set(destinations.map((item) => item.key)).size, 20)
   assert.ok(destinations.every((item) => item.title && item.purpose && item.kind))
   assert.equal(destinationForPath('/curate/books')?.endpoint, '/recommendations/books')
   assert.equal(destinationForPath('/settings/system')?.endpoint, '/agent/system')
+})
+
+test('the Branch Deck is a profile-control desk over the real branch endpoint', () => {
+  const deck = destinations.find((item) => item.key === 'map.deck')
+  assert.ok(deck, 'map.deck destination exists')
+  assert.equal(deck.endpoint, '/brain/branch-deck')
+  assert.match(deck.purpose, /prune the old, add new/)
+  assert.match(deck.purpose, /grounded surprise/)
 })
 
 test('unknown hashes never fall back to an unrelated view', () => {

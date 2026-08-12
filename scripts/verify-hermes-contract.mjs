@@ -19,7 +19,7 @@ const missing = required.filter(([file]) => !existsSync(join(root, file))).map((
 if (missing.length) throw new Error(`Missing Hermes contract files: ${missing.join(', ')}`)
 
 const migrationNames = readdirSync(join(root, 'migrations')).filter((name) => /^\d+_.*\.sql$/.test(name)).sort()
-const expectedMigrations = ['0000_brain.sql', '0001_production_rebuild.sql', '0002_rss_feeds.sql', '0003_feedback_review.sql', '0004_discovery_engine.sql', '0005_recommendation_notebook_url.sql', '0006_hermes_upgrade.sql', '0007_sync_notifications.sql', '0008_compass_cascade.sql', '0009_proposal_dedup.sql', '0010_compass_queue_fill.sql', '0011_compass_adaptive_learning.sql', '0012_context_brief.sql', '0013_book_visual_chapters.sql', '0014_canonical_activity_ledger.sql', '0015_outcome_learning_integrity.sql', '0016_learning_integrity.sql', '0017_consolidation_workflows.sql', '0018_learning_threads.sql', '0019_learning_units.sql', '0020_mastery_evidence.sql', '0021_learning_outcomes_v2.sql', '0022_fsrs_and_thread_backfill.sql', '0023_intelligence_v2.sql', '0024_memory_context.sql', '0025_compass_contextual_reranking.sql', '0026_semantic_retrieval.sql']
+const expectedMigrations = ['0000_brain.sql', '0001_production_rebuild.sql', '0002_rss_feeds.sql', '0003_feedback_review.sql', '0004_discovery_engine.sql', '0005_recommendation_notebook_url.sql', '0006_hermes_upgrade.sql', '0007_sync_notifications.sql', '0008_compass_cascade.sql', '0009_proposal_dedup.sql', '0010_compass_queue_fill.sql', '0011_compass_adaptive_learning.sql', '0012_context_brief.sql', '0013_book_visual_chapters.sql', '0014_canonical_activity_ledger.sql', '0015_outcome_learning_integrity.sql', '0016_learning_integrity.sql', '0017_consolidation_workflows.sql', '0018_learning_threads.sql', '0019_learning_units.sql', '0020_mastery_evidence.sql', '0021_learning_outcomes_v2.sql', '0022_fsrs_and_thread_backfill.sql', '0023_intelligence_v2.sql', '0024_memory_context.sql', '0025_compass_contextual_reranking.sql', '0026_semantic_retrieval.sql', '0027_feedback_observability.sql', '0027_recommendation_quality_enhancements.sql', '0028_compass_thompson_pessimistic_prior.sql']
 if (migrationNames.length !== expectedMigrations.length || expectedMigrations.some((name, index) => migrationNames[index] !== name)) throw new Error(`Migration order drift: expected ${expectedMigrations.join(', ')}, found ${migrationNames.join(', ')}`)
 
 const checks = [
@@ -89,6 +89,11 @@ if (existsSync(localSkillsRoot)) {
     const body = readFileSync(file, 'utf8')
     if (!body.includes(`name: ${skill.name}`)) throw new Error(`Hermes skill name/path drift: ${skill.name}`)
     if (!body.includes('## Evolution handoff')) throw new Error(`Hermes skill lacks evolution handoff: ${skill.name}`)
+    if (skill.name === 'learning-compass-self-evolution') {
+      for (const needle of ['## Failure-to-repair protocol', 'Reproduce it with the smallest safe replay', 'Add a regression test or deterministic validator', 'Do not close a reproducible repairable failure as `no_change`']) {
+        if (!body.includes(needle)) throw new Error(`Hermes self-evolution repair protocol missing: ${needle}`)
+      }
+    }
   }
   for (const name of retiredSkills) {
     const stillActive = activeSkills.some((skill) => skill.name === name)

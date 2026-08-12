@@ -43,7 +43,8 @@
         "the current conversation provides evidence",
         "the improvement is reversible and narrowly scoped",
         "the relevant replay, test, or validator passes",
-        "confidence >= 0.9 or the same issue is observed twice"
+        "confidence >= 0.9 or the same issue is observed twice",
+        "a concrete failure uses the failure-to-repair protocol before no_change"
       ],
       "persist_to": "canonical source plus D1 self_improvement_runs receipt; hermes_memory only for durable profile or skill_procedure evidence",
       "skill_source_edits": "automatic_after_replay_or_test_gate_in_active_conversation",
@@ -55,6 +56,7 @@
     "recommendation_objective": "learning_value_v2: available rating 25%, explicit disposition 25%, strongest downstream evidence 50%; administrative exclusion and not_now are non-utility",
     "profile_automation": "automatic at confidence >= 0.8 with direct user statement or two evidence items; explicit assertion supersession requires direct contradiction or confidence >= 0.95 with three evidence items; all changes reversible",
     "notebooklm": "explicit feedback grounding or explicit Studio request only",
+    "visual_batches": "source-proportional visual_plan with distinct claims/placements, passing critic receipt, isolated draft workspaces, and serialized publication",
     "recommendations": "explicit request only; feedback never creates a recommendation",
     "ai_routing": {
       "basic_intro": "inbox",
@@ -93,6 +95,10 @@
     "POST /feedback/proposals/:id/apply": {"owner": "taste-mapper", "permission": "profile_v2_policy"},
     "POST /feedback/proposals/:id/revert": {"owner": "learning-compass-site-operator", "permission": "reversible_profile_change"},
     "GET /brain/profile/intelligence": {"owner": "learning-compass-operating-system", "permission": "read"},
+    "GET /brain/branch-deck": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "POST /brain/branch-explanations": {"owner": "learning-compass-site-operator", "permission": "explicit_branch_metadata_update"},
+    "POST /brain/branch-swipe": {"owner": "learning-compass-site-operator", "permission": "explicit_branch_decision"},
+    "POST /brain/branch-suggest": {"owner": "learning-compass-site-operator", "permission": "explicit_suggest_request"},
     "PUT /brain/profile/assertions/:key": {"owner": "learning-compass-site-operator", "permission": "explicit_profile_edit"},
     "POST /brain/profile/revisions/:id/revert": {"owner": "learning-compass-site-operator", "permission": "explicit_profile_undo"},
     "GET /compass/pick": {"owner": "taste-rec", "permission": "explicit_recommendation"},

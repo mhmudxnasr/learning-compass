@@ -165,7 +165,7 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
     source_quality: clamp(authority * .72 + shrunk(creatorSignal) * .28, 0),
     information_gain: clamp(novelty * .70 + (topicSignals.length ? .15 : .28), 0),
     novelty,
-    format_fit: clamp(shrunk(formatSignal) * .70 + .30 - Math.min(recentFormatCount, 3) * .08, 0),
+    format_fit: clamp(shrunk(formatSignal) * .70 + .30 - Math.min(recentFormatCount, 5) * .06 - (recentFormatCount >= 3 ? .10 : 0), 0),
     evidence_quality: evidenceQuality,
     thread_contribution: threadContribution,
     friction,

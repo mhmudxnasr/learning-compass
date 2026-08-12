@@ -52,6 +52,9 @@ const CAPABILITIES = [
   ['GET', '/brain/profile/intelligence', 'Read typed profile assertions, health, and reversible revisions.'],
   ['PUT', '/brain/profile/assertions/:key', 'Create or replace a typed profile assertion as an explicit user edit.'],
   ['POST', '/brain/profile/revisions/:id/revert', 'Undo one typed profile revision.'],
+  ['GET', '/brain/branch-deck', 'Read the evidence-driven branch review deck with real map evidence for every branch.'],
+  ['POST', '/brain/branch-swipe', 'Keep, prune, prioritize, hold, add, or undo a branch; every decision writes a reversible typed profile signal.'],
+  ['POST', '/brain/branch-suggest', 'Request review-before-commit new-branch ideas grounded in live Compass context; nothing is written.'],
   ['POST', '/brain/priorities', 'Replace priorities.'],
   ['GET', '/brain/tree', 'Read the knowledge tree.'],
   ['POST', '/brain/node', 'Create a knowledge node.'],
@@ -219,10 +222,26 @@ app.get('/context', async (c) => {
   try { priorities = await DB.prepare('SELECT rank, branch_id, label, rationale FROM priorities ORDER BY rank ASC LIMIT 10').all() } catch {}
   try { activeQueue = await DB.prepare("SELECT r.id, r.video_title, r.creator, r.content_type, r.why_this, r.video_url FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 5").all() } catch {}
   try {
+    // Neglected = no consumed source mapped to the branch (recommendation_meta.branch_id,
+    // the canonical linkage written by POST /recommendations/map) and no legacy
+    // dedup_key-prefix consumption in the window.
     neglected = await DB.prepare(`
-      SELECT t.id, t.label, t.super_category, MAX(r.consumed_date) as last_consumed
+      SELECT t.id, t.label, t.super_category,
+             MAX(COALESCE(dm.last_consumed, dr.last_consumed)) as last_consumed
       FROM tree_nodes t
-      LEFT JOIN recommendations r ON r.dedup_key LIKE (t.id || '-%') AND r.status = 'consumed'
+      LEFT JOIN (
+        SELECT m.branch_id AS branch, MAX(r.consumed_date) AS last_consumed
+        FROM recommendation_meta m
+        JOIN recommendations r ON r.id = m.recommendation_id AND r.status = 'consumed'
+        WHERE m.branch_id IS NOT NULL AND m.branch_id != ''
+        GROUP BY m.branch_id
+      ) dm ON dm.branch = t.id
+      LEFT JOIN (
+        SELECT r.dedup_key AS branch, MAX(r.consumed_date) AS last_consumed
+        FROM recommendations r
+        WHERE r.status = 'consumed' AND r.dedup_key IS NOT NULL AND r.dedup_key != ''
+        GROUP BY r.dedup_key
+      ) dr ON dr.branch = t.id OR dr.branch LIKE (t.id || '-%')
       WHERE t.type IN ('branch', 'category')
       GROUP BY t.id
       HAVING last_consumed IS NULL OR last_consumed < date('now', '-30 days')

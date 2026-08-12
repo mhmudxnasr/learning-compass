@@ -25,6 +25,7 @@ export const destinations: Destination[] = [
   ]),
   ...define('map', [
     ['atlas', 'Atlas', 'Explore the living topology of your knowledge.', 'graph', '/knowledge/graph'],
+    ['deck', 'Branch Deck', 'Review and tune your knowledge branches; prune the old, add new, and invite grounded surprise.', 'study', '/brain/branch-deck'],
     ['coverage', 'Coverage', 'See where attention, coverage, and retention are balanced or drifting.', 'analysis', '/learning/balance'],
   ]),
   ...define('learn', [

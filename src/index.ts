@@ -28,6 +28,7 @@ import { syncAllFeeds } from './services/rss'
 import notificationsApi from './api/notifications'
 import { deliverScheduledReminders } from './api/notifications'
 import compassApi from './api/compass'
+import analyticsApi from './api/analytics'
 import learningCoreApi from './api/learning-core'
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -192,6 +193,7 @@ app.route('/discovery', discoveryApi)
 app.route('/compass', compassApi)
 app.route('/notebooklm', notebooklmApi)
 app.route('/notifications', notificationsApi)
+app.route('/analytics', analyticsApi)
 app.route('/', intelligenceApi)
 app.route('/', productApi)
 

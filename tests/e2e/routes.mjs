@@ -8,7 +8,7 @@ import { join } from 'node:path'
 const workspaces = {
   today: ['momentum'],
   curate: ['queue','inbox','collections','archive','books'],
-  map: ['atlas','coverage'],
+  map: ['atlas','coverage','deck'],
   learn: ['files','notes','recall','activity'],
   insights: ['overview','taste','hermes'],
   settings: ['profile','preferences','data','system'],
@@ -108,11 +108,15 @@ for (const [workspace, views] of Object.entries(workspaces)) {
       const screenshot = await page.screenshot({ path: join(persistDir, 'momentum-desktop.png') })
       if (!screenshot.length) throw new Error('desktop visual smoke screenshot was empty')
     }
+    if (workspace === 'map' && view === 'deck') {
+      await page.locator('.branch-desk').waitFor({ state: 'visible', timeout: 15000 })
+      if (await page.locator('.deck-card').count()) throw new Error('map/deck still renders the old swipe card')
+    }
     count++
   }
 }
 
-if (count !== 19) throw new Error(`expected 19 routes, checked ${count}`)
+if (count !== 20) throw new Error(`expected 20 routes, checked ${count}`)
 const [capabilities, systemInventory] = await Promise.all([
   requestJson('/agent/capabilities'),
   requestJson('/agent/system'),

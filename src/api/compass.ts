@@ -4,6 +4,7 @@ import { createInboxCapture } from '../services/capture'
 import { candidateSetDiversity, canonicalizeUrl, decisionConfidence, DEFAULT_FEATURE_WEIGHTS, LEGACY_FEATURE_WEIGHTS, deriveCandidateFeatures, expectedLearningValue, frontierScore, laneExplorationBonus, pairwiseDominance, semanticSimilarity, serverScore, urlOf, type CompassContext, type SourceCheck } from '../compass-scoring'
 import { buildLearningBalance } from '../services/learning-balance'
 import { canonicalTasteIdentity } from './taste'
+import { computeDecayedAffinity } from '../domain'
 import { INTELLIGENCE_ENGINE_VERSION, LEARNING_OBJECTIVE_VERSION, canonicalCreatorKey, canonicalFormat, classifyRecommendationFeedback, normalizeCompassLane, structuredEvidenceStatus, type CompassLane } from '../intelligence-v2'
 import { recordRecommendationSignal, refreshRecommendationOutcome } from '../services/intelligence-v2'
 import { indexSemanticDocuments, semanticSourceMatches } from '../services/semantic-retrieval'
@@ -12,9 +13,29 @@ const app = new Hono<{ Bindings: Bindings }>()
 const STRATEGIES = new Set(['fit', 'bridge', 'challenge'])
 const REQUEST_INTENTS = new Set(['solve_problem', 'build_skill', 'deepen_thread', 'discover', 'queue_fill'])
 const QUEUE_CAP = 5
+// Abstention thresholds. These were originally tuned to v2's calibration
+// (score ≥ .68, confidence ≥ .67) but are applied to the v1 result while the
+// engine runs in shadow mode — v1 scores cluster ~.65–.76 with confidence
+// ~.56–.66, so the old thresholds abstained ~37% of the time on a model we're
+// about to discard. Until v2 accumulates ≥20 clean outcomes to re-base against,
+// serve on a looser floor so the loop can actually collect consumption data.
+// The `verified` gate (reachable URL + identity + structured evidence) remains
+// the real quality floor; score/confidence here only decide automatic vs. weak.
+const SERVING_SCORE_THRESHOLD = 0.60
+const SERVING_CONFIDENCE_THRESHOLD = 0.50
 type ScoredCandidate = { item: any; index: number; lane: CompassLane; features: ReturnType<typeof deriveCandidateFeatures> & { candidate_set_diversity?: number }; score: number; baseScore: number; expectedLearningValue: number; explorationBonus: number; dominance: number; diversity: number; uncertainty: number; sourceCheck: SourceCheck }
 type PreparedCandidate = { item: any; index: number; lane: CompassLane; features: ReturnType<typeof deriveCandidateFeatures>; url: string; sourceCheck: SourceCheck }
 type EngineMode = 'shadow' | 'v2'
+
+// Older/manual rows can contain empty or malformed JSON. A bad receipt must not
+// take the whole Momentum Compass card offline.
+const parseJsonObject = (value: unknown): Record<string, any> => {
+  if (typeof value !== 'string' || !value.trim()) return {}
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch { return {} }
+}
 
 const weakPickSourceIsQueueable = (candidate: any) => {
   let features: any = {}
@@ -43,13 +64,13 @@ const checkSource = async (item: any): Promise<SourceCheck> => {
   } catch { return { status: 'unknown' } }
 }
 
-const loadCompassContext = async (DB: D1Database, thread: any = null): Promise<CompassContext> => {
-  const [history, mastered, blacklist, trust, vectors, priorities, formats, recent, weights, balance, assertions, laneEvidence] = await Promise.all([
+export const loadCompassContext = async (DB: D1Database, thread: any = null): Promise<CompassContext> => {
+  const [history, mastered, blacklist, trust, vectors, priorities, formats, recent, weights, balance, assertions, laneEvidence, branchNodes, explored] = await Promise.all([
     DB.prepare(`SELECT video_url,video_title,creator,status FROM recommendations WHERE status IN ('consumed','active','rejected') LIMIT 2000`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT label,author FROM mastered`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT name,work FROM blacklist`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT creator_key creator,COUNT(*) sample_count,AVG(taste_value*10) average_score,MAX(COALESCE(consumed_at,evaluated_at)) last_feedback_at FROM recommendation_outcomes WHERE creator_key IS NOT NULL AND training_eligible=1 AND taste_value IS NOT NULL GROUP BY creator_key`).all<any>().catch(() => ({ results: [] })),
-    DB.prepare(`SELECT topic,affinity_score FROM taste_vectors`).all<any>().catch(() => ({ results: [] })),
+    DB.prepare(`SELECT topic,affinity_score,last_consumed FROM taste_vectors`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT COALESCE(label,branch_id) topic FROM priorities ORDER BY rank`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT format_key format,COUNT(*) sample_count,AVG(taste_value*10) average_score FROM recommendation_outcomes WHERE format_key IS NOT NULL AND training_eligible=1 AND taste_value IS NOT NULL GROUP BY format_key`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT format_key format FROM recommendation_outcomes WHERE outcome_status='consumed' AND format_key IS NOT NULL ORDER BY COALESCE(consumed_at,evaluated_at) DESC LIMIT 5`).all<any>().catch(() => ({ results: [] })),
@@ -57,14 +78,24 @@ const loadCompassContext = async (DB: D1Database, thread: any = null): Promise<C
     buildLearningBalance(DB, 90).catch(() => null),
     DB.prepare(`SELECT assertion_key,category,value_json,weight,confidence,status FROM profile_assertions WHERE status='active' AND confidence>=.8`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT p.strategy,COUNT(DISTINCT o.recommendation_id) count FROM compass_picks p JOIN recommendation_outcomes o ON o.recommendation_id=p.recommendation_id WHERE o.training_eligible=1 GROUP BY p.strategy`).all<any>().catch(() => ({ results: [] })),
+    // Branch decisions made in the Branch Deck steer the compass: pruned
+    // branches are hard exclusions, love branches raise topic affinity.
+    DB.prepare(`SELECT id,label,status FROM tree_nodes WHERE type='branch' AND status IN ('love','pruned','held')`).all<any>().catch(() => ({ results: [] })),
+    DB.prepare(`SELECT id,is_pruned FROM branch_exploration WHERE is_pruned=1`).all<any>().catch(() => ({ results: [] })),
   ])
   const assertionRows = assertions.results || []
   const assertionValues = assertionRows.map((row: any) => { try { return { ...row, parsed: JSON.parse(row.value_json) } } catch { return { ...row, parsed: row.value_json } } })
   const assertionBlocked = assertionValues.filter((row: any) => ['blacklist','hard_rule','exclusion'].includes(String(row.category))).flatMap((row: any) => {
     const value = row.parsed
-    return typeof value === 'string' ? [value] : [value?.name, value?.work, value?.creator, value?.topic, value?.label, value?.target].filter(Boolean)
+    return typeof value === 'string' ? [value] : [value?.name, value?.work, value?.creator, value?.topic, value?.label, value?.target, value?.branch_id].filter(Boolean)
   })
-  const terms = [...(mastered.results || []), ...(blacklist.results || []), ...assertionBlocked.map((name) => ({ name }))]
+  // Pruned branches from the deck are hard exclusions in Compass.
+  const prunedBranchSet = new Set<string>((explored.results || []).map((row: any) => String(row.id)))
+  const branchDecisionRows = branchNodes.results || []
+  const prunedBranches = branchDecisionRows.filter((row: any) => row.status === 'pruned' || prunedBranchSet.has(String(row.id)))
+  const lovedBranches = branchDecisionRows.filter((row: any) => row.status === 'love')
+  const prunedTerms = prunedBranches.flatMap((row: any) => [row.label, row.id]).map((value: any) => String(value || '').trim()).filter((value: string) => value.length >= 4)
+  const terms = [...(mastered.results || []), ...(blacklist.results || []), ...assertionBlocked.map((name) => ({ name })), ...prunedTerms.map((name) => ({ name }))]
     .flatMap((row: any) => [row.label, row.author, row.work, row.name])
     .map((value) => String(value || '').trim().toLowerCase()).filter((value) => value.length >= 4)
   const featureWeights = new Map<string, Record<string, number>>()
@@ -84,7 +115,19 @@ const loadCompassContext = async (DB: D1Database, thread: any = null): Promise<C
     creatorTrust.set(key, { average: nextCount ? ((existing.average * existing.count) + Number(row.average_score || 5) * count) / nextCount : 5, count: nextCount })
   }
   const topicAffinities = new Map<string, number>()
-  for (const row of vectors.results || []) topicAffinities.set(canonicalTasteIdentity(row.topic), Number(row.affinity_score))
+  for (const row of vectors.results || []) {
+    const { decayedAffinity } = computeDecayedAffinity(Number(row.affinity_score), row.last_consumed || null)
+    topicAffinities.set(canonicalTasteIdentity(row.topic), decayedAffinity)
+  }
+  // Love branches from the deck are an explicit positive signal: a floor of 4.5
+  // so they steer candidate topic value without claiming a consumption history.
+  for (const row of lovedBranches) {
+    for (const key of [canonicalTasteIdentity(row.label), canonicalTasteIdentity(row.id)]) {
+      if (!key) continue
+      const current = topicAffinities.get(key) || 0
+      if (current < 4.5) topicAffinities.set(key, Math.max(current, 4.5))
+    }
+  }
   return {
     knownSources: (history.results || []).map((row: any) => ({ url: row.video_url || '', title: row.video_title || '', creator: row.creator || '', status: row.status || '' })),
     blockedEntities: [...new Set(terms)],
@@ -122,9 +165,39 @@ async function resolveThread(DB: D1Database, requestedId?: unknown) {
   return { ...thread, open_evidence_requirements: requirements.results || [] }
 }
 
-function candidateDecision(scored: ScoredCandidate[], engine: 'v1' | 'v2') {
+// Greedy MMR (maximal marginal relevance) post-pass. The primary sort is by
+// score, but a final slate that over-repeats one creator, topic, or format
+// wastes the learner's limited attention. Re-rank so each next pick maximizes
+// λ·score − (1−λ)·similarity-to-already-selected, keeping a diverse winner.
+const MMR_LAMBDA = 0.6
+function mmrReorder(ranked: ScoredCandidate[], lambda = MMR_LAMBDA): ScoredCandidate[] {
+  if (ranked.length <= 1) return ranked
+  const pool = [...ranked]
+  const selected: ScoredCandidate[] = []
+  while (pool.length) {
+    let best = pool[0]
+    let bestValue = -Infinity
+    for (const candidate of pool) {
+      const maxSimilarity = selected.length
+        ? Math.max(...selected.map((chosen) => semanticSimilarity(candidate.features._candidate_context || '', chosen.features._candidate_context || '')))
+        : 0
+      const value = lambda * candidate.score - (1 - lambda) * maxSimilarity
+      if (value > bestValue) { bestValue = value; best = candidate }
+    }
+    selected.push(best)
+    pool.splice(pool.indexOf(best), 1)
+  }
+  return selected
+}
+
+function candidateDecision(scored: ScoredCandidate[], engine: 'v1' | 'v2', forcedWinner?: ScoredCandidate) {
   const eligible = scored.filter((entry) => entry.features._valid_url && entry.features._has_identity && !entry.features._hard_excluded)
-  const ranked = eligible.length ? eligible : scored
+  const base = eligible.length ? eligible : scored
+  // Exploration arm: a forced frontier candidate wins outright; MMR re-ranks the
+  // remainder only so margin/runner-up stay meaningful for calibration.
+  const ranked = forcedWinner
+    ? [forcedWinner, ...mmrReorder(base.filter((entry) => entry.index !== forcedWinner.index))]
+    : mmrReorder(base)
   const winner = ranked[0]
   const second = ranked[1]
   const margin = second && winner ? winner.score - second.score : 0
@@ -133,13 +206,16 @@ function candidateDecision(scored: ScoredCandidate[], engine: 'v1' | 'v2') {
     evidenceStatus === 'structured' &&
     !['invalid','unavailable'].includes(winner.sourceCheck.status))
   const confidence = winner ? decisionConfidence(winner.score, winner.uncertainty, margin, winner.dominance) : 0
-  const weak = eligible.length < 2 || !winner
-  const confident = Boolean(!weak && verified && winner.score >= .68 && confidence >= .67)
+  const weak = forcedWinner ? !winner : eligible.length < 2 || !winner
+  // Exploration candidates are validated by frontierScore + the verified gate,
+  // not the greedy score floor, so they serve as long as they are reachable and
+  // carry structured evidence (the real quality floor).
+  const confident = Boolean(!weak && verified && (forcedWinner ? true : winner.score >= SERVING_SCORE_THRESHOLD && confidence >= SERVING_CONFIDENCE_THRESHOLD))
   const abstentionReason = !eligible.length ? 'all_candidates_ineligible'
-    : eligible.length < 2 ? 'not_enough_eligible_candidates'
+    : eligible.length < 2 && !forcedWinner ? 'not_enough_eligible_candidates'
       : !verified ? engine === 'v2' && evidenceStatus !== 'structured' ? 'structured_evidence_required' : 'winner_not_verifiable'
-        : Number(winner?.score || 0) < .68 ? 'winner_below_score_threshold'
-          : confidence < .67 ? 'insufficient_decision_confidence' : 'candidate_set_not_usable'
+        : !forcedWinner && Number(winner?.score || 0) < SERVING_SCORE_THRESHOLD ? 'winner_below_score_threshold'
+          : !forcedWinner && confidence < SERVING_CONFIDENCE_THRESHOLD ? 'insufficient_decision_confidence' : 'candidate_set_not_usable'
   const reviewableWeakPick = !confident && Boolean(winner?.features._valid_url && winner?.features._has_identity && !winner?.features._hard_excluded)
   return { engine, scored, eligible, ranked, winner, second, margin, confidence, confident, verified, abstentionReason, reviewableWeakPick }
 }
@@ -174,31 +250,61 @@ async function scoreCandidateSet(DB: D1Database, candidates: any[], thread: any,
     const uncertainty = Math.max(0, Math.min(1, .50 - Number(features.evidence_quality) * .20 + (sourceCheck.status === 'unknown' ? .14 : 0) + (features._hard_excluded ? .30 : 0) + (context.thread ? 0 : .15)))
     return { item, index, lane, features, score, baseScore, expectedLearningValue: expectedLearningValue(features, lane, weights), explorationBonus, dominance, diversity, uncertainty, sourceCheck }
   }).sort((a, b) => b.score - a.score)
-  const v1 = candidateDecision(build('v1'), 'v1')
-  const v2 = candidateDecision(build('v2'), 'v2')
+  const v1Scored = build('v1')
+  const v2Scored = build('v2')
+  const v1 = candidateDecision(v1Scored, 'v1')
+  const v2 = candidateDecision(v2Scored, 'v2')
   const mechanismAssertions = (context.profileAssertions || []).filter((assertion: any) => assertion.status === 'active' && assertion.category === 'taste_mechanism')
   const frontier = prepared.filter((entry) => entry.features._valid_url && entry.features._has_identity && !entry.features._hard_excluded && Number(entry.features.friction) <= .35).map((entry) => {
     const mechanismText = [entry.item.mechanism, ...(Array.isArray(entry.item.mechanisms) ? entry.item.mechanisms : []), entry.item.expected_contribution, entry.item.expected_learning].filter(Boolean).join(' ')
     const mechanismMatch = mechanismAssertions.length ? Math.max(...mechanismAssertions.map((assertion: any) => semanticSimilarity(mechanismText, typeof assertion.value === 'string' ? assertion.value : JSON.stringify(assertion.value)))) : 0
     return { ...entry, mechanismMatch, frontierScore: frontierScore(entry.features, mechanismMatch) }
   }).sort((a, b) => b.frontierScore - a.frontierScore).slice(0, 3)
-  const laneCounts = Object.fromEntries([...(context.laneEvidence || [])].map(([lane, count]) => [lane, Number(count || 0)]))
-  const totalOutcomeEvidence = Object.values(laneCounts).reduce((sum, count) => sum + Number(count || 0), 0)
-  // This is a receipt for future contextual-bandit evaluation only. Exploration
-  // never changes an ordinary fit request and remains unavailable until the
-  // same clean-outcome gates that protect V2 activation are met.
+
+  // Exploration arm (item 12): surface a frontier candidate that also passes the
+  // serving verification gate, so topic-distance + mechanism-match become
+  // learnable instead of shadow-only. Exploration is a distinct arm from MMR —
+  // it deliberately steps off the greedy ranking ~1 in 10 picks and is NOT gated
+  // on clean-outcome counts (it is the mechanism that collects that data).
+  const EXPLORATION_EPSILON = 0.10
+  const explorationRoll = Math.random()
+  const explorationVerified = (entry: ScoredCandidate) => Boolean(entry.features._valid_url && entry.features._has_identity && !entry.features._hard_excluded && entry.features._evidence_status === 'structured' && !['invalid', 'unavailable'].includes(entry.sourceCheck.status))
+  const frontierScored = frontier
+    .map((entry) => v2Scored.find((scored) => scored.index === entry.index))
+    .filter((entry): entry is ScoredCandidate => Boolean(entry && explorationVerified(entry)))
+  const explorationPick = explorationRoll < EXPLORATION_EPSILON && frontierScored.length > 0 ? frontierScored[0] : null
+
   const exploration = {
-    policy: 'shadow_only', eligible: totalOutcomeEvidence >= 20 && ['fit', 'bridge', 'challenge'].every((lane) => Number(laneCounts[lane] || 0) >= 8),
-    observed: { total_outcomes: totalOutcomeEvidence, lane_outcomes: laneCounts }, required: { total_outcomes: 20, each_lane: 8 },
-    candidate_index: frontier[0]?.index ?? null, candidate_title: frontier[0]?.item?.title || null,
+    policy: 'epsilon_greedy', epsilon: EXPLORATION_EPSILON, roll: Math.round(explorationRoll * 1000) / 1000,
+    would_explore: explorationPick !== null,
+    // `served` flips true in the route once the winner is actually swapped in.
+    served: false,
+    frontier_available: frontierScored.length,
+    candidate_index: explorationPick?.index ?? null,
+    candidate_title: explorationPick?.item?.title ?? null,
   }
-  return { context, v1, v2, frontier, exploration }
+
+  // Rolling list-level coverage (item 11): how spread the eligible slate is, so
+  // MMR has a metric to be audited against rather than an unmeasured claim.
+  const coverage = (() => {
+    const set = v2Scored.filter((entry) => entry.features._valid_url && entry.features._has_identity && !entry.features._hard_excluded)
+    if (set.length < 2) return { eligible: set.length, mean_pairwise_distance: null, gini_topic_affinity: null }
+    let distanceSum = 0, pairs = 0
+    for (let i = 0; i < set.length; i++) for (let j = i + 1; j < set.length; j++) { distanceSum += 1 - semanticSimilarity(set[i].features._candidate_context || '', set[j].features._candidate_context || ''); pairs++ }
+    const affinities = set.map((entry) => Number(entry.features._topic_affinity || 0)).sort((a, b) => a - b)
+    const n = affinities.length
+    const affinityTotal = affinities.reduce((sum, value) => sum + value, 0)
+    const gini = n && affinityTotal ? affinities.reduce((acc, value, index) => acc + (2 * (index + 1) - n - 1) * value, 0) / (n * affinityTotal) : null
+    return { eligible: set.length, mean_pairwise_distance: pairs ? Math.round((distanceSum / pairs) * 1000) / 1000 : null, gini_topic_affinity: gini == null ? null : Math.round(gini * 1000) / 1000 }
+  })()
+
+  return { context, v1, v2, frontier, exploration, explorationPick, coverage }
 }
 
-async function learnFromOutcome(DB: D1Database, pick: any, score: number | null, outcome: string, reasonTags: string[]) {
+async function learnFromOutcome(DB: D1Database, pick: any, score: number | null, outcome: string, reasonTags: string[], exposure?: Record<string, any>) {
   if (outcome === 'dismissed' || reasonTags.includes('not_now')) return { skipped: 'neutral_signal' }
   const recommendationOutcome = pick.recommendation_id
-    ? await DB.prepare(`SELECT predicted_components_json,learning_value,training_eligible FROM recommendation_outcomes WHERE recommendation_id=?`).bind(pick.recommendation_id).first<any>()
+    ? await DB.prepare(`SELECT predicted_components_json,learning_value,training_eligible,rejection_reason FROM recommendation_outcomes WHERE recommendation_id=?`).bind(pick.recommendation_id).first<any>()
     : null
   const explicitNegative = outcome === 'declined' || outcome === 'abandoned'
   if ((!recommendationOutcome?.training_eligible || recommendationOutcome.learning_value == null) && !explicitNegative) return { skipped: 'no_learning_utility' }
@@ -220,9 +326,22 @@ async function learnFromOutcome(DB: D1Database, pick: any, score: number | null,
   for (const tag of reasonTags) for (const [dimension, delta] of Object.entries(reasonAdjustments[String(tag)] || {})) adjustments[dimension] = (adjustments[dimension] || 0) + delta
   const rows = (await DB.prepare(`SELECT strategy,dimension,baseline_weight,current_weight,evidence_count,audit_history_json FROM compass_feature_weights WHERE strategy=?`).bind(pick.strategy).all<any>().catch(() => ({ results: [] }))).results || []
   const before = Object.fromEntries(rows.map((row: any) => [row.dimension, Number(row.current_weight)]))
+  // Thompson sampling (item 9): draw the strategy's reward estimate from its
+  // Beta posterior, seeded with a pessimistic Beta(1,2) prior so weights only
+  // move once observed reward beats current belief. This replaces the flat
+  // `(reward − .5)` reference with `(reward − θ)` — the Deezer pessimistic-prior
+  // insight that a strategy must prove itself against its prior before it earns weight.
+  const prior = await DB.prepare(`SELECT alpha,beta,explicit_evidence_count FROM compass_strategy_priors WHERE strategy=?`).bind(pick.strategy).first<any>().catch(() => null)
+  const alpha = Math.max(1, Number(prior?.alpha || 1))
+  const beta = Math.max(1, Number(prior?.beta || 1))
+  const posteriorMean = alpha / (alpha + beta)
+  const posteriorStd = Math.sqrt((alpha * beta) / ((alpha + beta) ** 2 * (alpha + beta + 1)))
+  // Moment-matched draw (uniform ±σ around the mean) approximates a Beta sample
+  // without a gamma generator; enough variance to preserve explore-vs-exploit.
+  const theta = Math.max(0, Math.min(1, posteriorMean + (Math.random() * 2 - 1) * posteriorStd))
   const raw = rows.map((row: any) => {
     const component = Number(components[row.dimension] ?? .5)
-    const signal = Math.max(-.01, Math.min(.01, (reward - .5) * (component - .5) * .03 + Number(adjustments[row.dimension] || 0)))
+    const signal = Math.max(-.01, Math.min(.01, (reward - theta) * (component - .5) * .03 + Number(adjustments[row.dimension] || 0)))
     const limit = Number(row.baseline_weight) * .2
     return { ...row, current_weight: Math.max(Number(row.baseline_weight) - limit, Math.min(Number(row.baseline_weight) + limit, Number(row.current_weight) + signal)) }
   })
@@ -234,13 +353,13 @@ async function learnFromOutcome(DB: D1Database, pick: any, score: number | null,
     after[row.dimension] = next
     let history: any[] = []
     try { history = JSON.parse(row.audit_history_json || '[]') } catch {}
-    history.push({ reward, outcome, reason_tags: reasonTags, at: new Date().toISOString() })
+    history.push({ reward, outcome, reason_tags: reasonTags, theta: Math.round(theta * 1000) / 1000, at: new Date().toISOString() })
     statements.push(DB.prepare(`UPDATE compass_feature_weights SET current_weight=?,evidence_count=evidence_count+1,audit_history_json=?,updated_at=datetime('now') WHERE strategy=? AND dimension=?`).bind(next, JSON.stringify(history.slice(-20)), pick.strategy, row.dimension))
   }
   statements.push(DB.prepare(`INSERT INTO compass_strategy_priors(strategy,alpha,beta,explicit_evidence_count,updated_at) VALUES (?,?,?,?,datetime('now')) ON CONFLICT(strategy) DO UPDATE SET alpha=compass_strategy_priors.alpha+?,beta=compass_strategy_priors.beta+?,explicit_evidence_count=compass_strategy_priors.explicit_evidence_count+1,updated_at=datetime('now')`).bind(pick.strategy, reward >= .6 ? 1 : 0, reward < .6 ? 1 : 0, 1, reward >= .6 ? 1 : 0, reward < .6 ? 1 : 0))
   statements.push(DB.prepare(`INSERT INTO compass_learning_receipts(id,pick_id,strategy,reward,reason_tags_json,before_json,after_json) VALUES (?,?,?,?,?,?,?)`).bind(`clr_${crypto.randomUUID()}`, pick.id, pick.strategy, reward, JSON.stringify(reasonTags), JSON.stringify(before), JSON.stringify(after)))
   await DB.batch(statements)
-  return { reward, before, after }
+  return { reward, theta: Math.round(theta * 1000) / 1000, posterior_mean: Math.round(posteriorMean * 1000) / 1000, before, after }
 }
 
 async function currentPick(DB: D1Database) {
@@ -256,8 +375,8 @@ async function currentPick(DB: D1Database) {
   return DB.prepare(`
     SELECT p.*, COALESCE(r.video_title,w.title) AS video_title, COALESCE(r.creator,w.creator) AS creator,
       COALESCE(r.content_type,w.format,w.source_class) AS content_type, COALESCE(r.video_url,w.canonical_url) AS video_url,
-      COALESCE(r.why_this,json_extract(p.rationale_json,'$.why_this')) AS why_this,
-      COALESCE(r.context_brief,json_extract(p.rationale_json,'$.context_brief')) AS context_brief
+      COALESCE(r.why_this,CASE WHEN json_valid(p.rationale_json) THEN json_extract(p.rationale_json,'$.why_this') END) AS why_this,
+      COALESCE(r.context_brief,CASE WHEN json_valid(p.rationale_json) THEN json_extract(p.rationale_json,'$.context_brief') END) AS context_brief
     FROM compass_picks p
     LEFT JOIN recommendations r ON r.id=p.recommendation_id
     LEFT JOIN compass_candidates w ON w.pick_id=p.id AND w.is_winner=1
@@ -275,8 +394,12 @@ app.get('/pick', async (c) => {
   try {
     const pick = await currentPick(c.env.DB)
     if (!pick) return c.json({ pick: null })
-    const candidates = await c.env.DB.prepare(`SELECT id,title,creator,format,source_class,lane,branch_id,format_key,creator_key,expected_learning_value,decision_score,score,uncertainty,evidence_status,contextual_alignment,candidate_set_diversity,is_verified,is_winner FROM compass_candidates WHERE pick_id=? ORDER BY decision_score DESC,score DESC`).bind(pick.id).all<any>()
-    return c.json({ pick: { ...pick, rationale: JSON.parse(pick.rationale_json || '{}'), shadow: JSON.parse(pick.shadow_json || '{}'), candidates: candidates.results || [] } })
+    // Keep the read compatible with databases that have the original Compass
+    // candidate table while additive migrations are being rolled out.
+    const candidates = await c.env.DB.prepare(`SELECT id,title,creator,format,source_class,lane,branch_id,format_key,creator_key,expected_learning_value,decision_score,score,uncertainty,evidence_status,contextual_alignment,candidate_set_diversity,is_verified,is_winner FROM compass_candidates WHERE pick_id=? ORDER BY decision_score DESC,score DESC`).bind(pick.id).all<any>().catch(() =>
+      c.env.DB.prepare(`SELECT id,title,creator,format,source_class,is_verified,is_winner,score,uncertainty FROM compass_candidates WHERE pick_id=? ORDER BY score DESC`).bind(pick.id).all<any>()
+    )
+    return c.json({ pick: { ...pick, rationale: parseJsonObject(pick.rationale_json), shadow: parseJsonObject(pick.shadow_json), candidates: candidates.results || [] } })
   } catch (err) { return c.json(safeError('Failed to read Compass Pick')(err), 500) }
 })
 
@@ -390,15 +513,21 @@ async function createCompassPickV2(c: any, body: any) {
   if (queuedCount >= QUEUE_CAP) return c.json({ error: 'queue_full', active_count: queuedCount, cap: QUEUE_CAP }, 409)
   const mode = await engineMode(c.env.DB)
   const decisions = await scoreCandidateSet(c.env.DB, validated.candidates.map((candidate: any) => ({ ...candidate, allow_books: body.allow_books === true })), thread, legacyStrategy)
-  const selected = mode === 'v2' ? decisions.v2 : decisions.v1
+  let selected = mode === 'v2' ? decisions.v2 : decisions.v1
+  if (decisions.explorationPick) {
+    // Re-derive the exploration winner from the served engine's own scoring so its
+    // score/uncertainty stay consistent with what is actually being served.
+    const forced = selected.scored.find((entry) => entry.index === decisions.explorationPick!.index)
+    if (forced) { selected = candidateDecision(selected.scored, selected.engine, forced); decisions.exploration.served = true }
+  }
   const winner = selected.winner
   if (!winner) return c.json({ error: 'candidate_set_not_usable' }, 400)
-  const strategy = mode === 'v2' ? winner.lane : legacyStrategy
+  const strategy = (decisions.exploration.served || mode === 'v2') ? winner.lane : legacyStrategy
   const requestId = String(body.request_id || crypto.randomUUID())
   const pickId = `pick_${crypto.randomUUID()}`
   const status = selected.confident ? 'ready' : 'abstained'
   const calibrationSamples = [...(decisions.context.laneEvidence?.values() || [])].reduce((sum, value) => sum + Number(value || 0), 0)
-  const shadow = { mode, v1: decisionReadModel(decisions.v1), v2: decisionReadModel(decisions.v2), frontier: decisions.frontier.map((entry: any) => ({ index: entry.index, title: entry.item.title, score: entry.frontierScore, mechanism_match: entry.mechanismMatch, topic_distance: Math.round((1 - Number(entry.features._topic_affinity || 0)) * 1000) / 1000 })), exploration: decisions.exploration, disagreement: decisions.v1.winner?.index !== decisions.v2.winner?.index }
+  const shadow = { mode, v1: decisionReadModel(decisions.v1), v2: decisionReadModel(decisions.v2), frontier: decisions.frontier.map((entry: any) => ({ index: entry.index, title: entry.item.title, score: entry.frontierScore, mechanism_match: entry.mechanismMatch, topic_distance: Math.round((1 - Number(entry.features._topic_affinity || 0)) * 1000) / 1000 })), exploration: decisions.exploration, coverage: decisions.coverage, disagreement: decisions.v1.winner?.index !== decisions.v2.winner?.index }
   let recommendationId: string | null = null
   if (selected.confident) {
     const capture = await createInboxCapture(c.env.DB, { source: urlOf(winner.item), title: String(winner.item.title) })
@@ -575,12 +704,17 @@ app.post('/pick/:id/feedback', async (c) => {
     const excluded = outcome === 'declined' || outcome === 'abandoned'
     const dismissed = outcome === 'dismissed'
     const feedbackJobId = reflection || rating.score !== null || classified.signalScope === 'eligibility' ? `job_${crypto.randomUUID()}` : null
+    // Exposure context: the position the pick held in its candidate set and the
+    // engine that served it. Used by the learning loop to discount position bias
+    // and by the shadow evaluation to weight feedback by exposure.
+    const exposure = { position: Number(body.position ?? null), candidate_count: Number(body.candidate_count ?? null), engine: pick.engine_version || 'v1', lane: pick.strategy || null, thread_id: pick.thread_id || null }
     const reflectionNote = reflection && pick.recommendation_id
       ? await c.env.DB.prepare(`SELECT id,revision FROM notes WHERE recommendation_id=? AND kind='reflection' ORDER BY updated_at DESC LIMIT 1`).bind(pick.recommendation_id).first<{ id: string; revision: number }>()
       : null
     const reflectionNoteId = reflection && pick.recommendation_id ? reflectionNote?.id || `reflection_${pick.recommendation_id}` : null
+    const rejectionReason = excluded ? reasonTags[0] || (outcome === 'abandoned' ? 'abandoned' : 'declined') : null
     const statements: D1PreparedStatement[] = [
-      c.env.DB.prepare(`INSERT INTO compass_feedback (id,pick_id,recommendation_id,outcome,score,reason_tags_json,reflection) VALUES (?,?,?,?,?,?,?)`).bind(`cf_${crypto.randomUUID()}`, pick.id, pick.recommendation_id, outcome === 'dismissed' ? 'declined' : outcome, rating.score, JSON.stringify(reasonTags), body.reflection || null),
+      c.env.DB.prepare(`INSERT INTO compass_feedback (id,pick_id,recommendation_id,outcome,score,reason_tags_json,reflection,exposure_json) VALUES (?,?,?,?,?,?,?,?)`).bind(`cf_${crypto.randomUUID()}`, pick.id, pick.recommendation_id, outcome === 'dismissed' ? 'declined' : outcome, rating.score, JSON.stringify(reasonTags), body.reflection || null, JSON.stringify(exposure)),
       c.env.DB.prepare(`UPDATE compass_picks SET status=?,updated_at=datetime('now'),resolved_at=CASE WHEN ? IN ('resolved','declined') THEN datetime('now') ELSE resolved_at END WHERE id=?`).bind(nextStatus, nextStatus, pick.id),
     ]
     if (pick.recommendation_id) {
@@ -588,7 +722,7 @@ app.post('/pick/:id/feedback', async (c) => {
         c.env.DB.prepare(`UPDATE recommendations SET status=CASE WHEN ? THEN 'consumed' WHEN ? THEN 'rejected' ELSE status END,consumed_date=CASE WHEN ? THEN COALESCE(consumed_date,date('now')) ELSE consumed_date END,user_rating=COALESCE(?,user_rating),user_score=COALESCE(?,user_score),user_review=COALESCE(NULLIF(?,''),user_review),updated_at=datetime('now') WHERE id=?`).bind(completed ? 1 : 0, excluded ? 1 : 0, completed ? 1 : 0, rating.rating, rating.score, reflection, pick.recommendation_id),
         c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,progress_percent,last_opened_at,updated_at) VALUES (?,?,?,?,datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET learning_state=excluded.learning_state,progress_percent=excluded.progress_percent,last_opened_at=datetime('now'),updated_at=datetime('now')`).bind(pick.recommendation_id, completed ? 'completed' : excluded ? 'excluded' : dismissed ? 'inbox' : 'queued', completed ? 100 : 0, new Date().toISOString()),
         c.env.DB.prepare(`UPDATE learning_sessions SET status=CASE WHEN ? THEN 'completed' ELSE 'returned' END,returned_at=datetime('now'),completed_at=CASE WHEN ? THEN COALESCE(completed_at,datetime('now')) ELSE completed_at END,reflection=COALESCE(NULLIF(?,''),reflection) WHERE recommendation_id=? AND status IN ('active','returned')`).bind(completed ? 1 : 0, completed ? 1 : 0, reflection, pick.recommendation_id),
-        c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,actual_score,outcome_status,consumed_at,evaluated_at,outcome_origin,training_eligible,objective_version) VALUES (?,?,?,?,CASE WHEN ? THEN date('now') ELSE NULL END,datetime('now'),'compass_feedback',0,?) ON CONFLICT(recommendation_id) DO UPDATE SET actual_score=excluded.actual_score,outcome_status=excluded.outcome_status,outcome_origin='compass_feedback',consumed_at=COALESCE(recommendation_outcomes.consumed_at,excluded.consumed_at),evaluated_at=datetime('now')`).bind(`outcome_${pick.recommendation_id}`, pick.recommendation_id, rating.score, completed ? 'consumed' : excluded ? outcome === 'declined' ? 'rejected' : 'abandoned' : 'active', completed ? 1 : 0, LEARNING_OBJECTIVE_VERSION),
+        c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,actual_score,outcome_status,rejection_reason,consumed_at,evaluated_at,outcome_origin,training_eligible,objective_version) VALUES (?,?,?,?,?,CASE WHEN ? THEN date('now') ELSE NULL END,datetime('now'),'compass_feedback',0,?) ON CONFLICT(recommendation_id) DO UPDATE SET actual_score=excluded.actual_score,outcome_status=excluded.outcome_status,outcome_origin='compass_feedback',rejection_reason=COALESCE(excluded.rejection_reason,recommendation_outcomes.rejection_reason),consumed_at=COALESCE(recommendation_outcomes.consumed_at,excluded.consumed_at),evaluated_at=datetime('now')`).bind(`outcome_${pick.recommendation_id}`, pick.recommendation_id, rating.score, completed ? 'consumed' : excluded ? outcome === 'declined' ? 'rejected' : 'abandoned' : 'active', rejectionReason, completed ? 1 : 0, LEARNING_OBJECTIVE_VERSION),
       )
       if (dismissed) statements.push(c.env.DB.prepare(`UPDATE recommendation_meta SET source_metadata_json=json_set(COALESCE(source_metadata_json,'{}'),'$.resurface_at',datetime('now','+14 days'),'$.resurface_count',COALESCE(json_extract(source_metadata_json,'$.resurface_count'),0)+1),updated_at=datetime('now') WHERE recommendation_id=?`).bind(pick.recommendation_id))
       if (completed) statements.push(c.env.DB.prepare(`INSERT INTO learning_sessions (id,recommendation_id,status,intent,reflection,returned_at,completed_at) SELECT ?,?,'completed','Compass Pick',?,datetime('now'),datetime('now') WHERE NOT EXISTS (SELECT 1 FROM learning_sessions WHERE recommendation_id=?)`).bind(`session_${crypto.randomUUID()}`, pick.recommendation_id, reflection || null, pick.recommendation_id))
@@ -610,12 +744,12 @@ app.post('/pick/:id/feedback', async (c) => {
     if (feedbackJobId && pick.recommendation_id) statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'process_feedback',?,?,?,'explicit_user_action') ON CONFLICT(idempotency_key) DO NOTHING`).bind(feedbackJobId, JSON.stringify({ recommendation_id: pick.recommendation_id, thread_id: pick.thread_id || null, note_id: reflectionNoteId, reflection: reflection || null, rating: rating.score, disposition, outcome, reason_tags: reasonTags, review_required: true, source: 'compass_pick', feedback_context_endpoint: '/feedback/context', feedback_context_scope: 'all_archived_feedback_profile_and_nodes' }), `compass-feedback:${pick.id}`, pick.recommendation_id))
     await c.env.DB.batch(statements)
     if (pick.recommendation_id) {
-      await recordRecommendationSignal(c.env.DB, { idempotencyKey: `compass-feedback:${pick.id}:${outcome}`, eventType: classified.eventType, recommendationId: pick.recommendation_id, threadId: pick.thread_id || null, pickId: pick.id, reasonCode: reasonTags[0] || null, signalScope: classified.signalScope, explicit: true, origin: 'compass_feedback', payload: { outcome, reason_tags: reasonTags } })
-      if (rating.score !== null) await recordRecommendationSignal(c.env.DB, { idempotencyKey: `compass-rating:${pick.id}`, eventType: 'rating_recorded', recommendationId: pick.recommendation_id, threadId: pick.thread_id || null, pickId: pick.id, signalScope: 'utility', signalValue: rating.score / 10, explicit: true, origin: 'compass_feedback', payload: { score: rating.score } })
-      if (disposition !== 'undecided') await recordRecommendationSignal(c.env.DB, { idempotencyKey: `compass-disposition:${pick.id}`, eventType: 'disposition_recorded', recommendationId: pick.recommendation_id, threadId: pick.thread_id || null, pickId: pick.id, signalScope: 'utility', explicit: true, origin: 'compass_feedback', payload: { disposition } })
+      await recordRecommendationSignal(c.env.DB, { idempotencyKey: `compass-feedback:${pick.id}:${outcome}`, eventType: classified.eventType, recommendationId: pick.recommendation_id, threadId: pick.thread_id || null, pickId: pick.id, reasonCode: reasonTags[0] || null, signalScope: classified.signalScope, explicit: true, origin: 'compass_feedback', payload: { outcome, reason_tags: reasonTags, exposure } })
+      if (rating.score !== null) await recordRecommendationSignal(c.env.DB, { idempotencyKey: `compass-rating:${pick.id}`, eventType: 'rating_recorded', recommendationId: pick.recommendation_id, threadId: pick.thread_id || null, pickId: pick.id, signalScope: 'utility', signalValue: rating.score / 10, explicit: true, origin: 'compass_feedback', payload: { score: rating.score, exposure } })
+      if (disposition !== 'undecided') await recordRecommendationSignal(c.env.DB, { idempotencyKey: `compass-disposition:${pick.id}`, eventType: 'disposition_recorded', recommendationId: pick.recommendation_id, threadId: pick.thread_id || null, pickId: pick.id, signalScope: 'utility', explicit: true, origin: 'compass_feedback', payload: { disposition, exposure } })
       await refreshRecommendationOutcome(c.env.DB, pick.recommendation_id)
     }
-    const learning = await learnFromOutcome(c.env.DB, pick, rating.score, outcome, reasonTags)
+    const learning = await learnFromOutcome(c.env.DB, pick, rating.score, outcome, reasonTags, exposure)
     return c.json({ ok: true, pick_id: pick.id, status: nextStatus, recommendation_state: completed ? 'completed' : excluded ? 'excluded' : dismissed ? 'inbox' : 'queued', disposition, reason_tags: reasonTags, feedback_job: feedbackJobId, learning_receipt: learning, source_page: pick.recommendation_id ? `/#/learn/notes?source=${encodeURIComponent(pick.recommendation_id)}` : null })
   } catch (err) { return c.json(safeError('Failed to record Compass feedback')(err), 500) }
 })

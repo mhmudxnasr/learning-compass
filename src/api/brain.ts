@@ -2,6 +2,9 @@ import { Hono } from 'hono'
 import { Bindings, Recommendation, safeError, isNonEmptyStr, isValidLength, VALID_LOG_KINDS } from '../lib'
 import { cached } from '../cache'
 import { applyProfileAssertion, profileIntelligenceSnapshot, revertProfileRevision } from '../services/intelligence-v2'
+import { buildLearningBalance } from '../services/learning-balance'
+import { loadCompassContext } from './compass'
+import { freeAi } from '../services/ai'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -27,8 +30,12 @@ app.get('/node/:id', async (c) => {
       'SELECT id, type, label, status FROM tree_nodes WHERE parent_id = ? AND id != ? ORDER BY id'
     ).bind(node.parent_id || 'root', id).all()
     const recs = await DB.prepare(
-      "SELECT id, video_title, creator, user_rating, status, consumed_date, dedup_key FROM recommendations WHERE dedup_key LIKE ? ORDER BY consumed_date DESC"
-    ).bind(id + '-%').all()
+      `SELECT r.id, r.video_title, r.creator, r.user_rating, r.status, r.consumed_date, r.dedup_key
+       FROM recommendations r
+       WHERE r.dedup_key LIKE ?
+          OR EXISTS (SELECT 1 FROM recommendation_meta m WHERE m.recommendation_id = r.id AND m.branch_id = ?)
+       ORDER BY r.consumed_date DESC`
+    ).bind(id + '-%', id).all()
     const parents: any[] = []
     let cur: any = node
     while (cur && cur.parent_id) {
@@ -475,6 +482,510 @@ app.post('/profile/revisions/:id/revert', async (c) => {
     const result = await revertProfileRevision(c.env.DB, c.req.param('id'), 'user')
     return result.ok ? c.json(result) : c.json(result, 404)
   } catch (err) { return c.json(safeError('Profile revision revert failed')(err), 500) }
+})
+
+// ---- /brain/branch-deck — Evidence-driven branch review deck
+// Existing branches come from tree_nodes; every branch carries real evidence
+// (consumed/mapped sources, attention share, priority rank, SRS due, recall
+// strength, learning units) computed from the same learning-balance model the
+// rest of the product reads. No hardcoded candidates or mastered exclusions —
+// the map is the source of truth. New-branch suggestions are review-before-
+// commit and live in the client (see POST /brain/branch-suggest).
+app.get('/branch-deck', async (c) => {
+  const { DB } = c.env
+  c.header('Cache-Control', 'no-store')
+  try {
+    const [existingNodes, priorities, explored, mastered, balance, mappedByBranch, unmappedRows, learningUnitsByBranch] = await Promise.all([
+      DB.prepare("SELECT id, type, label, status, super_category, parent_id, round_label, meta_json FROM tree_nodes WHERE type IN ('root','category','branch','leaf') ORDER BY CASE WHEN status = 'love' THEN 0 WHEN status = 'active' THEN 1 WHEN status = 'fresh' THEN 2 WHEN status = 'locked' THEN 3 WHEN status = 'held' THEN 4 ELSE 5 END, id ASC").all<any>(),
+      DB.prepare("SELECT rank, branch_id, label, rationale FROM priorities ORDER BY rank ASC").all<any>(),
+      DB.prepare("SELECT id, name, lifecycle_state, is_pruned FROM branch_exploration").all<any>(),
+      DB.prepare("SELECT id, label, kind FROM mastered").all<any>(),
+      buildLearningBalance(DB, 90).catch(() => null),
+      DB.prepare(`SELECT m.branch_id, COUNT(*) mapped_count,
+          SUM(CASE WHEN r.status='consumed' THEN 1 ELSE 0 END) consumed_mapped,
+          MAX(r.consumed_date) last_consumed_at
+        FROM recommendation_meta m LEFT JOIN recommendations r ON r.id=m.recommendation_id
+        WHERE m.branch_id IS NOT NULL AND m.branch_id != '' GROUP BY m.branch_id`).all<any>().catch(() => ({ results: [] })),
+      DB.prepare(`SELECT r.dedup_key, COUNT(*) c
+        FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
+        WHERE r.status='consumed' AND r.dedup_key IS NOT NULL AND r.dedup_key != '' AND COALESCE(m.branch_id,'')=''
+        GROUP BY r.dedup_key`).all<any>().catch(() => ({ results: [] })),
+      DB.prepare(`SELECT m.branch_id, COUNT(*) units
+        FROM learning_units u JOIN recommendations r ON r.id=u.recommendation_id
+        JOIN recommendation_meta m ON m.recommendation_id=r.id
+        WHERE u.status NOT IN ('deleted','quarantined') AND m.branch_id IS NOT NULL AND m.branch_id != ''
+        GROUP BY m.branch_id`).all<any>().catch(() => ({ results: [] })),
+    ])
+
+    const priorityMap = new Map<string, number>()
+    for (const p of priorities.results || []) priorityMap.set(p.branch_id, p.rank)
+
+    const prunedSet = new Set<string>()
+    for (const e of explored.results || []) if (e.is_pruned) prunedSet.add(e.id)
+
+    const masteredIdsAndLabels = new Set<string>()
+    for (const m of mastered.results || []) {
+      if (m.id) masteredIdsAndLabels.add(m.id.toLowerCase())
+      if (m.label) masteredIdsAndLabels.add(m.label.toLowerCase())
+    }
+    const isMastered = (id: string, label: string) => masteredIdsAndLabels.has(id.toLowerCase()) || masteredIdsAndLabels.has(label.toLowerCase())
+
+    // Helper to clean raw database bracket text like "[LOVE · R2 — new]"
+    const cleanBranchLabel = (raw: string) => raw.replace(/\[.*?\]/g, '').trim()
+
+    // Resolve unmapped consumed sources to the branch their dedup_key belongs
+    // to. This mirrors buildLearningBalance.resolveNode and makes the deck
+    // consistent with map/node/compass even when a source was never explicitly
+    // mapped through POST /recommendations/map.
+    const branchIds = (existingNodes.results || []).map((n: any) => n.id).sort((a: string, b: string) => b.length - a.length)
+    const unmappedByBranch = new Map<string, number>()
+    for (const row of unmappedRows.results || []) {
+      const key = String(row.dedup_key || '')
+      const match = branchIds.find((id: string) => key === id || key.startsWith(id + '-'))
+      if (match) unmappedByBranch.set(match, (unmappedByBranch.get(match) || 0) + Number(row.c || 0))
+    }
+
+    const balanceById = new Map<string, any>()
+    for (const branch of balance?.branches || []) {
+      balanceById.set(String(branch.id), branch)
+      balanceById.set(String(branch.label).toLowerCase(), branch)
+    }
+    const mappedById = new Map<string, any>((mappedByBranch.results || []).map((row: any) => [String(row.branch_id), row]))
+    const unitsById = new Map<string, number>((learningUnitsByBranch.results || []).map((row: any) => [String(row.branch_id), Number(row.units || 0)]))
+
+    const existing = (existingNodes.results || [])
+      .filter((node: any) => !isMastered(node.id, node.label))
+      .map((node: any) => {
+        let meta: any = {}
+        try { if (node.meta_json) meta = JSON.parse(node.meta_json) } catch {}
+        const cleanedLabel = cleanBranchLabel(node.label)
+        const categoryName = (node.super_category || 'cat-mind').replace('cat-', '')
+        const balanceNode = balanceById.get(String(node.id)) || balanceById.get(cleanedLabel.toLowerCase())
+        const mapped = mappedById.get(String(node.id))
+        const state = balanceNode?.state || 'unmapped'
+        return {
+          id: node.id,
+          label: cleanedLabel,
+          type: node.type,
+          round_label: node.round_label || (node.id.startsWith('r1-') ? 'R1' : node.id.startsWith('r2-') ? 'R2' : 'Branch'),
+          super_category: node.super_category || 'cat-mind',
+          parent_id: node.parent_id || 'root',
+          status: prunedSet.has(node.id) ? 'pruned' : (node.status || 'active'),
+          description: meta.notes || meta.description || `A focused area for understanding ${cleanedLabel}: what it means, how it works, and where it appears in real decisions or situations. It belongs to the ${categoryName} part of the map, but this branch is not a claim of mastery or a finished conclusion; sources should establish its useful scope and distinguish it from nearby topics.`,
+          leaves_sample: meta.leaves || [],
+          contrast_hook: meta.contrast_hook || null,
+          priority_rank: priorityMap.get(node.id) ?? balanceNode?.priority_rank ?? null,
+          priority_share: balanceNode?.priority_share ?? null,
+          is_candidate: ['candidate', 'active', 'fresh'].includes(prunedSet.has(node.id) ? 'pruned' : (node.status || 'active')),
+          // Evidence fields — real data, computed by the same learning-balance
+          // model the site and Hermes read.
+          consumed_count: Number(balanceNode?.consumed_count ?? 0),
+          mapped_count: Number(mapped?.mapped_count ?? 0),
+          unmapped_count: unmappedByBranch.get(String(node.id)) ?? 0,
+          attention_share: balanceNode?.attention_share ?? 0,
+          last_consumed_at: mapped?.last_consumed_at ?? balanceNode?.last_consumed_at ?? null,
+          learning_units: unitsById.get(String(node.id)) ?? 0,
+          srs_due: Number(balanceNode?.srs_due ?? 0),
+          srs_total: Number(balanceNode?.srs_total ?? 0),
+          recall_strength: balanceNode?.recall_strength ?? null,
+          notes_count: Number(balanceNode?.notes_count ?? 0),
+          state,
+          reasons: Array.isArray(balanceNode?.reasons) ? balanceNode.reasons : [],
+        }
+      })
+
+    return c.json({
+      existing,
+      suggestions: [],
+      total: existing.length,
+      priorities_count: priorityMap.size,
+      pruned_count: prunedSet.size,
+      pending_count: existing.filter((b: any) => b.is_candidate).length,
+      generated_at: new Date().toISOString(),
+      window_days: balance?.window_days || 90,
+    })
+  } catch (err) {
+    return c.json(safeError('Branch deck failed')(err), 500)
+  }
+})
+
+// ---- /brain/branch-explanations — Apply AGY-authored explanations to waiting branches only.
+// This is metadata-only: it never changes branch status, taste, priority, or evidence.
+app.post('/branch-explanations', async (c) => {
+  const { DB } = c.env
+  try {
+    const body = await c.req.json<{ explanations?: Array<{ id?: string; explanation?: string }> }>()
+    const items = Array.isArray(body?.explanations) ? body.explanations : []
+    if (!items.length || items.length > 200) return c.json({ ok: false, error: 'explanations must contain 1..200 items' }, 400)
+    let updated = 0
+    const skipped: string[] = []
+    for (const item of items) {
+      const id = String(item?.id || '').trim()
+      const explanation = String(item?.explanation || '').trim().slice(0, 1200)
+      if (!id || !explanation) { if (id) skipped.push(id); continue }
+      const node = await DB.prepare("SELECT meta_json, status, type FROM tree_nodes WHERE id = ?").bind(id).first<any>()
+      const nodeStatus = String(node?.status || '').trim().toLowerCase()
+      if (!node || !['branch', 'leaf'].includes(String(node.type || '').trim().toLowerCase()) || (nodeStatus && !['candidate', 'active', 'fresh'].includes(nodeStatus))) { skipped.push(id); continue }
+      let meta: any = {}
+      try { if (node.meta_json) meta = JSON.parse(node.meta_json) } catch {}
+      meta.description = explanation
+      meta.notes = explanation
+      meta.explanation_source = 'agy'
+      meta.explanation_updated_at = new Date().toISOString()
+      await DB.prepare("UPDATE tree_nodes SET meta_json = ?, updated_at = datetime('now') WHERE id = ?").bind(JSON.stringify(meta), id).run()
+      updated += 1
+    }
+    return c.json({ ok: true, updated, skipped })
+  } catch (err) { return c.json(safeError('Branch explanations failed')(err), 500) }
+})
+
+// ---- /brain/branch-swipe — Handle a branch decision.
+// Every action writes the canonical tree state plus one reversible typed
+// profile assertion and a taste signal; prune is a reversible user exclusion
+// (never an "applied" feedback proposal), priority keeps one explicit renumbered
+// rank, hold stays neutral, and undo reverses the side effects — not just the
+// tree row. Add only registers an active exploration branch; it gets no taste
+// signal until evidence exists.
+app.post('/branch-swipe', async (c) => {
+  const { DB } = c.env
+  try {
+    const { id, action, label, super_category, round_label, rationale, description, leaves_sample, contrast_hook, parent_id, restore_status, restore_priority_rank } = await c.req.json<{
+      id: string
+      action: 'keep' | 'prune' | 'priority' | 'hold' | 'add' | 'undo'
+      label?: string
+      super_category?: string
+      round_label?: string
+      rationale?: string
+      description?: string
+      leaves_sample?: string[]
+      contrast_hook?: string
+      parent_id?: string
+      restore_status?: string
+      restore_priority_rank?: number | null
+    }>()
+
+    if (!id || !isNonEmptyStr(id, 100)) return c.json({ error: 'id required' }, 400)
+    if (!['keep', 'prune', 'priority', 'hold', 'add', 'undo'].includes(action)) return c.json({ error: 'invalid action' }, 400)
+
+    const branchLabel = label || id.replace(/[-_]/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+    const cat = super_category || 'cat-mind'
+    const round = round_label || (id.startsWith('r1-') ? 'R1' : id.startsWith('r2-') ? 'R2' : 'R1')
+    const metaJson = JSON.stringify({
+      description: String(description || rationale || '').slice(0, 1000),
+      leaves: Array.isArray(leaves_sample) ? leaves_sample.map((item) => String(item).slice(0, 120)).slice(0, 12) : [],
+      contrast_hook: String(contrast_hook || '').slice(0, 500),
+    })
+
+    const log = (summary: string, details: any) =>
+      DB.prepare("INSERT INTO update_log (kind, summary, details_json) VALUES ('tree_change', ?, ?)")
+        .bind(summary, JSON.stringify({ id, action, ...details })).run().catch(() => {})
+
+    if (action === 'undo') {
+      if (String(restore_status) === 'candidate') {
+        // The branch was created by an explicit Add and did not exist on the map
+        // before, so undo removes it entirely rather than restoring a status.
+        await DB.prepare('DELETE FROM tree_nodes WHERE id = ?').bind(id).run()
+        await DB.prepare('DELETE FROM branch_exploration WHERE id = ?').bind(id).run().catch(() => {})
+        await DB.prepare('DELETE FROM priorities WHERE branch_id = ?').bind(id).run().catch(() => {})
+        await DB.prepare('DELETE FROM taste_vectors WHERE topic = ?').bind(id).run().catch(() => {})
+        await DB.prepare("UPDATE profile_assertions SET status='inactive', updated_at=datetime('now') WHERE assertion_key=? AND status='active'")
+          .bind(`user.profile.branch_preference.${id}`).run().catch(() => {})
+        await log(`Branch ${branchLabel} removed (add undone)`, {})
+      } else {
+      const restoredStatus = ['love', 'pruned', 'held', 'active', 'candidate', 'fresh', 'standard', 'locked'].includes(String(restore_status))
+        ? String(restore_status)
+        : 'active'
+      await DB.prepare("UPDATE tree_nodes SET status = ?, updated_at = datetime('now') WHERE id = ?").bind(restoredStatus, id).run()
+      // Reverse the explicit priority side effect.
+      await DB.prepare('DELETE FROM priorities WHERE branch_id = ?').bind(id).run()
+      if (typeof restore_priority_rank === 'number' && restore_priority_rank > 0) {
+        await DB.prepare("INSERT OR REPLACE INTO priorities (rank, branch_id, label, rationale) VALUES (?, ?, ?, ?)")
+          .bind(restore_priority_rank, id, branchLabel, rationale || 'Restored previous branch priority').run()
+      }
+      if (restoredStatus !== 'pruned') {
+        await DB.prepare("UPDATE branch_exploration SET is_pruned = 0, lifecycle_state = 'active', pruning_reason = NULL, updated_at = datetime('now') WHERE id = ?")
+          .bind(id).run().catch(() => {})
+      }
+      // Reverse the typed profile assertion created by the previous decision.
+      await DB.prepare("UPDATE profile_assertions SET status='inactive', updated_at=datetime('now') WHERE assertion_key=? AND status='active'")
+        .bind(`user.profile.branch_preference.${id}`).run().catch(() => {})
+      await log(`Branch ${branchLabel} restored to ${restoredStatus}`, { restoredStatus })
+      }
+    } else if (action === 'keep') {
+      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'love', ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'love', updated_at = datetime('now')")
+        .bind(id, branchLabel, cat, round).run()
+      await log(`Branch ${branchLabel} [${round}] kept & updated to LOVE status`, { round })
+    } else if (action === 'prune') {
+      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'pruned', ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'pruned', updated_at = datetime('now')")
+        .bind(id, branchLabel, cat, round).run()
+      await DB.prepare("INSERT INTO branch_exploration (id, name, path, lifecycle_state, confidence_score, is_pruned, pruning_reason, updated_at) VALUES (?, ?, ?, 'pruned', 0, 1, 'Pruned in Branch Deck', datetime('now')) ON CONFLICT(id) DO UPDATE SET is_pruned = 1, lifecycle_state = 'pruned', pruning_reason = 'Pruned in Branch Deck', updated_at = datetime('now')")
+        .bind(id, branchLabel, id).run()
+      // A pruned branch stops steering Compass priorities.
+      await DB.prepare('DELETE FROM priorities WHERE branch_id = ?').bind(id).run()
+      await log(`Branch ${branchLabel} pruned`, {})
+    } else if (action === 'priority') {
+      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'love', ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'love', updated_at = datetime('now')")
+        .bind(id, branchLabel, cat, round).run()
+      // One explicit renumbered priority list: promote this branch to rank 1 and
+      // shift the rest down, instead of growing an unbounded MAX(rank)+1 tail.
+      await DB.batch([
+        DB.prepare('DELETE FROM priorities WHERE branch_id = ?').bind(id),
+        DB.prepare('UPDATE priorities SET rank = rank + 1'),
+        DB.prepare('INSERT INTO priorities (rank, branch_id, label, rationale) VALUES (1, ?, ?, ?)')
+          .bind(id, branchLabel, rationale || 'Promoted in Branch Deck'),
+      ]).catch(() => {})
+      await log(`Branch ${branchLabel} promoted to priority #1`, { rank: 1 })
+    } else if (action === 'hold') {
+      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'held', ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'held', updated_at = datetime('now')")
+        .bind(id, branchLabel, cat, round).run()
+      await log(`Branch ${branchLabel} held`, {})
+    } else if (action === 'add') {
+      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, meta_json, updated_at) VALUES (?, 'branch', ?, ?, ?, 'active', ?, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET label = excluded.label, super_category = excluded.super_category, parent_id = excluded.parent_id, status = 'active', round_label = excluded.round_label, meta_json = excluded.meta_json, updated_at = datetime('now')")
+        .bind(id, branchLabel, cat, parent_id || 'root', round, metaJson).run()
+      await log(`Branch ${branchLabel} added as active exploration`, {})
+    }
+
+    // 1. Taste signal. Prune is an explicit negative (floor 0.5/5); hold stays
+    // neutral; add gets no signal until sources are mapped to it. Undo removes
+    // the signal the decision wrote rather than re-applying it.
+    let affinityScore: number | null = null
+    if (action === 'undo') {
+      await DB.prepare('DELETE FROM taste_vectors WHERE topic = ?').bind(id).run().catch(() => {})
+    } else if (action !== 'add') {
+      affinityScore = action === 'keep' || action === 'priority' ? 5.0 : action === 'prune' ? 0.5 : 2.5
+      try {
+        await DB.prepare("INSERT INTO taste_vectors (topic, affinity_score, consumption_count, last_consumed_at, updated_at) VALUES (?, ?, 1, datetime('now'), datetime('now')) ON CONFLICT(topic) DO UPDATE SET affinity_score = excluded.affinity_score, updated_at = datetime('now')")
+          .bind(id, affinityScore).run()
+      } catch {}
+    }
+
+    // 2. Typed profile assertion — reversible, category reflects the decision's
+    // meaning. prune is an exclusion (Compass blocks it), priority is a priority
+    // topic (Compass steers toward it), hold stays a weak hypothesis, add is an
+    // active exploration signal. No feedback proposal is fabricated as "applied".
+    if (action !== 'undo') {
+      try {
+        await applyProfileAssertion(DB, {
+          assertionKey: `user.profile.branch_preference.${id}`,
+          category: action === 'prune' ? 'exclusion' : action === 'priority' ? 'priority' : action === 'add' ? 'active_exploration' : 'topic_affinity',
+          value: {
+            branch_id: id,
+            label: branchLabel,
+            action,
+            status: action === 'keep' || action === 'priority' ? 'love' : action === 'prune' ? 'pruned' : action === 'add' ? 'active' : 'held',
+            super_category: cat,
+            round_label: round,
+            timestamp: new Date().toISOString(),
+          },
+          confidence: action === 'hold' ? 0.6 : 1.0,
+          status: action === 'hold' ? 'hypothesis' : 'active',
+          sourceKind: 'user',
+          evidence: [{ source: 'branch_deck', action, timestamp: new Date().toISOString() }],
+          actorType: 'user',
+          decisionSource: 'user',
+          directUserStatement: true,
+        })
+      } catch {}
+    }
+
+    // 3. Sync profile recent_signal
+    try {
+      const lastSwipes = await DB.prepare("SELECT summary FROM update_log WHERE kind = 'tree_change' ORDER BY ts DESC LIMIT 8").all<any>()
+      const summaries = (lastSwipes.results || []).map((r: any) => r.summary).join(' | ')
+      await DB.prepare("UPDATE profile SET recent_signal = ?, last_synced_at = datetime('now') WHERE id = 1").bind(`Branch decisions: ${summaries}`).run()
+    } catch {}
+
+    const profileState = await DB.prepare("SELECT last_synced_at, recent_signal FROM profile WHERE id = 1").first<any>().catch(() => null)
+    const assertionState = await DB.prepare("SELECT updated_at FROM profile_assertions WHERE assertion_key = ?").bind(`user.profile.branch_preference.${id}`).first<any>().catch(() => null)
+
+    return c.json({
+      ok: true,
+      id,
+      action,
+      affinity_score: affinityScore,
+      profile_sync: {
+        synced_at: profileState?.last_synced_at || null,
+        assertion_updated_at: assertionState?.updated_at || null,
+        context_refresh: 'Compass context will include this branch decision on its next read.',
+      },
+    })
+  } catch (err) {
+    return c.json(safeError('Branch swipe failed')(err), 500)
+  }
+})
+
+// ---- /brain/branch-suggest — grounded, review-before-commit new-branch ideas
+// Builds a bounded grounding packet from the canonical Compass context plus the
+// live branch deck, asks the LLM (same freeAi wrapper as /ai/suggest) for new
+// branch candidates, and returns them for the user to review and Add. Nothing
+// is written here: suggestions never mutate the map or the profile. If the LLM
+// is unavailable the endpoint still succeeds with an empty list, and the client
+// falls back to the grounded Hermes copy-prompt.
+const SUGGEST_MODES: Record<string, string> = {
+  surprise: 'Suggest an unexpected but genuinely promising direction not obviously implied by the current map — a creative leap grounded in this person\'s learning profile. Avoid anything already on the map.',
+  expand: 'Suggest a natural next expansion of an existing loved or high-priority branch — an adjacent subtopic that would deepen that branch.',
+  bridge: 'Suggest a new hybrid branch that connects two existing branches which rarely appear together, creating a novel synthesis.',
+  challenge: 'Suggest a counterbalancing branch that challenges a dominant conviction or over-weighted direction — a productive contrarian path, not a troll.',
+}
+const SLUG_RE = /[^a-z0-9]+/g
+
+app.post('/branch-suggest', async (c) => {
+  const { DB } = c.env
+  try {
+    const body = await c.req.json<{ count?: number; mode?: string }>().catch(() => ({} as { count?: number; mode?: string }))
+    const mode = Object.prototype.hasOwnProperty.call(SUGGEST_MODES, String(body?.mode)) ? String(body!.mode) : 'surprise'
+    const count = Math.max(1, Math.min(Number(body?.count) || 3, 6))
+
+    const [context, nodes, assertions] = await Promise.all([
+      loadCompassContext(DB).catch(() => null),
+      DB.prepare("SELECT id, label, status, super_category, round_label FROM tree_nodes WHERE type='branch' ORDER BY CASE status WHEN 'love' THEN 0 WHEN 'priority' THEN 0 ELSE 1 END, id").all<any>().catch(() => ({ results: [] })),
+      DB.prepare("SELECT category, value_json, confidence, status FROM profile_assertions WHERE status='active' ORDER BY confidence DESC LIMIT 40").all<any>().catch(() => ({ results: [] })),
+    ])
+
+    const branchRows = nodes.results || []
+    const existingIds = new Set<string>(branchRows.map((n: any) => String(n.id).toLowerCase()))
+    const existingLabels = new Set<string>(branchRows.map((n: any) => String(n.label || n.id).toLowerCase()))
+    const loved = branchRows.filter((n: any) => n.status === 'love' || n.status === 'priority').map((n: any) => String(n.label || n.id))
+    const held = branchRows.filter((n: any) => n.status === 'held').map((n: any) => String(n.label || n.id))
+    const pruned = branchRows.filter((n: any) => n.status === 'pruned').map((n: any) => String(n.label || n.id))
+    const categories = [...new Set(branchRows.map((n: any) => String(n.super_category || 'cat-mind')).filter(Boolean))]
+
+    const affinities: Array<[string, number]> = []
+    if (context?.topicAffinities) for (const [topic, value] of context.topicAffinities) if (topic) affinities.push([String(topic), Number(value)])
+    affinities.sort((a, b) => b[1] - a[1])
+
+    const creators: Array<[string, number]> = []
+    if (context?.creatorTrust) for (const [key, info] of context.creatorTrust) if (key && info.count > 0) creators.push([String(key), Number(info.average)])
+    creators.sort((a, b) => b[1] - a[1])
+
+    const priorityTopics = context?.priorityTopics ? [...context.priorityTopics].filter(Boolean).slice(0, 8) : []
+    const blocked = (context?.blockedEntities || []).filter(Boolean).slice(0, 15)
+    const recentFormats = (context?.recentFormats || []).filter(Boolean).slice(0, 4)
+
+    const grounding = [
+      `LOVED / HIGH-PRIORITY BRANCHES: ${loved.length ? loved.slice(0, 12).join(', ') : '(none yet)'}`,
+      `HELD (neutral) BRANCHES: ${held.length ? held.slice(0, 8).join(', ') : '(none)'}`,
+      `PRUNED / EXCLUDED (never suggest): ${pruned.length ? pruned.slice(0, 10).join(', ') : '(none)'}`,
+      `KNOWN CATEGORIES: ${categories.slice(0, 10).join(', ') || 'cat-mind'}`,
+      `EXPLICIT PRIORITY TOPICS: ${priorityTopics.length ? priorityTopics.join(', ') : '(none)'}`,
+      `BLOCKED ENTITIES TO AVOID: ${blocked.length ? blocked.join(', ') : '(none)'}`,
+      `STRONGEST TOPIC AFFINITIES: ${affinities.slice(0, 8).map(([t, v]) => `${t} (${v.toFixed(1)})`).join(', ') || '(no signal yet)'}`,
+      `HIGHEST-TRUST CREATORS: ${creators.slice(0, 6).map(([k]) => k).join(', ') || '(no signal yet)'}`,
+      `RECENT FORMATS: ${recentFormats.join(', ') || '(no signal yet)'}`,
+    ].join('\n')
+
+    const prompt = [
+      grounding,
+      '',
+      `Generate up to ${count} new knowledge-branch candidates for this learner. Mode: ${mode.toUpperCase()}.`,
+      SUGGEST_MODES[mode],
+      '',
+      'Rules:',
+      '- Each label must be a concrete, non-obvious branch name (2-6 words), not already on the map, not in the blocked/excluded list.',
+      '- super_category must be one of the KNOWN CATEGORIES (or a natural new category prefixed cat-).',
+      '- round_label must be R3 (these are new suggestions).',
+      '- description: 1-2 sentences on what the branch is and why it matters to this learner.',
+      '- plain_language: give a comprehensive but concise orientation in everyday language (2-3 sentences): define the scope, include one concrete example or mechanism, and state what this branch is not about.',
+      '- leaves_sample: 3-6 concrete subtopics or source directions inside the branch.',
+      '- contrast_hook: one sharp sentence contrasting this direction with what the learner already favors.',
+      '- why_now: one sentence on why now, tied to the grounding above.',
+      '- evidence_grounding: which specific affinity, priority, creator, or gap in the grounding supports this.',
+      '- evidence_confidence: one of "low", "medium", or "high". Use low when the branch is mostly exploratory and has no direct source evidence.',
+      '- overlap_candidates: 0-3 existing branch labels this may overlap with; do not invent labels.',
+      '- suggested_next_move: one cautious next step such as "Hold until one source confirms the scope" or "Keep and explore one primary source".',
+      '- uncertainty_note: one sentence naming what is still unknown and making uncertainty explicit.',
+      'Return ONLY valid JSON — an array of objects with keys: label, round_label, super_category, description, plain_language, leaves_sample, contrast_hook, why_now, evidence_grounding, evidence_confidence, overlap_candidates, suggested_next_move, uncertainty_note. No markdown, no commentary.',
+    ].join('\n')
+
+    const result = await freeAi(c.env, 'You are the branch curator for a private learning OS. Return ONLY valid JSON as instructed.', prompt, 2048)
+    const suggestions: any[] = []
+    if (result && result.text) {
+      const jsonMatch = result.text.match(/\[[\s\S]*\]/)
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0])
+          if (Array.isArray(parsed)) {
+            for (const item of parsed) {
+              const label = String(item?.label || '').trim().slice(0, 100)
+              if (!label) continue
+              const low = label.toLowerCase()
+              if (existingLabels.has(low) || existingIds.has(low)) continue
+              if (blocked.some((b: string) => low.includes(b.toLowerCase()) || String(b).toLowerCase().includes(low))) continue
+              const slug = label.toLowerCase().replace(SLUG_RE, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'branch'
+              suggestions.push({
+                id: `r3-${slug}`,
+                label,
+                round_label: /^R[1-5]$/i.test(String(item?.round_label || '')) ? String(item.round_label).toUpperCase() : 'R3',
+                super_category: /^cat-/.test(String(item?.super_category || '')) ? String(item.super_category).slice(0, 60) : `cat-${String(item?.super_category || 'mind').toLowerCase().replace(SLUG_RE, '-').slice(0, 40)}`,
+                description: String(item?.description || '').trim().slice(0, 1000),
+                plain_language: String(item?.plain_language || '').trim().slice(0, 500),
+                leaves_sample: Array.isArray(item?.leaves_sample) ? item.leaves_sample.map((leaf: any) => String(leaf).trim().slice(0, 120)).filter(Boolean).slice(0, 12) : [],
+                contrast_hook: String(item?.contrast_hook || '').trim().slice(0, 500),
+                why_now: String(item?.why_now || '').trim().slice(0, 500),
+                evidence_grounding: String(item?.evidence_grounding || '').trim().slice(0, 300),
+                evidence_confidence: ['low', 'medium', 'high'].includes(String(item?.evidence_confidence || '').toLowerCase()) ? String(item.evidence_confidence).toLowerCase() : 'low',
+                overlap_candidates: Array.isArray(item?.overlap_candidates) ? item.overlap_candidates.map((label: any) => String(label).trim().slice(0, 100)).filter(Boolean).slice(0, 3) : [],
+                suggested_next_move: String(item?.suggested_next_move || '').trim().slice(0, 300),
+                uncertainty_note: String(item?.uncertainty_note || '').trim().slice(0, 300),
+                status: 'candidate',
+                source: 'suggest',
+                mode,
+              })
+              if (suggestions.length >= count) break
+            }
+          }
+        } catch { /* malformed LLM output — fall through with what parsed */ }
+      }
+    }
+
+    return c.json({
+      ok: true,
+      mode,
+      model: result?.model || null,
+      suggestions,
+      fallback: !result,
+      message: result ? undefined : 'LLM unavailable — suggest is read-only; the grounded Hermes copy-prompt is the fallback.',
+      generated_at: new Date().toISOString(),
+    })
+  } catch (err) {
+    return c.json(safeError('Branch suggest failed')(err), 500)
+  }
+})
+
+// ---- /brain/profile/sync-swipes — Sync all swiped branch reactions to canonical profile assertions
+app.post('/profile/sync-swipes', async (c) => {
+  const { DB } = c.env
+  try {
+    const nodes = await DB.prepare("SELECT id, label, status, super_category, round_label FROM tree_nodes WHERE status IN ('love','pruned','held')").all<any>()
+    let synced = 0
+    for (const node of nodes.results || []) {
+      const affinityScore = node.status === 'love' ? 5.0 : node.status === 'pruned' ? 0.0 : 2.5
+      await DB.prepare(
+        "INSERT INTO taste_vectors (topic, affinity_score, consumption_count, last_consumed_at, updated_at) VALUES (?, ?, 1, datetime('now'), datetime('now')) ON CONFLICT(topic) DO UPDATE SET affinity_score = excluded.affinity_score, updated_at = datetime('now')"
+      ).bind(node.id, affinityScore).run().catch(() => {})
+
+      await applyProfileAssertion(DB, {
+        assertionKey: `user.profile.branch_preference.${node.id}`,
+        category: 'topic_affinity',
+        value: JSON.stringify({ branch_id: node.id, label: node.label, status: node.status, super_category: node.super_category, round_label: node.round_label }),
+        confidence: 1.0,
+        sourceKind: 'user',
+        evidence: [{ source: 'profile_sync_swipes', status: node.status }],
+        actorType: 'user',
+        decisionSource: 'user',
+        directUserStatement: true,
+      }).catch(() => {})
+      synced++
+    }
+
+    const lastSwipes = await DB.prepare("SELECT summary FROM update_log WHERE kind = 'tree_change' ORDER BY ts DESC LIMIT 12").all<any>()
+    const summaries = (lastSwipes.results || []).map((r: any) => r.summary).join(' | ')
+    await DB.prepare("UPDATE profile SET recent_signal = ?, last_synced_at = datetime('now') WHERE id = 1").bind(`Synced Branch Swipes (${synced}): ${summaries}`).run()
+
+    return c.json({ ok: true, synced_count: synced })
+  } catch (err) {
+    return c.json(safeError('Sync swipes failed')(err), 500)
+  }
 })
 
 // ---- /brain/priorities — bulk replace priority list

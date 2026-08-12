@@ -6,6 +6,7 @@ import { Destination, destinationForPath, destinations, WorkspaceKey } from './d
 
 const AtlasPage = lazy(() => import('./features/atlas/AtlasPage'))
 const DiscoveryPage = lazy(() => import('./features/discovery/DiscoveryPage'))
+import { BranchDeckPage } from './features/branches/BranchDeckPage'
 
 const workspaceLabels: Record<WorkspaceKey, string> = {
   today: 'Momentum', curate: 'Curate', map: 'Map', learn: 'Learn', insights: 'Insights', settings: 'Settings',
@@ -191,6 +192,15 @@ function compassFeatureLabel(key: string) {
     information_gain: 'new learning', novelty: 'novelty', format_fit: 'format fit',
     evidence_quality: 'evidence quality', thread_contribution: 'helps your current goal',
   } as Record<string, string>)[key] || labelize(key)
+}
+function compassTopFeatures(breakdown: any) {
+  return Object.entries(breakdown || {})
+    .filter(([key, value]) => !key.startsWith('_') && !['friction'].includes(key) && Number.isFinite(Number(value)))
+    .sort(([, a], [, b]) => Number(b) - Number(a))
+    .slice(0, 3)
+}
+function CompassFeedbackReasons({ working, onDecline }: { working: boolean; onDecline: (reason: string) => void }) {
+  return <div class="compass-feedback-reasons"><span>What missed?</span>{[['wrong_topic', 'Wrong topic'], ['too_familiar', 'Too familiar'], ['too_shallow', 'Too shallow'], ['too_long', 'Too long'], ['poor_source', 'Poor source'], ['wrong_format', 'Wrong format'], ['already_mastered', 'Already mastered'], ['other', 'Other']].map(([reason, label]) => <button disabled={working} onClick={() => onDecline(reason)}>{label}</button>)}</div>
 }
 
 function buildStreakTrail(momentum: any) {
@@ -383,19 +393,32 @@ function TodayPage() {
           <h2>{compass.data.pick.video_title || 'Compass Pick'}</h2>
           <p>{compass.data.pick.context_brief || compass.data.pick.rationale?.why_this || compass.data.pick.why_this}</p>
           {(() => {
-            const breakdown = compass.data.pick.rationale?.score_breakdown || {}
-            const reasons = Object.entries(breakdown)
-              .filter(([key, value]) => !key.startsWith('_') && Number.isFinite(Number(value)) && !['friction'].includes(key))
-              .sort(([, a], [, b]) => Number(b) - Number(a)).slice(0, 3)
+            const reasons = compassTopFeatures(compass.data.pick.rationale?.score_breakdown)
             return reasons.length ? <div class="compass-why"><strong>Why this pick</strong><div class="compact-list">{reasons.map(([key, value]) => <article key={key}><strong>{compassFeatureLabel(key)}</strong><span>{Math.round(Number(value) * 100)}% signal</span></article>)}</div></div> : null
           })()}
-          {compass.data.pick.status === 'abstained' && <div class="compass-weak-context"><strong>Not automatically recommended</strong><p>{compassWeakReason(compass.data.pick.rationale?.abstention_reason || compass.data.pick.stop_reason)} {compassWeakPickCanQueue(compass.data.pick) ? 'The source is reachable, but it did not meet the automatic recommendation threshold. You can still add it manually.' : 'No safe, reachable source is available to add.'} Score {Math.round(Number(compass.data.pick.rationale?.score || 0) * 100)}% · confidence {Math.round(Number(compass.data.pick.confidence || 0) * 100)}% · source {compass.data.pick.rationale?.source_check?.status || 'unknown'}.</p></div>}
+          {compass.data.pick.status === 'abstained' && <div class="compass-weak-context"><strong>Not automatically recommended</strong><p>{compassWeakReason(compass.data.pick.rationale?.abstention_reason || compass.data.pick.stop_reason)} {compassWeakPickCanQueue(compass.data.pick) ? 'The source is reachable, but it did not meet the automatic recommendation threshold. You can still add it manually.' : 'No safe, reachable source is available to add.'} Score {Math.round(Number(compass.data.pick.rationale?.score || 0) * 100)}% · confidence {Math.round(Number(compass.data.pick.confidence || 0) * 100)}% · source {compass.data.pick.rationale?.source_check?.status || 'unknown'}{compass.data.pick.confidence_status ? ` · calibration ${compass.data.pick.confidence_status}` : ''}.</p></div>}
           <div class="row-actions">
             {(compass.data.pick.status === 'ready' || (compass.data.pick.status === 'abstained' && compassWeakPickCanQueue(compass.data.pick))) && <button class="primary-action" disabled={compassWorking} onClick={async () => { setCompassWorking(true); const target = window.open('about:blank', '_blank'); try { const result = await api<any>(`/compass/pick/${compass.data.pick.id}/start`, { method: 'POST' }); localStorage.setItem('tm-active-session', JSON.stringify({ id: result.session_id, recommendationId: result.recommendation_id, title: compass.data.pick.video_title, sourceUrl: compass.data.pick.video_url })); if (target) target.location.replace(compass.data.pick.video_url); else location.assign(compass.data.pick.video_url); compass.reload() } catch (startError: any) { target?.close(); window.alert(startError.message) } finally { setCompassWorking(false) } }}>{compass.data.pick.status === 'abstained' ? 'Add to Queue anyway' : 'Start'}</button>}
             <button disabled={compassWorking} onClick={() => sendCompassFeedback('dismissed', 'not_now')}>Not now</button>
             <button disabled={compassWorking} onClick={() => setCompassFeedbackOpen((value) => !value)}>Bad fit</button>
           </div>
-          {compassFeedbackOpen && <div class="compass-feedback-reasons"><span>What missed?</span>{[['wrong_topic', 'Wrong topic'], ['too_familiar', 'Too familiar'], ['too_shallow', 'Too shallow'], ['too_long', 'Too long'], ['poor_source', 'Poor source'], ['wrong_format', 'Wrong format'], ['already_mastered', 'Already mastered'], ['other', 'Other']].map(([reason, label]) => <button disabled={compassWorking} onClick={() => sendCompassFeedback('declined', reason)}>{label}</button>)}</div>}
+          {compassFeedbackOpen && <CompassFeedbackReasons working={compassWorking} onDecline={(reason) => sendCompassFeedback('declined', reason)} />}
+        </section>}
+        {mission && compass.data?.pick && <section class="compass-strip">
+          <div class="compass-strip-head">
+            <span class="momentum-eyebrow">What Compass would pick next</span>
+            <span class="compass-strip-meta">score {Math.round(Number(compass.data.pick.rationale?.score || 0) * 100)}% · confidence {Math.round(Number(compass.data.pick.confidence || 0) * 100)}% · {compass.data.pick.status}</span>
+          </div>
+          <div class="compass-strip-body">
+            <h3>{compass.data.pick.video_title || 'Compass Pick'}</h3>
+            {compass.data.pick.context_brief || compass.data.pick.rationale?.why_this ? <p>{compass.data.pick.context_brief || compass.data.pick.rationale?.why_this}</p> : null}
+            {(() => { const features = compassTopFeatures(compass.data.pick.rationale?.score_breakdown); return features.length ? <div class="compass-strip-features">{features.map(([key, value]) => <span key={key}>{compassFeatureLabel(key)} {Math.round(Number(value) * 100)}%</span>)}</div> : null })()}
+          </div>
+          <div class="row-actions">
+            <button disabled={compassWorking} onClick={() => sendCompassFeedback('dismissed', 'not_now')}>Not now</button>
+            <button disabled={compassWorking} onClick={() => setCompassFeedbackOpen((value) => !value)}>Bad fit</button>
+          </div>
+          {compassFeedbackOpen && <CompassFeedbackReasons working={compassWorking} onDecline={(reason) => sendCompassFeedback('declined', reason)} />}
         </section>}
       </div>
     </div>
@@ -459,11 +482,18 @@ function formatSmartHook(item: any): string {
 }
 
 function QueuePage() {
-  const { data, error, loading } = useData('/capture/queue')
+  const { data, error, loading, reload } = useData('/capture/queue')
+  const [rejecting, setRejecting] = useState('')
 
   if (loading) return <Loading />
   if (error) return <ErrorState message={error} />
   const items = data?.items || []
+  const notForMe = async (item: any) => {
+    setRejecting(item.id)
+    try { await api(`/capture/${item.id}/triage`, { method: 'POST', body: JSON.stringify({ action: 'exclude', reason: 'not_for_me' }) }); reload() }
+    catch (err: any) { window.alert(err.message) }
+    finally { setRejecting('') }
+  }
 
   return (
     <div class="queue-view">
@@ -490,10 +520,12 @@ function QueuePage() {
                 </div>
                 <h3>{item.video_title}</h3>
                 {item.context_brief?.trim() ? <p class="queue-brief">{item.context_brief}</p> : <p>{formatSmartHook(item)}</p>}
+                {item.compass && <div class="queue-compass"><span>Compass · score {Math.round(Number(item.compass.score) * 100)}% · confidence {Math.round(Number(item.compass.confidence) * 100)}%</span>{compassTopFeatures(item.compass.breakdown).length ? <div class="queue-compass-features">{compassTopFeatures(item.compass.breakdown).map(([key, value]) => <span key={key}>{compassFeatureLabel(key)} {Math.round(Number(value) * 100)}%</span>)}</div> : null}</div>}
               </div>
 
               <div class="row-actions">
                 <button onClick={() => { location.hash = `#/learn/notes?source=${encodeURIComponent(item.id)}` }}>Record</button>
+                <button disabled={rejecting === item.id} onClick={() => notForMe(item)}>Not for me</button>
                 <a class="primary-action" href={item.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, item)}>
                   {isInProgress ? 'Resume' : 'Start'}
                 </a>
@@ -2496,6 +2528,13 @@ function SettingsPage({ route }: { route: Destination }) {
       {profileRow ? <><ModelHeader profile={profileRow} />
         <div class="model-layout"><ModelIndex items={profileItems} /><div class="model-sections">
           <div class="model-group"><h3 class="model-group-title">The model</h3>
+            <div class="deck-callout-banner">
+              <div>
+                <h4>🎴 Tender Branch Swiper</h4>
+                <p>Swipe candidate R1 Macro & R2 Micro branches to visually tune your knowledge profile.</p>
+              </div>
+              <a class="primary-action" href="#/map/deck">Open Branch Deck</a>
+            </div>
             <TypedProfileModel items={profileItems} reload={profile.reload} />
             <ProfilePanel id="profile-core" title="Core profile" description="Identity, focus, rules, and operating style." count={`${coreProfileFields.length} fields`} open><div class="profile-fields">{coreProfileFields.map(([key, label, description, json]) => <ProfileField key={key} label={label} description={description} value={profileRow[key]} json={json} />)}</div>{profileDraft && <details class="profile-editor"><summary>Edit core profile</summary><p>Values are saved as entered. Unchanged fields are never sent.</p>{editableProfileFields.map((field) => <label key={field.draftKey}>{field.label}<span>{field.description}</span><textarea maxLength={5000} aria-label={field.label} value={profileDraft[field.draftKey]} onInput={(event) => setProfileDraft({ ...profileDraft, [field.draftKey]: (event.target as HTMLTextAreaElement).value })} /></label>)}<button class="primary-action" onClick={saveProfile}>Save profile</button></details>}</ProfilePanel>
           </div>
@@ -2535,6 +2574,7 @@ function View({ route }: { route: Destination }) {
   if (route.key === 'curate.collections') return <CollectionsPage scope="curate" />
   if (route.key === 'curate.archive') return <ArchivePage />
   if (route.key === 'map.atlas') return <Suspense fallback={<div class="atlas-loading"><div /><span>Preparing spatial canvas…</span></div>}><AtlasPage /></Suspense>
+  if (route.key === 'map.deck') return <BranchDeckPage />
   if (route.key === 'map.coverage') return <div class="combined-view"><CoveragePage /><ContradictionsPage /></div>
   if (route.key === 'learn.files') return <ArtifactsPage />
   if (route.key === 'learn.notes') return <NotesPage />
@@ -2593,7 +2633,7 @@ type ActiveSession = { id: string; recommendationId: string; title: string; sour
 function ReturnDialog({ session, onClose, onComplete }: { session: ActiveSession | null; onClose: () => void; onComplete: () => void }) {
   const ref = useRef<HTMLDialogElement>(null)
   const [reflection, setReflection] = useState('')
-  const [rating, setRating] = useState('8')
+  const [rating, setRating] = useState('')
   const [completionState, setCompletionState] = useState('completed')
   const [reasonTags, setReasonTags] = useState('')
   const [expected, setExpected] = useState('')
@@ -2602,7 +2642,7 @@ function ReturnDialog({ session, onClose, onComplete }: { session: ActiveSession
   const [lengthMinutes, setLengthMinutes] = useState('')
   const [disposition, setDisposition] = useState('retain')
   const [status, setStatus] = useState('')
-  useEffect(() => { if (session) { setReflection(''); setRating('8'); setCompletionState('completed'); setReasonTags(''); setExpected(''); setActual(''); setEffort('moderate'); setLengthMinutes(''); setDisposition('retain'); setStatus(''); ref.current?.showModal() } else ref.current?.close() }, [session?.id])
+  useEffect(() => { if (session) { setReflection(''); setRating(''); setCompletionState('completed'); setReasonTags(''); setExpected(''); setActual(''); setEffort('moderate'); setLengthMinutes(''); setDisposition('retain'); setStatus(''); ref.current?.showModal() } else ref.current?.close() }, [session?.id])
   if (!session) return null
   const submit = async (complete: boolean) => {
     setStatus(complete ? 'Finishing and processing…' : 'Saving your place…')
@@ -2614,7 +2654,7 @@ function ReturnDialog({ session, onClose, onComplete }: { session: ActiveSession
     } catch (error: any) { setStatus(error.message); return false }
   }
   const dismiss = () => onClose()
-  return <dialog ref={ref} class="return-dialog" onClose={dismiss}><div class="dialog-head"><div><span>Learning handoff</span><h2>What changed after reading?</h2></div><button onClick={dismiss}>Later</button></div><p class="return-source">{session.title}</p><label>My notes & reaction<textarea autoFocus value={reflection} onInput={(event) => setReflection((event.target as HTMLTextAreaElement).value)} placeholder="What surprised you? What do you disagree with? What will you use?" /></label><label>Score <span>{rating}/10</span><input type="range" min="0" max="10" value={rating} onInput={(event) => setRating((event.target as HTMLInputElement).value)} /></label><div class="feedback-fields"><label>Keep this knowledge?<select value={disposition} onChange={(event) => setDisposition((event.target as HTMLSelectElement).value)}><option value="retain">Retain and review</option><option value="apply">Apply in real work</option><option value="reference">Keep as reference</option><option value="drop">Drop after reflection</option></select></label><label>Status<select value={completionState} onChange={(event) => setCompletionState((event.target as HTMLSelectElement).value)}><option value="completed">Completed</option><option value="in_progress">Still in progress</option><option value="stopped">Stopped</option></select></label><label>Effort<select value={effort} onChange={(event) => setEffort((event.target as HTMLSelectElement).value)}><option value="light">Light</option><option value="moderate">Moderate</option><option value="deep">Deep</option></select></label><label>Minutes spent<input type="number" min="0" value={lengthMinutes} onInput={(event) => setLengthMinutes((event.target as HTMLInputElement).value)} /></label></div><label>Reason tags<input value={reasonTags} onInput={(event) => setReasonTags((event.target as HTMLInputElement).value)} placeholder="practical, too shallow, revisit" /></label><div class="feedback-fields"><label>Expected<textarea value={expected} onInput={(event) => setExpected((event.target as HTMLTextAreaElement).value)} placeholder="What did you expect?" /></label><label>Actual<textarea value={actual} onInput={(event) => setActual((event.target as HTMLTextAreaElement).value)} placeholder="What did you actually get?" /></label></div><div class="return-actions"><a href={session.sourceUrl} target="_blank" rel="noreferrer">Resume source</a><button onClick={async () => { if (await submit(false)) localStorage.removeItem('tm-active-session') }}>Save for later</button><button class="primary-action" disabled={!reflection.trim()} onClick={() => submit(true)}>{completionState === 'completed' ? 'Finish and hand to Hermes' : 'Save feedback'}</button></div>{status && <output>{status}</output>}</dialog>
+  return <dialog ref={ref} class="return-dialog" onClose={dismiss}><div class="dialog-head"><div><span>Learning handoff</span><h2>What changed after reading?</h2></div><button onClick={dismiss}>Later</button></div><p class="return-source">{session.title}</p><label>My notes & reaction <span>optional</span><textarea autoFocus value={reflection} onInput={(event) => setReflection((event.target as HTMLTextAreaElement).value)} placeholder="What surprised you? What do you disagree with? What will you use?" /></label><label>Score {rating ? <span>{rating}/10</span> : <span>optional — leave unset if unsure</span>}{rating !== '' && <button type="button" class="field-clear" onClick={() => setRating('')}>Clear</button>}<input type="range" min="1" max="10" value={rating || '5'} onInput={(event) => setRating((event.target as HTMLInputElement).value)} /></label><div class="feedback-fields"><label>Keep this knowledge?<select value={disposition} onChange={(event) => setDisposition((event.target as HTMLSelectElement).value)}><option value="retain">Retain and review</option><option value="apply">Apply in real work</option><option value="reference">Keep as reference</option><option value="drop">Drop after reflection</option></select></label><label>Status<select value={completionState} onChange={(event) => setCompletionState((event.target as HTMLSelectElement).value)}><option value="completed">Completed</option><option value="in_progress">Still in progress</option><option value="stopped">Stopped</option></select></label><label>Effort<select value={effort} onChange={(event) => setEffort((event.target as HTMLSelectElement).value)}><option value="light">Light</option><option value="moderate">Moderate</option><option value="deep">Deep</option></select></label><label>Minutes spent<input type="number" min="0" value={lengthMinutes} onInput={(event) => setLengthMinutes((event.target as HTMLInputElement).value)} /></label></div><label>Reason tags<input value={reasonTags} onInput={(event) => setReasonTags((event.target as HTMLInputElement).value)} placeholder="practical, too shallow, revisit" /></label><div class="feedback-fields"><label>Expected<textarea value={expected} onInput={(event) => setExpected((event.target as HTMLTextAreaElement).value)} placeholder="What did you expect?" /></label><label>Actual<textarea value={actual} onInput={(event) => setActual((event.target as HTMLTextAreaElement).value)} placeholder="What did you actually get?" /></label></div><div class="return-actions"><a href={session.sourceUrl} target="_blank" rel="noreferrer">Resume source</a><button onClick={async () => { if (await submit(false)) localStorage.removeItem('tm-active-session') }}>Save for later</button><button class="primary-action" onClick={() => submit(true)}>{completionState === 'completed' ? 'Finish and hand to Hermes' : 'Save feedback'}</button></div>{status && <output>{status}</output>}</dialog>
 }
 
 function applyTheme(value = localStorage.getItem('tm-theme') || 'system') {
