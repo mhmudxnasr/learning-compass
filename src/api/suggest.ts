@@ -147,17 +147,15 @@ CURATION INSTRUCTIONS:
       }
     }
 
-    if (!suggestion || !suggestion.title || !suggestion.why_this) {
+    let needsWebSearch = false
+    let searchQuery: string | null = null
+    if (!suggestion || !suggestion.title || !suggestion.why_this || !suggestion.url || /^SEARCH:/i.test(String(suggestion.url))) {
       const topTopic = neglected[0]?.label || priorities[0]?.label || 'Core Learning'
-      suggestion = {
-        title: `Curated Exploration: ${topTopic}`,
-        creator: 'Learning Compass',
-        content_type: 'article',
-        url: `SEARCH: ${topTopic}`,
-        why_this: `Derived from your neglected branches and priorities (${topTopic}) to maintain active learning balance.`,
-        is_refutation: curationMode === 'counter_evidence',
-        estimated_cos_sim: 0.25,
-      }
+      // Never fabricate a source URL. The compatibility endpoint now returns
+      // an explicit search handoff for the web candidate assembler.
+      suggestion = null
+      needsWebSearch = true
+      searchQuery = topTopic
     }
 
     const isRefutation = Boolean(suggestion.is_refutation || curationMode === 'counter_evidence')
@@ -165,10 +163,9 @@ CURATION INSTRUCTIONS:
     const dialecticDivergenceScore = computeDialecticDivergenceScore(cosSim, isRefutation)
 
     return c.json({
-      suggestion: {
-        ...suggestion,
-        dialectic_score: dialecticDivergenceScore,
-      },
+      suggestion: suggestion ? { ...suggestion, dialectic_score: dialecticDivergenceScore } : null,
+      needs_web_search: needsWebSearch,
+      search_query: searchQuery,
       model,
       mode: curationMode,
       energy_level: energyLevel,

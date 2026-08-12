@@ -131,7 +131,7 @@ export function structuredEvidenceStatus(value: unknown): 'structured' | 'legacy
   if (!evidence.length) return 'missing'
   const valid = evidence.every((item) => item && typeof item === 'object' &&
     typeof (item as CandidateEvidence).claim === 'string' && (item as CandidateEvidence).claim!.trim().length >= 12 &&
-    (!(item as CandidateEvidence).source_url || /^https?:\/\//i.test(String((item as CandidateEvidence).source_url))))
+    typeof (item as CandidateEvidence).source_url === 'string' && /^https?:\/\//i.test(String((item as CandidateEvidence).source_url)))
   return valid ? 'structured' : 'invalid'
 }
 

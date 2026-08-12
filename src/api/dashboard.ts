@@ -45,7 +45,8 @@ app.get('/briefing', async (c) => {
       const placeholders = activeItems.map(() => '?').join(',')
       const rows = await DB.prepare(`SELECT id,filename,media_type,created_at,
         json_extract(metadata_json,'$.recommendation_id') recommendation_id,
-        json_extract(metadata_json,'$.role') role
+        json_extract(metadata_json,'$.role') role,
+        json_extract(metadata_json,'$.recommended_start') recommended_start
         FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${placeholders})
         ORDER BY created_at DESC`).bind(...activeItems.map((item: any) => item.id)).all<any>()
       artifacts = rows.results || []

@@ -50,7 +50,7 @@ When behavior changes, update its contract in the same task:
 
 Active Hermes files:
 
-- `~/.hermes/SOUL.md` and its checked-in source `docs/learning-compass-hermes-soul.md` for the compact layer map, routing ownership, source-of-truth order, and voice.
+- `~/.hermes/SOUL.md` and its checked-in source `docs/learning-compass-hermes-soul.md` for global identity and voice only. Project routing and source-of-truth rules belong in `.hermes.md`, `AGENTS.md`, and focused skills.
 - `~/.hermes/skills/workflow/learning-compass-operating-system/SKILL.md`
 - `~/.hermes/skills/workflow/learning-compass-self-evolution/SKILL.md`
 - `~/.hermes/skills/workflow/recommendations-worker-ops/SKILL.md`

@@ -19,7 +19,7 @@ const missing = required.filter(([file]) => !existsSync(join(root, file))).map((
 if (missing.length) throw new Error(`Missing Hermes contract files: ${missing.join(', ')}`)
 
 const migrationNames = readdirSync(join(root, 'migrations')).filter((name) => /^\d+_.*\.sql$/.test(name)).sort()
-const expectedMigrations = ['0000_brain.sql', '0001_production_rebuild.sql', '0002_rss_feeds.sql', '0003_feedback_review.sql', '0004_discovery_engine.sql', '0005_recommendation_notebook_url.sql', '0006_hermes_upgrade.sql', '0007_sync_notifications.sql', '0008_compass_cascade.sql', '0009_proposal_dedup.sql', '0010_compass_queue_fill.sql', '0011_compass_adaptive_learning.sql', '0012_context_brief.sql', '0013_book_visual_chapters.sql', '0014_canonical_activity_ledger.sql', '0015_outcome_learning_integrity.sql', '0016_learning_integrity.sql', '0017_consolidation_workflows.sql', '0018_learning_threads.sql', '0019_learning_units.sql', '0020_mastery_evidence.sql', '0021_learning_outcomes_v2.sql', '0022_fsrs_and_thread_backfill.sql', '0023_intelligence_v2.sql']
+const expectedMigrations = ['0000_brain.sql', '0001_production_rebuild.sql', '0002_rss_feeds.sql', '0003_feedback_review.sql', '0004_discovery_engine.sql', '0005_recommendation_notebook_url.sql', '0006_hermes_upgrade.sql', '0007_sync_notifications.sql', '0008_compass_cascade.sql', '0009_proposal_dedup.sql', '0010_compass_queue_fill.sql', '0011_compass_adaptive_learning.sql', '0012_context_brief.sql', '0013_book_visual_chapters.sql', '0014_canonical_activity_ledger.sql', '0015_outcome_learning_integrity.sql', '0016_learning_integrity.sql', '0017_consolidation_workflows.sql', '0018_learning_threads.sql', '0019_learning_units.sql', '0020_mastery_evidence.sql', '0021_learning_outcomes_v2.sql', '0022_fsrs_and_thread_backfill.sql', '0023_intelligence_v2.sql', '0024_memory_context.sql', '0025_compass_contextual_reranking.sql', '0026_semantic_retrieval.sql']
 if (migrationNames.length !== expectedMigrations.length || expectedMigrations.some((name, index) => migrationNames[index] !== name)) throw new Error(`Migration order drift: expected ${expectedMigrations.join(', ')}, found ${migrationNames.join(', ')}`)
 
 const checks = [
@@ -36,9 +36,10 @@ const checks = [
   ['src/api/agent.ts', "['POST', '/agent/memory/:id/approve'", 'memory approval capability'],
   ['src/api/agent.ts', "['POST', '/agent/jobs/:id/replay'", 'job replay capability'],
   ['src/api/agent.ts', "['POST', '/agent/memory'", 'guarded memory capability'],
+  ['src/api/agent.ts', "app.get('/memory/context'", 'bounded memory context compiler'],
   ['client/src/destinations.ts', "['hermes', 'Hermes'", 'Hermes destination registration'],
   ['docs/API.md', '/analytics/hermes', 'Hermes API documentation'],
-  ['.hermes.md', '0006_hermes_upgrade.sql', 'migration contract synchronization'],
+  ['PROJECT_CONTEXT.md', '0006_hermes_upgrade.sql', 'migration contract synchronization'],
   ['.hermes.md', 'learning-compass-operating-system', 'procedural Hermes router contract'],
   ['src/api/agent.ts', "['POST', '/learning/core/threads'", 'Learning Thread agent capability'],
   ['.hermes.md', 'output_contract=learning_units_v1', 'anchored Learning Unit output contract'],
@@ -97,6 +98,21 @@ if (existsSync(localSkillsRoot)) {
       || existsSync(join(localSkillsRoot, 'productivity', name, 'SKILL.md'))
     if (stillActive) throw new Error(`Retired Hermes skill remains active: ${name}`)
   }
+  const configPath = join(homedir(), '.hermes', 'config.yaml')
+  const configText = existsSync(configPath) ? readFileSync(configPath, 'utf8') : ''
+  const disabledBlock = configText.match(/^skills:\n((?:[ \t]+.*\n?)*)/m)?.[1] || ''
+  const disabledSkills = new Set([...disabledBlock.matchAll(/^\s+-\s+([^#\s]+)\s*$/gm)].map((match) => match[1]))
+  const walkSkillFiles = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const file = join(dir, entry.name)
+    return entry.isDirectory() ? walkSkillFiles(file) : [file]
+  })
+  const installedSkillNames = walkSkillFiles(localSkillsRoot)
+    .filter((file) => file.endsWith('SKILL.md'))
+    .map((file) => readFileSync(file, 'utf8').match(/^name:\s*([^\s]+)\s*$/m)?.[1])
+    .filter(Boolean)
+  const activeNames = new Set(activeSkills.map((skill) => skill.name))
+  const unownedEnabled = installedSkillNames.filter((name) => !activeNames.has(name) && !disabledSkills.has(name))
+  if (unownedEnabled.length) throw new Error(`Unowned Hermes skills remain enabled: ${unownedEnabled.join(', ')}`)
 }
 for (const tier of ['automatic', 'proposal_only', 'explicit_only']) {
   if (!contract.side_effect_tiers?.[tier]?.requires || !Array.isArray(contract.side_effect_tiers[tier].allows)) {

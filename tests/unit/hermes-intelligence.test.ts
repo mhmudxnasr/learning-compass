@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { hermesEvaluatorCandidates } from '../../src/services/hermes-intelligence.ts'
 import { isSupportedProposalType } from '../../src/services/profile-proposals.ts'
+import { isMemoryOwnershipAllowed, isMemoryTaskKind } from '../../src/services/memory-context.ts'
 
 test('Hermes evaluator only emits proposal types the approval route can apply', () => {
   const candidates = hermesEvaluatorCandidates({
@@ -16,4 +17,12 @@ test('Hermes evaluator only emits proposal types the approval route can apply', 
 
   assert.deepEqual(candidates.map((item) => item.change_type), ['quality_rule', 'pattern_hypothesis'])
   assert.equal(candidates.every((item) => isSupportedProposalType(item.change_type)), true)
+})
+
+test('memory ownership safeguards preserve profile and live learning state as canonical', () => {
+  assert.equal(isMemoryOwnershipAllowed('skill_procedure:source-proofing'), true)
+  assert.equal(isMemoryOwnershipAllowed('profile.preference'), false)
+  assert.equal(isMemoryOwnershipAllowed('queue:current'), false)
+  assert.equal(isMemoryTaskKind('feedback'), true)
+  assert.equal(isMemoryTaskKind('unbounded_history'), false)
 })

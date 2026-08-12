@@ -83,6 +83,7 @@
     "GET /agent/capabilities": {"owner": "learning-compass-site-operator", "permission": "read"},
     "GET /agent/system": {"owner": "learning-compass-site-operator", "permission": "read"},
     "GET /agent/context": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "GET /agent/memory/context": {"owner": "learning-compass-site-operator", "permission": "read"},
     "POST /feedback/record": {"owner": "learning-compass-operating-system", "permission": "explicit_feedback"},
     "POST /learning/core/threads": {"owner": "learning-compass-operating-system", "permission": "explicit_learning_objective"},
     "POST /learning/core/evidence": {"owner": "learning-compass-site-operator", "permission": "explicit_user_evidence"},

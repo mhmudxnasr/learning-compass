@@ -14,8 +14,17 @@ export type CompassContext = {
   featureWeights?: Map<string, Record<string, number>>
   branchSignals?: Map<string, { state: string; attentionShare: number; priorityShare: number | null }>
   profileAssertions?: Array<{ assertion_key: string; category: string; value: unknown; weight?: number | null; confidence: number; status: string }>
-  thread?: { id: string; title?: string | null; guiding_question?: string | null; why_now?: string | null; definition_of_done?: string | null; evidence_requirements_json?: string | null }
+  thread?: { id: string; title?: string | null; guiding_question?: string | null; why_now?: string | null; definition_of_done?: string | null; evidence_requirements_json?: string | null; open_evidence_requirements?: Array<{ evidence_type?: string; label?: string; key?: string }> }
   laneEvidence?: Map<string, number>
+}
+
+export function editorialReviewStatus(value: unknown): 'approved' | 'missing' | 'invalid' {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'missing'
+  const review = value as Record<string, unknown>
+  const text = (key: string, minimum: number) => typeof review[key] === 'string' && review[key].trim().length >= minimum
+  return review.verdict === 'recommend' && text('why_worth_time', 30) && text('unique_value', 30) && ['substantive', 'deep'].includes(String(review.depth || ''))
+    ? 'approved'
+    : 'invalid'
 }
 
 const EMPTY_CONTEXT: CompassContext = { knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [], featureWeights: new Map(), branchSignals: new Map() }
@@ -48,6 +57,52 @@ export function semanticSimilarity(a: unknown, b: unknown) {
   return overlap / new Set([...left, ...right]).size
 }
 
+// Candidate researchers may provide concepts and a source-grounded summary.
+// Keep this deliberately deterministic: it is an auditable retrieval signal,
+// not an untraceable claim that an opaque model "understood" the learner.
+const textList = (value: unknown): string[] => Array.isArray(value)
+  ? value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+  : typeof value === 'string' && value.trim() ? [value.trim()] : []
+
+export function candidateContextText(item: any) {
+  const evidence = Array.isArray(item?.evidence) ? item.evidence.map((entry: any) => entry?.claim).filter(Boolean) : []
+  return [
+    item?.title, item?.source_class, item?.topic, item?.branch_id,
+    ...textList(item?.topics), ...textList(item?.concepts), ...textList(item?.mechanisms),
+    item?.summary, item?.expected_contribution, item?.expected_learning,
+    item?.evidence_type, item?.expected_evidence_type, ...textList(item?.evidence_types),
+    ...evidence,
+  ].filter(Boolean).join(' ')
+}
+
+export function contextualAlignment(candidateText: unknown, targetText: unknown) {
+  const lexical = semanticSimilarity(candidateText, targetText)
+  const candidateTerms = tokens(candidateText)
+  const targetTerms = tokens(targetText)
+  if (!candidateTerms.size || !targetTerms.size) return lexical
+  const contained = [...targetTerms].filter((term) => candidateTerms.has(term)).length / targetTerms.size
+  // Containment rewards direct coverage of a Thread question while Jaccard
+  // keeps broad, keyword-stuffed candidate descriptions from dominating.
+  return clamp(lexical * .45 + contained * .55, 0)
+}
+
+export function candidateSetDiversity(candidate: any, peers: any[]) {
+  const eligible = peers.filter((peer) => peer?._valid_url && peer?._has_identity && !peer?._hard_excluded)
+  if (eligible.length <= 1) return .5
+  const creator = String(candidate?._creator_key || '')
+  const format = String(candidate?._format_key || '')
+  const branch = norm(candidate?._branch_id || '')
+  const duplicateSimilarity = Math.max(0, ...eligible.filter((peer) => peer !== candidate).map((peer) => semanticSimilarity(
+    `${candidate?._candidate_context || ''} ${candidate?._branch_id || ''}`,
+    `${peer?._candidate_context || ''} ${peer?._branch_id || ''}`,
+  )))
+  const sameCreator = creator ? eligible.filter((peer) => peer !== candidate && String(peer?._creator_key || '') === creator).length : 0
+  const sameFormat = format ? eligible.filter((peer) => peer !== candidate && String(peer?._format_key || '') === format).length : 0
+  const sameBranch = branch ? eligible.filter((peer) => peer !== candidate && norm(peer?._branch_id || '') === branch).length : 0
+  const repetition = duplicateSimilarity * .55 + (sameCreator / (eligible.length - 1)) * .20 + (sameFormat / (eligible.length - 1)) * .15 + (sameBranch / (eligible.length - 1)) * .10
+  return Math.round(clamp(1 - repetition, 0) * 1000) / 1000
+}
+
 const exactEntityMatch = (corpus: string, entity: string) => {
   const phrase = norm(entity)
   return phrase.length >= 4 && (` ${norm(corpus)} `).includes(` ${phrase} `)
@@ -60,6 +115,8 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
   const creator = String(item.creator || '').trim()
   const creatorKey = canonicalCreatorKey(creator) || ''
   const format = canonicalFormat(item.format || item.source_class || 'unknown')
+  const bookRequiresExplicitRequest = format === 'book' && item.allow_books !== true
+  const editorialStatus = editorialReviewStatus(item.editorial_review)
   const sourceClass = norm(item.source_class || '')
   const explicitTopics = Array.isArray(item.topics) ? item.topics : [item.topic, item.branch_id, item.branch]
   const candidateTopics: string[] = [...explicitTopics, sourceClass, ...(explicitTopics.some(Boolean) ? [] : [title])].map((value: unknown) => norm(value)).filter(Boolean)
@@ -86,10 +143,20 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
   const friction = clamp((item.paywalled === true ? .45 : 0) + (duration > 120 ? .25 : duration > 60 ? .12 : 0) + (sourceCheck.status === 'restricted' ? .12 : 0), 0)
   const novelty = clamp(1 - knownSimilarity * .75, 0)
   const threadCorpus = context.thread ? `${context.thread.title || ''} ${context.thread.guiding_question || ''} ${context.thread.why_now || ''} ${context.thread.definition_of_done || ''}` : ''
-  const contributionCorpus = `${title} ${candidateTopics.join(' ')} ${String(item.expected_contribution || item.expected_learning || '')}`
-  const threadSimilarity = threadCorpus ? semanticSimilarity(contributionCorpus, threadCorpus) : .5
+  const contributionCorpus = candidateContextText(item)
+  const threadSimilarity = threadCorpus ? contextualAlignment(contributionCorpus, threadCorpus) : .5
   const explicitContribution = String(item.expected_contribution || item.expected_learning || '').trim().length >= 12
-  const threadContribution = context.thread ? clamp(.32 + threadSimilarity * .48 + (explicitContribution ? .20 : 0), .32) : .5
+  const requestedEvidence = [item.evidence_type, item.expected_evidence_type, ...(Array.isArray(item.evidence_types) ? item.evidence_types : [])].map((value) => norm(value)).filter(Boolean)
+  const evidenceText = `${title} ${candidateTopics.join(' ')} ${String(item.expected_contribution || item.expected_learning || '')} ${String(item.source_class || '')}`
+  const openRequirements = context.thread?.open_evidence_requirements || []
+  const evidenceGapMatch = openRequirements.length
+    ? Math.max(...openRequirements.map((requirement) => {
+      const type = norm(requirement.evidence_type)
+      if (requestedEvidence.includes(type)) return 1
+      return type && (exactEntityMatch(evidenceText, type) || exactEntityMatch(evidenceText, norm(requirement.label))) ? .78 : 0
+    }), 0)
+    : .5
+  const threadContribution = context.thread ? clamp(.28 + threadSimilarity * .38 + evidenceGapMatch * .22 + (explicitContribution ? .12 : 0), .28) : .5
   const evidenceStatus = structuredEvidenceStatus(item.evidence || item.rationale || item.why_this)
   const evidenceQuality = evidenceStatus === 'structured' ? .92 : evidenceStatus === 'legacy' ? .58 : evidenceStatus === 'invalid' ? .08 : .20
   return {
@@ -104,9 +171,10 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
     friction,
     _valid_url: Boolean(url),
     _has_identity: Boolean(title && url),
-    _hard_excluded: knownUrl || knownSimilarity >= .84 || blocked || sourceCheck.status === 'unavailable' || sourceCheck.status === 'invalid' || evidenceStatus === 'invalid',
-    _exclusion_reason: knownUrl ? 'known_url' : knownSimilarity >= .84 ? 'semantic_duplicate' : blocked ? 'blocked_or_mastered' : sourceCheck.status === 'unavailable' ? 'source_unavailable' : sourceCheck.status === 'invalid' ? 'invalid_url' : evidenceStatus === 'invalid' ? 'invalid_evidence' : null,
+    _hard_excluded: knownUrl || knownSimilarity >= .84 || blocked || bookRequiresExplicitRequest || editorialStatus !== 'approved' || sourceCheck.status === 'unavailable' || sourceCheck.status === 'invalid' || evidenceStatus !== 'structured',
+    _exclusion_reason: knownUrl ? 'known_url' : knownSimilarity >= .84 ? 'semantic_duplicate' : blocked ? 'blocked_or_mastered' : bookRequiresExplicitRequest ? 'book_requires_explicit_request' : editorialStatus !== 'approved' ? 'editorial_review_required' : sourceCheck.status === 'unavailable' ? 'source_unavailable' : sourceCheck.status === 'invalid' ? 'invalid_url' : evidenceStatus !== 'structured' ? 'structured_evidence_required' : null,
     _topic_affinity: topicAffinity,
+    _topic_signals: topicSignals.length,
     _profile_match: profileMatch,
     _known_similarity: knownSimilarity,
     _source_check: sourceCheck.status,
@@ -115,7 +183,14 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
     _creator_key: creatorKey || null,
     _format_key: format,
     _evidence_status: evidenceStatus,
+    _editorial_status: editorialStatus,
     _thread_id: context.thread?.id || null,
+    _evidence_gap_match: evidenceGapMatch,
+    _candidate_context: contributionCorpus,
+    contextual_alignment: threadSimilarity,
+    // Replaced with candidate-set comparison in the route once all candidates
+    // are known; a neutral default keeps isolated feature evaluation stable.
+    candidate_set_diversity: .5,
   }
 }
 
@@ -159,5 +234,14 @@ export function laneExplorationBonus(lane: CompassLane, laneEvidence: Map<string
 
 export function expectedLearningValue(features: Record<string, unknown>, lane: CompassLane, customWeights?: Record<string, number>) {
   return Math.round(serverScore(features, lane, customWeights) * 1000) / 1000
+}
+
+// Shadow-only exploration signal. It rewards a transferable reason to care
+// plus distance from known topics, while keeping source quality, evidence, and
+// try-cost as hard trust constraints. It is intentionally not a serving lane.
+export function frontierScore(features: Record<string, unknown>, mechanismMatch = 0) {
+  const topicDistance = Number(features._topic_signals || 0) === 0 ? 1 : clamp(1 - Number(features._topic_affinity), 0)
+  const score = mechanismMatch * .42 + topicDistance * .30 + clamp(features.source_quality, .5) * .18 + clamp(features.evidence_quality, .5) * .10 - clamp(features.friction, 0) * .15
+  return Math.round(clamp(score, 0) * 1000) / 1000
 }
 export const compassPickIsUnresolved = (pickStatus: string, recommendationStatus?: string | null) => ['ready', 'started', 'abstained'].includes(pickStatus) && !['consumed', 'rejected'].includes(String(recommendationStatus || 'active'))

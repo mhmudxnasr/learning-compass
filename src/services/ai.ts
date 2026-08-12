@@ -1,8 +1,7 @@
-const DEFAULT_KEY = 'sk-jxGCRcSfOMEO0qy6OWreJIfJwfcheuZRVPJMk3okzU2uaeVRhhSivetfmNTFu3NT'
 const FREE_MODELS = ['mimo-v2.5-free', 'deepseek-v4-flash-free', 'nemotron-3-ultra-free', 'laguna-s-2.1-free', 'ling-3.0-flash-free', 'north-mini-code-free']
 
 export async function freeAi(env: { OPENCODE_ZEN_API_KEY?: string }, system: string, prompt: string, maxTokens = 1024) {
-  const apiKey = env.OPENCODE_ZEN_API_KEY || DEFAULT_KEY
+  const apiKey = env.OPENCODE_ZEN_API_KEY
   if (!apiKey) return null
   for (const model of FREE_MODELS) {
     try {

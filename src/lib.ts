@@ -4,6 +4,10 @@ export type Bindings = {
   DB: D1Database
   ASSETS: Fetcher
   ARTIFACTS?: R2Bucket
+  // Optional locally; production binds Workers AI + Vectorize for semantic
+  // retrieval. Keeping these optional makes local D1 tests deterministic.
+  AI?: any
+  COMPASS_VECTORS?: any
   API_TOKEN?: string
   GOOGLE_API_KEY?: string
   OPENCODE_ZEN_API_KEY?: string

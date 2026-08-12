@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { Bindings, safeError, isNonEmptyStr } from '../lib'
 import { createInboxCapture } from '../services/capture'
 import { buildLearningBalance } from '../services/learning-balance'
+import { compileMemoryContext, isMemoryOwnershipAllowed, isMemoryTaskKind, writeMemoryEvidence } from '../services/memory-context'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const sqliteTime = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString().slice(0, 19).replace('T', ' ')
@@ -32,6 +33,8 @@ const CAPABILITIES = [
   ['GET', '/capture/:id', 'Read one capture.'],
   ['GET', '/capture/:id/record', 'Read the canonical source record with exact feedback, extracted note sections, jobs, proposals, files, recall, sessions, memory influence, and outcome.'],
   ['GET', '/compass/pick', 'Read the newest active ready/started Compass Pick; multiple concurrent picks may exist.'],
+  ['GET', '/compass/context', 'Read the bounded canonical Thread, profile, exclusions, history, and candidate contract before Hermes researches recommendation candidates.'],
+  ['POST', '/compass/semantic/index', 'Explicitly index changed Learning Compass sources, Threads, Notes, and Units into the private semantic retrieval index; no recommendation is created.'],
   ['POST', '/compass/picks', 'Submit 3–8 candidates for server-owned adaptive Compass Pick selection while queued/in-progress Queue count is below five; does not auto-start.'],
   ['POST', '/compass/evaluate', 'Dry-run v1 and v2 scoring for 3–8 candidates without creating a pick.'],
   ['POST', '/compass/pick/:id/candidates', 'Expand an abstained Compass Pick with additional candidates and rescore the complete set up to eight.'],
@@ -120,6 +123,7 @@ const CAPABILITIES = [
   ['POST', '/agent/jobs/:id/replay', 'Replay a failed or dead-lettered job from a clean attempt.'],
   ['POST', '/agent/jobs/:id/heartbeat', 'Renew long-running discovery job lease.'],
   ['GET', '/agent/memory', 'Browse and search Hermes memories with evidence and recommendation influence links.'],
+  ['GET', '/agent/memory/context', 'Compile a bounded, task-specific memory packet with a retrieval receipt.'],
   ['POST', '/agent/memory', 'Write a guarded Hermes memory entry with provenance and confidence.'],
   ['POST', '/agent/memory/:id/approve', 'Approve one Hermes memory for active use.'],
   ['POST', '/agent/memory/:id/expire', 'Expire one Hermes memory.'],
@@ -335,13 +339,37 @@ app.get('/memory', async (c) => {
   if (recommendationId) clauses.push('evidence_json LIKE ?'), binds.push(`%${recommendationId}%`)
   const query = c.env.DB.prepare(`SELECT * FROM hermes_memory ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY updated_at DESC LIMIT 200`).bind(...binds)
   const rows = await query.all<any>()
+  const memoryIds = (rows.results || []).map((row: any) => row.id)
+  let relationalEvidence = new Map<string, any[]>()
+  if (memoryIds.length) {
+    try {
+      const evidenceRows = await c.env.DB.prepare(`SELECT memory_id,evidence_type,recommendation_id,thread_id,unit_id,learning_event_id,source_ref,quote,reason,confidence,created_at FROM memory_evidence WHERE memory_id IN (${memoryIds.map(() => '?').join(',')}) ORDER BY created_at DESC`).bind(...memoryIds).all<any>()
+      for (const item of evidenceRows.results || []) relationalEvidence.set(item.memory_id, [...(relationalEvidence.get(item.memory_id) || []), item])
+    } catch { /* compatibility before migration */ }
+  }
   const memories = (rows.results || []).map((row: any) => {
     let value: any = null; let evidence: any[] = []
     try { value = JSON.parse(row.value_json || 'null') } catch {}
     try { evidence = JSON.parse(row.evidence_json || '[]') } catch {}
+    if (relationalEvidence.has(row.id)) evidence = relationalEvidence.get(row.id) || evidence
     return { ...row, value, evidence, value_json: undefined, evidence_json: undefined, influences: evidence.filter((item) => item.recommendation_id) }
   })
   return c.json({ memories })
+})
+
+app.get('/memory/context', async (c) => {
+  const taskKind = c.req.query('task_kind') || ''
+  if (!isMemoryTaskKind(taskKind)) return c.json({ error: 'task_kind must be recommendation, feedback, learning, or self_evolution' }, 400)
+  const context = await compileMemoryContext(c.env.DB, {
+    taskKind,
+    query: c.req.query('q') || '',
+    recommendationId: c.req.query('recommendation_id'),
+    threadId: c.req.query('thread_id'),
+    conversationId: c.req.query('conversation_id'),
+    requestId: c.req.header('x-request-id') || undefined,
+    limit: Number(c.req.query('limit') || 12),
+  })
+  return c.json(context)
 })
 
 app.post('/memory', async (c) => {
@@ -352,6 +380,7 @@ app.post('/memory', async (c) => {
   const confidence = Math.max(0, Math.min(1, Number(body.confidence ?? 0.5)))
   if (!memoryKey || !source || body.value === undefined) return c.json({ error: 'memory_key, value, and source are required' }, 400)
   if (!['durable', 'episodic', 'working', 'rejection', 'hypothesis'].includes(memoryKind)) return c.json({ error: 'invalid memory_kind' }, 400)
+  if (!isMemoryOwnershipAllowed(memoryKey)) return c.json({ error: 'memory_key belongs to profile or live learning state; use its canonical API instead' }, 409)
   if (memoryKind === 'durable' && confidence < 0.7) return c.json({ error: 'durable memory requires confidence >= 0.7' }, 400)
   const existing = await c.env.DB.prepare(`SELECT id FROM hermes_memory WHERE memory_key=? AND status='active' ORDER BY updated_at DESC LIMIT 1`).bind(memoryKey).first<any>()
   const id = `mem_${crypto.randomUUID()}`
@@ -369,6 +398,7 @@ app.post('/memory', async (c) => {
   statements.push(c.env.DB.prepare(`INSERT INTO hermes_memory (id,memory_key,memory_kind,value_json,confidence,source,status,supersedes_id,expires_at,evidence_json) VALUES (?,?,?,?,?,?,'active',?,?,?)`)
     .bind(id, memoryKey, memoryKind, JSON.stringify(body.value).slice(0, 12000), confidence, source, existing?.id || null, expiry, JSON.stringify(evidence).slice(0, 16000)))
   await c.env.DB.batch(statements)
+  await writeMemoryEvidence(c.env.DB, id, evidence)
   return c.json({ ok: true, id, superseded_id: existing?.id || null, expires_at: expiry }, 201)
 })
 

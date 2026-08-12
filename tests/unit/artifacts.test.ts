@@ -34,6 +34,12 @@ test('Lite Visual HTML and PDF do not require QA metadata', () => {
   assert.equal(mergeArtifactMultipartMetadata({}, uploadForm({ generator: 'lite-visual', role: 'pdf' })).ok, true)
 })
 
+test('learning companions accept only supported recommended starting media', () => {
+  assert.equal(mergeArtifactMultipartMetadata({}, uploadForm({ generator: 'lite-visual', role: 'html', recommended_start: 'html' })).ok, true)
+  const invalid = mergeArtifactMultipartMetadata({}, uploadForm({ generator: 'lite-visual', role: 'html', recommended_start: 'audio' }))
+  assert.equal(invalid.ok, false)
+})
+
 test('artifact integrity accepts real HTML and PDF signatures', () => {
   assert.deepEqual(validateArtifactIntegrity({ role: 'html' }, { name: 'companion.html', type: 'text/html' }, new TextEncoder().encode('<!doctype html><html></html>').buffer), [])
   assert.deepEqual(validateArtifactIntegrity({ role: 'pdf' }, { name: 'companion.pdf', type: 'application/pdf' }, new TextEncoder().encode('%PDF-1.7').buffer), [])

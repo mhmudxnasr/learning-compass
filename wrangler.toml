@@ -17,5 +17,12 @@ database_id = "49c68912-ce6e-4899-8e73-8955a6a21dee"
 binding = "ARTIFACTS"
 bucket_name = "taste-map-artifacts"
 
+[[vectorize]]
+binding = "COMPASS_VECTORS"
+index_name = "learning-compass-semantic"
+
+[ai]
+binding = "AI"
+
 [triggers]
 crons = ["0 */6 * * *"]

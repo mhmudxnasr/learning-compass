@@ -1,4 +1,4 @@
-const stringFields = ['pair_id', 'role', 'recommendation_id', 'source_url', 'source_title', 'generator', 'revision', 'supersedes_pair_id', 'qa_status', 'video_format']
+const stringFields = ['pair_id', 'role', 'recommendation_id', 'source_url', 'source_title', 'generator', 'revision', 'supersedes_pair_id', 'qa_status', 'video_format', 'recommended_start']
 const booleanFields = ['custom_prompt_applied', 'notebook_url_linked', 'source_indexed', 'download_verified']
 const jsonFields: string[] = []
 
@@ -70,6 +70,7 @@ function mediaRoleFailures(metadata: Record<string, unknown>, file?: { name?: st
 
 export function validateArtifactQuality(metadata: Record<string, unknown>, file?: { name?: string; type?: string }) {
   const failures: string[] = mediaRoleFailures(metadata, file)
+  if (metadata.recommended_start && !['original', 'html', 'pdf', 'notebooklm'].includes(String(metadata.recommended_start))) failures.push('recommended_start must be original, html, pdf, or notebooklm')
   const generator = String(metadata.generator || '')
   if (generator === 'notebooklm' && isVideo(metadata, file)) {
     if (metadata.video_format !== 'cinematic') failures.push('video_format must be cinematic for NotebookLM video')

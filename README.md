@@ -133,7 +133,7 @@ Open `http://127.0.0.1:8787`.
 
 ### Local secrets
 
-Writes can be protected with `API_TOKEN`. Optional enrichment and delivery integrations use `GOOGLE_API_KEY` and `TELEGRAM_BOT_TOKEN`. Put local values in `.dev.vars`, which is ignored by Git:
+Writes can be protected with `API_TOKEN`. Optional enrichment and delivery integrations use `GOOGLE_API_KEY` and `TELEGRAM_BOT_TOKEN`. Hermes owns live web research; the Worker receives and validates its source-grounded candidates. Put local values in `.dev.vars`, which is ignored by Git:
 
 ```dotenv
 API_TOKEN="replace-with-a-local-secret"

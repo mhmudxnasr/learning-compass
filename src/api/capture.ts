@@ -33,9 +33,11 @@ app.post('/', async (c) => {
 
 app.get('/', async (c) => {
   const rows = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.tags_json,m.source_metadata_json,
+    json_extract(m.source_metadata_json,'$.resurface_at') resurface_at,
     (SELECT fs.title FROM feed_entries fe JOIN feed_sources fs ON fs.id=fe.feed_id WHERE fe.recommendation_id=r.id LIMIT 1) feed_title
     FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id
-    WHERE r.status='active' AND m.learning_state='inbox' ORDER BY r.created_at DESC LIMIT 200`).all()
+    WHERE r.status='active' AND m.learning_state='inbox'
+    ORDER BY CASE WHEN json_extract(m.source_metadata_json,'$.resurface_at') IS NOT NULL AND datetime(json_extract(m.source_metadata_json,'$.resurface_at'))<=datetime('now') THEN 0 ELSE 1 END, r.created_at DESC LIMIT 200`).all()
   return c.json({ items: rows.results || [] })
 })
 

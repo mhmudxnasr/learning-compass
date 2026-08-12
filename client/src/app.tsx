@@ -185,6 +185,13 @@ function compassWeakPickCanQueue(pick: any) {
   const sourceStatus = pick?.rationale?.source_check?.status
   return Boolean(pick?.video_url && pick?.video_title && ['verified', 'restricted'].includes(sourceStatus))
 }
+function compassFeatureLabel(key: string) {
+  return ({
+    topic_value: 'topic fit', personal_relevance: 'personal relevance', source_quality: 'source quality',
+    information_gain: 'new learning', novelty: 'novelty', format_fit: 'format fit',
+    evidence_quality: 'evidence quality', thread_contribution: 'helps your current goal',
+  } as Record<string, string>)[key] || labelize(key)
+}
 
 function buildStreakTrail(momentum: any) {
   const current = String(momentum?.current_date || '')
@@ -258,6 +265,17 @@ function TodayPage() {
     }
   }
   const missionFiles = mission ? filesFor(mission.id) : []
+  const startPreference = missionFiles.find((artifact: any) => artifact.recommended_start)?.recommended_start
+  const startArtifact = startPreference === 'html' || startPreference === 'pdf'
+    ? missionFiles.find((artifact: any) => (artifact.role || (/pdf/i.test(artifact.media_type || artifact.filename) ? 'pdf' : 'html')) === startPreference)
+    : null
+  const chosenStart = startPreference === 'notebooklm' && mission?.notebook_url
+    ? { href: mission.notebook_url, kind: 'notebooklm', artifactId: undefined, label: 'Start with NotebookLM' }
+    : startArtifact
+      ? { href: `/artifacts/${startArtifact.id}`, kind: startPreference, artifactId: startArtifact.id, label: startPreference === 'html' ? 'Start with Arabic companion' : 'Start with PDF companion' }
+      : mission?.video_url
+        ? { href: mission.video_url, kind: 'original', artifactId: undefined, label: mission.learning_state === 'in_progress' ? 'Resume source' : 'Open source' }
+        : null
   const missionIndex = Math.max(0, items.findIndex((item: any) => item.id === mission?.id))
   const streak = Number(momentum.streak || 0)
   const longest = Number(momentum.longest_streak || 0)
@@ -331,10 +349,10 @@ function TodayPage() {
               <span>Why this is in your Queue</span>
               <p>{mission.context_brief || formatSmartHook(mission)}</p>
             </div>
-            {mission.video_url && (
+            {chosenStart && (
               <div class="focus-actions">
-                <a class="primary-action" href={mission.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, mission)}>
-                  {mission.learning_state === 'in_progress' ? 'Resume source' : 'Open source'}
+                <a class="primary-action" href={chosenStart.href} target="_blank" rel="noreferrer">
+                  {chosenStart.label}
                 </a>
                 <button onClick={() => go(destinations.find((item) => item.key === 'curate.queue')!)}>Full queue</button>
               </div>
@@ -348,13 +366,13 @@ function TodayPage() {
             </div>
             <div class="focus-resource-grid">
               {mission.video_url
-                ? <a class="resource-source" href={mission.video_url} target="_blank" rel="noreferrer" onClick={(event) => startExternal(event, mission)}><span>Original</span><strong>Open the source</strong><small>↗</small></a>
+                ? <a class="resource-source" href={mission.video_url} target="_blank" rel="noreferrer"><span>Original</span><strong>Open the source</strong><small>↗</small></a>
                 : <div class="resource-empty"><span>Original</span><strong>No source URL</strong><small>—</small></div>}
               {missionFiles.length
-                ? missionFiles.map((artifact: any) => <a href={`/artifacts/${artifact.id}`} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, mission, `/artifacts/${artifact.id}`, /pdf/i.test(artifact.media_type || artifact.filename) ? 'pdf' : 'html', artifact.id)}><span>{fileLabel(artifact)}</span><strong>{artifact.filename || `${fileLabel(artifact)} companion`}</strong><small>↗</small></a>)
+                ? missionFiles.map((artifact: any) => <a href={`/artifacts/${artifact.id}`} target="_blank" rel="noreferrer"><span>{fileLabel(artifact)}</span><strong>{artifact.filename || `${fileLabel(artifact)} companion`}</strong><small>↗</small></a>)
                 : <div class="resource-empty"><span>Files</span><strong>No companion files yet</strong><small>—</small></div>}
               {mission.notebook_url
-                ? <a class="resource-notebook" href={mission.notebook_url} target="_blank" rel="noreferrer" onClick={(event) => openLearningTarget(event, mission, mission.notebook_url, 'notebooklm')}><span>NotebookLM</span><strong>Ask the grounded notebook</strong><small>↗</small></a>
+                ? <a class="resource-notebook" href={mission.notebook_url} target="_blank" rel="noreferrer"><span>NotebookLM</span><strong>Ask the grounded notebook</strong><small>↗</small></a>
                 : <div class="resource-empty resource-notebook"><span>NotebookLM</span><strong>Not linked yet</strong><small>—</small></div>}
             </div>
           </div>
@@ -364,6 +382,13 @@ function TodayPage() {
           <span>{compass.data.pick.status === 'abstained' ? 'Weak Compass Pick · your decision' : `Compass Pick · ${compass.data.pick.strategy}`}</span>
           <h2>{compass.data.pick.video_title || 'Compass Pick'}</h2>
           <p>{compass.data.pick.context_brief || compass.data.pick.rationale?.why_this || compass.data.pick.why_this}</p>
+          {(() => {
+            const breakdown = compass.data.pick.rationale?.score_breakdown || {}
+            const reasons = Object.entries(breakdown)
+              .filter(([key, value]) => !key.startsWith('_') && Number.isFinite(Number(value)) && !['friction'].includes(key))
+              .sort(([, a], [, b]) => Number(b) - Number(a)).slice(0, 3)
+            return reasons.length ? <div class="compass-why"><strong>Why this pick</strong><div class="compact-list">{reasons.map(([key, value]) => <article key={key}><strong>{compassFeatureLabel(key)}</strong><span>{Math.round(Number(value) * 100)}% signal</span></article>)}</div></div> : null
+          })()}
           {compass.data.pick.status === 'abstained' && <div class="compass-weak-context"><strong>Not automatically recommended</strong><p>{compassWeakReason(compass.data.pick.rationale?.abstention_reason || compass.data.pick.stop_reason)} {compassWeakPickCanQueue(compass.data.pick) ? 'The source is reachable, but it did not meet the automatic recommendation threshold. You can still add it manually.' : 'No safe, reachable source is available to add.'} Score {Math.round(Number(compass.data.pick.rationale?.score || 0) * 100)}% · confidence {Math.round(Number(compass.data.pick.confidence || 0) * 100)}% · source {compass.data.pick.rationale?.source_check?.status || 'unknown'}.</p></div>}
           <div class="row-actions">
             {(compass.data.pick.status === 'ready' || (compass.data.pick.status === 'abstained' && compassWeakPickCanQueue(compass.data.pick))) && <button class="primary-action" disabled={compassWorking} onClick={async () => { setCompassWorking(true); const target = window.open('about:blank', '_blank'); try { const result = await api<any>(`/compass/pick/${compass.data.pick.id}/start`, { method: 'POST' }); localStorage.setItem('tm-active-session', JSON.stringify({ id: result.session_id, recommendationId: result.recommendation_id, title: compass.data.pick.video_title, sourceUrl: compass.data.pick.video_url })); if (target) target.location.replace(compass.data.pick.video_url); else location.assign(compass.data.pick.video_url); compass.reload() } catch (startError: any) { target?.close(); window.alert(startError.message) } finally { setCompassWorking(false) } }}>{compass.data.pick.status === 'abstained' ? 'Add to Queue anyway' : 'Start'}</button>}
@@ -599,7 +624,7 @@ function InboxPage() {
     </section>
     <div class="inbox-summary"><strong>{items.length} waiting</strong><span>Promote only what deserves one of five active queue slots.</span></div>
     {blocked && <div class="queue-warning"><span>{blocked.error || 'Queue full. Finish an active item or make this a deliberate override.'}</span>{!blocked.error && <button onClick={() => triage(blocked, 'queue', true)}>Add anyway</button>}</div>}
-    {items.length ? <div class="record-list">{items.map((item: any, index: number) => <article><span class="record-number">{String(index + 1).padStart(2, '0')}</span><div><span class="meta">{item.feed_title ? `rss · ${item.feed_title}` : item.content_type || 'source'}</span><h3>{item.video_title}</h3><p>{item.why_this || item.video_url}</p></div><div class="row-actions"><button class="danger-action" disabled={working === item.id} onClick={() => triage(item, 'exclude')}>Remove</button><button class="primary-action" disabled={working === item.id} onClick={() => triage(item, 'queue')}>Queue</button></div></article>)}</div> : <Empty title="Inbox clear" body="New captures and feed articles land here for a quick fit check before they earn a queue slot." />}
+    {items.length ? <div class="record-list">{items.map((item: any, index: number) => <article><span class="record-number">{String(index + 1).padStart(2, '0')}</span><div><span class="meta">{item.resurface_at && new Date(item.resurface_at).getTime() <= Date.now() ? 'Ready to revisit' : item.feed_title ? `rss · ${item.feed_title}` : item.content_type || 'source'}</span><h3>{item.video_title}</h3><p>{item.resurface_at && new Date(item.resurface_at).getTime() <= Date.now() ? 'You said “not now” earlier. The timing window has reopened.' : item.why_this || item.video_url}</p></div><div class="row-actions"><button class="danger-action" disabled={working === item.id} onClick={() => triage(item, 'exclude')}>Remove</button><button class="primary-action" disabled={working === item.id} onClick={() => triage(item, 'queue')}>Queue</button></div></article>)}</div> : <Empty title="Inbox clear" body="New captures and feed articles land here for a quick fit check before they earn a queue slot." />}
   </div>
 }
 
@@ -1986,7 +2011,7 @@ const domain = (url?: string) => { try { return new URL(url || '').hostname.repl
     const qa = pair.qualityAssurance
     const qaLabel = qa.status === 'repair_required' ? 'Needs repair' : qa.status === 'passed' && pair.html && qa.score != null ? `Verified ${qa.score}/10` : qa.status === 'passed' && qa.video_format === 'cinematic' ? 'Verified cinematic' : null
     const sub = featured && pair.metadata.source_url ? domain(pair.metadata.source_url) : (pair.metadata.source_url || `${pair.files.length} ${pair.files.length === 1 ? 'file' : 'linked files'}`)
-    return <article class={featured ? 'artifact-card' : undefined}><div class="artifact-kind"><span>{artifactKind(pair)}</span><small>{formatDate(pair.primary.created_at)}</small></div><div class="artifact-copy"><h3>{title}</h3><p>{sub}</p></div><div class="artifact-actions">{qaLabel && <span class={`qa-label qa-${qa.status}`}>{qaLabel}</span>}{pair.metadata.source_url && <a href={pair.metadata.source_url} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url, video_title: title }, pair.metadata.source_url, 'original')}>Original</a>}{pair.html && <a class="primary-action" href={href(pair.html)} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url || href(pair.html), video_title: title }, href(pair.html), 'html', pair.html.id)}>Read</a>}{pair.markdown && !pair.html && <a class="primary-action" href={href(pair.markdown)} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url || href(pair.markdown), video_title: title }, href(pair.markdown), 'html', pair.markdown.id)}>Read</a>}{pair.pdf && <a href={href(pair.pdf)} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url || href(pair.pdf), video_title: title }, href(pair.pdf), 'pdf', pair.pdf.id)}>PDF</a>}{pair.notebookUrl && <a class="nblm-link" href={pair.notebookUrl} target="_blank" rel="noreferrer" onClick={(event) => pair.metadata.recommendation_id && openLearningTarget(event, { id: pair.metadata.recommendation_id, video_url: pair.metadata.source_url || pair.notebookUrl, video_title: title }, pair.notebookUrl, 'notebooklm')}>NBLM</a>}{pair.files.length > 0 && <button class="artifact-remove" disabled={working === pair.id} onClick={() => remove(pair)}>Remove</button>}</div></article>
+    return <article class={featured ? 'artifact-card' : undefined}><div class="artifact-kind"><span>{artifactKind(pair)}</span><small>{formatDate(pair.primary.created_at)}</small></div><div class="artifact-copy"><h3>{title}</h3><p>{sub}</p></div><div class="artifact-actions">{qaLabel && <span class={`qa-label qa-${qa.status}`}>{qaLabel}</span>}{pair.metadata.source_url && <a href={pair.metadata.source_url} target="_blank" rel="noreferrer">Original</a>}{pair.html && <a class="primary-action" href={href(pair.html)} target="_blank" rel="noreferrer">Read</a>}{pair.markdown && !pair.html && <a class="primary-action" href={href(pair.markdown)} target="_blank" rel="noreferrer">Read</a>}{pair.pdf && <a href={href(pair.pdf)} target="_blank" rel="noreferrer">PDF</a>}{pair.notebookUrl && <a class="nblm-link" href={pair.notebookUrl} target="_blank" rel="noreferrer">NBLM</a>}{pair.files.length > 0 && <button class="artifact-remove" disabled={working === pair.id} onClick={() => remove(pair)}>Remove</button>}</div></article>
   }
   return <div class="artifact-library">
     <div class="artifact-library-head">
@@ -2550,6 +2575,8 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
     ...(groups.units || []).map((item: any) => ({ group: 'Knowledge', title: item.statement, detail: item.unit_type, target: 'map.atlas' })),
     ...(groups.notes || []).map((item: any) => ({ group: 'Notes', title: item.title, detail: item.kind, target: 'learn.notes' })),
     ...(groups.artifacts || []).map((item: any) => ({ group: 'Files', title: item.filename, detail: item.media_type, target: 'learn.files' })),
+    ...(groups.assertions || []).map((item: any) => ({ group: 'Profile', title: item.assertion_key, detail: item.category, target: 'settings.profile' })),
+    ...(groups.memories || []).map((item: any) => ({ group: 'Memory', title: item.memory_key, detail: item.memory_kind, target: 'insights.hermes' })),
   ].slice(0, 16)
   return <dialog ref={ref} class="command-dialog" onClose={onClose}><div class="command-input"><Icon name="search" /><input aria-label="Search Learning Compass" autoFocus value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="Search sources, notes, files, branches, or pages…" /><kbd>Esc</kbd></div><div class="command-results">{pages.map((item) => <button onClick={() => { go(item); onClose() }}><span>{workspaceLabels[item.workspace]}</span><strong>{item.title}</strong><small>{item.purpose}</small></button>)}{query.trim().length >= 2 && cloud.loading && <div class="command-message">Searching your library…</div>}{cloudResults.map((item) => <button onClick={() => { go(destinations.find((destination) => destination.key === item.target)!); onClose() }}><span>{item.group}</span><strong>{item.title}</strong><small>{item.detail}</small></button>)}{query.trim().length >= 2 && !cloud.loading && !pages.length && !cloudResults.length && <div class="command-message">No matches found.</div>}</div></dialog>
 }

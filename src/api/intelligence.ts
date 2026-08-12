@@ -121,7 +121,7 @@ app.get('/analytics/hermes', async (c) => {
     const calibrationRows = await allOr(DB.prepare(`SELECT p.expected_learning_value predicted_value,o.learning_value actual_value,o.format_key format,o.creator_key creator,p.strategy
       FROM recommendation_outcomes o LEFT JOIN compass_picks p ON p.recommendation_id=o.recommendation_id
       WHERE o.training_eligible=1 AND o.learning_value IS NOT NULL AND o.objective_version='learning_value_v2'`))
-    const [jobCounts, stale, retryQueue, deadLetters, quality, qualityByFormat, memory, alerts, failures, weights, proposals, compassPriors, compassWeights] = await Promise.all([
+    const [jobCounts, stale, retryQueue, deadLetters, quality, qualityByFormat, memory, alerts, failures, weights, proposals, compassPriors, compassWeights, candidateQuality] = await Promise.all([
       DB.prepare(`SELECT status,COUNT(*) count FROM agent_jobs GROUP BY status`).all<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM agent_jobs WHERE status='running' AND lease_expires_at < datetime('now')`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM agent_job_retries WHERE dead_lettered_at IS NULL AND next_attempt_at > datetime('now')`).first<any>(),
@@ -135,6 +135,15 @@ app.get('/analytics/hermes', async (c) => {
       DB.prepare(`SELECT COUNT(*) count FROM feedback_proposals WHERE status='pending'`).first<any>(),
       DB.prepare(`SELECT strategy,alpha,beta,explicit_evidence_count,updated_at FROM compass_strategy_priors ORDER BY strategy`).all<any>().catch(() => ({ results: [] })),
       DB.prepare(`SELECT strategy,dimension,current_weight,baseline_weight,evidence_count,updated_at FROM compass_feature_weights ORDER BY strategy,current_weight DESC`).all<any>().catch(() => ({ results: [] })),
+      DB.prepare(`SELECT
+        COUNT(*) total_candidates,
+        SUM(CASE WHEN is_winner=1 THEN 1 ELSE 0 END) winners,
+        ROUND(AVG(contextual_alignment),3) average_contextual_alignment,
+        ROUND(AVG(candidate_set_diversity),3) average_candidate_set_diversity,
+        SUM(CASE WHEN json_extract(evidence_json,'$.candidate_context.summary') IS NOT NULL THEN 1 ELSE 0 END) candidates_with_summary,
+        SUM(CASE WHEN json_array_length(json_extract(evidence_json,'$.candidate_context.concepts')) >= 2 THEN 1 ELSE 0 END) candidates_with_concepts,
+        SUM(CASE WHEN json_extract(features_json,'$._exclusion_reason')='duplicate_submission' THEN 1 ELSE 0 END) duplicate_submissions
+        FROM compass_candidates`).first<any>().catch(() => null),
     ])
     const [signalPopulation, profileIntelligence, improvementRuns] = await Promise.all([
       DB.prepare(`SELECT COUNT(*) total,
@@ -159,12 +168,36 @@ app.get('/analytics/hermes', async (c) => {
       return [...groups.entries()].map(([label, group]) => ({ [key]: label, rated_outcomes: group.rated, predicted_and_rated_outcomes: group.paired, coverage_percent: group.rated ? Math.round(group.paired / group.rated * 100) : 0, mae: group.paired ? Math.round(group.error / group.paired * 100) / 100 : null, evidence_status: group.paired >= 5 ? 'usable' : 'insufficient' }))
     }
     const paired = calibrationRows.filter((row: any) => row.predicted_value != null)
+    const reliabilityBuckets = Array.from({ length: 5 }, (_, index) => ({
+      bucket: `${index * 20}-${index === 4 ? 100 : (index + 1) * 20}%`,
+      count: 0,
+      average_predicted: null as number | null,
+      average_actual: null as number | null,
+    }))
+    let squaredError = 0
+    for (const row of paired) {
+      const predicted = Math.max(0, Math.min(1, Number(row.predicted_value)))
+      const actual = Math.max(0, Math.min(1, Number(row.actual_value)))
+      const bucket = reliabilityBuckets[Math.min(4, Math.floor(predicted * 5))]
+      bucket.count += 1
+      bucket.average_predicted = (bucket.average_predicted || 0) + predicted
+      bucket.average_actual = (bucket.average_actual || 0) + actual
+      squaredError += (predicted - actual) ** 2
+    }
+    for (const bucket of reliabilityBuckets) {
+      if (bucket.count) {
+        bucket.average_predicted = Math.round((bucket.average_predicted! / bucket.count) * 1000) / 1000
+        bucket.average_actual = Math.round((bucket.average_actual! / bucket.count) * 1000) / 1000
+      }
+    }
     const calibration = {
       rated_outcomes: calibrationRows.length,
       predicted_and_rated_outcomes: paired.length,
       coverage_percent: calibrationRows.length ? Math.round(paired.length / calibrationRows.length * 100) : 0,
       mae: paired.length ? Math.round(paired.reduce((sum: number, row: any) => sum + Math.abs(Number(row.predicted_value) - Number(row.actual_value)), 0) / paired.length * 1000) / 1000 : null,
       evidence_status: paired.length >= 5 ? 'usable' : 'insufficient',
+      brier_score: paired.length ? Math.round(squaredError / paired.length * 1000) / 1000 : null,
+      reliability_buckets: reliabilityBuckets,
       by_strategy: summarizeCalibration('strategy'), by_format: summarizeCalibration('format'), by_creator: summarizeCalibration('creator'),
     }
     return c.json({
@@ -174,7 +207,7 @@ app.get('/analytics/hermes', async (c) => {
       memory: { entries: memory.results || [], active: (memory.results || []).filter((row: any) => row.status === 'active').reduce((sum: number, row: any) => sum + Number(row.count || 0), 0) },
       alerts: alerts.results || [],
       engine_weights: weights.results || [],
-      compass_learning: { strategies: compassPriors.results || [], feature_weights: compassWeights.results || [], calibration },
+      compass_learning: { strategies: compassPriors.results || [], feature_weights: compassWeights.results || [], calibration, candidate_quality: candidateQuality || {} },
       profile_intelligence: profileIntelligence,
       self_improvement: { runs: improvementRuns.results || [] },
       pending_proposals: Number(proposals?.count || 0),

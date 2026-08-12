@@ -365,6 +365,29 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
       }
     }
 
+    // Learning Units, notes, typed profile assertions, and Hermes procedure
+    // memory are searchable knowledge too.  Rebuilding these small tables keeps
+    // search deterministic and avoids a second, un-audited retrieval store.
+    const changedKnowledge = await DB.prepare(`SELECT COUNT(*) c FROM (
+      SELECT updated_at FROM learning_units WHERE updated_at>?
+      UNION ALL SELECT updated_at FROM notes WHERE updated_at>?
+      UNION ALL SELECT updated_at FROM profile_assertions WHERE updated_at>?
+      UNION ALL SELECT updated_at FROM hermes_memory WHERE updated_at>?
+    )`).bind(lastSyncTs, lastSyncTs, lastSyncTs, lastSyncTs).first<{ c: number }>()
+    if ((changedKnowledge?.c || 0) > 0 || dirty) {
+      await DB.prepare("DELETE FROM search_idx WHERE source IN ('unit','note','assertion','memory')").run()
+      const [units, notes, assertions, memories] = await Promise.all([
+        DB.prepare('SELECT id,statement,user_synthesis FROM learning_units').all<any>(),
+        DB.prepare(`SELECT n.id,n.title,GROUP_CONCAT(s.content,' ') content FROM notes n LEFT JOIN note_sections s ON s.note_id=n.id GROUP BY n.id`).all<any>(),
+        DB.prepare("SELECT assertion_key,value_json FROM profile_assertions WHERE status='active'").all<any>(),
+        DB.prepare("SELECT id,memory_key,value_json FROM hermes_memory WHERE status IN ('active','approved')").all<any>(),
+      ])
+      for (const unit of units.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('unit',?,?)").bind(unit.id, [unit.statement, unit.user_synthesis].filter(Boolean).join(' ')).run()
+      for (const note of notes.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('note',?,?)").bind(note.id, [note.title, note.content].filter(Boolean).join(' ')).run()
+      for (const assertion of assertions.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('assertion',?,?)").bind(assertion.assertion_key, `${assertion.assertion_key} ${assertion.value_json || ''}`).run()
+      for (const memory of memories.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('memory',?,?)").bind(memory.id, `${memory.memory_key} ${memory.value_json || ''}`).run()
+    }
+
     // Update sync timestamp
     await DB.prepare("INSERT OR REPLACE INTO kv_store (key, value) VALUES ('fts_last_sync', ?)").bind(new Date().toISOString()).run()
 
