@@ -48,7 +48,7 @@ export function StudioShell({ route, children, inspector, onCapture, onSearch }:
           {route.objectType && <><Icon name="chevron" size={14}/><span class="command-object">{route.objectType}</span></>}
         </div>
         <button type="button" class="command-search" onClick={onSearch}><Icon name="search" size={17}/><span>Search or jump to…</span><kbd>⌘ K</kbd></button>
-        <button type="button" class="button primary capture-button" onClick={onCapture}><Icon name="capture" size={17}/>Capture</button>
+        <button type="button" class="button primary capture-button" onClick={onCapture} aria-label="Capture a source"><Icon name="capture" size={17}/><span>Capture</span></button>
       </header>
       {route.recoveredFrom && !route.notFound && <div class="route-notice" role="status">Old link restored to this workspace: <code>{route.recoveredFrom}</code></div>}
       {route.notFound && <div class="route-notice route-warning" role="alert">That destination no longer exists. You are in the nearest real workspace instead: <code>{route.recoveredFrom}</code></div>}
