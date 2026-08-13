@@ -8,25 +8,35 @@ import { join } from 'node:path'
 const { chromium } = createRequire(import.meta.url)('playwright')
 
 const roots = ['home', 'library', 'learn', 'map', 'settings']
-const viewRoutes = [
-  { root: 'home', view: 'home', path: '/home', expected: '.folio-home-workspace' },
-  { root: 'library', view: 'queue', path: '/library', expected: '.folio-queue-view' },
-  { root: 'library', view: 'inbox', path: '/library/inbox', expected: '.folio-inbox-view' },
-  { root: 'library', view: 'all', path: '/library/all', expected: '.folio-all-view' },
-  { root: 'library', view: 'files', path: '/library/files', expected: '.folio-files-view' },
-  { root: 'library', view: 'books', path: '/library/books', expected: '.folio-books-view' },
-  { root: 'library', view: 'collections', path: '/library/collections', expected: '.folio-collections-view' },
-  { root: 'library', view: 'archive', path: '/library/archive', expected: '.folio-archive-view' },
-  { root: 'learn', view: 'paths', path: '/learn', expected: '.folio-paths' },
-  { root: 'learn', view: 'notes', path: '/learn/notes', expected: '.folio-notes' },
-  { root: 'learn', view: 'recall', path: '/learn/recall', expected: '.folio-recall' },
-  { root: 'map', view: 'atlas', path: '/map', expected: '.atlas-empty-state' },
-  { root: 'map', view: 'branches', path: '/map/branches', expected: '.branch-desk' },
-  { root: 'map', view: 'balance', path: '/map/balance', expected: '.map-balance-view' },
-  { root: 'settings', view: 'profile', path: '/settings', expected: '.profile-settings-page' },
-  { root: 'settings', view: 'preferences', path: '/settings/preferences', expected: '.settings-page' },
-  { root: 'settings', view: 'data', path: '/settings/data', expected: '.data-settings-page' },
-  { root: 'settings', view: 'system', path: '/settings/system', expected: '.system-console' },
+const rootRoutes = [
+  { root: 'home', href: '#/home', expected: '.folio-home-workspace' },
+  { root: 'library', href: '#/library', expected: '.folio-queue-view' },
+  { root: 'learn', href: '#/learn', expected: '.folio-paths' },
+  { root: 'map', href: '#/map', expected: '.atlas-empty-state' },
+  { root: 'settings', href: '#/settings', expected: '.profile-settings-page' },
+]
+
+// These are lenses inside the five roots. They deliberately use query state;
+// none of them is a peer destination in the global rail or mobile dock.
+const modeRoutes = [
+  { root: 'home', href: '#/home', mode: 'today', expected: '.folio-home-workspace' },
+  { root: 'library', href: '#/library?mode=triage&focus=queue', mode: 'triage', focus: 'queue', expected: '.folio-queue-view' },
+  { root: 'library', href: '#/library?mode=triage&focus=inbox', mode: 'triage', focus: 'inbox', expected: '.folio-inbox-view' },
+  { root: 'library', href: '#/library?mode=catalog&focus=all', mode: 'catalog', focus: 'all', expected: '.folio-all-view' },
+  { root: 'library', href: '#/library?mode=catalog&focus=books', mode: 'catalog', focus: 'books', expected: '.folio-books-view' },
+  { root: 'library', href: '#/library?mode=catalog&focus=collections', mode: 'catalog', focus: 'collections', expected: '.folio-collections-view' },
+  { root: 'library', href: '#/library?mode=catalog&focus=archive', mode: 'catalog', focus: 'archive', expected: '.folio-archive-view' },
+  { root: 'library', href: '#/library?mode=assets&focus=files', mode: 'assets', focus: 'files', expected: '.folio-files-view' },
+  { root: 'learn', href: '#/learn', mode: 'paths', expected: '.folio-paths' },
+  { root: 'learn', href: '#/learn?mode=practice&focus=notes', mode: 'practice', focus: 'notes', expected: '.folio-notes' },
+  { root: 'learn', href: '#/learn?mode=practice&focus=recall', mode: 'practice', focus: 'recall', expected: '.folio-recall' },
+  { root: 'map', href: '#/map', mode: 'atlas', expected: '.atlas-empty-state' },
+  { root: 'map', href: '#/map?mode=review&focus=branches', mode: 'review', focus: 'branches', expected: '.branch-desk' },
+  { root: 'map', href: '#/map?mode=review&focus=balance', mode: 'review', focus: 'balance', expected: '.map-balance-view' },
+  { root: 'settings', href: '#/settings', mode: 'personal', expected: '.profile-settings-page' },
+  { root: 'settings', href: '#/settings?focus=preferences', mode: 'personal', focus: 'preferences', expected: '.settings-page' },
+  { root: 'settings', href: '#/settings?mode=data', mode: 'data', expected: '.data-settings-page' },
+  { root: 'settings', href: '#/settings?mode=system', mode: 'system', expected: '.system-console' },
 ]
 
 const wrangler = process.env.WRANGLER_BIN || 'wrangler'
@@ -104,39 +114,60 @@ page.on('pageerror', (error) => errors.push(error.message))
 page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
 
 await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
-const rootHrefs = await page.locator('.root-rail a').evaluateAll((links) => [...new Set(links.map((link) => link.getAttribute('href')))])
+const rootHrefs = await page.locator('.root-rail nav[aria-label="Five workspaces"] a').evaluateAll((links) => [...new Set(links.map((link) => link.getAttribute('href')))])
 if (rootHrefs.length !== roots.length || roots.some((root) => !rootHrefs.includes(`#/${root}`))) throw new Error(`root rail does not expose exactly the five stable roots: ${rootHrefs.join(', ')}`)
-if (await page.locator('.root-rail nav a').count() !== 4) throw new Error('root rail primary navigation must contain Home, Library, Learn, and Map')
-if (await page.locator('.root-rail nav a[href="#/settings"]').count()) throw new Error('Settings must remain at the bottom of the root rail')
+if (await page.locator('.root-rail nav[aria-label="Five workspaces"] a').count() !== roots.length) throw new Error('root rail must contain exactly five global destinations')
+if (await page.locator('.root-rail + .context-pane, .context-pane').count()) throw new Error('desktop shell rendered a permanent context pane')
+
+for (const route of rootRoutes) {
+  await page.goto(`${baseUrl}/${route.href}`, { waitUntil: 'networkidle' })
+  await page.locator('.studio-shell').waitFor({ state: 'visible', timeout: 15000 })
+  if (!(await page.locator(`.studio-shell[data-root="${route.root}"]`).count())) throw new Error(`${route.href}: wrong root shell`)
+  await page.locator(route.expected).waitFor({ state: 'attached', timeout: 15000 })
+}
 
 let count = 0
-for (const route of viewRoutes) {
+for (const route of modeRoutes) {
   const before = errors.length
-  await page.goto(`${baseUrl}/#${route.path}`, { waitUntil: 'networkidle' })
+  await page.goto(`${baseUrl}/${route.href}`, { waitUntil: 'networkidle' })
   await page.locator('.studio-shell').waitFor({ state: 'visible', timeout: 15000 })
-  if (!(await page.locator(`.studio-shell[data-root="${route.root}"]`).count())) throw new Error(`${route.path}: wrong root shell`)
-  for (const selector of ['.root-rail', '.context-pane', '.workspace-canvas']) {
-    if (await page.locator(selector).count() !== 1) throw new Error(`${route.path}: missing exactly one ${selector}`)
+  if (!(await page.locator(`.studio-shell[data-root="${route.root}"]`).count())) throw new Error(`${route.href}: wrong root shell`)
+  for (const selector of ['.root-rail', '.workspace-canvas']) {
+    if (await page.locator(selector).count() !== 1) throw new Error(`${route.href}: missing exactly one ${selector}`)
   }
+  if (await page.locator('.context-pane, .context-scrim, .navigation-sheet').count()) throw new Error(`${route.href}: rendered a redundant context/menu surface`)
   await page.locator(route.expected).waitFor({ state: 'attached', timeout: 15000 })
+  const routeState = await page.evaluate(() => {
+    const hash = location.hash.replace(/^#/, '')
+    const [path, query = ''] = hash.split('?')
+    return { path, query: Object.fromEntries(new URLSearchParams(query).entries()) }
+  })
+  if (routeState.path !== `/${route.root}`) throw new Error(`${route.href}: mode escaped its root path (${routeState.path})`)
+  const defaultModes = { home: 'today', library: 'triage', learn: 'paths', map: 'atlas', settings: 'personal' }
+  if (route.mode && route.mode !== defaultModes[route.root] && routeState.query.mode !== route.mode) throw new Error(`${route.href}: mode query was not preserved (${JSON.stringify(routeState.query)})`)
+  if (route.focus && routeState.query.focus !== route.focus) throw new Error(`${route.href}: focus query was not preserved (${JSON.stringify(routeState.query)})`)
+  if (route.root !== 'home' && await page.locator('.workspace-mode-switcher').count() !== 1) throw new Error(`${route.href}: missing the active root's internal mode switcher`)
+  if (route.root === 'library' && (route.mode === 'triage' || route.mode === 'catalog') && await page.locator('.workspace-filter-switcher').count() !== 1) throw new Error(`${route.href}: missing the Library filter switcher`)
+  if ((route.root === 'learn' && route.mode === 'practice') || (route.root === 'map' && route.mode === 'review') || (route.root === 'settings' && route.mode === 'personal')) {
+    if (await page.locator('.workspace-filter-switcher').count() !== 1) throw new Error(`${route.href}: missing the active mode's focus switcher`)
+  }
+  if (route.root !== 'home' && !(await page.locator('.workspace-mode-switcher a.active, .workspace-mode-switcher a[aria-current="page"]').count())) throw new Error(`${route.href}: mode switcher did not mark its active mode`)
   for (const selector of ['.orbit-bar', '.page-head', '.subnav', '.rail', '.app-shell', '.main']) {
-    if (await page.locator(selector).count()) throw new Error(`${route.path}: rendered retired frontend selector ${selector}`)
+    if (await page.locator(selector).count()) throw new Error(`${route.href}: rendered retired frontend selector ${selector}`)
   }
   const headings = page.locator('h1')
-  if (await headings.count() !== 1) throw new Error(`${route.path}: expected exactly one h1, found ${await headings.count()}`)
-  if (!(await headings.first().textContent())?.trim()) throw new Error(`${route.path}: h1 is empty`)
-  const contextHrefs = await page.locator('.context-pane .view-list a').evaluateAll((links) => links.map((link) => link.getAttribute('href')))
-  if (!contextHrefs.includes(`#${route.path}`)) throw new Error(`${route.path}: context pane does not preserve the active view URL`)
-  if (errors.length !== before) throw new Error(`${route.path}: ${errors.at(-1)}`)
-  if (await page.locator('.error-state').count()) throw new Error(`${route.path}: rendered an API error state`)
+  if (await headings.count() !== 1) throw new Error(`${route.href}: expected exactly one h1, found ${await headings.count()}`)
+  if (!(await headings.first().textContent())?.trim()) throw new Error(`${route.href}: h1 is empty`)
+  if (errors.length !== before) throw new Error(`${route.href}: ${errors.at(-1)}`)
+  if (await page.locator('.error-state').count()) throw new Error(`${route.href}: rendered an API error state`)
   const body = await page.locator('.workspace-canvas').innerText()
-  if (/undefined|NaN/.test(body)) throw new Error(`${route.path}: leaked undefined/NaN`)
+  if (/undefined|NaN/.test(body)) throw new Error(`${route.href}: leaked undefined/NaN`)
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
-  if (overflow > 2) throw new Error(`${route.path}: horizontal overflow ${overflow}px`)
+  if (overflow > 2) throw new Error(`${route.href}: horizontal overflow ${overflow}px`)
   count++
 }
 
-if (count !== 18) throw new Error(`expected 18 view routes, checked ${count}`)
+if (count !== modeRoutes.length) throw new Error(`expected ${modeRoutes.length} internal mode states, checked ${count}`)
 
 await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
 const desktopScreenshot = await page.screenshot({ path: join(persistDir, 'home-desktop.png') })
@@ -154,18 +185,56 @@ await page.keyboard.press('Escape')
 await page.locator('.capture-dialog[role="dialog"]').waitFor({ state: 'detached', timeout: 2000 })
 
 const legacyAliases = [
-  { path: '/today/briefing', root: 'home' },
-  { path: '/curate/queue', root: 'library' },
-  { path: '/curate/inbox', root: 'library' },
-  { path: '/learn/hub', root: 'learn' },
-  { path: '/map/deck', root: 'map' },
-  { path: '/map/coverage', root: 'map' },
-  { path: '/settings/learning', root: 'settings' },
+  { path: '/today', root: 'home', mode: 'today' },
+  { path: '/today/briefing', root: 'home', mode: 'today' },
+  { path: '/today/momentum', root: 'home', mode: 'today' },
+  { path: '/insights/overview', root: 'home', mode: 'today' },
+  { path: '/curate/queue', root: 'library', mode: 'triage', focus: 'queue' },
+  { path: '/library/queue', root: 'library', mode: 'triage', focus: 'queue' },
+  { path: '/curate/inbox', root: 'library', mode: 'triage', focus: 'inbox' },
+  { path: '/library/inbox', root: 'library', mode: 'triage', focus: 'inbox' },
+  { path: '/curate/discovery', root: 'library', mode: 'catalog', focus: 'all' },
+  { path: '/library/all', root: 'library', mode: 'catalog', focus: 'all' },
+  { path: '/curate/books', root: 'library', mode: 'catalog', focus: 'books' },
+  { path: '/library/books', root: 'library', mode: 'catalog', focus: 'books' },
+  { path: '/curate/collections', root: 'library', mode: 'catalog', focus: 'collections' },
+  { path: '/library/collections', root: 'library', mode: 'catalog', focus: 'collections' },
+  { path: '/curate/archive', root: 'library', mode: 'catalog', focus: 'archive' },
+  { path: '/library/archive', root: 'library', mode: 'catalog', focus: 'archive' },
+  { path: '/learn/files', root: 'library', mode: 'assets', focus: 'files' },
+  { path: '/vault/files', root: 'library', mode: 'assets', focus: 'files' },
+  { path: '/library/files', root: 'library', mode: 'assets', focus: 'files' },
+  { path: '/learn/hub', root: 'learn', mode: 'paths' },
+  { path: '/learn/paths', root: 'learn', mode: 'paths' },
+  { path: '/vault/notes', root: 'learn', mode: 'practice', focus: 'notes' },
+  { path: '/learn/reflections', root: 'learn', mode: 'practice', focus: 'notes' },
+  { path: '/learn/notes', root: 'learn', mode: 'practice', focus: 'notes' },
+  { path: '/learn/cards', root: 'learn', mode: 'practice', focus: 'recall' },
+  { path: '/learn/review', root: 'learn', mode: 'practice', focus: 'recall' },
+  { path: '/learn/recall', root: 'learn', mode: 'practice', focus: 'recall' },
+  { path: '/learn/activity', root: 'settings', mode: 'data' },
+  { path: '/map/deck', root: 'map', mode: 'review', focus: 'branches' },
+  { path: '/map/branches', root: 'map', mode: 'review', focus: 'branches' },
+  { path: '/map/coverage', root: 'map', mode: 'review', focus: 'balance' },
+  { path: '/map/balance', root: 'map', mode: 'review', focus: 'balance' },
+  { path: '/insights/learning', root: 'map', mode: 'review', focus: 'balance' },
+  { path: '/settings/profile', root: 'settings', mode: 'personal', focus: 'profile' },
+  { path: '/settings/appearance', root: 'settings', mode: 'personal', focus: 'preferences' },
+  { path: '/settings/learning', root: 'settings', mode: 'personal', focus: 'preferences' },
+  { path: '/settings/curation', root: 'settings', mode: 'personal', focus: 'preferences' },
+  { path: '/settings/preferences', root: 'settings', mode: 'personal', focus: 'preferences' },
+  { path: '/settings/data', root: 'settings', mode: 'data' },
+  { path: '/settings/system', root: 'settings', mode: 'system' },
+  { path: '/insights/taste', root: 'settings', mode: 'personal', focus: 'profile' },
+  { path: '/insights/hermes', root: 'settings', mode: 'personal', focus: 'profile' },
 ]
 for (const alias of legacyAliases) {
   await page.goto(`${baseUrl}/#${alias.path}`, { waitUntil: 'networkidle' })
   if (!(await page.locator(`.studio-shell[data-root="${alias.root}"]`).count())) throw new Error(`${alias.path}: legacy alias did not recover into the right workspace`)
   if (!(await page.locator('.route-notice').count()) || (await page.locator('.route-warning').count())) throw new Error(`${alias.path}: legacy alias did not announce purposeful recovery`)
+  const recoveredState = await page.locator('.studio-shell').evaluate((shell) => ({ mode: shell.getAttribute('data-mode') }))
+  if (recoveredState.mode !== alias.mode) throw new Error(`${alias.path}: recovered to mode ${recoveredState.mode}, expected ${alias.mode}`)
+  if (alias.focus && !(await page.locator('.workspace-filter-switcher a.active, .workspace-filter-switcher a[aria-current="page"]').count())) throw new Error(`${alias.path}: recovery lost focus=${alias.focus}`)
   if (await page.locator('.orbit-bar, .page-head, .subnav, .rail').count()) throw new Error(`${alias.path}: legacy alias rendered the retired shell`)
 }
 await page.goto(`${baseUrl}/#/not-a-real-destination`, { waitUntil: 'networkidle' })
@@ -219,7 +288,7 @@ const [capabilities, systemInventory] = await Promise.all([
 if (!capabilities.capabilities?.some((operation) => operation.method === 'GET' && operation.path === '/agent/system')) throw new Error('agent capabilities omitted the System inventory route')
 if (!Array.isArray(systemInventory.schedule) || systemInventory.schedule.length !== 1 || systemInventory.schedule[0].cron !== '0 */6 * * *') throw new Error('System inventory omitted the configured maintenance schedule')
 if (!Array.isArray(systemInventory.on_demand_only) || !systemInventory.storage?.length || !systemInventory.safety?.length) throw new Error('System inventory contract is incomplete')
-await page.goto(`${baseUrl}/#/settings/system`, { waitUntil: 'networkidle' })
+await page.goto(`${baseUrl}/#/settings?mode=system`, { waitUntil: 'networkidle' })
 await page.locator('.system-console').waitFor({ state: 'visible', timeout: 15000 })
 if (await page.locator('.api-operation-list article').count() !== capabilities.capabilities.length) throw new Error('System page does not expose every allow-listed API operation')
 await page.getByLabel('Search path or capability').fill('schedule')
@@ -270,7 +339,7 @@ for (const value of ['Current source', 'Active Thread', 'Single next action', 'D
 if (await page.locator('.folio-home-focus').count() !== 1) throw new Error('Home must expose exactly one current-source focus')
 if (await page.locator('.folio-home-capture-signal').count() !== 1) throw new Error('Home must expose its capture signal')
 
-await page.goto(`${baseUrl}/#/library/files`, { waitUntil: 'networkidle' })
+await page.goto(`${baseUrl}/#/library?mode=assets&focus=files`, { waitUntil: 'networkidle' })
 if (artifacts.artifacts.length === 0) {
   await page.locator('.folio-files-view .state-empty').waitFor({ state: 'visible', timeout: 15000 })
 } else {
@@ -337,7 +406,7 @@ await requestJson('/learning/core/evidence', { method: 'POST', body: JSON.string
 await requestJson(`/learning/core/threads/${thread.id}`, { method: 'PATCH', body: JSON.stringify({ final_synthesis: 'The mechanism is useful only when its evidence and failure modes are checked first.' }) })
 const verifiedThread = await requestJson(`/learning/core/threads/${thread.id}/verify`, { method: 'POST' })
 if (verifiedThread.status !== 'verified') throw new Error('evidence-backed Thread did not verify')
-await page.goto(`${baseUrl}/#/learn/notes`, { waitUntil: 'networkidle' })
+await page.goto(`${baseUrl}/#/learn?mode=practice&focus=notes`, { waitUntil: 'networkidle' })
 await page.locator('.folio-note-row strong', { hasText: 'Hermes source note' }).waitFor({ state: 'visible', timeout: 15000 })
 if (await page.getByText('Handwritten margin note').count()) throw new Error('Notes library leaked personal reflection content into the extracted library')
 await page.goto(`${baseUrl}/#/learn/note/e2e_source_note`, { waitUntil: 'networkidle' })
@@ -373,15 +442,20 @@ await page.setViewportSize({ width: 390, height: 844 })
 await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
 if (!(await page.locator('.mobile-dock').isVisible())) throw new Error('mobile primary navigation is not visible')
 if (await page.locator('.root-rail').isVisible()) throw new Error('desktop root rail remains visible on mobile')
+if (await page.locator('.context-pane, .context-scrim, .navigation-sheet').count()) throw new Error('mobile shell rendered a redundant navigation sheet or context pane')
 const mobileRootHrefs = await page.locator('.mobile-dock a').evaluateAll((links) => [...new Set(links.map((link) => link.getAttribute('href')))])
 if (mobileRootHrefs.length !== roots.length || roots.some((root) => !mobileRootHrefs.includes(`#/${root}`))) throw new Error('mobile dock does not expose the five stable roots')
-if ((await page.locator('.context-pane').getAttribute('aria-hidden')) !== 'true') throw new Error('mobile context pane is not hidden before opening the sheet')
-await page.getByRole('button', { name: 'Open navigation' }).click()
-await page.locator('.context-pane.mobile-open').waitFor({ state: 'visible' })
-if (!(await page.locator('.context-scrim').isVisible())) throw new Error('mobile context sheet did not render its scrim')
-if ((await page.locator('.context-pane').getAttribute('aria-hidden')) === 'true') throw new Error('mobile context sheet stayed aria-hidden while open')
-await page.getByRole('button', { name: 'Close navigation' }).click()
-if (await page.locator('.context-pane.mobile-open').count()) throw new Error('mobile context sheet did not close')
+for (const route of modeRoutes) {
+  await page.goto(`${baseUrl}/${route.href}`, { waitUntil: 'networkidle' })
+  if (!(await page.locator('.mobile-dock').isVisible())) throw new Error(`${route.href}: mobile dock disappeared`)
+  if (await page.locator('.mobile-dock a').count() !== roots.length) throw new Error(`${route.href}: mobile dock does not contain exactly five items`)
+  if (route.root !== 'home' && (await page.locator('.workspace-mode-switcher').count() !== 1 || !(await page.locator('.workspace-mode-switcher').isVisible()))) throw new Error(`${route.href}: internal mode controls are missing on mobile`)
+  if (route.root === 'library' && route.mode !== 'assets' && await page.locator('.workspace-filter-switcher').count() !== 1) throw new Error(`${route.href}: Library filter controls are missing on mobile`)
+  if ((route.root === 'learn' && route.mode === 'practice') || (route.root === 'map' && route.mode === 'review') || (route.root === 'settings' && route.mode === 'personal')) {
+    if (await page.locator('.workspace-filter-switcher').count() !== 1) throw new Error(`${route.href}: focus controls are missing on mobile`)
+  }
+  if (await page.locator('.context-pane, .context-scrim, .navigation-sheet').count()) throw new Error(`${route.href}: mobile rendered a redundant navigation sheet`)
+}
 const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
 if (mobileOverflow > 2) throw new Error(`mobile Home horizontal overflow ${mobileOverflow}px`)
 const mobileScreenshot = await page.screenshot({ path: join(persistDir, 'home-mobile.png') })
@@ -389,7 +463,7 @@ if (!mobileScreenshot.length) throw new Error('mobile visual smoke screenshot wa
 await page.getByRole('link', { name: 'Map' }).click()
 if (!page.url().includes('#/map')) throw new Error('mobile dock did not navigate to Map')
 
-console.log(`E2E passed: ${count} purposeful destinations, mobile shell, and complete mobile navigation`)
+console.log(`E2E passed: five root destinations, ${count} internal mode states, typed objects, legacy recovery, and mobile shell`)
 } finally {
   await browser?.close()
   if (server && server.exitCode === null) {
