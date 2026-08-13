@@ -30,6 +30,17 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
       if (previouslyFocused && document.contains(previouslyFocused)) previouslyFocused.focus()
     }
   }, [open])
+  useEffect(() => {
+    if (!open) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
+    }
+    document.addEventListener('keydown', closeOnEscape, true)
+    return () => document.removeEventListener('keydown', closeOnEscape, true)
+  }, [open, onClose])
   const groups = useMemo(() => Object.entries(state.data?.groups || {}).filter(([key, items]) => groupMeta[key] && Array.isArray(items) && items.length) as Array<[string, any[]]>, [state.data])
   const trapFocus = (event: KeyboardEvent) => {
     if (event.key === 'Escape') { event.preventDefault(); onClose(); return }
