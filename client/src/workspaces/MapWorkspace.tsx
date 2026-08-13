@@ -309,10 +309,11 @@ function useBalance(windowDays: 30 | 90 | 365) {
 export function MapWorkspace({ route, view, onRouteChange }: MapWorkspaceProps) {
   const routed = useRoute()
   const query = route?.query || routed.query
-  const routeValue = route?.focus || query.get('focus') || route?.view || route?.slug || view || routed.view
+  const normalizedMode = route?.mode || routed.mode || query.get('mode') || ''
+  const normalizedFocus = route?.focus || routed.focus || query.get('focus') || ''
+  const routeValue = normalizedFocus || route?.view || route?.slug || view || routed.view
   const activeView = normalizeView(routeValue, 'atlas')
-  const requestedMode = route?.mode || query.get('mode') || routed.view
-  const activeMode: MapMode = route?.objectType === 'branch' || requestedMode === 'review' || activeView !== 'atlas' ? 'review' : 'atlas'
+  const activeMode: MapMode = route?.objectType === 'branch' || normalizedMode === 'review' || activeView !== 'atlas' ? 'review' : 'atlas'
   const activeFocus: MapFocus = activeView === 'balance' ? 'balance' : 'branches'
   return (
     <div class="map-workspace workspace-surface">

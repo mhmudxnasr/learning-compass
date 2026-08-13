@@ -136,10 +136,10 @@ function LibraryModeSwitcher({ activeView, objectType, onNavigate }: { activeVie
 export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: LibraryWorkspaceProps) {
   const localRoute = useRoute()
   const activeRoute = route || localRoute
-  const queryMode = activeRoute.query.get('mode') || ''
-  const queryFocus = activeRoute.query.get('focus') || ''
-  const compatibleView = queryFocus || (/^(queue|inbox|all|files|books|collections|archive)$/.test(queryMode) ? queryMode : '') || (/^(queue|inbox|all|files|books|collections|archive)$/.test(activeRoute.view) ? activeRoute.view : '')
-  const view = compatibleView ? asView(compatibleView) : queryMode === 'catalog' ? 'all' : queryMode === 'assets' ? 'files' : 'queue'
+  const normalizedMode = activeRoute.mode || activeRoute.query.get('mode') || ''
+  const normalizedFocus = activeRoute.focus || activeRoute.query.get('focus') || ''
+  const compatibleView = normalizedFocus || (/^(queue|inbox|all|files|books|collections|archive)$/.test(normalizedMode) ? normalizedMode : '') || (/^(queue|inbox|all|files|books|collections|archive)$/.test(activeRoute.view) ? activeRoute.view : '')
+  const view = compatibleView ? asView(compatibleView) : normalizedMode === 'catalog' ? 'all' : normalizedMode === 'assets' ? 'files' : 'queue'
   const objectType = activeRoute.objectType as LibraryObjectType | undefined
   const endpoint = endpointFor(view, objectType, activeRoute.objectId)
   const { data, error, loading, reload } = useData<LibraryRecord>(endpoint)

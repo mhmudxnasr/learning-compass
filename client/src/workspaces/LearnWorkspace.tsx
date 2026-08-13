@@ -47,8 +47,8 @@ function LearnModeSwitcher({ active, focus }: { active: LearnMode; focus: LearnF
 export function LearnWorkspace({ route }: LearnWorkspaceProps = {}) {
   const routed = useRoute()
   const activeRoute = route || routed
-  const routeMode = activeRoute.query.get('mode') || activeRoute.view
-  const routeFocus = activeRoute.query.get('focus') || ''
+  const routeMode = activeRoute.mode || activeRoute.query.get('mode') || activeRoute.view
+  const routeFocus = activeRoute.focus || activeRoute.query.get('focus') || ''
   const compatibleFocus: LearnFocus = activeRoute.objectType === 'note' || routeFocus === 'notes' || routeMode === 'notes' ? 'notes' : 'recall'
   const activeMode: LearnMode = activeRoute.objectType === 'thread' ? 'paths' : activeRoute.objectType === 'note' || routeMode === 'practice' || routeMode === 'notes' || routeMode === 'recall' ? 'practice' : 'paths'
 

@@ -306,8 +306,8 @@ function SystemView() {
 export function SettingsWorkspace({ route, view, onRouteChange }: SettingsWorkspaceProps) {
   const routed = useRoute()
   const query = route?.query || routed.query
-  const requestedMode = route?.mode || query.get('mode') || route?.view || route?.slug || view || routed.view
-  const requestedFocus = route?.focus || query.get('focus') || ''
+  const requestedMode = route?.mode || routed.mode || query.get('mode') || route?.view || route?.slug || view || routed.view
+  const requestedFocus = route?.focus || routed.focus || query.get('focus') || ''
   const activeMode: SettingsMode = requestedMode === 'data' ? 'data' : requestedMode === 'system' ? 'system' : 'personal'
   const activeFocus: SettingsFocus = requestedFocus === 'preferences' || requestedMode === 'preferences' ? 'preferences' : 'profile'
   const activeView = normalizeView(activeMode === 'personal' ? activeFocus : activeMode)
