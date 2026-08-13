@@ -70,7 +70,6 @@ const aliases: Record<string, string> = {
   '/learn/activity': '/settings/data',
   '/map/deck': '/map/branches',
   '/map/coverage': '/map/balance',
-  '/map/branches': '/map/atlas',
   '/insights/learning': '/map/balance',
   '/insights/overview': '/home',
   '/insights/taste': '/settings/profile',
