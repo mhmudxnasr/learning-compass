@@ -780,13 +780,11 @@ output {
 
 /* Shared page grammar ---------------------------------------------------- */
 
-.workspace-canvas > *,
-.page-content > * {
+.workspace-canvas > * {
   width: min(100%, 1120px);
   margin-inline: auto;
 }
 
-.page-head,
 .module-head,
 .section-head,
 .page-actions,
@@ -849,11 +847,6 @@ p {
   max-width: 74ch;
 }
 
-.page-head {
-  margin-bottom: 18px;
-}
-
-.page-head p,
 .muted-copy,
 .quiet-copy,
 .page-actions > span,
@@ -876,31 +869,6 @@ p {
   font-weight: 600;
   letter-spacing: .08em;
   text-transform: uppercase;
-}
-
-.subnav {
-  display: flex;
-  gap: 2px;
-  max-width: 100%;
-  margin-bottom: 22px;
-  overflow-x: auto;
-  border-bottom: 1px solid var(--studio-seam);
-}
-
-.subnav button {
-  min-height: 35px;
-  padding: 0 11px;
-  border-radius: 0;
-  color: var(--studio-secondary);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.subnav button:hover:not(:disabled),
-.subnav button.active {
-  border-bottom-color: var(--studio-focus);
-  background: var(--studio-lichen);
-  color: var(--studio-focus);
 }
 
 .row-actions,
@@ -3241,124 +3209,6 @@ details > summary {
   white-space: pre-wrap;
 }
 
-/* Compatibility grammar for old workspace components ------------------ */
-
-.app-shell {
-  display: grid;
-  grid-template-rows: 62px minmax(0, 1fr);
-  min-height: 100dvh;
-  background: var(--studio-shell);
-}
-
-.orbit-bar {
-  z-index: 8;
-  display: flex;
-  align-items: center;
-  gap: 22px;
-  padding: 8px 18px;
-  border-bottom: 1px solid var(--studio-seam);
-  background: var(--studio-rail);
-  color: var(--studio-shell);
-}
-
-.orbit-brand,
-.orbit-nav button,
-.orbit-icon,
-.orbit-capture {
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--studio-shell);
-}
-
-.orbit-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 120px;
-  font-family: Literata, Georgia, serif;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.orbit-brand img,
-.brand-image {
-  width: 28px;
-  height: 28px;
-}
-
-.orbit-nav {
-  display: flex;
-  align-items: stretch;
-  align-self: stretch;
-  gap: 3px;
-}
-
-.orbit-nav button {
-  display: inline-flex;
-  min-width: 70px;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 8px;
-  border-radius: var(--studio-radius-control);
-  font-size: 12px;
-}
-
-.orbit-nav button:hover,
-.orbit-nav button.active,
-.orbit-icon:hover,
-.orbit-capture:hover {
-  border-color: var(--studio-focus);
-  background: var(--studio-cypress);
-}
-
-.orbit-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-inline-start: auto;
-}
-
-.orbit-icon,
-.orbit-capture {
-  display: inline-flex;
-  min-height: 36px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 9px;
-  border-radius: var(--studio-radius-control);
-}
-
-.orbit-capture {
-  background: var(--studio-cypress);
-}
-
-.main {
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  background: var(--studio-canvas);
-}
-
-.main > .page-head,
-.main > .subnav,
-.main > .page-content {
-  width: min(100% - 48px, 1180px);
-  margin-inline: auto;
-}
-
-.main > .page-head {
-  padding-top: 28px;
-}
-
-.page-content {
-  padding-bottom: 54px;
-}
-
-.rail {
-  display: none;
-}
-
 /* Small map/context popups from existing feature contracts */
 
 .balance-popup,
@@ -3652,10 +3502,6 @@ details > summary {
     padding: 18px 14px 92px;
   }
 
-  .page-head {
-    margin-bottom: 12px;
-  }
-
   h1 {
     font-size: 26px;
   }
@@ -3880,38 +3726,6 @@ details > summary {
     margin-inline: 16px;
   }
 
-  .orbit-bar {
-    min-height: 56px;
-    padding: 7px 10px;
-  }
-
-  .orbit-brand {
-    min-width: 36px;
-  }
-
-  .orbit-brand span,
-  .orbit-nav,
-  .orbit-icon kbd,
-  .orbit-capture span {
-    display: none;
-  }
-
-  .orbit-capture,
-  .orbit-icon {
-    width: 36px;
-    justify-content: center;
-    padding: 0;
-  }
-
-  .main > .page-head,
-  .main > .subnav,
-  .main > .page-content {
-    width: calc(100% - 28px);
-  }
-
-  .main > .page-head {
-    padding-top: 18px;
-  }
 }
 
 /* RTL and mixed-script notes -------------------------------------------- */
@@ -3973,8 +3787,7 @@ details > summary {
   }
 
   .studio-shell,
-  .studio-shell.has-inspector,
-  .app-shell {
+  .studio-shell.has-inspector {
     display: block;
     min-height: 0;
     height: auto;
@@ -3982,9 +3795,7 @@ details > summary {
   }
 
   .work-area,
-  .main,
-  .workspace-canvas,
-  .page-content {
+  .workspace-canvas {
     display: block;
     min-height: 0;
     height: auto;
@@ -3992,11 +3803,7 @@ details > summary {
     padding: 0;
   }
 
-  .workspace-canvas > *,
-  .page-content > *,
-  .main > .page-head,
-  .main > .subnav,
-  .main > .page-content {
+  .workspace-canvas > * {
     width: 100%;
     margin-inline: 0;
   }
