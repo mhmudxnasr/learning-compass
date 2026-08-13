@@ -107,14 +107,14 @@
       <p class="eyebrow">Learning Compass · project field guide</p>
       <h1>How the whole system fits together.</h1>
       <p class="dek">A current, source-grounded explanation of the product, its learning model, recommendation intelligence, Hermes operating system, storage boundaries, and the rules that keep it honest.</p>
-      <div class="meta"><span>Updated 2026-08-09</span><span>Worker b8ba07cb</span><span>19 purposeful views</span><span>13 active Hermes skills</span></div>
+      <div class="meta"><span>Updated 2026-08-14</span><span>Worker b8ba07cb</span><span>5 root destinations · 11 grouped modes</span><span>13 active Hermes skills</span></div>
     </header>
 
     <nav class="toc" aria-label="Guide contents">
       <a href="#thesis"><b>01 · Thesis</b><small>What Learning Compass is for</small></a>
       <a href="#loop"><b>02 · Learning loop</b><small>The user-facing operating cycle</small></a>
       <a href="#architecture"><b>03 · Architecture</b><small>Client, Worker, D1, R2, Hermes</small></a>
-      <a href="#surfaces"><b>04 · Product map</b><small>The 19 purposeful destinations</small></a>
+      <a href="#surfaces"><b>04 · Product map</b><small>Five destinations and 11 grouped modes</small></a>
       <a href="#learning"><b>05 · Learning model</b><small>Threads, units, mastery, recall</small></a>
       <a href="#recommendations"><b>06 · Recommendations</b><small>Compass, profile, queue rules</small></a>
       <a href="#hermes"><b>07 · Hermes</b><small>Skills and self-evolution</small></a>
@@ -157,7 +157,7 @@
         <p class="eyebrow">03 · Architecture</p>
         <h2>One canonical product, clear storage boundaries.</h2>
         <div class="grid">
-          <div class="panel"><span class="label">Client</span><h3>Vite + Preact + TypeScript</h3><p>The browser provides the Scholar's Instrument interface: compact, typographic, neutral, precise, responsive, and centered on the learning loop. The route registry contains 19 purposeful views.</p></div>
+          <div class="panel"><span class="label">Client</span><h3>Vite + Preact + TypeScript</h3><p>The browser provides the Scholar's Instrument interface: compact, typographic, neutral, precise, responsive, and centered on the learning loop. The route registry contains five root destinations, 11 grouped modes, and subordinate focus filters.</p></div>
           <div class="panel"><span class="label">Worker</span><h3>Hono on Cloudflare Workers</h3><p><code>src/index.ts</code> owns routing, rate limits, write protection, request receipts, scheduled product maintenance, API composition, and the D1/R2 bindings.</p></div>
           <div class="panel"><span class="label">D1</span><h3>Canonical structured state</h3><p>Recommendations, captures, sessions, Threads, Learning Units, notes, ratings, SRS cards, map data, settings, feedback, memory provenance, jobs, and improvement receipts live here.</p></div>
           <div class="panel"><span class="label">R2</span><h3>Large artifacts</h3><p>HTML, PDF, transcripts, and generated companions live in the <code>taste-map-artifacts</code> bucket. D1 keeps their identity, source relationship, role, checksum, and metadata.</p></div>
@@ -180,12 +180,11 @@ Hermes explicit workflow &lt;── /agent/jobs ──┘
         <table>
           <thead><tr><th>Area</th><th>Views</th><th>Purpose</th></tr></thead>
           <tbody>
-            <tr><td>Momentum</td><td>Momentum</td><td>Current-source focus desk, activity pulse, active Thread brief, and one concrete next action.</td></tr>
-            <tr><td>Curate</td><td>Queue · Inbox · Collections · Archive · Books</td><td>Capture, triage, source selection, saved groups, archived feeds, and canonical book records.</td></tr>
-            <tr><td>Map</td><td>Atlas · Coverage</td><td>Navigate the knowledge graph and see attention, retention, gaps, and branch health.</td></tr>
-            <tr><td>Learn</td><td>Files · Notes · Recall · Activity</td><td>Read companions, edit extracted knowledge, retrieve approved cards, and inspect the learning history.</td></tr>
-            <tr><td>Insights</td><td>Overview · Taste · Hermes</td><td>Understand learning balance, recommendation signals, profile evidence, memory, receipts, and rollout gates.</td></tr>
-            <tr><td>Settings</td><td>Profile · Preferences · Data · System</td><td>Edit the personal learning record, control behavior, repair offline data, and inspect the complete operational boundary.</td></tr>
+            <tr><td>Home</td><td>Today</td><td>Resume the active Thread, see the next evidence action, capture quickly, and handle due work.</td></tr>
+            <tr><td>Library</td><td>Triage · Catalog · Assets</td><td>Use Queue/Inbox, source catalog filters, and files or reading companions in one source workspace.</td></tr>
+            <tr><td>Learn</td><td>Paths · Practice</td><td>Follow Threads and use Notes/Recall focus filters to consolidate and retrieve knowledge.</td></tr>
+            <tr><td>Map</td><td>Atlas · Review</td><td>Navigate the knowledge graph and use Branches/Balance focus filters for evidence-led review.</td></tr>
+            <tr><td>Settings</td><td>Personal · Data &amp; sync · System</td><td>Edit the personal learning record, control behavior, repair offline data, and inspect the operational boundary.</td></tr>
           </tbody>
         </table>
         <p>Legacy routes remain compatibility redirects. Infrastructure is visible in System for control and trust, but job plumbing is not promoted into the daily learning loop.</p>
@@ -321,7 +320,7 @@ Hermes explicit workflow &lt;── /agent/jobs ──┘
           <div class="panel"><span class="label">Release</span><h3>Rollback and smoke</h3><p>Capture rollback identity, deploy with the repository config, then observe live health and critical routes.</p></div>
           <div class="panel"><span class="label">Handoff</span><h3>Current state</h3><p>Update project context, active Hermes skills, memory, docs, and <code>CURRENT_STATE.md</code> in the same task.</p></div>
         </div>
-        <p>The latest project milestone verified the 13 active skill validators, Hermes configuration, 62 unit tests plus TypeScript, production build, 19-destination E2E, migration rehearsal, focused integration flows, contract checks, live Worker smoke, gateway restart, and a fresh-session routing check.</p>
+        <p>The latest project milestone verified the 13 active skill validators, Hermes configuration, 78 unit tests plus TypeScript, production build, five-root E2E with 18 internal states, legacy recovery, and mobile dock checks. Deployment remains outstanding.</p>
       </section>
 
       <section id="glossary">

@@ -15,15 +15,15 @@ Learning Compass is a **Botanical Folio / Evidence Ledger**: a green-and-cream e
 
 ## Shell
 
-Desktop uses four structural panes: a 68px persistent root rail, a 248px workspace ledger, a flexible working canvas, and a 304px contextual inspector when an object is selected. The rail contains Capture, Search, the five roots, and sync state. The ledger contains only the active root’s purposeful saved views or modes; it is not a backend object dump. The canvas is the primary task surface. The inspector exposes properties, relationships, provenance, files, history, and lifecycle actions for the selected object.
+Desktop uses a persistent root rail, a flexible working canvas, and an optional contextual inspector when an object is selected. The rail contains Capture, Search, the five roots, and sync state. There is no permanent context pane; grouped modes and focus filters are local canvas controls. The inspector exposes properties, relationships, provenance, files, history, and lifecycle actions for the selected object.
 
-The five roots are Home, Library, Learn, Map, and Settings. Their named views total 18: Today; Queue, Inbox, All sources, Files, Books, Collections, Archive; Paths, Notes, Recall; Atlas, Branches, Balance; and Profile, Preferences, Data & sync, System.
+The five root destinations are Home, Library, Learn, Map, and Settings. Their 11 grouped modes are Today; Triage, Catalog, Assets; Paths, Practice; Atlas, Review; and Personal, Data & sync, System. Queue, Inbox, All sources, Files, Books, Collections, Archive, Notes, Recall, Branches, Balance, Profile, and Preferences are subordinate focus filters or mode surfaces, not peer destinations.
 
-On mobile and tablet, the root rail becomes a compact bottom dock. Workspace context opens as a navigation sheet with focus management and a stable close action. The inspector becomes a full-height sheet or pushed detail view with a stable Back path. The dock never obscures a primary action, and tablet layouts retain two panes where width allows.
+On mobile and tablet, the root rail becomes a compact five-item bottom dock. Grouped modes and focus filters open as a navigation sheet with focus management and a stable close action. The inspector becomes a full-height sheet or pushed detail view with a stable Back path. The dock never obscures a primary action, and tablet layouts retain the canvas plus optional inspector where width allows.
 
 ## Content grammar
 
-Home is an Evidence Desk: resume the active Thread/source, show one next evidence action, expose only actionable due work, and keep capture close. Library is one source ledger with saved views for Inbox, Queue, All sources, Files, Books, Collections, and Archive. Learn is the learning workspace: Paths foregrounds evidence-derived progress, Notes foregrounds the readable document, and Recall foregrounds one review action before card administration. Map is the spatial knowledge workspace: Atlas is the main canvas, while Branches and Balance are evidence-led lenses. Settings is a dedicated utility surface for Profile, Preferences, Data & sync, and System.
+Home is an Evidence Desk: resume the active Thread/source, show one next evidence action, expose only actionable due work, and keep capture close. Library is one source ledger with Triage, Catalog, and Assets modes plus focus filters for Inbox, Queue, All sources, Files, Books, Collections, and Archive. Learn is the learning workspace: Paths and Practice modes use Notes and Recall focus filters. Map is the spatial knowledge workspace: Atlas and Review modes use Branches and Balance focus filters. Settings is a dedicated utility surface with Personal, Data & sync, and System modes.
 
 Rows are dense, aligned, and object-shaped rather than equal card grids. An object header contains type, title, lifecycle state, primary action, and overflow. Selection is URL-restorable where deep linking matters. Empty, loading, partial, stale, error, offline, conflict, overflow, recovery, and destructive-action states are purposeful and use the same ledger grammar.
 
@@ -39,8 +39,8 @@ The graph remains a real, lazy-loaded Cytoscape canvas with search, filtering, t
 
 ## Boundaries
 
-- Keep the five-root route model and 18-view contract; do not reintroduce feature sprawl as peer destinations.
-- Keep the persistent desktop rail, ledger/canvas/inspector topology, and mobile dock/sheet adaptation consistent across roots.
+- Keep the five-destination route model, 11 grouped modes, and subordinate focus-filter contract; do not reintroduce feature sprawl as peer destinations.
+- Keep the persistent desktop rail, canvas, optional inspector, and mobile five-item dock/sheet adaptation consistent across roots.
 - Do not turn the product into a generic white/gray SaaS dashboard, a repeated card wall, or a metric-ring hero.
 - Do not use decorative motion, emoji UI, rasterized mockup text, generated-logo artwork, or infrastructure-only fallback screens.
 - Preserve the learning loop, source/session distinction, evidence-derived mastery, reversible feedback, D1/R2 ownership, and all API compatibility.

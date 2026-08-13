@@ -6,11 +6,11 @@ Status: complete through verification and cutover; deployment and the post-deplo
 
 Replace the current frontend rather than incrementally polishing it. Preserve the canonical Worker APIs, D1/R2 ownership, domain rules, and learning workflows. The replacement is now the active Botanical Folio / Evidence Ledger studio: a green-and-cream, Capacities-inspired single-user learning workspace with Learning Compass's own product model and identity.
 
-The design borrows Capacities' strongest structural principles—an object-oriented sidebar, a calm multi-pane canvas, contextual inspectors, compact controls, and progressive disclosure—without copying its brand, marketing language, or exact screens.
+The design borrows Capacities' strongest structural principles—an object-oriented rail, a calm canvas, optional contextual inspectors, compact controls, and progressive disclosure—without copying its brand, marketing language, or exact screens.
 
 ## Why a reset is justified
 
-- The executable registry currently exposes 21 destinations for one user and makes implementation categories feel like product areas.
+- The former executable registry exposed 21 destinations for one user and made implementation categories feel like product areas.
 - `client/src/app.tsx` is a roughly 3,500-line monolith containing the shell, routing, data loading, dialogs, and most feature surfaces.
 - The visual layer is split across a very large global stylesheet and an additional polish stylesheet.
 - Queue, Inbox, Books, Collections, Archive, Notes, Files, Recall, activity, analytics, profile, and system data are separate destinations even when they are views of the same underlying objects.
@@ -35,7 +35,7 @@ The design borrows Capacities' strongest structural principles—an object-orien
 
 ### Stable route model
 
-The global route registry exposes five roots and 18 purposeful named views:
+The global route registry exposes five root destinations and 11 grouped modes, with subordinate focus filters:
 
 - `#/home`
 - `#/library`
@@ -124,14 +124,13 @@ Global search is an overlay, not a workspace. Its resolver maps each result to t
 ### Desktop
 
 - **Primary rail:** 64–72px collapsed or 224–248px combined/expanded, persistent, quiet, and object-oriented. It contains Capture, Search, four workspaces, three smart views, and Settings/Profile.
-- **Workspace context pane:** appears only when the active workspace has meaningful saved views, modes, or lenses. It never becomes a dump of backend object types.
 - **Main canvas:** flexible working area for the selected workspace. It may be a source list, learning room, editor, or graph—not a dashboard card grid.
-- **Right inspector:** contextual properties, relationships, evidence, files, and secondary actions. It appears only when an object or map node is selected.
+- **Optional inspector:** contextual properties, relationships, evidence, files, and secondary actions. It appears only when an object or map node is selected; there is no permanent context pane.
 - **Optional secondary pane:** used only when a workflow materially benefits from list + detail or editor + reference. Avoid permanent empty panes.
 
 ### Mobile and tablet
 
-- Sidebar becomes a compact bottom dock plus navigation sheet.
+- Root rail becomes a compact five-item bottom dock plus navigation sheet.
 - Main canvas remains the primary surface.
 - Inspector becomes a full-height sheet or pushed detail screen with a stable Back action.
 - Primary actions remain thumb-reachable and are never obscured by the dock.
@@ -199,7 +198,7 @@ find "$snapshot_root/worktree" -type f -print0 | sort -z | xargs -0 sha256sum > 
 - `mockups/whole-app-redesign/`, including generated output and any local dependency cache present at deletion time
 - `output/agy-learning-hub-visuals/`
 - Obsolete visual assets after the new mark/icon decision
-- Current 21-destination route-shape assertions, while preserving their fixtures and behavioral checks for the rewritten suite
+- Former destination route-shape assertions, while preserving their fixtures and behavioral checks for the rewritten suite
 - Superseded content inside `DESIGN.md`; update the document in place from the built replacement rather than deleting the file early
 
 ### Preserve and reuse
@@ -294,7 +293,7 @@ Exit gate: no current capability lacks a named new owner.
 1. Keep the existing `app.tsx` entry operational as the rollback path.
 2. Create the new folder boundaries, typed five-root router, legacy alias registry, purposeful not-found state, error boundary, data providers, and empty Studio shell beside the old app.
 3. Implement design tokens and primitive controls without building workspace-specific decoration or importing old CSS.
-4. Add desktop rail/context pane, mobile dock/sheet, global Capture, and global Search foundations.
+4. Add desktop rail, mobile dock/sheet, global Capture, and global Search foundations.
 5. Test the replacement through a temporary entry or controlled entry switch; do not remove the old frontend yet.
 
 Exit gate: all five paths and legacy aliases resolve purposefully on desktop/mobile; the bundle builds; the new entry loads no old design CSS; the old app still launches when the entry pointer is restored.
@@ -362,7 +361,7 @@ git diff --check
 
 Observed completion evidence:
 
-- Five stable global paths (four primary workspaces plus Settings) and no 21-item destination registry.
+- Five stable root destinations, 11 grouped modes, subordinate focus filters, and no peer destination registry.
 - Every legacy destination and alias canonicalizes to the correct saved view or typed object without losing IDs.
 - Search opens the exact Source, Thread, Note, Unit, Branch/Node, Artifact, assertion, or memory instead of dropping identity at a workspace root.
 - Invalid hashes render recovery rather than unrelated Home data.
@@ -373,7 +372,7 @@ Observed completion evidence:
 - No leaked Wrangler/Workerd/Playwright processes after E2E.
 - No internal Hermes/Lite Visual prompt payload ships in the browser bundle.
 - The release checklist reflects the actual migration chain through `0030_hub_notes_files.sql` (or derives the latest migration dynamically).
-- Full gates observed on 2026-08-14: unit/typecheck 77/77; Hermes 32 migrations, 21 checks, 56 routes; migrations clean/idempotent; build base 40.78 KB gzip and Atlas lazy 148.91 KB gzip; E2E 18 purposeful destinations/mobile shell/navigation; diff check clean.
+- Full gates observed on 2026-08-14: unit/typecheck 78/78; build base 43.24 KB gzip and CSS 10.66 KB gzip; E2E five roots, 18 internal states, legacy recovery, and mobile dock; diff check clean. Deployment remains outstanding.
 - Live deployment and the rollback window are not complete and are intentionally excluded from this task.
 
 ## Workstream ownership

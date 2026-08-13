@@ -5,9 +5,9 @@
 The frontend replacement is implemented, wired as the active entry, and verified, but it is **not deployed**.
 
 - `client/src/main.tsx` imports `client/src/app/entry.tsx`; the old monolithic frontend is no longer the runtime entry.
-- The shipped visual contract is **Botanical Folio / Evidence Ledger**: green and cream planes, a persistent desktop root rail, workspace ledger, main canvas, and contextual inspector.
-- Navigation has five roots and 18 named views: Home/Today; Library/Queue, Inbox, All sources, Files, Books, Collections, Archive; Learn/Paths, Notes, Recall; Map/Atlas, Branches, Balance; Settings/Profile, Preferences, Data & sync, System.
-- Desktop uses the four-pane studio topology. Mobile and tablet use a bottom dock and navigation sheet; object inspection becomes a sheet or pushed detail view.
+- The shipped visual contract is **Botanical Folio / Evidence Ledger**: green and cream planes, a persistent desktop root rail, grouped workspace modes, a working canvas, and an optional inspector.
+- Navigation has five root destinations and 11 grouped modes with subordinate focus filters: Home/Today; Library/Triage, Catalog, Assets; Learn/Paths, Practice; Map/Atlas, Review; Settings/Personal, Data & sync, System.
+- Desktop uses rail + canvas + optional inspector; there is no permanent context pane. Mobile and tablet use a five-item bottom dock and navigation sheet; object inspection becomes a sheet or pushed detail view.
 - Legacy hashes, typed object identity, global Capture/Search, route recovery, offline mutation flushing, D1/R2 ownership, and the learning behavior contract remain preserved.
 - The retired `app.tsx`, `destinations.ts`, `styles.css`, and `experience-polish.css` are removed. Old `mockups/` and `output/` materials were moved outside the repository; the recoverable pre-reset snapshot remains available through the rollback window.
 
@@ -17,7 +17,7 @@ Capture always enters the unlimited Inbox. Queue normally caps queued/in-progres
 
 ## Verification observed
 
-Observed release-gate results: `npm test` 77/77 plus typecheck; `npm run verify:hermes` clean (32 migrations, 21 checks, 56 routes); `npm run verify:migrations` clean and idempotent; production build clean (base entry 40.78 KB gzip, Atlas lazy chunk 148.91 KB gzip); E2E clean (18 purposeful destinations, mobile shell, and navigation); and `git diff --check` clean.
+Observed release-gate results: `npm test` 78/78 plus typecheck; production build clean (base entry 43.24 KB gzip, CSS 10.66 KB gzip); E2E clean across five roots, 18 internal states, legacy recovery, and mobile shell/dock; and `git diff --check` clean. The redesign is not deployed.
 
 ## Next release gate
 

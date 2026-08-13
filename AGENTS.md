@@ -11,7 +11,7 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 
 ## Product Invariants
 
-- Product: **Learning Compass**. Visual language: **Botanical Folio / Evidence Studio** — a cypress/cream Evidence Ledger with a persistent desktop root rail, a saved-view ledger, a working canvas, and a contextual inspector. On mobile, the rail becomes a bottom dock and navigation sheet.
+- Product: **Learning Compass**. Visual language: **Botanical Folio / Evidence Studio** — a cypress/cream Evidence Ledger with a persistent desktop root rail, grouped workspace modes, a working canvas, and an optional contextual inspector. On mobile, the rail becomes a five-item bottom dock and navigation sheet.
 - Loop: capture → curate → consume externally → reflect → notes → review → map update → resurface.
 - D1 is canonical. R2 stores large artifacts. Obsidian is an archive/export for extracted notes only.
 - Every capture, including Telegram and share-target input, enters the unlimited Inbox.
@@ -21,7 +21,7 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 - Ratings of 7–10 create editable SRS drafts; approval is required before Review.
 - Feedback processing never requests another recommendation automatically.
 - Lite Visual creates one linked HTML+PDF R2 pair for normal sources. For books, it creates one linked pair per chapter with stable chapter metadata, mines the complete source into a checksum-backed evidence packet and coverage matrix, reuses cached mining, runs Visual Mind first, and verifies the canonical source record. There is no Lite Visual QA gate and no automatic Notes Extractor chain. The PDF is the reading companion.
-- The five-root route registry in `client/src/app/router.ts` exposes 18 purposeful named views. Every root and view must resolve to a real product surface; no generic fallback screens or tabs may expose only infrastructure.
+- The route registry in `client/src/app/router.ts` exposes five root destinations and 11 grouped modes, with subordinate focus filters. Every root and mode/focus surface must resolve to a real product surface; no generic fallback screens or tabs may expose only infrastructure.
 
 ## Architecture Boundaries
 

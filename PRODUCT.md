@@ -12,7 +12,7 @@ Every capture—including URL, text, PDF, HTML, video, Telegram, share-target, R
 
 ## Navigation contract
 
-The browser is the **Botanical Folio / Evidence Ledger**: one green-and-cream evidence studio with five stable roots and 18 named views. The global route roots are:
+The browser is the **Botanical Folio / Evidence Ledger**: one green-and-cream evidence studio with five stable root destinations, 11 grouped modes, and subordinate focus filters. The global route roots are:
 
 - `#/home` — Home / Today
 - `#/library` — Queue, Inbox, All sources, Files, Books, Collections, Archive
@@ -20,9 +20,9 @@ The browser is the **Botanical Folio / Evidence Ledger**: one green-and-cream ev
 - `#/map` — Atlas, Branches, Balance
 - `#/settings` — Profile, Preferences, Data & sync, System
 
-The five roots plus their 18 named views are the complete global navigation contract. Sources, Learning Threads, Notes, Units, Recall Cards, branches, and artifacts use typed object routes inside their owning root so selection identity is preserved. Search opens the exact object result. Legacy hashes canonicalize to the nearest purposeful view without silently discarding an ID; an unknown hash renders a recovery state.
+The five roots plus their grouped modes and focus filters are the complete global navigation contract. Sources, Learning Threads, Notes, Units, Recall Cards, branches, and artifacts use typed object routes inside their owning root so selection identity is preserved. Search opens the exact object result. Legacy hashes canonicalize to the nearest purposeful view without silently discarding an ID; an unknown hash renders a recovery state.
 
-On desktop the studio is a four-pane composition: persistent root rail, workspace ledger, working canvas, and conditional object inspector. On mobile and tablet the rail becomes a bottom dock, workspace context opens as a navigation sheet, and the inspector becomes a full-height sheet or pushed detail view.
+On desktop the studio is a persistent root rail plus a working canvas and optional object inspector. There is no permanent context pane. On mobile and tablet the rail becomes a five-item bottom dock, grouped modes and focus filters open in a navigation sheet, and the inspector becomes a full-height sheet or pushed detail view.
 
 ## Product behavior
 

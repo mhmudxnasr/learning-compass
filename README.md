@@ -70,7 +70,7 @@ Obsidian is an export target, not a second writable database. It must never over
 client/
   src/app/App.tsx             application shell and workspace composition
   src/api.ts                  browser API and offline helpers
-  src/app/router.ts           canonical five-root route registry (18 purposeful views)
+  src/app/router.ts           canonical five-destination registry (11 grouped modes + focus filters)
   src/features/atlas/         lazy-loaded knowledge graph
 
 src/
@@ -151,7 +151,7 @@ Never commit `.dev.vars`, `.env`, private keys, or API tokens.
 | `npm run dev:worker` | Apply the base schema and local migrations, build the client, and run the complete Worker locally |
 | `npm test` | Run unit tests and TypeScript checks |
 | `npm run build` | Create the production client bundle |
-| `npm run test:e2e` | Create a fresh temporary D1 database and test all destinations in Chromium |
+| `npm run test:e2e` | Create a fresh temporary D1 database and test all root destinations, grouped modes, and responsive shell behavior in Chromium |
 | `npm run deploy` | Build and deploy with the repository Wrangler config |
 
 The E2E runner owns its temporary database, Wrangler process, browser, and cleanup. A local test pass therefore does not depend on an old `.wrangler` database.
