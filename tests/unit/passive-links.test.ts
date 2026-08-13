@@ -7,9 +7,13 @@ const libraryViews = readFileSync(new URL('../../client/src/workspaces/library/L
 
 test('Home source and file links remain passive and hand tracked starts to Queue', () => {
   assert.match(home, /Opening from Home is passive\./)
-  assert.match(home, /href="#\/library">Open Queue to start/)
+  assert.match(home, /href=\{routeHref\('library', 'triage', 'queue'\)\}>Open Queue to start/)
+  assert.match(home, /href=\{routeHref\('library', 'assets', 'files'\)\}>All files/)
+  assert.match(home, /href=\{routeHref\('learn', 'practice', 'recall'\)\}>.*Open Recall/)
+  assert.match(home, /href=\{routeHref\('library', 'triage', 'inbox'\)\}>Review Inbox/)
   assert.equal(home.includes('openLearningTarget('), false)
   assert.equal(home.includes('startExternal('), false)
+  assert.equal(home.includes('startLearningSession('), false)
   assert.equal(home.includes('onStart('), false)
 })
 
