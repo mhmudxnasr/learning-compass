@@ -9,8 +9,8 @@ const required = [
   ['migrations/0023_intelligence_v2.sql', 'recommendation intelligence v2 migration'],
   ['src/api/intelligence.ts', '/analytics/hermes read model'],
   ['src/api/agent.ts', '/agent/memory and replay routes'],
-  ['client/src/destinations.ts', 'Hermes destination'],
-  ['client/src/app.tsx', 'Hermes control panel view'],
+  ['client/src/app/router.ts', 'five-root frontend route registry'],
+  ['client/src/workspaces/SettingsWorkspace.tsx', 'Hermes control panel view'],
   ['docs/API.md', 'Hermes API contract'],
   ['docs/hermes-contract.json', 'canonical machine-readable Hermes contract'],
   ['.hermes.md', 'repository Hermes contract'],
@@ -37,10 +37,10 @@ const checks = [
   ['src/api/agent.ts', "['POST', '/agent/jobs/:id/replay'", 'job replay capability'],
   ['src/api/agent.ts', "['POST', '/agent/memory'", 'guarded memory capability'],
   ['src/api/agent.ts', "app.get('/memory/context'", 'bounded memory context compiler'],
-  ['client/src/destinations.ts', "['hermes', 'Hermes'", 'Hermes destination registration'],
+  ['client/src/app/router.ts', "export type RootKey = 'home' | 'library' | 'learn' | 'map' | 'settings'", 'five-root route registry'],
+  ['client/src/workspaces/SettingsWorkspace.tsx', "const system = useData<SystemPayload>('/agent/system')", 'Settings system control surface'],
   ['docs/API.md', '/analytics/hermes', 'Hermes API documentation'],
-  ['PROJECT_CONTEXT.md', '0006_hermes_upgrade.sql', 'migration contract synchronization'],
-  ['PROJECT_CONTEXT.md', '0030_hub_notes_files.sql', 'hub notes/files migration contract synchronization'],
+  ['PROJECT_CONTEXT.md', '`schema.sql` is the base schema; `migrations/` are ordered, idempotent production migrations.', 'migration contract synchronization'],
   ['.hermes.md', 'learning-compass-operating-system', 'procedural Hermes router contract'],
   ['src/api/agent.ts', "['POST', '/learning/core/threads'", 'Learning Thread agent capability'],
   ['.hermes.md', 'output_contract=learning_units_v1', 'anchored Learning Unit output contract'],
@@ -150,7 +150,7 @@ for (const [route] of routeEntries) {
 }
 
 const policySurfaces = [read('docs/architecture.md'), read('.hermes.md'), read('PROJECT_CONTEXT.md'), read('CURRENT_STATE.md')].join('\n')
-for (const phrase of ['conversation-driven', 'proposal-only', 'explicit-only', 'specialist receipt', 'basic intro', 'practical applied tool', 'skill-procedure memory']) {
+for (const phrase of ['active workflow', 'proposal-only', 'explicit-only', 'specialist receipt', 'basic intro', 'practical applied tool', 'skill-procedure memory']) {
   if (!policySurfaces.toLowerCase().includes(phrase.toLowerCase())) throw new Error(`Policy phrase missing from synchronized docs: ${phrase}`)
 }
 const stale = [
