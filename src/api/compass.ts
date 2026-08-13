@@ -750,7 +750,9 @@ app.post('/pick/:id/feedback', async (c) => {
       await refreshRecommendationOutcome(c.env.DB, pick.recommendation_id)
     }
     const learning = await learnFromOutcome(c.env.DB, pick, rating.score, outcome, reasonTags, exposure)
-    return c.json({ ok: true, pick_id: pick.id, status: nextStatus, recommendation_state: completed ? 'completed' : excluded ? 'excluded' : dismissed ? 'inbox' : 'queued', disposition, reason_tags: reasonTags, feedback_job: feedbackJobId, learning_receipt: learning, source_page: pick.recommendation_id ? `/#/learn/notes?source=${encodeURIComponent(pick.recommendation_id)}` : null })
+    // The typed Library source route preserves identity; the old Learn notes
+    // query route was only a collection view and dropped the source context.
+    return c.json({ ok: true, pick_id: pick.id, status: nextStatus, recommendation_state: completed ? 'completed' : excluded ? 'excluded' : dismissed ? 'inbox' : 'queued', disposition, reason_tags: reasonTags, feedback_job: feedbackJobId, learning_receipt: learning, source_page: pick.recommendation_id ? `/#/library/source/${encodeURIComponent(pick.recommendation_id)}?from=learn` : null })
   } catch (err) { return c.json(safeError('Failed to record Compass feedback')(err), 500) }
 })
 

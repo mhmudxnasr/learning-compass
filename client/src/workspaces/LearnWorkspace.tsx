@@ -3,6 +3,7 @@ import { LearnNotesView } from './learn/LearnNotesView'
 import { LearnPathsView } from './learn/LearnPathsView'
 import { LearnRecallView } from './learn/LearnRecallView'
 import { LearnThreadView } from './learn/LearnThreadView'
+import { routeHref } from '../app/router'
 
 export type LearnWorkspaceProps = {
   route?: Route
@@ -25,14 +26,14 @@ function LearnModeSwitcher({ active, focus }: { active: LearnMode; focus: LearnF
   return <>
     <nav class="workspace-mode-switcher workspace-local-nav" aria-label="Learn sections">
     {learnModes.map((item) => {
-      const href = item.key === 'paths' ? '#/learn?mode=paths' : '#/learn?mode=practice&focus=notes'
+      const href = item.key === 'paths' ? routeHref('learn', 'paths') : routeHref('learn', 'practice', 'notes')
       return <a key={item.key} href={href} class={active === item.key ? 'active' : ''} aria-current={active === item.key ? 'page' : undefined}>
         <strong>{item.label}</strong><small>{item.description}</small>
       </a>
     })}
     </nav>
     {active === 'practice' && <nav class="workspace-filter-switcher workspace-local-nav" aria-label="Practice filters">
-      {practiceFilters.map((item) => <a key={item.key} href={`#/learn?mode=practice&focus=${item.key}`} class={focus === item.key ? 'active' : ''} aria-current={focus === item.key ? 'page' : undefined}>
+      {practiceFilters.map((item) => <a key={item.key} href={routeHref('learn', 'practice', item.key)} class={focus === item.key ? 'active' : ''} aria-current={focus === item.key ? 'page' : undefined}>
         <strong>{item.label}</strong><small>{item.description}</small>
       </a>)}
     </nav>}

@@ -142,7 +142,9 @@ app.post('/feedback/record', async (c) => {
     extraction_skip_reason: extractionJobId ? null : complete ? 'disposition_does_not_require_consolidation' : 'source_not_completed',
     consolidation,
     learning_outcome: outcome,
-    source_page: `/#/learn/notes?source=${encodeURIComponent(recommendation.id)}`,
+    // Keep the source identity in the typed Library route; Learn notes is a
+    // collection view and cannot resolve the legacy source query reliably.
+    source_page: `/#/library/source/${encodeURIComponent(recommendation.id)}?from=learn`,
   })
 })
 app.post('/sessions/:id/return', async (c) => {

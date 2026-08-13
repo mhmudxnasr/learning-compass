@@ -3,6 +3,7 @@ import { ApiError, api } from '../api'
 import { ErrorState, Loading } from '../components/States'
 import { useData } from '../app/useData'
 import { useRoute } from '../app/router'
+import { routeHref as canonicalRouteHref } from '../app/router'
 import { processArtifact, startLearningSession, triageCapture } from './library/actions'
 import {
   AllSourcesView,
@@ -23,6 +24,7 @@ import {
   listFrom,
   objectHref,
   sourceSelection,
+  viewHref,
   type LibraryObjectType,
   type LibraryRecord,
   type LibrarySelection,
@@ -104,7 +106,7 @@ function defaultViewForMode(mode: LibraryPrimaryMode): LibraryView {
 }
 
 function libraryHref(mode: LibraryPrimaryMode, focus = defaultViewForMode(mode)) {
-  return `#/library?mode=${encodeURIComponent(mode)}&focus=${encodeURIComponent(focus)}`
+  return canonicalRouteHref('library', mode, focus)
 }
 
 function LibraryModeSwitcher({ activeView, objectType, onNavigate }: { activeView: LibraryView; objectType?: LibraryObjectType; onNavigate?: (href: string) => void }) {
@@ -274,7 +276,7 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     if (!item) return <ErrorState message={`The ${objectType} “${activeRoute.objectId}” is not available in this library.`} retry={reload}/>
     const objectData = objectType === 'source' ? loaded : { [objectType]: item }
     const backView = objectType === 'artifact' ? 'files' : objectType === 'book' ? 'books' : objectType === 'collection' ? 'collections' : 'all'
-    return <div class="library-workspace workspace-surface">{modeSwitcher}<ObjectRouteView type={objectType} data={objectData} handlers={handlers} onBack={() => go(`#/library/${backView === 'all' ? '' : backView}`)}/></div>
+    return <div class="library-workspace workspace-surface">{modeSwitcher}<ObjectRouteView type={objectType} data={objectData} handlers={handlers} onBack={() => go(viewHref(backView))}/></div>
   }
 
   const content = view === 'queue' ? <QueueView data={loaded} handlers={handlers}/> :

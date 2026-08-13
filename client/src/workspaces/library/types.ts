@@ -1,4 +1,5 @@
 import type { Route } from '../../app/router'
+import { objectHref as canonicalObjectHref, routeHref } from '../../app/router'
 
 export type LibraryView = 'queue' | 'inbox' | 'all' | 'files' | 'books' | 'collections' | 'archive'
 export type LibraryObjectType = 'source' | 'artifact' | 'book' | 'collection'
@@ -40,11 +41,14 @@ export const objectLabels: Record<LibraryObjectType, string> = {
 }
 
 export function objectHref(type: LibraryObjectType, id: string) {
-  return `#/library/${type}/${encodeURIComponent(id)}`
+  return canonicalObjectHref('library', type, id)
 }
 
 export function viewHref(view: LibraryView) {
-  return view === 'queue' ? '#/library' : `#/library/${view}`
+  if (view === 'queue') return routeHref('library', 'triage', 'queue')
+  if (view === 'inbox') return routeHref('library', 'triage', 'inbox')
+  if (view === 'files') return routeHref('library', 'assets', 'files')
+  return routeHref('library', 'catalog', view)
 }
 
 export function asView(value?: string): LibraryView {

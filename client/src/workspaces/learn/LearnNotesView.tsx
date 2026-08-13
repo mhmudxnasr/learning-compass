@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { Empty, ErrorState, Loading } from '../../components/States'
 import { useData } from '../../app/useData'
+import { objectHref, routeHref } from '../../app/router'
 import { directionValue, formatDate, noteHref } from './helpers'
 import { Direction, NoteRecord, NotesResponse } from './types'
 
@@ -10,7 +11,7 @@ export function LearnNotesView({ noteId }: { noteId?: string }) {
   if (notes.loading && !notes.data) return <Loading label="Loading notes" />
   if (notes.error && !notes.data) return <ErrorState message={notes.error} retry={notes.reload} />
   const note = notes.data?.notes.find((item) => item.id === noteId)
-  if (noteId) return <NoteEditor note={note} onBack={() => { location.hash = '#/learn/notes' }} onSaved={notes.reload} />
+  if (noteId) return <NoteEditor note={note} onBack={() => { location.hash = routeHref('learn', 'practice', 'notes').slice(1) }} onSaved={notes.reload} />
   // Reflections remain attached to the source record and its activity surface;
   // the Learn library is the editable extracted-note shelf, so keep that
   // personal margin layer out of this collection even though /notes is the
@@ -38,7 +39,7 @@ function NotesBrowser({ notes, reload }: { notes: NoteRecord[]; reload: () => vo
       const result = await api<{ id: string }>('/notes', { method: 'POST', body: JSON.stringify({ title: title.trim(), kind: 'note', sections: [{ section_key: 'body', label: 'Notes', content: '', direction: 'auto' }] }) })
       setTitle('')
       setCreateOpen(false)
-      location.hash = noteHref(result.id)
+      location.hash = objectHref('learn', 'note', result.id).slice(1)
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : 'The note could not be created.')
     } finally {
