@@ -228,16 +228,37 @@ const legacyAliases = [
   { path: '/insights/taste', root: 'settings', mode: 'personal', focus: 'profile' },
   { path: '/insights/hermes', root: 'settings', mode: 'personal', focus: 'profile' },
 ]
+function legacySurface(alias) {
+  if (alias.root === 'home') return '.folio-home-workspace'
+  if (alias.root === 'library') {
+    if (alias.mode === 'assets') return '.folio-files-view'
+    if (alias.focus === 'queue') return '.folio-queue-view'
+    if (alias.focus === 'inbox') return '.folio-inbox-view'
+    if (alias.focus === 'books') return '.folio-books-view'
+    if (alias.focus === 'collections') return '.folio-collections-view'
+    if (alias.focus === 'archive') return '.folio-archive-view'
+    return '.folio-all-view'
+  }
+  if (alias.root === 'learn') return alias.focus === 'notes' ? '.folio-notes' : alias.focus === 'recall' ? '.folio-recall' : '.folio-paths'
+  if (alias.root === 'map') return alias.focus === 'branches' ? '.branch-desk' : alias.focus === 'balance' ? '.map-balance-view' : '.atlas-empty-state'
+  if (alias.mode === 'system') return '.system-console'
+  if (alias.mode === 'data') return '.data-settings-page'
+  return alias.focus === 'preferences' ? '.settings-page' : '.profile-settings-page'
+}
+function hasFocusFilter(alias) {
+  return Boolean(alias.focus && !(alias.root === 'library' && alias.mode === 'assets'))
+}
 for (const alias of legacyAliases) {
   await page.goto(`${baseUrl}/#${alias.path}`, { waitUntil: 'networkidle' })
   if (!(await page.locator(`.studio-shell[data-root="${alias.root}"]`).count())) throw new Error(`${alias.path}: legacy alias did not recover into the right workspace`)
   if (!(await page.locator('.route-notice').count()) || (await page.locator('.route-warning').count())) throw new Error(`${alias.path}: legacy alias did not announce purposeful recovery`)
-  if (alias.focus) await page.locator('.workspace-filter-switcher, .error-state').first().waitFor({ state: 'attached', timeout: 15000 })
+  await page.locator('.workspace-mode-switcher, .workspace-canvas').first().waitFor({ state: 'attached', timeout: 15000 })
+  await page.locator(legacySurface(alias)).waitFor({ state: 'attached', timeout: 15000 })
   const recoveredState = await page.locator('.studio-shell').evaluate((shell) => ({ mode: shell.getAttribute('data-mode') }))
   if (recoveredState.mode !== alias.mode) throw new Error(`${alias.path}: recovered to mode ${recoveredState.mode}, expected ${alias.mode}`)
-  if (alias.focus && !(await page.locator('.workspace-filter-switcher a.active, .workspace-filter-switcher a[aria-current="page"]').count())) {
-    const debugFilters = await page.locator('.workspace-filter-switcher a').evaluateAll((links) => links.map((link) => ({ text: link.textContent?.trim(), href: link.getAttribute('href'), className: link.className, current: link.getAttribute('aria-current') })))
-    throw new Error(`${alias.path}: recovery lost focus=${alias.focus} filters=${JSON.stringify(debugFilters)} hash=${await page.evaluate(() => location.hash)}`)
+  if (hasFocusFilter(alias)) {
+    await page.locator('.workspace-filter-switcher').waitFor({ state: 'attached', timeout: 15000 })
+    if (!(await page.locator('.workspace-filter-switcher a.active, .workspace-filter-switcher a[aria-current="page"]').count())) throw new Error(`${alias.path}: recovery lost focus=${alias.focus}`)
   }
   if (await page.locator('.orbit-bar, .page-head, .subnav, .rail').count()) throw new Error(`${alias.path}: legacy alias rendered the retired shell`)
 }
