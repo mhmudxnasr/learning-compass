@@ -486,9 +486,10 @@ export default function AtlasPage() {
 
   if (error) return <div class="error-state"><strong>Couldn’t load the Atlas.</strong><span>{error}</span><button onClick={() => location.reload()}>Retry</button></div>
   if (!raw) return <div class="atlas-loading"><div /><span>Mapping knowledge clusters…</span></div>
-  if (!model.nodes.length) return <div class="empty-state"><span class="empty-rule" /><h2>The Atlas has no mapped nodes</h2><p>Processed notes and branch changes will form your first constellation.</p></div>
+  if (!model.nodes.length) return <div class="empty-state atlas-empty-state"><h1 class="visually-hidden">Atlas</h1><span class="empty-rule" /><h2>The Atlas has no mapped nodes</h2><p>Processed notes and branch changes will form your first constellation.</p></div>
 
   return <div class={`atlas atlas-canvas-view ${selected ? 'has-selection' : ''}`}>
+    <h1 class="visually-hidden">Atlas</h1>
     <div class="atlas-stage">
       <div class="atlas-canvas-shell">
         <div class="atlas-controls">

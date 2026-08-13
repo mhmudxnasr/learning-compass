@@ -20,7 +20,7 @@ const viewRoutes = [
   { root: 'learn', view: 'paths', path: '/learn', expected: '.folio-paths' },
   { root: 'learn', view: 'notes', path: '/learn/notes', expected: '.folio-notes' },
   { root: 'learn', view: 'recall', path: '/learn/recall', expected: '.folio-recall' },
-  { root: 'map', view: 'atlas', path: '/map', expected: '.atlas-stage' },
+  { root: 'map', view: 'atlas', path: '/map', expected: '.atlas-empty-state' },
   { root: 'map', view: 'branches', path: '/map/branches', expected: '.branch-desk' },
   { root: 'map', view: 'balance', path: '/map/balance', expected: '.map-balance-view' },
   { root: 'settings', view: 'profile', path: '/settings', expected: '.profile-settings-page' },

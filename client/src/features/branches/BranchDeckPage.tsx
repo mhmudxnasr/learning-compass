@@ -348,6 +348,7 @@ export function BranchDeckPage() {
 
   return (
     <div class="branch-desk">
+      <h1 class="visually-hidden">Branch deck</h1>
       {notice && <div class="desk-notice" role="status">{notice}</div>}
 
       <div class="desk-taskline">
