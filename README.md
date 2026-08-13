@@ -68,9 +68,9 @@ Obsidian is an export target, not a second writable database. It must never over
 
 ```text
 client/
-  src/app.tsx                 application shell and destination surfaces
+  src/app/App.tsx             application shell and workspace composition
   src/api.ts                  browser API and offline helpers
-  src/destinations.ts         canonical registry of all purposeful destinations
+  src/app/router.ts           canonical five-root route registry (18 purposeful views)
   src/features/atlas/         lazy-loaded knowledge graph
 
 src/
@@ -202,7 +202,7 @@ Agent access must remain allow-listed through `/agent/capabilities`, `/agent/ope
 
 ### 5. Add or change a destination
 
-`client/src/destinations.ts` is the route source of truth. Every registered destination needs:
+`client/src/app/router.ts` is the route source of truth for the Botanical Folio five-root shell. Every registered view needs:
 
 - a real purpose;
 - loading, empty, populated, and error states;
