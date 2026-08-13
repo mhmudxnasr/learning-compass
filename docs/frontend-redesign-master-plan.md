@@ -50,7 +50,7 @@ The registry contains only the five roots. Stable named child views use readable
 - Map: `atlas`, `branches`, `balance`
 - Settings: `profile`, `preferences`, `data`, `system`
 
-Examples: `#/library/queue`, `#/learn/notes`, `#/map/branches`, and `#/settings/data`. Sources, notes, Threads, Units, cards, branches, collections, and artifacts have typed addressable object URLs such as `#/library/source/:id` and `#/learn/thread/:id`; these open inside the owning workspace canvas/inspector and never appear as top-level destinations.
+Examples: `#/library?focus=queue`, `#/learn?focus=notes`, `#/map?focus=branches`, and `#/settings?focus=data`. Sources, notes, Threads, Units, cards, branches, collections, and artifacts have typed addressable object URLs such as `#/library/source/:id` and `#/learn/thread/:id`; these open inside the owning workspace canvas/inspector and never appear as top-level destinations.
 
 The router must preserve object identity and meaningful selection state. Legacy hashes live in a separate alias registry and canonicalize with history replacement. Empty hash resolves to Home; an unknown hash renders a purposeful recovery state instead of silently showing Home.
 
@@ -72,23 +72,23 @@ Typed object routes:
 Stable child routes:
 
 ```text
-#/library/{inbox|queue|all|files|books|collections|archive}
-#/learn/{paths|notes|recall}
-#/map/{atlas|branches|balance}
-#/settings/{profile|preferences|data|system}
+#/library?focus={inbox|queue|all|files|books|collections|archive}
+#/learn?focus={paths|notes|recall}
+#/map?focus={atlas|branches|balance}
+#/settings?focus={profile|preferences|data|system}
 ```
 
 Legacy examples that must preserve identity:
 
 ```text
 #/today/briefing                 → #/home
-#/curate/queue                   → #/library/queue
+#/curate/queue                   → #/library?focus=queue
 #/learn/hub/:threadId            → #/learn/thread/:threadId
 #/learn/notes?source=:sourceId   → #/library/source/:sourceId
 #/learn/notes?note=:noteId       → #/learn/note/:noteId
 #/curate/queue?record=:sourceId  → #/library/source/:sourceId?from=queue
-#/map/deck                       → #/map/branches
-#/map/coverage                   → #/map/balance
+#/map/deck                       → #/map?focus=branches
+#/map/coverage                   → #/map?focus=balance
 ```
 
 Global search is an overlay, not a workspace. Its resolver maps each result to the exact typed object URL. It must never collapse a result to a workspace root and lose the selected ID.
@@ -130,7 +130,7 @@ Global search is an overlay, not a workspace. Its resolver maps each result to t
 
 ### Mobile and tablet
 
-- Root rail becomes a compact five-item bottom dock; grouped modes and focus filters remain inline, compact, and horizontally scrollable.
+- Root rail becomes a compact five-item bottom dock; primary modes are equal-width visible grid controls, while subordinate filters use compact wrapping controls.
 - Main canvas remains the primary surface.
 - Inspector becomes a full-height sheet or pushed detail screen with a stable Back action.
 - Primary actions remain thumb-reachable and are never obscured by the dock.

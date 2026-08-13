@@ -22,7 +22,7 @@ The browser is the **Botanical Folio / Evidence Ledger**: one green-and-cream ev
 
 The five roots plus their grouped modes and focus filters are the complete global navigation contract. Sources, Learning Threads, Notes, Units, Recall Cards, branches, and artifacts use typed object routes inside their owning root so selection identity is preserved. Search opens the exact object result. Legacy hashes canonicalize to the nearest purposeful view without silently discarding an ID; an unknown hash renders a recovery state.
 
-On desktop the studio is a persistent root rail plus a working canvas and optional object inspector. There is no permanent context pane. On mobile and tablet the rail becomes a five-item bottom dock, with grouped modes and focus filters rendered as inline compact, horizontally scrollable controls; the inspector becomes a full-height sheet or pushed detail view.
+On desktop the studio is a persistent root rail plus a working canvas and optional object inspector. There is no permanent context pane. On mobile and tablet the rail becomes a five-item bottom dock, with primary modes in an equal-width visible grid and subordinate filters as compact wrapping controls; the inspector becomes a full-height sheet or pushed detail view.
 
 ## Product behavior
 

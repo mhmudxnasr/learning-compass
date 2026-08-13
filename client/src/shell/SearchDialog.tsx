@@ -9,8 +9,8 @@ const groupMeta: Record<string, { label: string; href: (item: any) => string }> 
   artifacts: { label: 'Files', href: (item) => `#/library/artifact/${encodeURIComponent(item.id)}` },
   nodes: { label: 'Map', href: (item) => `#/map/node/${encodeURIComponent(item.id)}` },
   units: { label: 'Learning units', href: (item) => `#/learn/unit/${encodeURIComponent(item.id)}` },
-  assertions: { label: 'Profile', href: () => '#/settings/profile' },
-  memories: { label: 'Hermes memory', href: () => '#/settings/profile' },
+  assertions: { label: 'Profile', href: () => '#/settings?focus=profile' },
+  memories: { label: 'Hermes memory', href: () => '#/settings?focus=profile' },
 }
 
 function resultTitle(item: any) { return item.title || item.label || item.filename || item.statement || item.memory_key || item.assertion_key || item.id }

@@ -36,7 +36,7 @@ The shipped client is the **Botanical Folio / Evidence Ledger**: a green-and-cre
 | Map | Atlas, Review (Branches, Balance) |
 | Settings | Personal (Profile, Preferences), Data & sync, System |
 
-Desktop uses a persistent root rail, main canvas, and optional contextual inspector; there is no permanent context pane. Mobile uses a five-item bottom dock with inline compact, horizontally scrollable mode/filter controls; selected-object inspection becomes a sheet or pushed detail view. Typed object routes preserve Source, Thread, Note, Unit, Recall Card, Branch, Node, Collection, Book, and Artifact identity. Legacy hashes canonicalize to purposeful routes and unknown hashes render recovery.
+Desktop uses a persistent root rail, main canvas, and optional contextual inspector; there is no permanent context pane. Mobile uses a five-item bottom dock with primary modes in an equal-width visible grid and subordinate filters as compact wrapping controls; selected-object inspection becomes a sheet or pushed detail view. Typed object routes preserve Source, Thread, Note, Unit, Recall Card, Branch, Node, Collection, Book, and Artifact identity. Legacy hashes canonicalize to purposeful routes and unknown hashes render recovery.
 
 `client/src/main.tsx` is cut over to `client/src/app/entry.tsx`. The replacement is composed under `client/src/app`, `client/src/shell`, `client/src/workspaces`, and shared components; the retired monolithic shell/registry/styles files are removed as part of the cutover.
 
