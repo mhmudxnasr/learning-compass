@@ -121,38 +121,43 @@ test('Compass uses learning balance as a bounded branch signal', () => {
   assert.equal(redirected._branch_state, 'at-risk')
 })
 
-test('the router exposes exactly five page destinations and keeps modes in query state', () => {
+test('the router exposes five roots and eleven grouped modes with focus state', () => {
   assert.deepEqual(roots.map((root) => root.key), ['home', 'library', 'learn', 'map', 'settings'])
   assert.equal(roots.length, 5)
-  assert.strictEqual(views, modes)
   const declaredModes = roots.flatMap((root) => modes[root.key].map((mode) => ({ root: root.key, ...mode })))
-  assert.equal(declaredModes.length, 18)
-  assert.equal(new Set(declaredModes.map((mode) => `${mode.root}/${mode.key}`)).size, 18)
+  assert.equal(declaredModes.length, 11)
+  assert.equal(new Set(declaredModes.map((mode) => `${mode.root}/${mode.key}`)).size, 11)
   assert.ok(declaredModes.every((mode) => mode.label.trim() && mode.description.trim()))
+  assert.equal(views.library.length, 7)
+  assert.equal(views.learn.length, 3)
   for (const root of roots) {
     assert.equal(routeHref(root.key), `#/${root.key}`)
-    assert.equal(routeHref(root.key, root.defaultView), `#/${root.key}`)
+    assert.equal(routeHref(root.key, root.defaultMode), `#/${root.key}`)
     for (const mode of modes[root.key]) {
       const href = routeHref(root.key, mode.key)
       if (mode.key === root.defaultMode) assert.equal(href, `#/${root.key}`)
-      else {
-        assert.equal(href, `#/${root.key}?mode=${mode.key}`)
-        assert.equal(href.includes(`/${mode.key}`), false)
-      }
+      else assert.equal(href, `#/${root.key}?mode=${mode.key}`)
     }
   }
+  assert.equal(routeHref('library', 'books'), '#/library?mode=catalog&focus=books')
+  assert.equal(routeHref('learn', 'notes'), '#/learn?mode=practice&focus=notes')
+  assert.equal(routeHref('map', 'branches'), '#/map?mode=review&focus=branches')
+  assert.equal(routeHref('settings', 'profile'), '#/settings?focus=profile')
 })
 
 test('root modes parse from query state while typed object links keep their identity', () => {
   const books = parseRoute('#/library?mode=books')
   assert.equal(books.root, 'library')
-  assert.equal(books.mode, 'books')
+  assert.equal(books.mode, 'catalog')
+  assert.equal(books.focus, 'books')
   assert.equal(books.view, 'books')
-  assert.equal(books.canonical, '/library?mode=books')
+  assert.equal(books.canonical, '/library?mode=catalog&focus=books')
   assert.equal(books.objectId, undefined)
 
   const oldQueue = parseRoute('#/curate/queue')
-  assert.equal(oldQueue.canonical, '/library')
+  assert.equal(oldQueue.canonical, '/library?mode=triage&focus=queue')
+  assert.equal(oldQueue.mode, 'triage')
+  assert.equal(oldQueue.focus, 'queue')
   assert.equal(oldQueue.recoveredFrom, '/curate/queue')
   assert.equal(oldQueue.notFound, undefined)
 
@@ -162,18 +167,21 @@ test('root modes parse from query state while typed object links keep their iden
   assert.equal(oldThread.objectId, 'path 1')
 
   const oldMapObject = parseRoute('#/map/branches/branch/branch%201')
-  assert.equal(oldMapObject.canonical, '/map/branch/branch%201?mode=branches')
-  assert.equal(oldMapObject.mode, 'branches')
+  assert.equal(oldMapObject.canonical, '/map/branch/branch%201?mode=review&focus=branches')
+  assert.equal(oldMapObject.mode, 'review')
+  assert.equal(oldMapObject.focus, 'branches')
   assert.equal(oldMapObject.objectType, 'branch')
   assert.equal(oldMapObject.objectId, 'branch 1')
 
   const staleMode = parseRoute('#/settings/appearance')
-  assert.equal(staleMode.canonical, '/settings?mode=preferences')
-  assert.equal(staleMode.mode, 'preferences')
+  assert.equal(staleMode.canonical, '/settings?focus=preferences')
+  assert.equal(staleMode.mode, 'personal')
+  assert.equal(staleMode.focus, 'preferences')
 
   const unknown = parseRoute('#/library/not-a-mode')
   assert.equal(unknown.root, 'library')
-  assert.equal(unknown.mode, 'queue')
+  assert.equal(unknown.mode, 'triage')
+  assert.equal(unknown.focus, 'queue')
   assert.equal(unknown.notFound, true)
   assert.equal(unknown.recoveredFrom, '/library/not-a-mode')
 })
@@ -181,5 +189,5 @@ test('root modes parse from query state while typed object links keep their iden
 test('typed object links preserve the five-root contract', () => {
   assert.equal(objectHref('library', 'source', 'rec/1'), '#/library/source/rec%2F1')
   assert.equal(objectHref('learn', 'thread', 'path 1'), '#/learn/thread/path%201')
-  assert.equal(objectHref('map', 'branch', 'branch 1', 'branches'), '#/map/branch/branch%201?mode=branches')
+  assert.equal(objectHref('map', 'branch', 'branch 1', 'branches'), '#/map/branch/branch%201?mode=review&focus=branches')
 })

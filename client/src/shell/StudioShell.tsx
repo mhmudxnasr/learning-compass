@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact'
 import { Icon, type IconName } from '../components/Icon'
-import { modeLabel, type RootKey, type Route, roots, routeHref } from '../app/router'
+import { focusLabel, modeLabel, type RootKey, type Route, roots, routeHref } from '../app/router'
 
 const rootIcons: Record<RootKey, IconName> = { home: 'home', library: 'library', learn: 'learn', map: 'map', settings: 'settings' }
 
@@ -18,6 +18,7 @@ export function StudioShell({ route, children, inspector, onCapture, onSearch }:
 }) {
   const rootMeta = roots.find((item) => item.key === route.root)!
   const currentMode = modeLabel(route)
+  const currentFocus = focusLabel(route)
   const online = typeof navigator === 'undefined' || navigator.onLine
 
   return <div class={`studio-shell ${inspector ? 'has-inspector' : ''}`} data-root={route.root} data-mode={route.mode}>
@@ -39,10 +40,11 @@ export function StudioShell({ route, children, inspector, onCapture, onSearch }:
 
     <section class="work-area">
       <header class="command-bar">
-        <div class="command-location" aria-label={`${rootMeta.label}, ${currentMode}`}>
+        <div class="command-location" aria-label={`${rootMeta.label}, ${currentMode}${currentFocus ? `, ${currentFocus}` : ''}`}>
           <span class="command-root">{rootMeta.label}</span>
           <Icon name="chevron" size={14}/>
           <strong class="command-mode">{currentMode}</strong>
+          {currentFocus && <><Icon name="chevron" size={14}/><span class="command-focus">{currentFocus}</span></>}
           {route.objectType && <><Icon name="chevron" size={14}/><span class="command-object">{route.objectType}</span></>}
         </div>
         <button type="button" class="command-search" onClick={onSearch}><Icon name="search" size={17}/><span>Search or jump to…</span><kbd>⌘ K</kbd></button>

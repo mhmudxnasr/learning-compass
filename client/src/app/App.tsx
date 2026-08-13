@@ -44,8 +44,10 @@ function navigate(href: string) {
 }
 
 function mapRouteHref(route: MapWorkspaceRoute) {
-  if (route.objectId) return objectHref('map', route.objectType || 'branch', route.objectId, route.view)
-  return routeHref('map', route.view)
+  const mode = route.view === 'atlas' ? 'atlas' : 'review'
+  const focus = route.view === 'atlas' ? undefined : route.view
+  if (route.objectId) return objectHref('map', route.objectType || 'branch', route.objectId, mode, focus)
+  return routeHref('map', mode, focus)
 }
 
 function mapSelection(route: Route): MapSelection | null {
@@ -95,12 +97,12 @@ export function App() {
       else if (captureOpen) setCaptureOpen(false)
       else if (selection || (route.root === 'map' && route.objectId && route.view !== 'balance')) {
         setSelection(null)
-        if (route.root === 'map' && route.objectId && route.view !== 'balance') navigate(routeHref('map', route.view))
+        if (route.root === 'map' && route.objectId && route.view !== 'balance') navigate(routeHref('map', route.mode, route.focus))
       }
     }
     addEventListener('keydown', onKeyDown)
     return () => removeEventListener('keydown', onKeyDown)
-  }, [captureOpen, searchOpen, selection, route.root, route.objectId, route.view])
+  }, [captureOpen, searchOpen, selection, route.root, route.objectId, route.view, route.mode, route.focus])
 
   useEffect(() => {
     const onOnline = () => { setOnline(true); void flushOfflineMutations() }
@@ -113,13 +115,13 @@ export function App() {
 
   useEffect(() => {
     if (route.root !== 'library' || !route.objectId) setSelection(null)
-  }, [route.root, route.view, route.objectId])
+  }, [route.root, route.view, route.objectId, route.mode, route.focus])
 
   const routedMapSelection = mapSelection(route)
   const activeSelection = selection || routedMapSelection
   const closeSelection = () => {
     setSelection(null)
-    if (routedMapSelection) navigate(routeHref('map', route.view))
+    if (routedMapSelection) navigate(routeHref('map', route.mode, route.focus))
     else if (route.root === 'library' && route.objectId) {
       const from = route.query.get('from')
       const view = from || (route.objectType === 'artifact' ? 'files' : route.objectType === 'book' ? 'books' : route.objectType === 'collection' ? 'collections' : 'all')
