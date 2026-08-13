@@ -472,6 +472,7 @@ const mobileRootHrefs = await page.locator('.mobile-dock a').evaluateAll((links)
 if (mobileRootHrefs.length !== roots.length || roots.some((root) => !mobileRootHrefs.includes(`#/${root}`))) throw new Error('mobile dock does not expose the five stable roots')
 for (const route of modeRoutes) {
   await page.goto(`${baseUrl}/${route.href}`, { waitUntil: 'networkidle' })
+  await page.locator(route.expected).waitFor({ state: 'attached', timeout: 15000 })
   if (!(await page.locator('.mobile-dock').isVisible())) throw new Error(`${route.href}: mobile dock disappeared`)
   if (await page.locator('.mobile-dock a').count() !== roots.length) throw new Error(`${route.href}: mobile dock does not contain exactly five items`)
   if (route.root !== 'home' && (await page.locator('.workspace-mode-switcher').count() !== 1 || !(await page.locator('.workspace-mode-switcher').isVisible()))) throw new Error(`${route.href}: internal mode controls are missing on mobile`)
