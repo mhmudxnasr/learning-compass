@@ -73,30 +73,38 @@ function objectItem(type: LibraryObjectType, data: LibraryRecord, objectId: stri
   return null
 }
 
-type LibraryPrimaryMode = 'sources' | 'files' | 'collections'
+type LibraryPrimaryMode = 'triage' | 'catalog' | 'assets'
 
-const sourceFilters: Array<{ key: Exclude<LibraryView, 'files' | 'collections'>; label: string; description: string }> = [
+const triageFilters: Array<{ key: Extract<LibraryView, 'queue' | 'inbox'>; label: string; description: string }> = [
   { key: 'queue', label: 'Queue', description: 'Committed next' },
   { key: 'inbox', label: 'Inbox', description: 'Waiting for a decision' },
+]
+
+const catalogFilters: Array<{ key: Extract<LibraryView, 'all' | 'books' | 'collections' | 'archive'>; label: string; description: string }> = [
   { key: 'all', label: 'All', description: 'Every source' },
   { key: 'books', label: 'Books', description: 'Chapter-aware sources' },
+  { key: 'collections', label: 'Collections', description: 'Purposeful source groups' },
   { key: 'archive', label: 'Archive', description: 'Completed and excluded' },
 ]
 
 const primaryModes: Array<{ key: LibraryPrimaryMode; label: string; description: string; view: LibraryView }> = [
-  { key: 'sources', label: 'Sources', description: 'Capture, decide, and revisit', view: 'all' },
-  { key: 'files', label: 'Files', description: 'Reading companions and uploads', view: 'files' },
-  { key: 'collections', label: 'Collections', description: 'Groups with a purpose', view: 'collections' },
+  { key: 'triage', label: 'Triage', description: 'Decide what earns attention', view: 'queue' },
+  { key: 'catalog', label: 'Catalog', description: 'Find and revisit sources', view: 'all' },
+  { key: 'assets', label: 'Files', description: 'Reading companions and uploads', view: 'files' },
 ]
 
 function primaryModeFor(view: LibraryView, objectType?: LibraryObjectType): LibraryPrimaryMode {
-  if (objectType === 'artifact' || view === 'files') return 'files'
-  if (objectType === 'collection' || view === 'collections') return 'collections'
-  return 'sources'
+  if (objectType === 'artifact' || view === 'files') return 'assets'
+  if (objectType === 'collection' || view === 'all' || view === 'books' || view === 'collections' || view === 'archive') return 'catalog'
+  return 'triage'
 }
 
-function libraryHref(view: LibraryView) {
-  return `#/library?mode=${encodeURIComponent(view)}`
+function defaultViewForMode(mode: LibraryPrimaryMode): LibraryView {
+  return mode === 'triage' ? 'queue' : mode === 'catalog' ? 'all' : 'files'
+}
+
+function libraryHref(mode: LibraryPrimaryMode, focus = defaultViewForMode(mode)) {
+  return `#/library?mode=${encodeURIComponent(mode)}&focus=${encodeURIComponent(focus)}`
 }
 
 function LibraryModeSwitcher({ activeView, objectType, onNavigate }: { activeView: LibraryView; objectType?: LibraryObjectType; onNavigate?: (href: string) => void }) {
@@ -108,15 +116,15 @@ function LibraryModeSwitcher({ activeView, objectType, onNavigate }: { activeVie
   return <>
     <nav class="workspace-mode-switcher workspace-local-nav" aria-label="Library sections">
       {primaryModes.map((item) => {
-        const href = libraryHref(item.view)
+        const href = libraryHref(item.key, item.view)
         return <a key={item.key} href={href} class={activePrimary === item.key ? 'active' : ''} aria-current={activePrimary === item.key ? 'page' : undefined} onClick={(event) => { if (!onNavigate) return; event.preventDefault(); navigate(href) }}>
           <strong>{item.label}</strong><small>{item.description}</small>
         </a>
       })}
     </nav>
-    {activePrimary === 'sources' && <nav class="workspace-filter-switcher workspace-local-nav" aria-label="Source filters">
-      {sourceFilters.map((item) => {
-        const href = libraryHref(item.key)
+    {activePrimary !== 'assets' && <nav class="workspace-filter-switcher workspace-local-nav" aria-label={`${activePrimary === 'triage' ? 'Triage' : 'Catalog'} filters`}>
+      {(activePrimary === 'triage' ? triageFilters : catalogFilters).map((item) => {
+        const href = libraryHref(activePrimary, item.key)
         return <a key={item.key} href={href} class={activeView === item.key ? 'active' : ''} aria-current={activeView === item.key ? 'page' : undefined} onClick={(event) => { if (!onNavigate) return; event.preventDefault(); navigate(href) }}>
           <strong>{item.label}</strong><small>{item.description}</small>
         </a>
@@ -129,7 +137,9 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
   const localRoute = useRoute()
   const activeRoute = route || localRoute
   const queryMode = activeRoute.query.get('mode') || ''
-  const view = asView(queryMode === 'sources' ? 'all' : queryMode || activeRoute.view)
+  const queryFocus = activeRoute.query.get('focus') || ''
+  const compatibleView = queryFocus || (/^(queue|inbox|all|files|books|collections|archive)$/.test(queryMode) ? queryMode : '') || (/^(queue|inbox|all|files|books|collections|archive)$/.test(activeRoute.view) ? activeRoute.view : '')
+  const view = compatibleView ? asView(compatibleView) : queryMode === 'catalog' ? 'all' : queryMode === 'assets' ? 'files' : 'queue'
   const objectType = activeRoute.objectType as LibraryObjectType | undefined
   const endpoint = endpointFor(view, objectType, activeRoute.objectId)
   const { data, error, loading, reload } = useData<LibraryRecord>(endpoint)

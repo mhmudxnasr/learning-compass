@@ -3,21 +3,29 @@ import type { ComponentChildren } from 'preact'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { api, formatDate, labelize } from '../api'
 import { ErrorState, Empty, Loading } from '../components/States'
+import { useRoute } from '../app/router'
 
 const AtlasPage = lazy(() => import('../features/atlas/AtlasPage'))
 const BranchDeckPage = lazy(() => import('../features/branches/BranchDeckPage').then((module) => ({ default: module.BranchDeckPage })))
 
 export type MapView = 'atlas' | 'branches' | 'balance'
+export type MapMode = 'atlas' | 'review'
+export type MapFocus = 'branches' | 'balance'
 export type MapObjectType = 'branch' | 'node'
 
 export type MapWorkspaceRoute = {
   view: MapView
+  mode?: MapMode
+  focus?: MapFocus
   objectType?: MapObjectType
   objectId?: string
 }
 
 export type MapRouteInput = {
   view?: string
+  mode?: string
+  focus?: string
+  query?: URLSearchParams
   slug?: string
   objectType?: MapObjectType
   objectId?: string
@@ -65,10 +73,14 @@ type BalanceResponse = {
   branches?: BalanceBranch[]
 }
 
-const mapViews: Array<{ key: MapView; label: string; description: string }> = [
-  { key: 'atlas', label: 'Atlas', description: 'Explore the connected topology of your knowledge.' },
-  { key: 'branches', label: 'Branches', description: 'Review and tune the branches that shape Compass.' },
-  { key: 'balance', label: 'Balance', description: 'Inspect attention, coverage, and retention together.' },
+const mapModes: Array<{ key: MapMode; label: string; description: string; view: MapView }> = [
+  { key: 'atlas', label: 'Atlas', description: 'Explore the connected topology', view: 'atlas' },
+  { key: 'review', label: 'Review', description: 'Tune branches and attention', view: 'branches' },
+]
+
+const reviewFilters: Array<{ key: MapFocus; label: string; description: string }> = [
+  { key: 'branches', label: 'Branches', description: 'Keep, prune, promote, and hold' },
+  { key: 'balance', label: 'Balance', description: 'Coverage, retention, and attention' },
 ]
 
 function normalizeView(value: string | undefined, fallback: MapView = 'atlas'): MapView {
@@ -83,24 +95,27 @@ function navigateTo(route: MapWorkspaceRoute, onRouteChange?: (route: MapWorkspa
     onRouteChange(route)
     return
   }
-  const viewPart = route.view === 'atlas' ? '' : `/${route.view}`
+  const mode = route.mode || (route.view === 'atlas' ? 'atlas' : 'review')
+  const focus = route.focus || (route.view === 'atlas' ? undefined : route.view)
   const objectPart = route.objectId ? `/${route.objectType || 'branch'}/${encodeURIComponent(route.objectId)}` : ''
-  window.location.hash = `#/map${viewPart}${objectPart}`
+  const query = new URLSearchParams({ mode })
+  if (focus) query.set('focus', focus)
+  window.location.hash = `#/map${objectPart}?${query}`
 }
 
-function MapModeSwitcher({ active, onRouteChange }: { active: MapView; onRouteChange?: (route: MapWorkspaceRoute) => void }) {
-  return (
+function MapModeSwitcher({ active, focus, onRouteChange }: { active: MapMode; focus: MapFocus; onRouteChange?: (route: MapWorkspaceRoute) => void }) {
+  return <>
     <nav class="workspace-mode-switcher workspace-local-nav map-local-nav" aria-label="Map sections">
-      {mapViews.map((item) => (
+      {mapModes.map((item) => (
         <a
           key={item.key}
-          href={item.key === 'atlas' ? '#/map' : `#/map/${item.key}`}
+          href={item.key === 'atlas' ? '#/map?mode=atlas' : '#/map?mode=review&focus=branches'}
           class={active === item.key ? 'active' : ''}
           aria-current={active === item.key ? 'page' : undefined}
           onClick={(event) => {
             if (!onRouteChange) return
             event.preventDefault()
-            onRouteChange({ view: item.key })
+            onRouteChange({ view: item.view, mode: item.key, focus: item.key === 'review' ? 'branches' : undefined })
           }}
         >
           <strong>{item.label}</strong>
@@ -108,7 +123,14 @@ function MapModeSwitcher({ active, onRouteChange }: { active: MapView; onRouteCh
         </a>
       ))}
     </nav>
-  )
+    {active === 'review' && <nav class="workspace-filter-switcher workspace-local-nav" aria-label="Map review filters">
+      {reviewFilters.map((item) => <a key={item.key} href={`#/map?mode=review&focus=${item.key}`} class={focus === item.key ? 'active' : ''} aria-current={focus === item.key ? 'page' : undefined} onClick={(event) => {
+        if (!onRouteChange) return
+        event.preventDefault()
+        onRouteChange({ view: item.key, mode: 'review', focus: item.key })
+      }}><strong>{item.label}</strong><small>{item.description}</small></a>)}
+    </nav>}
+  </>
 }
 
 function BalanceBranchRow({
@@ -180,7 +202,7 @@ function BalanceInspector({
         {branch.reasons.length ? <ul>{branch.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul> : <p>No attention warning is recorded for this branch.</p>}
       </section>
       <div class="map-inspector-actions">
-        <button class="button secondary" onClick={() => navigateTo({ view: 'atlas', objectType: 'node', objectId: branch.id }, onRouteChange)}>Open in Atlas</button>
+        <button class="button secondary" onClick={() => navigateTo({ view: 'atlas', mode: 'atlas', objectType: 'node', objectId: branch.id }, onRouteChange)}>Open in Atlas</button>
         <button class="button secondary" onClick={onClose}>Keep browsing</button>
       </div>
     </aside>
@@ -214,7 +236,7 @@ function BalanceView({ route, onRouteChange }: { route?: MapRouteInput; onRouteC
   }, [filtered])
   const selectBranch = (branch: BalanceBranch) => {
     setSelectedId(branch.id)
-    onRouteChange?.({ view: 'balance', objectType: 'branch', objectId: branch.id })
+    onRouteChange?.({ view: 'balance', mode: 'review', focus: 'balance', objectType: 'branch', objectId: branch.id })
   }
   const roots = (children.get('__root__') || []).sort((a, b) => b.attention_share - a.attention_share || a.label.localeCompare(b.label))
   const renderTree = (parentId: string, depth = 0): ComponentChildren => {
@@ -263,7 +285,7 @@ function BalanceView({ route, onRouteChange }: { route?: MapRouteInput; onRouteC
             <div class="map-tree-head"><div><strong>Branch attention</strong><span>Click a row to inspect its evidence.</span></div><span>Attention</span></div>
             {roots.map((branch) => <div class="balance-tree-node" key={branch.id}><BalanceBranchRow branch={branch} depth={0} selected={selectedId === branch.id} onSelect={selectBranch} />{renderTree(branch.id, 1)}</div>)}
           </section>
-          {selected ? <BalanceInspector branch={selected} onClose={() => { setSelectedId(''); onRouteChange?.({ view: 'balance' }) }} onRouteChange={onRouteChange} /> : <aside class="map-selection-prompt"><span class="eyebrow">Branch inspector</span><h2>Select a branch</h2><p>Every row exposes the evidence behind its state. Select one to see attention share, recall load, and why it needs more or less of your time.</p></aside>}
+          {selected ? <BalanceInspector branch={selected} onClose={() => { setSelectedId(''); onRouteChange?.({ view: 'balance', mode: 'review', focus: 'balance' }) }} onRouteChange={onRouteChange} /> : <aside class="map-selection-prompt"><span class="eyebrow">Branch inspector</span><h2>Select a branch</h2><p>Every row exposes the evidence behind its state. Select one to see attention share, recall load, and why it needs more or less of your time.</p></aside>}
         </div>
       )}
     </div>
@@ -285,13 +307,19 @@ function useBalance(windowDays: 30 | 90 | 365) {
 }
 
 export function MapWorkspace({ route, view, onRouteChange }: MapWorkspaceProps) {
-  const active = normalizeView(route?.view || route?.slug, view || 'atlas')
+  const routed = useRoute()
+  const query = route?.query || routed.query
+  const routeValue = route?.focus || query.get('focus') || route?.view || route?.slug || view || routed.view
+  const activeView = normalizeView(routeValue, 'atlas')
+  const requestedMode = route?.mode || query.get('mode') || routed.view
+  const activeMode: MapMode = route?.objectType === 'branch' || requestedMode === 'review' || activeView !== 'atlas' ? 'review' : 'atlas'
+  const activeFocus: MapFocus = activeView === 'balance' ? 'balance' : 'branches'
   return (
     <div class="map-workspace workspace-surface">
-      <MapModeSwitcher active={active} onRouteChange={onRouteChange} />
-      {active === 'atlas' && <Suspense fallback={<Loading label="Preparing spatial atlas" />}><AtlasPage /></Suspense>}
-      {active === 'branches' && <Suspense fallback={<Loading label="Opening branch review" />}><BranchDeckPage /></Suspense>}
-      {active === 'balance' && <BalanceView route={route} onRouteChange={onRouteChange} />}
+      <MapModeSwitcher active={activeMode} focus={activeFocus} onRouteChange={onRouteChange} />
+      {activeView === 'atlas' && <Suspense fallback={<Loading label="Preparing spatial atlas" />}><AtlasPage /></Suspense>}
+      {activeView === 'branches' && <Suspense fallback={<Loading label="Opening branch review" />}><BranchDeckPage /></Suspense>}
+      {activeView === 'balance' && <BalanceView route={route} onRouteChange={onRouteChange} />}
     </div>
   )
 }

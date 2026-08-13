@@ -2,16 +2,24 @@ import { useEffect, useMemo, useState } from 'preact/hooks'
 import { api, flushOfflineMutations, formatDate, labelize, listOfflineMutations, resolveOfflineMutation } from '../api'
 import { ErrorState, Empty, Loading } from '../components/States'
 import { useData } from '../app/useData'
+import { useRoute } from '../app/router'
 
 export type SettingsView = 'profile' | 'preferences' | 'data' | 'system'
+export type SettingsMode = 'personal' | 'data' | 'system'
+export type SettingsFocus = 'profile' | 'preferences'
 
 export type SettingsWorkspaceRoute = {
   view: SettingsView
+  mode?: SettingsMode
+  focus?: SettingsFocus
 }
 
 export type SettingsRouteInput = Partial<SettingsWorkspaceRoute> & {
   slug?: string
   view?: string
+  mode?: string
+  focus?: string
+  query?: URLSearchParams
 }
 
 export type SettingsWorkspaceProps = {
@@ -48,11 +56,15 @@ type SystemPayload = {
 
 type Capability = { method: string; path: string; description: string }
 
-const settingsViews: Array<{ key: SettingsView; label: string; description: string }> = [
-  { key: 'profile', label: 'Profile', description: 'Your priorities, evidence, and learned patterns.' },
-  { key: 'preferences', label: 'Preferences', description: 'Learning defaults and curation behavior.' },
-  { key: 'data', label: 'Data & sync', description: 'Exports, storage ownership, and offline work.' },
-  { key: 'system', label: 'System', description: 'The complete observable operation inventory.' },
+const settingsModes: Array<{ key: SettingsMode; label: string; description: string; view: SettingsView }> = [
+  { key: 'personal', label: 'Personal', description: 'Profile and learning preferences', view: 'profile' },
+  { key: 'data', label: 'Data', description: 'Exports, ownership, and offline work', view: 'data' },
+  { key: 'system', label: 'System', description: 'Operations, schedules, and safety', view: 'system' },
+]
+
+const personalFilters: Array<{ key: SettingsFocus; label: string; description: string }> = [
+  { key: 'profile', label: 'Profile', description: 'Priorities and learned patterns' },
+  { key: 'preferences', label: 'Preferences', description: 'Learning and curation defaults' },
 ]
 
 type ProfileField = { key: string; apiKey: string; readKey?: string; label: string; description: string; structured: boolean }
@@ -73,23 +85,25 @@ function normalizeView(value: string | undefined, fallback: SettingsView = 'prof
   return fallback
 }
 
-function routeFor(view: SettingsView) {
-  return view === 'profile' ? '#/settings' : `#/settings/${view}`
+function routeFor(mode: SettingsMode, focus?: SettingsFocus) {
+  const query = new URLSearchParams({ mode })
+  if (focus) query.set('focus', focus)
+  return `#/settings?${query}`
 }
 
-function SettingsModeSwitcher({ active, onRouteChange }: { active: SettingsView; onRouteChange?: (route: SettingsWorkspaceRoute) => void }) {
-  return (
+function SettingsModeSwitcher({ active, focus, onRouteChange }: { active: SettingsMode; focus: SettingsFocus; onRouteChange?: (route: SettingsWorkspaceRoute) => void }) {
+  return <>
     <nav class="workspace-mode-switcher workspace-local-nav settings-local-nav" aria-label="Settings sections">
-      {settingsViews.map((item) => (
+      {settingsModes.map((item) => (
         <a
           key={item.key}
-          href={routeFor(item.key)}
+          href={routeFor(item.key, item.key === 'personal' ? 'profile' : undefined)}
           class={active === item.key ? 'active' : ''}
           aria-current={active === item.key ? 'page' : undefined}
           onClick={(event) => {
             if (!onRouteChange) return
             event.preventDefault()
-            onRouteChange({ view: item.key })
+            onRouteChange({ view: item.view, mode: item.key, focus: item.key === 'personal' ? 'profile' : undefined })
           }}
         >
           <strong>{item.label}</strong>
@@ -97,7 +111,14 @@ function SettingsModeSwitcher({ active, onRouteChange }: { active: SettingsView;
         </a>
       ))}
     </nav>
-  )
+    {active === 'personal' && <nav class="workspace-filter-switcher workspace-local-nav" aria-label="Personal settings filters">
+      {personalFilters.map((item) => <a key={item.key} href={routeFor('personal', item.key)} class={focus === item.key ? 'active' : ''} aria-current={focus === item.key ? 'page' : undefined} onClick={(event) => {
+        if (!onRouteChange) return
+        event.preventDefault()
+        onRouteChange({ view: item.key, mode: 'personal', focus: item.key })
+      }}><strong>{item.label}</strong><small>{item.description}</small></a>)}
+    </nav>}
+  </>
 }
 
 function asValue(value: unknown): unknown {
@@ -283,8 +304,14 @@ function SystemView() {
 }
 
 export function SettingsWorkspace({ route, view, onRouteChange }: SettingsWorkspaceProps) {
-  const active = normalizeView(route?.view || route?.slug, view || 'profile')
-  return <div class="settings-workspace workspace-surface"><SettingsModeSwitcher active={active} onRouteChange={onRouteChange} />{active === 'profile' && <ProfileView />}{active === 'preferences' && <PreferencesView />}{active === 'data' && <DataView />}{active === 'system' && <SystemView />}</div>
+  const routed = useRoute()
+  const query = route?.query || routed.query
+  const requestedMode = route?.mode || query.get('mode') || route?.view || route?.slug || view || routed.view
+  const requestedFocus = route?.focus || query.get('focus') || ''
+  const activeMode: SettingsMode = requestedMode === 'data' ? 'data' : requestedMode === 'system' ? 'system' : 'personal'
+  const activeFocus: SettingsFocus = requestedFocus === 'preferences' || requestedMode === 'preferences' ? 'preferences' : 'profile'
+  const activeView = normalizeView(activeMode === 'personal' ? activeFocus : activeMode)
+  return <div class="settings-workspace workspace-surface"><SettingsModeSwitcher active={activeMode} focus={activeFocus} onRouteChange={onRouteChange} />{activeView === 'profile' && <ProfileView />}{activeView === 'preferences' && <PreferencesView />}{activeView === 'data' && <DataView />}{activeView === 'system' && <SystemView />}</div>
 }
 
 export default SettingsWorkspace
