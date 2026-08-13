@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useData } from '../app/useData'
 import { Icon } from '../components/Icon'
 
@@ -21,12 +21,11 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   const endpoint = open && query.trim().length >= 2 ? `/search?q=${encodeURIComponent(query.trim())}` : undefined
   const state = useData<any>(endpoint)
   useEffect(() => { if (!open) setQuery('') }, [open])
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return
     const previouslyFocused = document.activeElement as HTMLElement | null
-    const focusTimer = window.setTimeout(() => dialogRef.current?.querySelector<HTMLElement>('[autofocus], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href]')?.focus(), 0)
+    dialogRef.current?.querySelector<HTMLElement>('[autofocus], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href]')?.focus()
     return () => {
-      window.clearTimeout(focusTimer)
       if (previouslyFocused && document.contains(previouslyFocused)) previouslyFocused.focus()
     }
   }, [open])
