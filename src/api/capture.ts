@@ -42,14 +42,15 @@ app.get('/', async (c) => {
 })
 
 app.get('/queue', async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.priority_rank,m.progress_percent,m.estimated_minutes,m.tags_json,m.started_at,m.last_opened_at,o.predicted_score,o.predicted_confidence,o.predicted_components_json,(SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND t.status NOT IN ('verified','abandoned') ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 1) thread_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN recommendation_outcomes o ON o.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all()
+  const rows = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.priority_rank,m.progress_percent,m.estimated_minutes,m.tags_json,m.started_at,m.last_opened_at,n.label branch_label,n.status branch_status,o.predicted_score,o.predicted_confidence,o.predicted_components_json,(SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND t.status NOT IN ('verified','abandoned') ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 1) thread_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id LEFT JOIN recommendation_outcomes o ON o.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all()
   // Surface Compass's persisted prediction on each row so the queue can show
   // why a source was chosen (score, confidence, feature breakdown) — the data
   // already lives in recommendation_outcomes from the pick.
   const items = (rows.results || []).map((row: any) => {
     let breakdown: any = null
     try { breakdown = row.predicted_components_json ? JSON.parse(row.predicted_components_json) : null } catch {}
-    return { ...row, compass: row.predicted_score != null ? { score: Number(row.predicted_score), confidence: Number(row.predicted_confidence ?? 0), breakdown } : null }
+    const branchStatus = String(row.branch_status || '').trim().toLowerCase()
+    return { ...row, branch_preflight: row.branch_id ? { branch_id: row.branch_id, branch_label: row.branch_label || row.branch_id, status: branchStatus || 'unverified', conflict: branchStatus === 'pruned' } : { status: 'unmapped', conflict: false }, compass: row.predicted_score != null ? { score: Number(row.predicted_score), confidence: Number(row.predicted_confidence ?? 0), breakdown } : null }
   })
   return c.json({ items, count: items.length, cap: 5 })
 })
@@ -123,7 +124,9 @@ app.delete('/feeds/:id', async (c) => {
 
 app.post('/:id/triage', async (c) => {
   const body: { action?: 'queue' | 'exclude'; thread_id?: string; override_queue_cap?: boolean; reason?: string } = await c.req.json().catch(() => ({}))
-  const item = await c.env.DB.prepare(`SELECT id,video_url,video_title FROM recommendations WHERE id=?`).bind(c.req.param('id')).first<any>()
+  const item = await c.env.DB.prepare(`SELECT r.id,r.video_url,r.video_title,m.branch_id,n.label branch_label,n.status branch_status
+    FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
+    LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(c.req.param('id')).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
   if (body.action === 'exclude') {
     const exclusionReason = String(body.reason || 'inbox_triage').trim().slice(0, 120) || 'inbox_triage'
@@ -148,6 +151,14 @@ app.post('/:id/triage', async (c) => {
     return c.json({ ok: true, state: 'excluded' })
   }
   if (body.action !== 'queue') return c.json({ error: 'action must be queue or exclude' }, 400)
+  if (item.branch_id && String(item.branch_status || '').toLowerCase() === 'pruned') {
+    return c.json({
+      error: 'pruned_branch_conflict',
+      branch_id: item.branch_id,
+      branch_label: item.branch_label || item.branch_id,
+      message: `This source is mapped to the pruned branch “${item.branch_label || item.branch_id}”. Review the branch mapping before adding it to Queue.`,
+    }, 409)
+  }
   const thread = body.thread_id
     ? await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=? AND status NOT IN ('verified','abandoned')`).bind(body.thread_id).first<{ id: string }>()
     : await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE status='active' ORDER BY priority DESC,updated_at DESC LIMIT 1`).first<{ id: string }>()
@@ -162,6 +173,24 @@ app.post('/:id/triage', async (c) => {
   if (!result.meta.changes) return c.json({ error: 'queue_full', ...queueDecision(5, false) }, 409)
   await c.env.DB.prepare(`INSERT INTO thread_sources (thread_id,recommendation_id,role,status) VALUES (?,?,'supporting','active') ON CONFLICT(thread_id,recommendation_id) DO UPDATE SET status='active',updated_at=datetime('now')`).bind(thread.id,c.req.param('id')).run()
   return c.json({ ok: true, state: 'queued', thread_id: thread.id, ...decision })
+})
+
+// Apply a reviewed, high-confidence branch classification to an active Queue item.
+// Metadata-only: this does not claim the source was consumed or learned.
+app.post('/:id/branch-map', async (c) => {
+  try {
+    const body = await c.req.json<{ branch_id?: string; confidence?: string; reason?: string }>().catch(() => ({} as any))
+    const confidence = String(body.confidence || '').toLowerCase()
+    if (confidence !== 'high') return c.json({ error: 'only high-confidence mappings may be applied automatically' }, 422)
+    const item = await c.env.DB.prepare("SELECT r.id,m.learning_state FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=? AND r.status='active'").bind(c.req.param('id')).first<any>()
+    if (!item) return c.json({ error: 'active recommendation not found' }, 404)
+    if (!['queued','in_progress'].includes(String(item.learning_state || 'queued'))) return c.json({ error: 'item is not active in Queue' }, 409)
+    const branch = await c.env.DB.prepare("SELECT id,label,status FROM tree_nodes WHERE id=? AND type IN ('root','category','branch','leaf')").bind(String(body.branch_id || '')).first<any>()
+    if (!branch) return c.json({ error: 'branch not found' }, 404)
+    if (String(branch.status || '').toLowerCase() === 'pruned') return c.json({ error: 'cannot map to a pruned branch', branch_id: branch.id }, 409)
+    await c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,branch_id,source_metadata_json,updated_at) VALUES (?,?,json_object('branch_mapping_confidence',?,'branch_mapping_reason',?,'branch_mapping_source','agy'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET branch_id=excluded.branch_id, source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json), updated_at=datetime('now')`).bind(item.id, branch.id, confidence, String(body.reason || '').slice(0, 500)).run()
+    return c.json({ ok: true, recommendation_id: item.id, branch_id: branch.id, branch_label: branch.label, confidence })
+  } catch (err) { return c.json(safeError('Queue branch mapping failed')(err), 500) }
 })
 
 app.post('/:id/visualise', async (c) => {

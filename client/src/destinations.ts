@@ -29,6 +29,7 @@ export const destinations: Destination[] = [
     ['coverage', 'Coverage', 'See where attention, coverage, and retention are balanced or drifting.', 'analysis', '/learning/balance'],
   ]),
   ...define('learn', [
+    ['hub', 'Hub', 'Build deliberate learning paths and advance through evidence, not consumption.', 'study', '/learning/core/hub'],
     ['files', 'Files', 'Open PDFs, web companions, and uploaded documents.', 'library', '/artifacts'],
     ['notes', 'Notes', 'Read and edit the structured notes extracted from completed sources.', 'library', '/notes'],
     ['recall', 'Recall', 'Review due cards and approve or edit future recall prompts.', 'study', '/learning/srs/due'],
@@ -75,6 +76,7 @@ export function destinationForPath(path: string): Destination | null {
     'settings/curation': 'settings/preferences',
   }
   const canonical = aliases[clean] || clean
+  if (canonical.startsWith('learn/hub/')) return destinations.find((item) => item.key === 'learn.hub') || null
   const [workspace, slug] = canonical.split('/')
   return destinations.find((item) => item.workspace === workspace && item.slug === slug) || null
 }

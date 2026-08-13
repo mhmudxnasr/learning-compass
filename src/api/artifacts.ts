@@ -36,7 +36,7 @@ function markdownToHtml(markdown: string, title: string) {
 
 app.get('/', async (c) => {
   const [rows, jobs] = await Promise.all([
-    c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,created_at FROM artifacts ORDER BY created_at DESC LIMIT 200`).all(),
+    c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,created_at FROM artifacts WHERE thread_id IS NULL AND stage_id IS NULL ORDER BY created_at DESC LIMIT 200`).all(),
     c.env.DB.prepare(`SELECT status,payload_json,error,updated_at FROM agent_jobs WHERE job_type='extract_notes' ORDER BY created_at DESC LIMIT 400`).all<any>(),
   ])
   const jobByArtifact = new Map<string, { status: string; error?: string; updated_at: string }>()
@@ -68,6 +68,22 @@ app.get('/', async (c) => {
   return c.json({ artifacts: [...artifacts, ...(legacy.results || []).map((row: any) => ({ ...row, legacy: true, metadata: {}, quality_assurance: normalizeQualityAssurance({}, true), notebook_url: null }))] })
 })
 
+app.get('/hub', async (c) => {
+  const threadId = c.req.query('thread_id') || ''
+  const stageId = c.req.query('stage_id') || ''
+  const rows = threadId
+    ? await c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,thread_id,stage_id,created_at FROM artifacts WHERE thread_id=? ORDER BY created_at DESC LIMIT 200`).bind(threadId).all<any>()
+    : stageId
+      ? await c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,thread_id,stage_id,created_at FROM artifacts WHERE stage_id=? ORDER BY created_at DESC LIMIT 200`).bind(stageId).all<any>()
+      : await c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,thread_id,stage_id,created_at FROM artifacts WHERE thread_id IS NOT NULL OR stage_id IS NOT NULL ORDER BY created_at DESC LIMIT 200`).all<any>()
+  const files = (rows.results || []).map((row: any) => {
+    let metadata: Record<string, unknown> = {}
+    try { metadata = JSON.parse(row.metadata_json || '{}') } catch { /* ignore malformed metadata */ }
+    return { ...row, metadata, metadata_json: undefined }
+  })
+  return c.json({ files })
+})
+
 app.post('/', async (c) => {
   try {
     const form = await c.req.formData()
@@ -90,6 +106,17 @@ app.post('/', async (c) => {
       const failures = [...new Set([...(validation.ok ? [] : validation.failures), ...integrityFailures])]
       return c.json({ error: 'artifact_metadata_validation_failed', failures }, 422)
     }
+    const threadId = String(metadata.thread_id || '').trim().slice(0, 120) || null
+    const stageId = String(metadata.stage_id || '').trim().slice(0, 120) || null
+    if (threadId && stageId) return c.json({ error: 'file cannot belong to both a path and a stage' }, 400)
+    if (threadId) {
+      const thread = await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=?`).bind(threadId).first()
+      if (!thread) return c.json({ error: 'thread not found' }, 400)
+    }
+    if (stageId) {
+      const stage = await c.env.DB.prepare(`SELECT id FROM learning_path_stages WHERE id=?`).bind(stageId).first()
+      if (!stage) return c.json({ error: 'stage not found' }, 400)
+    }
     const pairId = String(metadata.pair_id || '')
     const role = String(metadata.role || '').toLowerCase()
     if (pairId && ['html', 'pdf'].includes(role)) {
@@ -106,7 +133,7 @@ app.post('/', async (c) => {
     const id = `artifact_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
     const key = `${new Date().toISOString().slice(0, 10)}/${id}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
     if (c.env.ARTIFACTS) await c.env.ARTIFACTS.put(key, file.stream(), { httpMetadata: { contentType: file.type || 'application/octet-stream' } })
-    await c.env.DB.prepare(`INSERT INTO artifacts (id,filename,media_type,r2_key,size_bytes,metadata_json) VALUES (?,?,?,?,?,?)`).bind(id, file.name, file.type || 'application/octet-stream', key, file.size, JSON.stringify({ source: 'artifact_upload', ...metadata })).run()
+    await c.env.DB.prepare(`INSERT INTO artifacts (id,filename,media_type,r2_key,size_bytes,metadata_json,thread_id,stage_id) VALUES (?,?,?,?,?,?,?,?)`).bind(id, file.name, file.type || 'application/octet-stream', key, file.size, JSON.stringify({ source: 'artifact_upload', ...metadata }), threadId, stageId).run()
     return c.json({ ok: true, id, filename: file.name, r2_key: key, metadata, quality_assurance: normalizeQualityAssurance(metadata) }, 201)
   } catch (error) { return c.json(safeError('Artifact upload failed')(error), 500) }
 })

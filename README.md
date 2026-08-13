@@ -70,7 +70,7 @@ Obsidian is an export target, not a second writable database. It must never over
 client/
   src/app.tsx                 application shell and destination surfaces
   src/api.ts                  browser API and offline helpers
-  src/destinations.ts         canonical registry of all 17 destinations
+  src/destinations.ts         canonical registry of all purposeful destinations
   src/features/atlas/         lazy-loaded knowledge graph
 
 src/

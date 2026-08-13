@@ -441,7 +441,7 @@ app.post('/map', async (c) => {
     if (incomplete.length) return c.json({ error: 'only completed sources can be mapped', ids: incomplete.map((source: any) => source.id) }, 409)
 
     const statements = ids.flatMap((id) => [
-      DB.prepare(`INSERT OR IGNORE INTO recommendation_meta (recommendation_id, learning_state, source_metadata_json) VALUES (?, 'completed', '{}')`).bind(id),
+      DB.prepare(`INSERT INTO recommendation_meta (recommendation_id, learning_state, source_metadata_json) VALUES (?, 'completed', '{}') ON CONFLICT(recommendation_id) DO UPDATE SET learning_state='completed', updated_at=datetime('now')`).bind(id),
       DB.prepare(`UPDATE recommendation_meta SET branch_id=?, updated_at=datetime('now') WHERE recommendation_id=?`).bind(body.branch_id, id),
       DB.prepare(`UPDATE recommendation_outcomes SET branch_id=? WHERE recommendation_id=?`).bind(body.branch_id, id),
     ])

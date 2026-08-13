@@ -12,7 +12,7 @@ const workspaceLabels: Record<WorkspaceKey, string> = {
   today: 'Momentum', curate: 'Curate', map: 'Map', learn: 'Learn', insights: 'Insights', settings: 'Settings',
 }
 
-const icons: Record<WorkspaceKey | 'momentum' | 'inbox' | 'queue' | 'files' | 'notes' | 'activity' | 'atlas' | 'search' | 'capture' | 'more' | 'profile', ComponentChildren> = {
+const icons: Record<WorkspaceKey | 'momentum' | 'inbox' | 'queue' | 'hub' | 'files' | 'notes' | 'activity' | 'atlas' | 'search' | 'capture' | 'more' | 'profile', ComponentChildren> = {
   today: <path d="M4 5h16M4 12h10M4 19h7" />,
   curate: <><path d="M4 4h16v16H4z" /><path d="M4 13h5l2 3h2l2-3h5" /></>,
   map: <><circle cx="5" cy="6" r="2" /><circle cx="19" cy="5" r="2" /><circle cx="12" cy="18" r="2" /><path d="m7 7 4 9m6-10-4 10M7 6h10" /></>,
@@ -20,6 +20,7 @@ const icons: Record<WorkspaceKey | 'momentum' | 'inbox' | 'queue' | 'files' | 'n
   momentum: <><circle cx="12" cy="12" r="8" /><path d="m14.8 9.2-2 5.6-3.6 1.1 2-5.6z" /></>,
   inbox: <><path d="M4 5h16v14H4z" /><path d="M4 13h4l2 3h4l2-3h4" /></>,
   queue: <><path d="M5 6h14M5 12h14M5 18h8" /><circle cx="18" cy="18" r="2" /></>,
+  hub: <><path d="M4 5h16v14H4z" /><path d="M8 9h8M8 13h5M8 17h3" /></>,
   files: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></>,
   notes: <><path d="M5 4h14v16H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
   activity: <path d="M4 13h3l2-6 4 12 2-6h5" />,
@@ -53,10 +54,10 @@ function useRoute() {
 }
 
 function go(destination: Destination) { location.hash = `#/${destination.workspace}/${destination.slug}` }
-const loopNavigation = ['today.momentum', 'curate.queue', 'learn.files', 'learn.notes', 'learn.activity', 'curate.inbox', 'map.atlas']
+const loopNavigation = ['today.momentum', 'curate.queue', 'learn.hub', 'learn.files', 'learn.notes', 'learn.activity', 'curate.inbox', 'map.atlas']
   .map((key) => destinations.find((item) => item.key === key)!)
 const navIcons: Record<string, keyof typeof icons> = {
-  'today.momentum': 'momentum', 'curate.inbox': 'inbox', 'learn.files': 'files', 'learn.notes': 'notes',
+  'today.momentum': 'momentum', 'curate.inbox': 'inbox', 'learn.hub': 'hub', 'learn.files': 'files', 'learn.notes': 'notes',
   'learn.activity': 'activity', 'curate.queue': 'queue', 'map.atlas': 'atlas',
 }
 
@@ -173,6 +174,191 @@ function Shell({ route, children, onCapture, onSearch, onMore }: { route: Destin
 function Loading() { return <div class="skeleton-stack"><i /><i /><i /></div> }
 function Empty({ title = 'Nothing here yet', body = 'This view is ready when the system has relevant data.' }) { return <div class="empty-state"><span class="empty-rule" /><h2>{title}</h2><p>{body}</p></div> }
 function ErrorState({ message }: { message: string }) { return <div class="error-state"><strong>Couldn’t load this view.</strong><span>{message}</span></div> }
+
+function pathStatusLabel(status: string) {
+  return ({ active: 'In progress', paused: 'Paused', verified: 'Verified', ready_to_verify: 'Ready to verify', abandoned: 'Archived', draft: 'Planned' } as Record<string, string>)[status] || labelize(status || 'Planned')
+}
+
+function itemGroup(itemType: string) {
+  if (['concept', 'recall_prompt'].includes(itemType)) return 'Understand'
+  if (['source_role', 'companion'].includes(itemType)) return 'Study'
+  if (['exercise', 'application'].includes(itemType)) return 'Practice'
+  return 'Reflect'
+}
+
+function sourceRoleLabel(role: string) {
+  return ({
+    foundation: 'Foundation',
+    case: 'Case',
+    companion: 'Companion',
+    counterevidence: 'Counterevidence',
+    reference: 'Reference',
+  } as Record<string, string>)[role] || labelize(role)
+}
+
+function HubNotesPanel({ notes, scope, onChanged }: { notes: any[]; scope: Record<string, string>; onChanged: () => void }) {
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<any>(null)
+  const [title, setTitle] = useState('')
+  const [content, setContent] = useState('')
+  const [status, setStatus] = useState('')
+  const add = async (event: Event) => {
+    event.preventDefault()
+    if (!title.trim()) return
+    setStatus('Saving…')
+    try {
+      await api('/notes', { method: 'POST', body: JSON.stringify({ title, kind: 'note', ...scope, sections: [{ section_key: 'body', label: 'Notes', content, direction: 'auto' }] }) })
+      setTitle(''); setContent(''); setStatus(''); onChanged()
+    } catch (error: any) { setStatus(error.message) }
+  }
+  const save = async () => {
+    if (!draft) return
+    setStatus('Saving…')
+    try {
+      await api(`/notes/${draft.id}`, { method: 'PUT', body: JSON.stringify({ title: draft.title, sections: (draft.sections || []).map((section: any) => ({ section_key: section.section_key, content: section.content, direction: section.direction })) }) })
+      setEditingId(null); setDraft(null); setStatus(''); onChanged()
+    } catch (error: any) { setStatus(error.message) }
+  }
+  const remove = async (note: any) => {
+    if (!confirm(`Delete note "${note.title}"?`)) return
+    setStatus('Deleting…')
+    try { await api(`/notes/${note.id}`, { method: 'DELETE' }); setStatus(''); onChanged() } catch (error: any) { setStatus(error.message) }
+  }
+  return <div class="hub-notes">
+    {notes.length ? <div class="hub-note-list">{notes.map((note: any) => {
+      const isOpen = openId === note.id
+      const isEditing = editingId === note.id
+      return <article class={`hub-note-row ${isOpen ? 'open' : ''}`} key={note.id}>
+        <div class="hub-note-head">
+          <button class="hub-note-toggle" aria-label={isOpen ? 'Collapse note' : 'Expand note'} onClick={() => { setOpenId(isOpen ? null : note.id); setEditingId(null); setDraft(null) }}>{isOpen ? '−' : '+'}</button>
+          <strong>{note.title}</strong>
+          <small>{note.sections?.length || 0} section{note.sections?.length === 1 ? '' : 's'} · {formatDate(note.updated_at)}</small>
+          <div class="row-actions"><button class="inline-action" onClick={() => { setOpenId(note.id); setEditingId(isEditing ? null : note.id); setDraft(isEditing ? null : note) }}>{isEditing ? 'Cancel' : 'Edit'}</button><button class="inline-action" onClick={() => remove(note)}>Delete</button></div>
+        </div>
+        {isOpen && <div class="hub-note-body">
+          {isEditing && draft
+            ? <><input class="hub-note-title-input" value={draft.title} onInput={(event) => setDraft({ ...draft, title: (event.target as HTMLInputElement).value })} />{(draft.sections || []).map((section: any, index: number) => <textarea class="note-editor" key={section.section_key || index} value={section.content} onInput={(event) => setDraft({ ...draft, sections: (draft.sections || []).map((current: any) => current.section_key === section.section_key ? { ...current, content: (event.target as HTMLTextAreaElement).value } : current) })} />)}<div class="row-actions"><button class="primary-action" onClick={save}>Save changes</button><button onClick={() => { setEditingId(null); setDraft(null) }}>Cancel</button></div></>
+            : <div class="hub-note-copy">{(note.sections || []).map((section: any, index: number) => <p key={section.section_key || index}>{section.content}</p>)}</div>}
+        </div>}
+      </article>
+    })}</div> : <p class="muted-copy">No notes yet.</p>}
+    <details class="hub-add-note"><summary>Add a note</summary><form onSubmit={add}><input value={title} onInput={(event) => setTitle((event.target as HTMLInputElement).value)} placeholder="Note title" required /><textarea value={content} onInput={(event) => setContent((event.target as HTMLTextAreaElement).value)} placeholder="What did you learn, decide, or want to keep?" /><div class="row-actions"><button class="primary-action" type="submit">Save note</button></div></form></details>
+    {status && <output class="hub-feedback" aria-live="polite">{status}</output>}
+  </div>
+}
+
+function HubFilesPanel({ files, scope, onChanged }: { files: any[]; scope: Record<string, string>; onChanged: () => void }) {
+  const [status, setStatus] = useState('')
+  const [working, setWorking] = useState('')
+  const upload = async (event: Event) => {
+    const input = event.target as HTMLInputElement
+    const file = input.files?.[0]
+    if (!file) return
+    setStatus('Uploading…')
+    const form = new FormData()
+    form.append('file', file)
+    form.append('metadata', JSON.stringify(scope))
+    try {
+      const res = await fetch('/artifacts', { method: 'POST', body: form })
+      const data: any = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Upload failed')
+      setStatus(''); input.value = ''; onChanged()
+    } catch (error: any) { setStatus(error.message) }
+  }
+  const remove = async (file: any) => {
+    if (!confirm(`Remove ${file.filename}?`)) return
+    setWorking(file.id)
+    try { await api(`/artifacts/${file.id}`, { method: 'DELETE' }); setWorking(''); onChanged() } catch (error: any) { setStatus(error.message); setWorking('') }
+  }
+  return <div class="hub-files">
+    {files.length ? <div class="hub-file-list">{files.map((file: any) => <div class="hub-file-row" key={file.id}><a href={`/artifacts/${file.id}`} target="_blank" rel="noreferrer">{file.filename}</a><small>{file.media_type} · {formatDate(file.created_at)}</small><button class="artifact-remove" disabled={working === file.id} onClick={() => remove(file)}>Remove</button></div>)}</div> : <p class="muted-copy">No files yet.</p>}
+    <label class="upload-btn"><input type="file" onChange={upload} /><span>Upload file</span></label>
+    {status && <output class="hub-feedback" aria-live="polite">{status}</output>}
+  </div>
+}
+
+function LearningPathWorkspace({ threadId, onBack }: { threadId: string; onBack: () => void }) {
+  const path = useData(`/learning/core/threads/${encodeURIComponent(threadId)}/path`)
+  const [selectedStageId, setSelectedStageId] = useState<string | null>(null)
+  const [mode, setMode] = useState<'learn' | 'edit'>('learn')
+  const [evidenceItem, setEvidenceItem] = useState<any>(null)
+  const [evidenceResponse, setEvidenceResponse] = useState('')
+  const [status, setStatus] = useState('')
+  const [title, setTitle] = useState('')
+  const [objective, setObjective] = useState('')
+  const [itemTitle, setItemTitle] = useState('')
+  const [itemType, setItemType] = useState('concept')
+  const [itemDescription, setItemDescription] = useState('')
+  if (path.loading) return <Loading />
+  if (path.error) return <ErrorState message={path.error} />
+  const thread = path.data?.thread
+  const stages = path.data?.stages || []
+  const current = stages.find((stage: any) => stage.id === selectedStageId) || path.data?.current_stage || stages[0]
+  const grouped = ['Understand', 'Study', 'Practice', 'Reflect'].map((group) => ({ group, items: (current?.items || []).filter((item: any) => itemGroup(item.item_type) === group) })).filter((group) => group.items.length)
+  const mutate = async (endpoint: string, options: RequestInit, message: string) => { setStatus(message); try { await api(endpoint, options); setStatus('Saved'); path.reload() } catch (error: any) { setStatus(error.message) } }
+  const startStage = () => current && mutate(`/learning/core/threads/${threadId}/stages/${current.id}/start`, { method: 'POST' }, 'Starting stage…')
+  const verifyStage = () => current && mutate(`/learning/core/threads/${threadId}/stages/${current.id}/verify`, { method: 'POST' }, 'Checking evidence…')
+  const toggleItem = (item: any) => mutate(`/learning/core/threads/${threadId}/stages/${current.id}/items/${item.id}`, { method: 'PATCH', body: JSON.stringify({ status: item.status === 'satisfied' ? 'open' : 'satisfied' }) }, 'Updating proof…')
+  const saveEvidence = async (event: Event) => { event.preventDefault(); if (!evidenceItem || !evidenceResponse.trim()) return; setStatus('Recording evidence…'); try { await api('/learning/core/evidence', { method: 'POST', body: JSON.stringify({ thread_id: threadId, stage_id: current.id, evidence_type: evidenceItem.evidence_type || 'explanation', result: 'recorded', response: evidenceResponse, prompt: evidenceItem.title, score: 1 }) }); await api(`/learning/core/threads/${threadId}/stages/${current.id}/items/${evidenceItem.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'satisfied' }) }); setEvidenceItem(null); setEvidenceResponse(''); setStatus('Evidence recorded'); path.reload() } catch (error: any) { setStatus(error.message) } }
+  const addStage = async (event: Event) => { event.preventDefault(); if (!title.trim()) return; await mutate(`/learning/core/threads/${threadId}/stages`, { method: 'POST', body: JSON.stringify({ title, objective, position: stages.length }) }, 'Adding stage…'); setTitle(''); setObjective('') }
+  const addItem = async (event: Event) => { event.preventDefault(); if (!current?.id || !itemTitle.trim()) return; await mutate(`/learning/core/threads/${threadId}/stages/${current.id}/items`, { method: 'POST', body: JSON.stringify({ title: itemTitle, item_type: itemType, description: itemDescription, position: current.items?.length || 0 }) }, 'Adding work…'); setItemTitle(''); setItemDescription('') }
+  return <div class="learning-path-workspace">
+    <button class="back-link" onClick={onBack}>← Learning Hub</button>
+    <header class="path-header"><div><span class="meta">Learning path · {labelize(thread?.thread_type || 'understand')}</span><h2>{thread?.title}</h2><p>{thread?.guiding_question}</p></div><div class="path-header-actions"><span class={`state state-${thread?.status || 'draft'}`}>{pathStatusLabel(thread?.status)}</span><button class={mode === 'edit' ? 'secondary-action' : 'inline-action'} onClick={() => setMode(mode === 'edit' ? 'learn' : 'edit')}>{mode === 'edit' ? 'Done editing' : 'Edit path'}</button></div></header>
+    <div class="path-mode-note">{mode === 'learn' ? 'Learn mode · follow the next proof, then advance when the evidence is ready.' : 'Edit mode · shape the syllabus. Changes affect the path structure, not your learning evidence.'}</div>
+    <div class="path-layout"><aside class="path-index"><div class="section-title"><span>Syllabus</span><strong>{stages.length} levels</strong></div>{stages.length ? stages.map((stage: any, index: number) => <button class={`path-index-row ${current?.id === stage.id ? 'current' : ''}`} onClick={() => setSelectedStageId(stage.id)}><span>{String(index).padStart(2, '0')}</span><div><strong>{stage.title}</strong><small>{pathStatusLabel(stage.status)} · {stage.progress?.completed || 0}/{stage.progress?.total || 0} proof</small></div></button>) : <p class="muted-copy">Add the first level to give this path a sequence.</p>}</aside>
+      <section class="path-workbench">{current ? <><div class="stage-heading"><div><span class="meta">Level {current.position} · {pathStatusLabel(current.status)}</span><h3>{current.title}</h3><p class="path-objective">{current.objective || 'Define the objective for this level and the proof that will demonstrate it.'}</p></div><div class="stage-progress"><strong>{current.progress?.completed || 0}/{current.progress?.total || 0}</strong><span>required proof</span></div></div>{mode === 'learn' && <div class="next-action"><div><span class="hub-label">Next action</span><strong>{current.next_action?.label || 'Review this level'}</strong><p>{current.status === 'available' ? 'Start here when you are ready to work.' : current.output_description || 'Evidence, not source count, advances the path.'}</p></div><button class="primary-action" disabled={['locked', 'verified', 'waived'].includes(current.status)} onClick={current.status === 'available' ? startStage : current.status === 'ready_to_verify' ? verifyStage : () => { const item = current.items?.find((candidate: any) => candidate.status === 'open' && !['source_role', 'companion'].includes(candidate.item_type)); if (item) setEvidenceItem(item) }}>{current.status === 'available' ? 'Start level' : current.status === 'ready_to_verify' ? 'Verify level' : current.next_action?.label?.startsWith('Complete:') ? 'Record proof' : 'Review'}</button></div>}{(current.sources || []).length > 0 && <section class="stage-block hub-sources-block"><div class="section-title"><span>Sources</span><strong>{current.sources.length} links</strong></div><div class="hub-source-list">{current.sources.map((source: any) => { const artHtml = source.artifacts?.html; const artPdf = source.artifacts?.pdf; return <article class="hub-source-row" key={`${source.stage_id}:${source.recommendation_id}`}><span class={`hub-source-role role-${source.role}`}>{sourceRoleLabel(source.role)}</span><div><strong>{source.video_title || 'Untitled source'}</strong><small>{source.creator || labelize(source.content_type || 'source')} · {pathStatusLabel(source.learning_state || 'inbox')}</small>{source.expected_contribution && <p>{source.expected_contribution}</p>}</div><div class="row-actions">{source.video_url ? <a class="inline-action" href={source.video_url} target="_blank" rel="noreferrer">Original</a> : <span class="muted-copy">No URL</span>}{artHtml && <a class="primary-action" href={`/artifacts/${artHtml.id}`} target="_blank" rel="noreferrer">Read</a>}{artPdf && <a class="inline-action" href={`/artifacts/${artPdf.id}`} target="_blank" rel="noreferrer">PDF</a>}{source.notebook_url && <a class="nblm-link" href={source.notebook_url} target="_blank" rel="noreferrer">NBLM</a>}</div></article> })}</div></section>}{grouped.map(({ group, items }) => <section class="stage-block" key={group}><div class="section-title"><span>{group}</span><strong>{items.length} items</strong></div><div class="stage-items">{items.map((item: any) => <div class={`stage-item-row ${item.status !== 'open' ? 'satisfied' : ''}`} key={item.id}><button class="item-check" aria-label={`${item.status === 'satisfied' ? 'Reopen' : 'Complete'} ${item.title}`} onClick={() => !['source_role', 'companion'].includes(item.item_type) && toggleItem(item)}>{item.status === 'satisfied' ? '✓' : '○'}</button><div><strong>{item.title}</strong><small>{item.description || `${labelize(item.item_type)}${item.required ? ' · required' : ' · optional'}`}</small></div>{mode === 'learn' && item.status === 'open' && !['source_role', 'companion'].includes(item.item_type) && <button class="item-action" onClick={() => setEvidenceItem(item)}>{item.evidence_type ? 'Record proof' : 'Mark done'}</button>}</div>)}</div></section>)}{mode === 'learn' && !grouped.length && <div class="path-empty"><span class="meta">No work defined</span><h3>This level needs a sequence.</h3><p>Switch to Edit path to add concepts, practice, and proof.</p></div>}<section class="stage-block"><div class="section-title"><span>Level notes</span><strong>{current.notes?.length || 0} notes</strong></div><HubNotesPanel notes={current.notes || []} scope={{ stage_id: current.id }} onChanged={path.reload} /></section><section class="stage-block"><div class="section-title"><span>Level files</span><strong>{current.files?.length || 0} files</strong></div><HubFilesPanel files={current.files || []} scope={{ stage_id: current.id }} onChanged={path.reload} /></section></> : <div class="path-empty"><span class="meta">No current level</span><h3>Give this path a sequence.</h3><p>Switch to Edit path to add the first level.</p></div>}</section>
+      <aside class="path-evidence"><div class="section-title"><span>Evidence gate</span><strong>{current.progress?.completed || 0}/{current.progress?.total || 0}</strong></div><p>{current.output_description || thread?.definition_of_done || 'Evidence shows what changed, not how many sources you opened.'}</p><div class="evidence-summary">{(current.items || []).filter((item: any) => item.required && !['source_role', 'companion'].includes(item.item_type)).slice(0, 8).map((item: any) => <div><span>{item.status === 'satisfied' ? '✓' : '○'}</span><strong>{item.title}</strong></div>)}</div><div class="path-next"><span class="meta">Path definition</span><strong>{thread?.definition_of_done || 'Define competence before collecting sources.'}</strong><small>Current level: {current.title}</small></div></aside></div>
+    <section class="path-dossier"><div class="section-title"><span>Path notes</span><strong>{path.data?.notes?.length || 0} notes</strong></div><HubNotesPanel notes={path.data?.notes || []} scope={{ thread_id: threadId }} onChanged={path.reload} /></section>
+    <section class="path-dossier"><div class="section-title"><span>Path files</span><strong>{path.data?.files?.length || 0} files</strong></div><HubFilesPanel files={path.data?.files || []} scope={{ thread_id: threadId }} onChanged={path.reload} /></section>
+    {mode === 'edit' && <div class="path-authoring-group"><details class="path-authoring" open><summary>Add a level</summary><form onSubmit={addStage}><label>Level title<input value={title} onInput={(event) => setTitle((event.target as HTMLInputElement).value)} placeholder="e.g. Level 1 — Foundations" required /></label><label>Objective<textarea value={objective} onInput={(event) => setObjective((event.target as HTMLTextAreaElement).value)} placeholder="What should this level build?" /></label><button class="primary-action" type="submit">Add level</button></form></details><details class="path-authoring" open><summary>Add work to {current?.title}</summary><form onSubmit={addItem}><label>Work item<input value={itemTitle} onInput={(event) => setItemTitle((event.target as HTMLInputElement).value)} placeholder="e.g. Explain stocks and flows from memory" required /></label><label>Type<select value={itemType} onChange={(event) => setItemType((event.target as HTMLSelectElement).value)}><option value="concept">Concept</option><option value="recall_prompt">Recall prompt</option><option value="exercise">Exercise</option><option value="application">Application</option><option value="reflection">Reflection</option><option value="companion">Companion slot</option></select></label><label>Description<textarea value={itemDescription} onInput={(event) => setItemDescription((event.target as HTMLTextAreaElement).value)} placeholder="What does good completion look like?" /></label><button class="primary-action" type="submit">Add work item</button></form></details></div>}
+    {status && <output class="hub-feedback" aria-live="polite">{status}</output>}
+    {evidenceItem && <div class="evidence-sheet"><div class="evidence-sheet-inner"><span class="meta">Record evidence</span><h3>{evidenceItem.title}</h3><p>{evidenceItem.description || 'Write what you can now explain, model, apply, or demonstrate.'}</p><form onSubmit={saveEvidence}><label>Your evidence<textarea autoFocus value={evidenceResponse} onInput={(event) => setEvidenceResponse((event.target as HTMLTextAreaElement).value)} placeholder="Describe what you did or can explain…" required /></label><div class="row-actions"><button type="button" onClick={() => setEvidenceItem(null)}>Cancel</button><button class="primary-action" type="submit">Save evidence</button></div></form></div></div>}
+  </div>
+}
+
+function LearningHubPage() {
+  const hub = useData('/learning/core/hub')
+  const getThreadFromHash = () => {
+    const raw = location.hash.replace(/^#\/?/, '')
+    const match = raw.match(/^learn\/hub\/([^?#]+)/)
+    return match ? decodeURIComponent(match[1]) : null
+  }
+  const [selected, setSelectedState] = useState<string | null>(getThreadFromHash)
+  const [showCreate, setShowCreate] = useState(false)
+  const [title, setTitle] = useState('')
+  const [question, setQuestion] = useState('')
+  const [definition, setDefinition] = useState('')
+  const [depth, setDepth] = useState('deep')
+  const [priorKnowledge, setPriorKnowledge] = useState('')
+  const [useCase, setUseCase] = useState('')
+  const [constraints, setConstraints] = useState('')
+  const [createStatus, setCreateStatus] = useState('')
+
+  useEffect(() => {
+    const onHash = () => {
+      const threadId = getThreadFromHash()
+      setSelectedState(threadId)
+    }
+    addEventListener('hashchange', onHash)
+    return () => removeEventListener('hashchange', onHash)
+  }, [])
+
+  const setSelected = (id: string | null) => {
+    setSelectedState(id)
+    if (id) location.hash = `#/learn/hub/${encodeURIComponent(id)}`
+    else location.hash = '#/learn/hub'
+  }
+
+  const createPath = async (event: Event) => { event.preventDefault(); setCreateStatus('Creating path…'); const brief = [`Depth: ${depth === 'survey' ? 'just enough to understand' : depth === 'solid' ? 'solid working knowledge' : 'deep academic dive'}`, priorKnowledge.trim() ? `Already knows: ${priorKnowledge.trim()}` : '', useCase.trim() ? `Use case: ${useCase.trim()}` : '', constraints.trim() ? `Constraints/preferences: ${constraints.trim()}` : ''].filter(Boolean).join('\n'); try { const result = await api<any>('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title, guiding_question: question, why_now: brief, definition_of_done: definition, thread_type: 'understand', activate: true }) }); setCreateStatus('Path created'); setShowCreate(false); setTitle(''); setQuestion(''); setDefinition(''); setDepth('deep'); setPriorKnowledge(''); setUseCase(''); setConstraints(''); hub.reload(); setSelected(result.id) } catch (error: any) { setCreateStatus(error.message) } }
+  if (selected) return <LearningPathWorkspace threadId={selected} onBack={() => setSelected(null)} />
+  if (hub.loading) return <Loading />
+  if (hub.error) return <ErrorState message={hub.error} />
+  const paths = (hub.data?.paths || []).filter((path: any) => path.status !== 'abandoned')
+  const active = paths.find((path: any) => path.status === 'active')
+  return <div class="learning-hub"><section class="hub-intro"><div><span class="meta">Learning Hub</span><h2>Know what to learn next.</h2><p>Build a deliberate path, then move through it by producing evidence—not by collecting more sources.</p></div><div class="hub-principle"><span>Learning rule</span><strong>Interview first. Freeze the levels. Then attach researched sources.</strong></div></section><div class="hub-toolbar"><span>{paths.length ? `${paths.length} active learning ${paths.length === 1 ? 'path' : 'paths'}` : 'Start with a capability, question, or topic you want to learn deeply.'}</span><button class="primary-action" onClick={() => setShowCreate((open) => !open)}>{showCreate ? 'Close' : 'New learning path'}</button></div>{showCreate && <form class="hub-create hub-interview" onSubmit={createPath}><div class="hub-create-heading"><span class="meta">New learning path</span><h3>Interview the topic before the syllabus.</h3><p>Hermes uses this brief to decide the depth and starting point. After levels exist, source filling must preserve them.</p></div><label>Topic or capability<input value={title} onInput={(event) => setTitle((event.target as HTMLInputElement).value)} placeholder="e.g. Systems Thinking" required /></label><label>How deep should Hermes go?<select value={depth} onChange={(event) => setDepth((event.target as HTMLSelectElement).value)}><option value="deep">Deep academic dive</option><option value="solid">Solid working knowledge</option><option value="survey">Just enough to understand</option></select></label><label>What do you already know?<textarea value={priorKnowledge} onInput={(event) => setPriorKnowledge((event.target as HTMLInputElement).value)} placeholder="Concepts, sources, or levels you already finished." /></label><label>Guiding question<textarea value={question} onInput={(event) => setQuestion((event.target as HTMLInputElement).value)} placeholder="What do I want to understand or be able to do?" required /></label><label>Real use case<textarea value={useCase} onInput={(event) => setUseCase((event.target as HTMLInputElement).value)} placeholder="Where will I apply this? Business, personal systems, policy, relationships…" /></label><label>Constraints or preferences<textarea value={constraints} onInput={(event) => setConstraints((event.target as HTMLInputElement).value)} placeholder="No books, academic sources only, videos preferred, time limits, language…" /></label><label>Definition of competence<textarea value={definition} onInput={(event) => setDefinition((event.target as HTMLInputElement).value)} placeholder="What would prove that I learned it?" required /></label><button class="primary-action" type="submit">Create path</button>{createStatus && <output>{createStatus}</output>}</form>}{active && <section class="hub-current"><div class="hub-section-head"><div><span class="meta">Continue</span><h3>{active.title}</h3><p>{active.guiding_question}</p></div><button class="primary-action" onClick={() => setSelected(active.id)}>Continue →</button></div><div class="hub-current-grid"><div><span class="hub-label">Current level</span><strong>{active.current_stage_title || 'Path setup'}</strong><p>{active.current_stage_status ? pathStatusLabel(active.current_stage_status) : 'Add levels to define the sequence.'}</p></div><div><span class="hub-label">Path progress</span><strong>{active.stage_count ? `${active.completed_stage_count}/${active.stage_count} levels` : 'No levels yet'}</strong><p>Progress comes from evidence.</p></div><div><span class="hub-label">Next move</span><strong>{active.current_stage_status === 'ready_to_verify' ? 'Verify this level' : active.stage_count ? 'Work on the current level' : 'Create levels from the interview'}</strong><p>{active.stage_count ? 'Resume where the proof is missing.' : 'Hermes should create the structure once, then source-fill it.'}</p></div></div></section>}<section class="hub-section"><div class="hub-section-head"><div><span class="meta">Your paths</span><h3>Learning paths</h3></div><span class="hub-count">{paths.length} path{paths.length === 1 ? '' : 's'}</span></div>{paths.length ? <div class="hub-path-list">{paths.map((path: any, index: number) => <article class="hub-path" key={path.id}><div class="hub-path-index">{String(index + 1).padStart(2, '0')}</div><div class="hub-path-main"><div class="hub-path-top"><span class="meta">{labelize(path.thread_type)} · {pathStatusLabel(path.status)}</span><strong>{path.title}</strong></div><p>{path.guiding_question || path.definition_of_done}</p><div class="hub-path-bar"><span style={{ width: `${path.stage_count ? Math.round((path.completed_stage_count / path.stage_count) * 100) : 0}%` }} /></div><small>{path.current_stage_title || 'No current level'} · {path.stage_count ? `${path.completed_stage_count}/${path.stage_count} levels verified` : 'Curriculum not started'}</small></div><div class="hub-path-side"><button class="inline-action" onClick={() => setSelected(path.id)}>{path.status === 'active' ? 'Open' : 'Inspect'}</button><small>{pathStatusLabel(path.status)}</small></div></article>)}</div> : <Empty title="No learning paths yet" body="Create a path from an interview brief, then shape it into levels, outputs, and evidence gates." />}</section><details class="hub-help"><summary>How the Hub works</summary><div class="hub-method-grid"><div><strong>Interview</strong><span>Capture depth, prior knowledge, use case, and constraints before Hermes designs anything.</span></div><div><strong>Level</strong><span>Create the path structure once: objectives, outputs, work, applications, and evidence gates.</span></div><div><strong>Source-fill</strong><span>Keep existing levels and attach researched, verified sources by role.</span></div><div><strong>Verify</strong><span>Advance only after recall, explanation, transfer, artifact, or application evidence.</span></div></div></details></div>
+}
 function compassWeakReason(reason: string) {
   return ({
     not_enough_eligible_candidates: 'Too few candidates survived the quality checks.',
@@ -520,6 +706,8 @@ function QueuePage() {
                 </div>
                 <h3>{item.video_title}</h3>
                 {item.context_brief?.trim() ? <p class="queue-brief">{item.context_brief}</p> : <p>{formatSmartHook(item)}</p>}
+                {item.branch_preflight?.conflict && <div class="queue-warning">Branch conflict: this source is mapped to the pruned branch “{item.branch_preflight.branch_label}”. Do not start it until the mapping is reviewed.</div>}
+                {item.branch_preflight?.status === 'unmapped' && <div class="queue-preflight">Branch match not verified yet.</div>}
                 {item.compass && <div class="queue-compass"><span>Compass · score {Math.round(Number(item.compass.score) * 100)}% · confidence {Math.round(Number(item.compass.confidence) * 100)}%</span>{compassTopFeatures(item.compass.breakdown).length ? <div class="queue-compass-features">{compassTopFeatures(item.compass.breakdown).map(([key, value]) => <span key={key}>{compassFeatureLabel(key)} {Math.round(Number(value) * 100)}%</span>)}</div> : null}</div>}
               </div>
 
@@ -2576,6 +2764,7 @@ function View({ route }: { route: Destination }) {
   if (route.key === 'map.atlas') return <Suspense fallback={<div class="atlas-loading"><div /><span>Preparing spatial canvas…</span></div>}><AtlasPage /></Suspense>
   if (route.key === 'map.deck') return <BranchDeckPage />
   if (route.key === 'map.coverage') return <div class="combined-view"><CoveragePage /><ContradictionsPage /></div>
+  if (route.key === 'learn.hub') return <LearningHubPage />
   if (route.key === 'learn.files') return <ArtifactsPage />
   if (route.key === 'learn.notes') return <NotesPage />
   if (route.key === 'learn.recall') return <RecallPage />

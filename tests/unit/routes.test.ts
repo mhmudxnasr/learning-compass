@@ -122,8 +122,8 @@ test('Compass uses learning balance as a bounded branch signal', () => {
 })
 
 test('the product exposes purposeful distinct destinations', () => {
-  assert.equal(destinations.length, 20)
-  assert.equal(new Set(destinations.map((item) => item.key)).size, 20)
+  assert.equal(destinations.length, 21)
+  assert.equal(new Set(destinations.map((item) => item.key)).size, 21)
   assert.ok(destinations.every((item) => item.title && item.purpose && item.kind))
   assert.equal(destinationForPath('/curate/books')?.endpoint, '/recommendations/books')
   assert.equal(destinationForPath('/settings/system')?.endpoint, '/agent/system')

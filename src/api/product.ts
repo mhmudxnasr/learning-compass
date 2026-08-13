@@ -273,6 +273,20 @@ app.delete('/collections/:id', async (c) => {
   return c.json({ ok: true })
 })
 
+async function hubNotes(db: D1Database, scope: { thread_id?: string; stage_id?: string }) {
+  const rows = scope.thread_id
+    ? await db.prepare(`SELECT * FROM notes WHERE thread_id=? ORDER BY updated_at DESC LIMIT 200`).bind(scope.thread_id).all<any>()
+    : scope.stage_id
+      ? await db.prepare(`SELECT * FROM notes WHERE stage_id=? ORDER BY updated_at DESC LIMIT 200`).bind(scope.stage_id).all<any>()
+      : await db.prepare(`SELECT * FROM notes WHERE thread_id IS NOT NULL OR stage_id IS NOT NULL ORDER BY updated_at DESC LIMIT 200`).all<any>()
+  const notes = rows.results || []
+  if (!notes.length) return []
+  const placeholders = notes.map(() => '?').join(',')
+  const sections = await db.prepare(`SELECT note_id,section_key,label,content,direction,position FROM note_sections WHERE note_id IN (${placeholders}) ORDER BY note_id,position`).bind(...notes.map((note: any) => note.id)).all<any>()
+  const byNote = new Map<string, any[]>()
+  for (const section of sections.results || []) byNote.set(section.note_id, [...(byNote.get(section.note_id) || []), section])
+  return notes.map((note: any) => ({ ...note, sections: byNote.get(note.id) || [] }))
+}
 app.get('/notes', async (c) => {
   const kind = c.req.query('kind')
   const notes = kind ? await c.env.DB.prepare(`SELECT * FROM notes WHERE kind=? ORDER BY updated_at DESC LIMIT 200`).bind(kind).all<any>() : await c.env.DB.prepare(`SELECT * FROM notes ORDER BY updated_at DESC LIMIT 200`).all<any>()
@@ -285,11 +299,28 @@ app.get('/notes', async (c) => {
   const output = rows.map((note) => ({ ...note, sections: byNote.get(note.id) || [] }))
   return c.json({ notes: output })
 })
+app.get('/notes/hub', async (c) => {
+  const threadId = c.req.query('thread_id') || ''
+  const stageId = c.req.query('stage_id') || ''
+  const notes = await hubNotes(c.env.DB, { thread_id: threadId || undefined, stage_id: stageId || undefined })
+  return c.json({ notes })
+})
 app.post('/notes', async (c) => {
   const body = await c.req.json<any>()
   if (!body.title?.trim()) return c.json({ error: 'title required' }, 400)
+  const threadId = String(body.thread_id || '').trim().slice(0, 120) || null
+  const stageId = String(body.stage_id || '').trim().slice(0, 120) || null
+  if (threadId && stageId) return c.json({ error: 'note cannot belong to both a path and a stage' }, 400)
+  if (threadId) {
+    const thread = await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=?`).bind(threadId).first()
+    if (!thread) return c.json({ error: 'thread not found' }, 400)
+  }
+  if (stageId) {
+    const stage = await c.env.DB.prepare(`SELECT id FROM learning_path_stages WHERE id=?`).bind(stageId).first()
+    if (!stage) return c.json({ error: 'stage not found' }, 400)
+  }
   const noteId = body.id || id('note')
-  const statements = [c.env.DB.prepare(`INSERT INTO notes (id,recommendation_id,title,kind,branch_id,source_url,status) VALUES (?,?,?,?,?,?,?)`).bind(noteId, body.recommendation_id || null, body.title.trim(), body.kind || 'note', body.branch_id || null, body.source_url || null, body.status || 'draft')]
+  const statements = [c.env.DB.prepare(`INSERT INTO notes (id,recommendation_id,title,kind,branch_id,source_url,status,thread_id,stage_id) VALUES (?,?,?,?,?,?,?,?,?)`).bind(noteId, body.recommendation_id || null, body.title.trim(), body.kind || 'note', body.branch_id || null, body.source_url || null, body.status || 'draft', threadId, stageId)]
   for (const [index, section] of (body.sections || []).entries()) statements.push(c.env.DB.prepare(`INSERT INTO note_sections (id,note_id,section_key,label,content,direction,position) VALUES (?,?,?,?,?,?,?)`).bind(id('section'), noteId, section.section_key, section.label, section.content || '', section.direction || 'auto', index))
   await c.env.DB.batch(statements)
   return c.json({ ok: true, id: noteId }, 201)

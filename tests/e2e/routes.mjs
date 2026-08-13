@@ -9,7 +9,7 @@ const workspaces = {
   today: ['momentum'],
   curate: ['queue','inbox','collections','archive','books'],
   map: ['atlas','coverage','deck'],
-  learn: ['files','notes','recall','activity'],
+  learn: ['hub','files','notes','recall','activity'],
   insights: ['overview','taste','hermes'],
   settings: ['profile','preferences','data','system'],
 }
@@ -116,7 +116,47 @@ for (const [workspace, views] of Object.entries(workspaces)) {
   }
 }
 
-if (count !== 20) throw new Error(`expected 20 routes, checked ${count}`)
+if (count !== 21) throw new Error(`expected 21 routes, checked ${count}`)
+const hubThread = await requestJson('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Systems Thinking', thread_type: 'understand', guiding_question: 'How do systems create behavior over time?', definition_of_done: 'Explain and apply core systems concepts.', activate: true }) })
+const hubStage = await requestJson(`/learning/core/threads/${hubThread.id}/stages`, { method: 'POST', body: JSON.stringify({ title: 'Level 0 — Orientation', objective: 'Build the map before studying the full theory.', position: 0 }) })
+const hubItem = await requestJson(`/learning/core/threads/${hubThread.id}/stages/${hubStage.id}/items`, { method: 'POST', body: JSON.stringify({ title: 'Explain the map from memory', item_type: 'recall_prompt', evidence_type: 'free_recall', position: 0 }) })
+const hubSourcePush = await requestJson('/recommendations/push', { method: 'POST', body: JSON.stringify([{ id: 'hub_source_e2e', video_title: 'Hub visible source', video_url: 'https://example.com/hub-visible-source', creator: 'E2E', content_type: 'article', status: 'active' }]) })
+const hubSourceId = hubSourcePush.items?.[0]?.id || 'hub_source_e2e'
+await requestJson(`/learning/core/threads/${hubThread.id}/stages/${hubStage.id}/sources`, { method: 'POST', body: JSON.stringify({ recommendation_id: hubSourceId, role: 'foundation', expected_contribution: 'Visible source link for the Hub stage.', position: 0 }) })
+const hubRead = await requestJson('/learning/core/hub')
+if (!hubRead.paths.some((path) => path.id === hubThread.id && path.stage_count === 1)) throw new Error('Learning Hub read model omitted the authored stage')
+await requestJson(`/learning/core/threads/${hubThread.id}/stages/${hubStage.id}/start`, { method: 'POST' })
+await requestJson(`/learning/core/threads/${hubThread.id}/stages/${hubStage.id}/items/${hubItem.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'satisfied' }) })
+const hubPath = await requestJson(`/learning/core/threads/${hubThread.id}/path`)
+if (hubPath.stages[0].progress.completed !== 1 || hubPath.stages[0].status !== 'ready_to_verify') throw new Error('Learning Hub did not derive stage proof progress')
+const hubNote = await requestJson('/notes', { method: 'POST', body: JSON.stringify({ title: 'Path-level reflection', kind: 'note', thread_id: hubThread.id, sections: [{ section_key: 'body', label: 'Notes', content: 'The map comes before the theory.', direction: 'auto' }] }) })
+const hubStageNote = await requestJson('/notes', { method: 'POST', body: JSON.stringify({ title: 'Stage-level checkpoint', kind: 'note', stage_id: hubStage.id, sections: [{ section_key: 'body', label: 'Notes', content: 'Orientation done.', direction: 'auto' }] }) })
+const hubNotes = await requestJson(`/notes/hub?thread_id=${hubThread.id}`)
+if (!hubNotes.notes.some((note) => note.id === hubNote.id) || hubNotes.notes.some((note) => note.id === hubStageNote.id)) throw new Error('hub path notes read model is wrong')
+const hubStageNotes = await requestJson(`/notes/hub?stage_id=${hubStage.id}`)
+if (!hubStageNotes.notes.some((note) => note.id === hubStageNote.id) || hubStageNotes.notes.some((note) => note.id === hubNote.id)) throw new Error('hub stage notes read model is wrong')
+const hubUpload = new FormData()
+hubUpload.append('file', new Blob(['hub file for the path'], { type: 'text/plain' }), 'hub-path.txt')
+hubUpload.append('metadata', JSON.stringify({ thread_id: hubThread.id }))
+const hubUploadResponse = await fetch(`${baseUrl}/artifacts`, { method: 'POST', body: hubUpload })
+const hubUploadBody = await hubUploadResponse.json()
+if (!hubUploadResponse.ok) throw new Error(`hub file upload failed: ${JSON.stringify(hubUploadBody)}`)
+const hubFiles = await requestJson(`/artifacts/hub?thread_id=${hubThread.id}`)
+if (!hubFiles.files.some((file) => file.id === hubUploadBody.id && file.filename === 'hub-path.txt')) throw new Error('hub files read model omitted the uploaded file')
+const globalArtifacts = await requestJson('/artifacts')
+if (globalArtifacts.artifacts.some((file) => file.id === hubUploadBody.id)) throw new Error('global files list leaked a hub-owned file')
+const hubPathLoaded = await requestJson(`/learning/core/threads/${hubThread.id}/path`)
+if (!hubPathLoaded.notes.some((note) => note.id === hubNote.id) || !hubPathLoaded.files.some((file) => file.id === hubUploadBody.id)) throw new Error('path read model omitted path-level notes or files')
+if (!hubPathLoaded.stages[0].notes.some((note) => note.id === hubStageNote.id)) throw new Error('path read model omitted stage-level notes')
+await requestJson(`/learning/core/threads/${hubThread.id}/stages/${hubStage.id}/verify`, { method: 'POST' })
+await page.goto(`${baseUrl}/#/learn/hub`, { waitUntil: 'networkidle' })
+await page.locator('.learning-hub').waitFor({ state: 'visible' })
+if (!(await page.locator('.hub-path').filter({ hasText: 'Systems Thinking' }).count())) throw new Error('Learning Hub did not render the authored path')
+await page.locator('.hub-path').filter({ hasText: 'Systems Thinking' }).getByRole('button', { name: 'Open' }).click()
+await page.locator('.learning-path-workspace').waitFor({ state: 'visible' })
+if (!(await page.locator('.path-index-row').filter({ hasText: 'Level 0' }).count())) throw new Error('Learning Hub did not render the authored stage workspace')
+if (!(await page.locator('.path-mode-note').filter({ hasText: 'Learn mode' }).count())) throw new Error('Learning Hub did not render Learn mode')
+if (!(await page.locator('.hub-source-row').filter({ hasText: 'Hub visible source' }).getByRole('link', { name: 'Open' }).count())) throw new Error('Learning Hub did not render attached source links')
 const [capabilities, systemInventory] = await Promise.all([
   requestJson('/agent/capabilities'),
   requestJson('/agent/system'),
@@ -147,7 +187,7 @@ const curateNav = await page.locator('.subnav button').allTextContents()
 if (curateNav[0]?.trim() !== 'Queue' || curateNav[1]?.trim() !== 'Inbox') throw new Error('Curate navigation order or Inbox label is incorrect')
 await page.goto(`${baseUrl}/#/learn/notes`, { waitUntil: 'networkidle' })
 const learnNav = await page.locator('.subnav button').allTextContents()
-if (learnNav[0]?.trim() !== 'Files' || learnNav.includes('NotebookLM') || learnNav.includes('Reflections')) throw new Error('Learn navigation order is incorrect')
+if (learnNav[0]?.trim() !== 'Hub' || learnNav[1]?.trim() !== 'Files' || learnNav.includes('NotebookLM') || learnNav.includes('Reflections')) throw new Error('Learn navigation order is incorrect')
 const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards, momentum, balance] = await Promise.all([
   fetch(`${baseUrl}/settings`).then((response) => response.json()),
   fetch(`${baseUrl}/manifest.json`).then((response) => response.json()),

@@ -10,7 +10,8 @@ The product is single-user, English-first, supports bilingual English/Egyptian-A
 
 ## Product Model
 
-- **Learning Threads:** the purpose-first object for one question, decision, build, or capability. A Thread stores why it matters now, its definition of done, evidence requirements, source roles, final synthesis, and verified state. Sources remain reusable inputs; they are never treated as proof of learning by themselves.
+- **Learning Threads:** the purpose-first object for one question, decision, build, or capability. A Thread stores why it matters now, the Hub interview brief when relevant, its definition of done, evidence requirements, source roles, final synthesis, and verified state. Sources remain reusable inputs; they are never treated as proof of learning by themselves.
+- **Learning Hub:** Learn → Hub is the academic path surface over Learning Threads. Deep topic paths start with an interview brief — desired depth, prior knowledge, use case, constraints/source preferences, guiding question, and proof of competence — before levels are created. Relational stages, stage items, reusable source-role attachments, and stage-aware evidence live in D1. Once levels exist, source-fill work preserves the path structure and only researches, attaches, and verifies sources by stage role. Stage progress is derived from evidence; opening or finishing a source never advances a stage by itself. Queue remains the five-item active source shelf under Curate.
 - **Learning Units:** atomic claims, concepts, methods, examples, questions, applications, and counterclaims with exact source anchors, user synthesis, stance, confidence, and typed relations. Notes are readable projections; Atlas remains the navigation taxonomy.
 - **Verified mastery:** taste rating is separate from `retain`, `apply`, `reference`, or `drop`. Mastery is derived only from retrieval, explanation, transfer, decision, artifact, or application evidence.
 - **Recall scheduling:** approved cards use reference FSRS-6 through the official `ts-fsrs` implementation with persisted, versioned card state. Failed reviews never advance mastery.
@@ -185,6 +186,11 @@ Apply in order:
 26. `migrations/0024_memory_context.sql`
 27. `migrations/0025_compass_contextual_reranking.sql`
 28. `migrations/0026_semantic_retrieval.sql`
+29. `migrations/0027_feedback_observability.sql`
+30. `migrations/0027_recommendation_quality_enhancements.sql`
+31. `migrations/0028_compass_thompson_pessimistic_prior.sql`
+32. `migrations/0029_learning_hub.sql`
+33. `migrations/0030_hub_notes_files.sql`
 
 New schema changes require a new numbered idempotent migration. Never hide schema mutation inside cron or request handlers.
 
