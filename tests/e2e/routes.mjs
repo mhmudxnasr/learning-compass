@@ -1,20 +1,35 @@
-import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const workspaces = {
-  today: ['momentum'],
-  curate: ['queue','inbox','collections','archive','books'],
-  map: ['atlas','coverage','deck'],
-  learn: ['hub','files','notes','recall','activity'],
-  insights: ['overview','taste','hermes'],
-  settings: ['profile','preferences','data','system'],
-}
+const { chromium } = createRequire(import.meta.url)('playwright')
 
-const wrangler = './node_modules/.bin/wrangler'
+const roots = ['home', 'library', 'learn', 'map', 'settings']
+const viewRoutes = [
+  { root: 'home', view: 'home', path: '/home', expected: '.folio-home-workspace' },
+  { root: 'library', view: 'queue', path: '/library', expected: '.folio-queue-view' },
+  { root: 'library', view: 'inbox', path: '/library/inbox', expected: '.folio-inbox-view' },
+  { root: 'library', view: 'all', path: '/library/all', expected: '.folio-all-view' },
+  { root: 'library', view: 'files', path: '/library/files', expected: '.folio-files-view' },
+  { root: 'library', view: 'books', path: '/library/books', expected: '.folio-books-view' },
+  { root: 'library', view: 'collections', path: '/library/collections', expected: '.folio-collections-view' },
+  { root: 'library', view: 'archive', path: '/library/archive', expected: '.folio-archive-view' },
+  { root: 'learn', view: 'paths', path: '/learn', expected: '.folio-paths' },
+  { root: 'learn', view: 'notes', path: '/learn/notes', expected: '.folio-notes' },
+  { root: 'learn', view: 'recall', path: '/learn/recall', expected: '.folio-recall' },
+  { root: 'map', view: 'atlas', path: '/map', expected: '.atlas-stage' },
+  { root: 'map', view: 'branches', path: '/map/branches', expected: '.branch-desk' },
+  { root: 'map', view: 'balance', path: '/map/balance', expected: '.map-balance-view' },
+  { root: 'settings', view: 'profile', path: '/settings', expected: '.profile-settings-page' },
+  { root: 'settings', view: 'preferences', path: '/settings/preferences', expected: '.settings-page' },
+  { root: 'settings', view: 'data', path: '/settings/data', expected: '.data-settings-page' },
+  { root: 'settings', view: 'system', path: '/settings/system', expected: '.system-console' },
+]
+
+const wrangler = process.env.WRANGLER_BIN || 'wrangler'
 const persistDir = mkdtempSync(join(tmpdir(), 'learning-compass-e2e-'))
 const preContextBriefSchema = join(persistDir, 'schema-before-context-brief.sql')
 writeFileSync(preContextBriefSchema, readFileSync('schema.sql', 'utf8').replace('  context_brief TEXT,\n', ''))
@@ -88,37 +103,73 @@ const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
 page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
 
+await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
+const rootHrefs = await page.locator('.root-rail a').evaluateAll((links) => [...new Set(links.map((link) => link.getAttribute('href')))])
+if (rootHrefs.length !== roots.length || roots.some((root) => !rootHrefs.includes(`#/${root}`))) throw new Error(`root rail does not expose exactly the five stable roots: ${rootHrefs.join(', ')}`)
+if (await page.locator('.root-rail nav a').count() !== 4) throw new Error('root rail primary navigation must contain Home, Library, Learn, and Map')
+if (await page.locator('.root-rail nav a[href="#/settings"]').count()) throw new Error('Settings must remain at the bottom of the root rail')
+
 let count = 0
-for (const [workspace, views] of Object.entries(workspaces)) {
-  for (const view of views) {
-    const before = errors.length
-    await page.goto(`${baseUrl}/#/${workspace}/${view}`, { waitUntil: 'networkidle' })
-    if (!(await page.locator('.orbit-bar').count())) throw new Error(`${workspace}/${view}: missing the learning-loop ribbon`)
-    if (await page.locator('.rail').count()) throw new Error(`${workspace}/${view}: rendered the retired sidebar shell`)
-    const heading = await page.locator('.page-head h1').textContent()
-    if (!heading?.trim()) throw new Error(`${workspace}/${view}: missing heading`)
-    if (errors.length !== before) throw new Error(`${workspace}/${view}: ${errors.at(-1)}`)
-    if (await page.locator('.error-state').count()) throw new Error(`${workspace}/${view}: rendered an API error state`)
-    const body = await page.locator('.page-content').innerText()
-    if (/undefined|NaN/.test(body)) throw new Error(`${workspace}/${view}: leaked undefined/NaN`)
-    if (workspace === 'curate' && view === 'archive') {
-      await page.locator('.archive-rss').waitFor({ state: 'attached' })
-    }
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
-    if (overflow > 2) throw new Error(`${workspace}/${view}: horizontal overflow ${overflow}px`)
-    if (workspace === 'today' && view === 'momentum') {
-      const screenshot = await page.screenshot({ path: join(persistDir, 'momentum-desktop.png') })
-      if (!screenshot.length) throw new Error('desktop visual smoke screenshot was empty')
-    }
-    if (workspace === 'map' && view === 'deck') {
-      await page.locator('.branch-desk').waitFor({ state: 'visible', timeout: 15000 })
-      if (await page.locator('.deck-card').count()) throw new Error('map/deck still renders the old swipe card')
-    }
-    count++
+for (const route of viewRoutes) {
+  const before = errors.length
+  await page.goto(`${baseUrl}/#${route.path}`, { waitUntil: 'networkidle' })
+  await page.locator('.studio-shell').waitFor({ state: 'visible', timeout: 15000 })
+  if (!(await page.locator(`.studio-shell[data-root="${route.root}"]`).count())) throw new Error(`${route.path}: wrong root shell`)
+  for (const selector of ['.root-rail', '.context-pane', '.workspace-canvas']) {
+    if (await page.locator(selector).count() !== 1) throw new Error(`${route.path}: missing exactly one ${selector}`)
   }
+  await page.locator(route.expected).waitFor({ state: 'attached', timeout: 15000 })
+  for (const selector of ['.orbit-bar', '.page-head', '.subnav', '.rail', '.app-shell', '.main']) {
+    if (await page.locator(selector).count()) throw new Error(`${route.path}: rendered retired frontend selector ${selector}`)
+  }
+  const headings = page.locator('h1')
+  if (await headings.count() !== 1) throw new Error(`${route.path}: expected exactly one h1, found ${await headings.count()}`)
+  if (!(await headings.first().textContent())?.trim()) throw new Error(`${route.path}: h1 is empty`)
+  const contextHrefs = await page.locator('.context-pane .view-list a').evaluateAll((links) => links.map((link) => link.getAttribute('href')))
+  if (!contextHrefs.includes(`#${route.path}`)) throw new Error(`${route.path}: context pane does not preserve the active view URL`)
+  if (errors.length !== before) throw new Error(`${route.path}: ${errors.at(-1)}`)
+  if (await page.locator('.error-state').count()) throw new Error(`${route.path}: rendered an API error state`)
+  const body = await page.locator('.workspace-canvas').innerText()
+  if (/undefined|NaN/.test(body)) throw new Error(`${route.path}: leaked undefined/NaN`)
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  if (overflow > 2) throw new Error(`${route.path}: horizontal overflow ${overflow}px`)
+  count++
 }
 
-if (count !== 21) throw new Error(`expected 21 routes, checked ${count}`)
+if (count !== 18) throw new Error(`expected 18 view routes, checked ${count}`)
+
+await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
+const desktopScreenshot = await page.screenshot({ path: join(persistDir, 'home-desktop.png') })
+if (!desktopScreenshot.length) throw new Error('desktop visual smoke screenshot was empty')
+await page.locator('.command-search').click()
+await page.locator('.search-dialog[role="dialog"]').waitFor({ state: 'visible' })
+if (!(await page.locator('#search-query').isVisible())) throw new Error('global Search did not open its command dialog')
+await page.keyboard.press('Escape')
+if (await page.locator('.search-dialog[role="dialog"]').count()) throw new Error('Search dialog did not close on Escape')
+await page.locator('.capture-button').click()
+await page.locator('.capture-dialog[role="dialog"]').waitFor({ state: 'visible' })
+if (!(await page.getByRole('heading', { name: 'Put it in the Inbox.' }).isVisible())) throw new Error('global Capture did not open its Inbox dialog')
+if (!(await page.locator('.capture-dialog textarea[placeholder*="Paste a URL"]').isVisible())) throw new Error('Capture dialog is missing its URL/text field')
+await page.keyboard.press('Escape')
+if (await page.locator('.capture-dialog[role="dialog"]').count()) throw new Error('Capture dialog did not close on Escape')
+
+const legacyAliases = [
+  { path: '/today/briefing', root: 'home' },
+  { path: '/curate/queue', root: 'library' },
+  { path: '/curate/inbox', root: 'library' },
+  { path: '/learn/hub', root: 'learn' },
+  { path: '/map/deck', root: 'map' },
+  { path: '/map/coverage', root: 'map' },
+  { path: '/settings/learning', root: 'settings' },
+]
+for (const alias of legacyAliases) {
+  await page.goto(`${baseUrl}/#${alias.path}`, { waitUntil: 'networkidle' })
+  if (!(await page.locator(`.studio-shell[data-root="${alias.root}"]`).count())) throw new Error(`${alias.path}: legacy alias did not recover into the right workspace`)
+  if (!(await page.locator('.route-notice').count()) || (await page.locator('.route-warning').count())) throw new Error(`${alias.path}: legacy alias did not announce purposeful recovery`)
+  if (await page.locator('.orbit-bar, .page-head, .subnav, .rail').count()) throw new Error(`${alias.path}: legacy alias rendered the retired shell`)
+}
+await page.goto(`${baseUrl}/#/not-a-real-destination`, { waitUntil: 'networkidle' })
+if (await page.locator('.route-warning[role="alert"]').count() !== 1) throw new Error('unknown route did not render purposeful recovery')
 const hubThread = await requestJson('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Systems Thinking', thread_type: 'understand', guiding_question: 'How do systems create behavior over time?', definition_of_done: 'Explain and apply core systems concepts.', activate: true }) })
 const hubStage = await requestJson(`/learning/core/threads/${hubThread.id}/stages`, { method: 'POST', body: JSON.stringify({ title: 'Level 0 — Orientation', objective: 'Build the map before studying the full theory.', position: 0 }) })
 const hubItem = await requestJson(`/learning/core/threads/${hubThread.id}/stages/${hubStage.id}/items`, { method: 'POST', body: JSON.stringify({ title: 'Explain the map from memory', item_type: 'recall_prompt', evidence_type: 'free_recall', position: 0 }) })
@@ -151,15 +202,16 @@ const hubPathLoaded = await requestJson(`/learning/core/threads/${hubThread.id}/
 if (!hubPathLoaded.notes.some((note) => note.id === hubNote.id) || !hubPathLoaded.files.some((file) => file.id === hubUploadBody.id)) throw new Error('path read model omitted path-level notes or files')
 if (!hubPathLoaded.stages[0].notes.some((note) => note.id === hubStageNote.id)) throw new Error('path read model omitted stage-level notes')
 await requestJson(`/learning/core/threads/${hubThread.id}/stages/${hubStage.id}/verify`, { method: 'POST' })
-await page.goto(`${baseUrl}/#/learn/hub`, { waitUntil: 'networkidle' })
-await page.locator('.learning-hub').waitFor({ state: 'visible' })
-if (!(await page.locator('.hub-path').filter({ hasText: 'Systems Thinking' }).count())) throw new Error('Learning Hub did not render the authored path')
-await page.locator('.hub-path').filter({ hasText: 'Systems Thinking' }).getByRole('button', { name: 'Open' }).click()
-await page.locator('.learning-path-workspace').waitFor({ state: 'visible' })
-if (!(await page.locator('.path-index-row').filter({ hasText: 'Level 0' }).count())) throw new Error('Learning Hub did not render the authored stage workspace')
-if (await page.locator('.main-focus .page-head').count()) throw new Error('focused Learning Hub repeated the workspace header')
-if (!(await page.getByRole('button', { name: 'All paths' }).count())) throw new Error('focused Learning Hub omitted its compact return action')
-if (!(await page.locator('.item-source-actions').count())) throw new Error('Learning Hub did not render inline source actions')
+await page.goto(`${baseUrl}/#/learn`, { waitUntil: 'networkidle' })
+await page.locator('.folio-paths').waitFor({ state: 'visible' })
+if (!(await page.getByRole('link', { name: 'Open learning path Systems Thinking' }).count())) throw new Error('Learn Paths did not render the authored path')
+await page.getByRole('link', { name: 'Open learning path Systems Thinking' }).click()
+await page.locator('.folio-thread').waitFor({ state: 'visible' })
+if (!(await page.locator('.folio-stage-row').filter({ hasText: 'Level 0' }).count())) throw new Error('Learn Thread did not render the authored stage workspace')
+if (!page.url().includes(`#/learn/thread/${hubThread.id}`) || await page.locator('.folio-thread-inspector').count() !== 1) throw new Error('typed Thread route did not preserve identity or its brief inspector')
+if (await page.locator('.orbit-bar, .page-head, .subnav, .main-focus').count()) throw new Error('focused Learning Thread rendered retired shell selectors')
+if (!(await page.getByRole('link', { name: 'Back to learning paths' }).count())) throw new Error('focused Learning Thread omitted its compact return action')
+if (!(await page.locator('.folio-source-actions').count())) throw new Error('Learn Thread did not render inline source actions')
 const [capabilities, systemInventory] = await Promise.all([
   requestJson('/agent/capabilities'),
   requestJson('/agent/system'),
@@ -170,27 +222,19 @@ if (!Array.isArray(systemInventory.on_demand_only) || !systemInventory.storage?.
 await page.goto(`${baseUrl}/#/settings/system`, { waitUntil: 'networkidle' })
 await page.locator('.system-console').waitFor({ state: 'visible', timeout: 15000 })
 if (await page.locator('.api-operation-list article').count() !== capabilities.capabilities.length) throw new Error('System page does not expose every allow-listed API operation')
-await page.getByPlaceholder('Search path or capability').fill('schedule')
+await page.getByLabel('Search path or capability').fill('schedule')
 if (await page.locator('.api-operation-list article').count() < 1) throw new Error('System API search did not return matching operations')
-await page.getByPlaceholder('Search path or capability').fill('')
-await page.goto(`${baseUrl}/#/settings/preferences`, { waitUntil: 'networkidle' })
-await page.goto(`${baseUrl}/#/settings/profile`, { waitUntil: 'networkidle' })
-await page.locator('.profile-overview').waitFor({ state: 'visible' })
-await page.getByRole('button', { name: 'Open sections' }).click()
-const profileBody = await page.locator('.page-content').innerText()
-for (const value of ['Explore your model', 'Deep systems thinking', 'Profile rendering fixture', 'Reaction style', 'Patterns & heuristics', 'Profile activity', 'Feed sources', 'Statistics & system', 'Creator history', 'Taste affinities', 'Your reflections', 'Rating history']) {
+await page.getByLabel('Search path or capability').fill('')
+await page.goto(`${baseUrl}/#/settings`, { waitUntil: 'networkidle' })
+await page.locator('.profile-settings-page').waitFor({ state: 'visible' })
+const profileBody = await page.locator('.workspace-canvas').innerText()
+for (const value of ['Profile rendering fixture', 'Deep systems thinking', 'Reaction style', 'Priorities', 'Mastered knowledge', 'Exclusions', 'Learned patterns', 'Creator history', 'Taste affinities', 'Recent reflections', 'Recent ratings']) {
   if (!profileBody.toLowerCase().includes(value.toLowerCase())) throw new Error(`profile page is missing rendered value or section: ${value}`)
 }
 if (profileBody.includes('Priority topics configured.')) throw new Error('profile page still renders the fake priority placeholder')
-if (profileBody.includes('{"malformed":') || profileBody.includes('JSON')) throw new Error('profile page exposed raw JSON in its normal view')
+if (profileBody.includes('{"malformed":')) throw new Error('profile page exposed raw JSON in its normal view')
 if (await page.locator('.profile-tag-list').count() < 1) throw new Error('profile page did not render visual topic tags')
-if (await page.locator('.profile-page .profile-record').count() < 1) throw new Error('profile records did not render')
-await page.goto(`${baseUrl}/#/curate/queue`, { waitUntil: 'networkidle' })
-const curateNav = await page.locator('.subnav button').allTextContents()
-if (curateNav[0]?.trim() !== 'Queue' || curateNav[1]?.trim() !== 'Inbox') throw new Error('Curate navigation order or Inbox label is incorrect')
-await page.goto(`${baseUrl}/#/learn/notes`, { waitUntil: 'networkidle' })
-const learnNav = await page.locator('.subnav button').allTextContents()
-if (learnNav[0]?.trim() !== 'Paths' || learnNav[1]?.trim() !== 'Library' || learnNav.includes('NotebookLM') || learnNav.includes('Reflections')) throw new Error('Learn navigation order is incorrect')
+if (await page.locator('.profile-settings-page .profile-record').count() < 1) throw new Error('profile records did not render')
 const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards, momentum, balance] = await Promise.all([
   fetch(`${baseUrl}/settings`).then((response) => response.json()),
   fetch(`${baseUrl}/manifest.json`).then((response) => response.json()),
@@ -212,26 +256,27 @@ if (!Array.isArray(balance.branches) || balance.window_days !== 90 || !balance.p
 if (!Array.isArray(proposals.proposals)) throw new Error('feedback proposal contract is invalid')
 if (!Array.isArray(cards.cards)) throw new Error('SRS card management contract is invalid')
 if (!Array.isArray(momentum.active_items) || !Array.isArray(momentum.artifacts) || !momentum.momentum || !momentum.insight || !momentum.next_action_detail || !Array.isArray(momentum.recent_wins)) throw new Error('Momentum workspace contract is invalid')
-await page.goto(`${baseUrl}/#/today/momentum`, { waitUntil: 'networkidle' })
-await page.locator('.focus-desk').waitFor({ state: 'visible', timeout: 15000 })
-const momentumBody = await page.locator('.page-content').innerText()
-for (const value of ['Queue', 'Focus desk']) {
-  if (!momentumBody.toLowerCase().includes(value.toLowerCase())) throw new Error(`Momentum is missing ${value}: ${momentumBody}`)
+if (balance.branches?.[0]?.id) {
+  const branchId = encodeURIComponent(String(balance.branches[0].id))
+  await page.goto(`${baseUrl}/#/map/branch/${branchId}`, { waitUntil: 'networkidle' })
+  if (await page.locator('.object-inspector').count() !== 1 || !(await page.locator('.inspector-route').innerText()).includes(`/map/branch/${balance.branches[0].id}`)) throw new Error('typed map branch route did not open its inspector plumbing')
 }
-if (await page.locator('.focus-desk').count() !== 1) throw new Error('Momentum must expose exactly one focus desk')
-if (await page.locator('.momentum-pulse').count()) throw new Error('Momentum must not surface the old streak/date strip')
-if (await page.locator('.queue-manifest').count()) throw new Error('Momentum must not duplicate the Queue or dump every file inline')
+await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
+await page.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout: 15000 })
+const homeBody = await page.locator('.workspace-canvas').innerText()
+for (const value of ['Current source', 'Active Thread', 'Single next action', 'Due recall', 'Capture signal']) {
+  if (!homeBody.toLowerCase().includes(value.toLowerCase())) throw new Error(`Home is missing ${value}: ${homeBody}`)
+}
+if (await page.locator('.folio-home-focus').count() !== 1) throw new Error('Home must expose exactly one current-source focus')
+if (await page.locator('.folio-home-capture-signal').count() !== 1) throw new Error('Home must expose its capture signal')
 
-await page.goto(`${baseUrl}/#/learn/files`, { waitUntil: 'networkidle' })
+await page.goto(`${baseUrl}/#/library/files`, { waitUntil: 'networkidle' })
 if (artifacts.artifacts.length === 0) {
   await page.locator('.empty-state').waitFor({ state: 'visible', timeout: 15000 })
 } else {
-  await page.locator('.artifact-library').waitFor({ state: 'visible', timeout: 15000 })
-  if (!(await page.locator('.artifact-library').innerText()).includes('Reading files and companions stay together.')) throw new Error('files page is missing the library header')
-  const recentCards = await page.locator('.artifact-card').count()
-  if (recentCards > 5) throw new Error(`files recent shelf must cap at 5 cards, got ${recentCards}`)
-  const filesToggle = page.locator('.artifact-archive-toggle')
-  if (await filesToggle.count() === 1 && !(await filesToggle.innerText()).includes('Show all files')) throw new Error('files archive is not collapsed behind a toggle')
+  await page.locator('.folio-files-view').waitFor({ state: 'visible', timeout: 15000 })
+  if (!(await page.locator('.folio-files-view').innerText()).includes('Generated companions')) throw new Error('Files view is missing its library header')
+  if (await page.locator('.folio-file-record').count() < 1) throw new Error('Files view did not render the artifact groups')
 }
 
 const captured = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hermes-e2e', title: 'Hermes automation test' }) })
@@ -240,9 +285,12 @@ if (!preRecord.item) throw new Error('source record API did not return the captu
 const thread = await requestJson('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Test a decision with evidence', thread_type: 'decide', guiding_question: 'Should this mechanism be used?', definition_of_done: 'Record a source-backed decision and synthesis.', activate: true }) })
 await requestJson(`/capture/${captured.id}/triage`, { method: 'POST', body: JSON.stringify({ action: 'queue', thread_id: thread.id }) })
 await requestJson(`/learning/core/threads/${thread.id}/sources`, { method: 'POST', body: JSON.stringify({ recommendation_id: captured.id, role: 'primary', expected_contribution: 'Supply the mechanism and its limits.' }) })
-await page.goto(`${baseUrl}/#/learn/notes?source=${captured.id}`, { waitUntil: 'networkidle' })
-await page.locator('.source-record-page').waitFor({ state: 'visible', timeout: 15000 })
-if (!await page.getByRole('heading', { name: 'My Feedback' }).isVisible()) throw new Error('source record is missing feedback section')
+await page.goto(`${baseUrl}/#/library/source/${encodeURIComponent(captured.id)}`, { waitUntil: 'networkidle' })
+await page.locator('.folio-object-view').waitFor({ state: 'visible', timeout: 15000 })
+if (!(await page.getByRole('heading', { name: 'Source access' }).isVisible())) throw new Error('typed source route is missing source access')
+if (await page.locator('.object-inspector').count() !== 1 || !(await page.locator('.inspector-route').innerText()).includes(`/library/source/${captured.id}`)) throw new Error('typed source route did not open its inspector plumbing')
+await page.goto(`${baseUrl}/#/learn/notes?source=${encodeURIComponent(captured.id)}`, { waitUntil: 'networkidle' })
+if (await page.locator('.folio-object-view').count() !== 1 || !(await page.locator('.inspector-route').innerText()).includes(`/library/source/${captured.id}`)) throw new Error('legacy source link did not preserve source identity')
 const started = await requestJson('/sessions/start', { method: 'POST', body: JSON.stringify({ recommendation_id: captured.id, thread_id: thread.id, target_kind: 'original' }) })
 const returned = await requestJson(`/sessions/${started.session_id}/return`, { method: 'POST', body: JSON.stringify({ reflection: 'The mechanism is useful and I will apply it.', rating: 7, disposition: 'apply', complete: true, auto_enqueue: true }) })
 if (returned.status !== 'completed' || returned.disposition !== 'apply' || !returned.reflection_note_id || !returned.recall_eligible || !returned.consolidation?.id) throw new Error('explicit application disposition did not start consolidation')
@@ -293,10 +341,11 @@ if (verifiedThread.status !== 'verified') throw new Error('evidence-backed Threa
 await page.goto(`${baseUrl}/#/learn/notes`, { waitUntil: 'networkidle' })
 await page.getByRole('heading', { name: 'Hermes source note' }).waitFor({ state: 'visible', timeout: 15000 })
 if (await page.getByText('Handwritten margin note').count()) throw new Error('Notes library leaked personal reflection content into the extracted library')
-await page.goto(`${baseUrl}/#/learn/notes?note=e2e_source_note`, { waitUntil: 'networkidle' })
-await page.locator('.note-document').waitFor({ state: 'visible', timeout: 15000 })
+await page.goto(`${baseUrl}/#/learn/note/e2e_source_note`, { waitUntil: 'networkidle' })
+await page.locator('.folio-note-document').waitFor({ state: 'visible', timeout: 15000 })
 await page.getByRole('heading', { name: 'Foundation' }).waitFor({ state: 'visible', timeout: 15000 })
-if (await page.locator('.note-sidebar a[href*="/learn/notes?source="]').count() !== 0) throw new Error('note reader must not show a source-context link')
+if (await page.locator('.folio-note-meta a').count() !== 1) throw new Error('typed note route is missing its source context link')
+if (!(await page.locator('.folio-note-meta a').getAttribute('href'))?.includes('#/library/source/')) throw new Error('note source context did not resolve to the typed source route')
 const draft = (await requestJson('/srs/drafts')).drafts.find((item) => item.id)
 if (!draft || draft.status !== 'draft') throw new Error('rating 7 did not create an editable card draft')
 await requestJson(`/srs/drafts/${draft.id}/approve`, { method: 'POST' })
@@ -322,23 +371,24 @@ if (!atomicRecord.notes.some((note) => note.kind === 'reflection' && note.sectio
 const atomicStructuredFeedback = JSON.parse(atomicRecord.item.source_metadata_json || '{}').learning_feedback
 if (atomicStructuredFeedback?.score !== 8 || atomicStructuredFeedback?.effort !== 'deep' || atomicStructuredFeedback?.length_minutes !== 45 || atomicStructuredFeedback?.expected !== 'A useful mechanism.' || !atomicStructuredFeedback?.reason_tags?.includes('revisit')) throw new Error('structured feedback was not preserved on the source record')
 await page.setViewportSize({ width: 390, height: 844 })
-await page.goto(`${baseUrl}/#/today/momentum`, { waitUntil: 'networkidle' })
-if (!(await page.locator('.mobile-nav').isVisible())) throw new Error('mobile primary navigation is not visible')
-if (await page.locator('.rail').isVisible()) throw new Error('desktop rail remains visible on mobile')
+await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
+if (!(await page.locator('.mobile-dock').isVisible())) throw new Error('mobile primary navigation is not visible')
+if (await page.locator('.root-rail').isVisible()) throw new Error('desktop root rail remains visible on mobile')
+const mobileRootHrefs = await page.locator('.mobile-dock a').evaluateAll((links) => [...new Set(links.map((link) => link.getAttribute('href')))])
+if (mobileRootHrefs.length !== roots.length || roots.some((root) => !mobileRootHrefs.includes(`#/${root}`))) throw new Error('mobile dock does not expose the five stable roots')
+if ((await page.locator('.context-pane').getAttribute('aria-hidden')) !== 'true') throw new Error('mobile context pane is not hidden before opening the sheet')
+await page.getByRole('button', { name: 'Open navigation' }).click()
+await page.locator('.context-pane.mobile-open').waitFor({ state: 'visible' })
+if (!(await page.locator('.context-scrim').isVisible())) throw new Error('mobile context sheet did not render its scrim')
+if ((await page.locator('.context-pane').getAttribute('aria-hidden')) === 'true') throw new Error('mobile context sheet stayed aria-hidden while open')
+await page.getByRole('button', { name: 'Close navigation' }).click()
+if (await page.locator('.context-pane.mobile-open').count()) throw new Error('mobile context sheet did not close')
 const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
-if (mobileOverflow > 2) throw new Error(`mobile momentum horizontal overflow ${mobileOverflow}px`)
-const mobileScreenshot = await page.screenshot({ path: join(persistDir, 'momentum-mobile.png') })
+if (mobileOverflow > 2) throw new Error(`mobile Home horizontal overflow ${mobileOverflow}px`)
+const mobileScreenshot = await page.screenshot({ path: join(persistDir, 'home-mobile.png') })
 if (!mobileScreenshot.length) throw new Error('mobile visual smoke screenshot was empty')
-await page.getByRole('button', { name: 'More' }).click()
-const moreDialog = page.locator('.mobile-more-dialog')
-await moreDialog.waitFor({ state: 'visible' })
-for (const workspace of ['Reflect', 'You']) {
-  if (!(await moreDialog.locator('nav button').filter({ hasText: new RegExp(`^${workspace}`) }).isVisible())) throw new Error(`mobile More is missing ${workspace}`)
-}
-await moreDialog.locator('nav button').filter({ hasText: /^Reflect/ }).click()
-if (!page.url().includes('#/insights/')) throw new Error('mobile More did not navigate to Reflect')
-await page.getByRole('button', { name: 'Map' }).click()
-if (!page.url().includes('#/map/')) throw new Error('mobile primary navigation did not navigate to Map')
+await page.getByRole('link', { name: 'Map' }).click()
+if (!page.url().includes('#/map')) throw new Error('mobile dock did not navigate to Map')
 
 console.log(`E2E passed: ${count} purposeful destinations, mobile shell, and complete mobile navigation`)
 } finally {
