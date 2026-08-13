@@ -1,9 +1,32 @@
 import { useEffect, useState } from 'preact/hooks'
 
+/**
+ * The shell has five page destinations. Everything that changes the surface
+ * inside one of those destinations is state (`mode`), not another page in
+ * the URL. Typed records are the deliberate exception: their identity remains
+ * addressable at `/root/type/id`.
+ */
 export type RootKey = 'home' | 'library' | 'learn' | 'map' | 'settings'
+
+export type ModeDefinition = {
+  key: string
+  label: string
+  description: string
+}
+
+export type RootDefinition = {
+  key: RootKey
+  label: string
+  defaultMode: string
+  /** Compatibility name for workspaces that still consume `defaultView`. */
+  defaultView: string
+}
+
 export type Route = {
   root: RootKey
+  /** Compatibility name; this is always the normalized root mode. */
   view: string
+  mode: string
   objectType?: string
   objectId?: string
   query: URLSearchParams
@@ -12,15 +35,15 @@ export type Route = {
   notFound?: boolean
 }
 
-export const roots: Array<{ key: RootKey; label: string; defaultView: string }> = [
-  { key: 'home', label: 'Home', defaultView: 'today' },
-  { key: 'library', label: 'Library', defaultView: 'queue' },
-  { key: 'learn', label: 'Learn', defaultView: 'paths' },
-  { key: 'map', label: 'Map', defaultView: 'atlas' },
-  { key: 'settings', label: 'Settings', defaultView: 'profile' },
+export const roots: RootDefinition[] = [
+  { key: 'home', label: 'Home', defaultMode: 'today', defaultView: 'today' },
+  { key: 'library', label: 'Library', defaultMode: 'queue', defaultView: 'queue' },
+  { key: 'learn', label: 'Learn', defaultMode: 'paths', defaultView: 'paths' },
+  { key: 'map', label: 'Map', defaultMode: 'atlas', defaultView: 'atlas' },
+  { key: 'settings', label: 'Settings', defaultMode: 'profile', defaultView: 'profile' },
 ]
 
-export const views: Record<RootKey, Array<{ key: string; label: string; description: string }>> = {
+export const modes: Record<RootKey, ModeDefinition[]> = {
   home: [{ key: 'today', label: 'Today', description: 'The active thread and the next evidence action.' }],
   library: [
     { key: 'queue', label: 'Queue', description: 'The five sources you committed to next.' },
@@ -49,74 +72,148 @@ export const views: Record<RootKey, Array<{ key: string; label: string; descript
   ],
 }
 
-const aliases: Record<string, string> = {
-  '': '/home',
-  '/today': '/home',
-  '/today/momentum': '/home',
-  '/today/briefing': '/home',
-  '/curate/queue': '/library/queue',
-  '/curate/inbox': '/library/inbox',
-  '/curate/collections': '/library/collections',
-  '/curate/archive': '/library/archive',
-  '/curate/books': '/library/books',
-  '/curate/discovery': '/library/archive',
-  '/learn/hub': '/learn/paths',
-  '/learn/files': '/library/files',
-  '/vault/files': '/library/files',
-  '/vault/notes': '/learn/notes',
-  '/learn/cards': '/learn/recall',
-  '/learn/review': '/learn/recall',
-  '/learn/reflections': '/learn/notes',
-  '/learn/activity': '/settings/data',
-  '/map/deck': '/map/branches',
-  '/map/coverage': '/map/balance',
-  '/insights/learning': '/map/balance',
-  '/insights/overview': '/home',
-  '/insights/taste': '/settings/profile',
-  '/insights/hermes': '/settings/profile',
-  '/settings/appearance': '/settings/preferences',
-  '/settings/learning': '/settings/preferences',
-  '/settings/curation': '/settings/preferences',
+/** Compatibility export while workspaces migrate from `views` to `modes`. */
+export const views = modes
+
+type LegacyDestination = { root: RootKey; mode: string }
+
+const legacyDestinations: Record<string, LegacyDestination> = {
+  '/': { root: 'home', mode: 'today' },
+  '/today': { root: 'home', mode: 'today' },
+  '/today/momentum': { root: 'home', mode: 'today' },
+  '/today/briefing': { root: 'home', mode: 'today' },
+  '/curate/queue': { root: 'library', mode: 'queue' },
+  '/curate/inbox': { root: 'library', mode: 'inbox' },
+  '/curate/collections': { root: 'library', mode: 'collections' },
+  '/curate/archive': { root: 'library', mode: 'archive' },
+  '/curate/books': { root: 'library', mode: 'books' },
+  '/curate/discovery': { root: 'library', mode: 'archive' },
+  '/learn/hub': { root: 'learn', mode: 'paths' },
+  '/learn/files': { root: 'library', mode: 'files' },
+  '/vault/files': { root: 'library', mode: 'files' },
+  '/vault/notes': { root: 'learn', mode: 'notes' },
+  '/learn/cards': { root: 'learn', mode: 'recall' },
+  '/learn/review': { root: 'learn', mode: 'recall' },
+  '/learn/reflections': { root: 'learn', mode: 'notes' },
+  '/learn/activity': { root: 'settings', mode: 'data' },
+  '/map/deck': { root: 'map', mode: 'branches' },
+  '/map/coverage': { root: 'map', mode: 'balance' },
+  '/insights/learning': { root: 'map', mode: 'balance' },
+  '/insights/overview': { root: 'home', mode: 'today' },
+  '/insights/taste': { root: 'settings', mode: 'profile' },
+  '/insights/hermes': { root: 'settings', mode: 'profile' },
+  '/settings/appearance': { root: 'settings', mode: 'preferences' },
+  '/settings/learning': { root: 'settings', mode: 'preferences' },
+  '/settings/curation': { root: 'settings', mode: 'preferences' },
 }
 
-function parseHash(hash = location.hash): Route {
-  const raw = (hash.replace(/^#/, '') || '/home').replace(/\/$/, '') || '/home'
+function rootMeta(root: RootKey) {
+  return roots.find((item) => item.key === root)!
+}
+
+function modeKnown(root: RootKey, mode: string | null | undefined): mode is string {
+  return Boolean(mode && modes[root].some((item) => item.key === mode))
+}
+
+function modeMeta(root: RootKey, mode: string) {
+  return modes[root].find((item) => item.key === mode)!
+}
+
+function encodeQuery(root: RootKey, mode: string) {
+  const defaultMode = rootMeta(root).defaultMode
+  return mode === defaultMode ? '' : `?mode=${encodeURIComponent(mode)}`
+}
+
+function canonicalRoot(root: RootKey, mode: string) {
+  return `/${root}${encodeQuery(root, mode)}`
+}
+
+function mergeLegacyQuery(query: URLSearchParams, mode: string) {
+  const merged = new URLSearchParams(query)
+  if (!merged.has('mode')) merged.set('mode', mode)
+  return merged
+}
+
+/** Parse a hash independently of browser globals so route recovery is testable. */
+export function parseRoute(hash = typeof location === 'undefined' ? '' : location.hash): Route {
+  const rawHash = hash.startsWith('#') ? hash.slice(1) : hash
+  const raw = (rawHash || '/home').replace(/\/$/, '') || '/home'
   const [rawPath, queryString = ''] = raw.split('?')
+  const originalQuery = new URLSearchParams(queryString)
   const oldThread = rawPath.match(/^\/learn\/hub\/([^/]+)$/)
-  const aliased = oldThread ? `/learn/thread/${oldThread[1]}` : (aliases[rawPath] || rawPath)
-  const parts = aliased.replace(/^\//, '').split('/').filter(Boolean)
-  const root = parts[0] as RootKey
-  const knownRoot = roots.some((item) => item.key === root)
-  if (!knownRoot) return { root: 'home', view: 'today', query: new URLSearchParams(queryString), canonical: '/home', notFound: true, recoveredFrom: rawPath }
-  const rootMeta = roots.find((item) => item.key === root)!
-  const objectRoute = parts.length >= 3
-  const view = objectRoute ? rootMeta.defaultView : (parts[1] || rootMeta.defaultView)
-  const knownView = views[root].some((item) => item.key === view)
-  if (!objectRoute && !knownView) return { root, view: rootMeta.defaultView, query: new URLSearchParams(queryString), canonical: `/${root}/${rootMeta.defaultView}`, notFound: true, recoveredFrom: rawPath }
+  const oldTypedRoute = oldThread ? `/learn/thread/${oldThread[1]}` : rawPath
+  const alias = legacyDestinations[rawPath]
+  const pathParts = oldTypedRoute.replace(/^\//, '').split('/').filter(Boolean)
+  const candidateRoot = (alias?.root || pathParts[0]) as RootKey
+  const knownRoot = roots.some((item) => item.key === candidateRoot)
+
+  if (!knownRoot) {
+    const fallback = rootMeta('home')
+    return {
+      root: 'home', view: fallback.defaultMode, mode: fallback.defaultMode,
+      query: originalQuery, canonical: canonicalRoot('home', fallback.defaultMode),
+      notFound: true, recoveredFrom: rawPath,
+    }
+  }
+
+  const root = candidateRoot
+  const rootDefinition = rootMeta(root)
+  const pathMode = !alias && pathParts.length >= 2 && modeKnown(root, pathParts[1]) ? pathParts[1] : undefined
+  const modePrefixedObject = Boolean(pathMode && pathParts.length >= 4)
+  const objectRoute = !alias && (modePrefixedObject || (pathParts.length >= 3 && !pathMode))
+  const objectType = objectRoute ? pathParts[modePrefixedObject ? 2 : 1] : undefined
+  const objectStart = modePrefixedObject ? 3 : 2
+  const objectId = objectRoute ? decodeURIComponent(pathParts.slice(objectStart).join('/')) : undefined
+  const requestedMode = originalQuery.get('mode') || alias?.mode || pathMode
+  const mode = modeKnown(root, requestedMode) ? requestedMode : rootDefinition.defaultMode
+  const invalidMode = Boolean(requestedMode && !modeKnown(root, requestedMode))
+  const recovered = oldThread ? rawPath : (alias || (pathMode && !invalidMode ? true : false))
+  const query = alias ? mergeLegacyQuery(originalQuery, mode) : originalQuery
+  // A mode is state, so paths such as `/library/queue` collapse to the root.
+  // Objects keep their typed identity and can additionally carry mode state.
+  const canonicalPath = objectRoute
+    ? `/${root}/${objectType}/${encodeURIComponent(objectId || '')}${encodeQuery(root, mode)}`
+    : canonicalRoot(root, mode)
+  const changed = canonicalPath !== rawPath + (queryString ? `?${queryString}` : '')
+
+  if (!objectRoute && pathParts.length > 1 && !alias && !modeKnown(root, pathMode)) {
+    return {
+      root, view: rootDefinition.defaultMode, mode: rootDefinition.defaultMode,
+      query, canonical: canonicalRoot(root, rootDefinition.defaultMode),
+      notFound: true, recoveredFrom: rawPath,
+    }
+  }
+
   return {
-    root,
-    view,
-    objectType: objectRoute ? parts[1] : undefined,
-    objectId: objectRoute ? decodeURIComponent(parts.slice(2).join('/')) : undefined,
-    query: new URLSearchParams(queryString),
-    canonical: aliased,
-    recoveredFrom: aliased !== rawPath ? rawPath : undefined,
+    root, view: mode, mode, objectType, objectId, query, canonical: canonicalPath,
+    recoveredFrom: changed || recovered ? rawPath : undefined,
+    notFound: invalidMode ? true : undefined,
   }
 }
 
-export function routeHref(root: RootKey, view?: string) {
-  const defaultView = roots.find((item) => item.key === root)!.defaultView
-  return `#/${root}${view && view !== defaultView ? `/${view}` : ''}`
+/** Compatibility alias for callers that prefer the explicit parser name. */
+export const parseHash = parseRoute
+
+/** Return a root page URL; modes are query state, never another page path. */
+export function routeHref(root: RootKey, mode?: string) {
+  const normalized = modeKnown(root, mode) ? mode : rootMeta(root).defaultMode
+  return `#${canonicalRoot(root, normalized)}`
 }
 
-export function objectHref(root: RootKey, type: string, id: string) {
-  return `#/${root}/${type}/${encodeURIComponent(id)}`
+/** Typed records remain addressable while their owning page stays one of five roots. */
+export function objectHref(root: RootKey, type: string, id: string, mode?: string) {
+  const normalized = modeKnown(root, mode) ? mode : rootMeta(root).defaultMode
+  return `#/${root}/${encodeURIComponent(type)}/${encodeURIComponent(id)}${encodeQuery(root, normalized)}`
+}
+
+export function modeLabel(route: Route) {
+  return modeMeta(route.root, route.mode)?.label || route.mode
 }
 
 export function useRoute() {
-  const [route, setRoute] = useState<Route>(() => parseHash())
+  const [route, setRoute] = useState<Route>(() => parseRoute())
   useEffect(() => {
-    const update = () => setRoute(parseHash())
+    const update = () => setRoute(parseRoute())
     addEventListener('hashchange', update)
     if (!location.hash) location.hash = '#/home'
     return () => removeEventListener('hashchange', update)

@@ -11,7 +11,7 @@ import { MapWorkspace, type MapObjectType, type MapWorkspaceRoute } from '../wor
 import { SettingsWorkspace, type SettingsWorkspaceRoute } from '../workspaces/SettingsWorkspace'
 import type { LibrarySelection } from '../workspaces/library/types'
 import { Inspector, type InspectorSelection, type MapSelection } from './inspector'
-import { useRoute, type Route } from './router'
+import { objectHref, routeHref, useRoute, type Route } from './router'
 
 type ErrorBoundaryProps = { children: ComponentChildren }
 type ErrorBoundaryState = { error: Error | null }
@@ -44,9 +44,8 @@ function navigate(href: string) {
 }
 
 function mapRouteHref(route: MapWorkspaceRoute) {
-  const viewPart = route.view === 'atlas' ? '' : `/${route.view}`
-  const objectPart = route.objectId ? `/${route.objectType || 'branch'}/${encodeURIComponent(route.objectId)}` : ''
-  return `#/map${viewPart}${objectPart}`
+  if (route.objectId) return objectHref('map', route.objectType || 'branch', route.objectId, route.view)
+  return routeHref('map', route.view)
 }
 
 function mapSelection(route: Route): MapSelection | null {
@@ -69,17 +68,16 @@ function workspace(route: Route, onCapture: () => void, onInspect: (selection: I
   }
   if (route.root === 'learn') return <LearnWorkspace route={route}/>
   if (route.root === 'map') {
-    const mapRoute = { view: route.view, objectType: route.objectType as MapObjectType | undefined, objectId: route.objectId }
+    const mapRoute = { view: route.view as MapWorkspaceRoute['view'], objectType: route.objectType as MapObjectType | undefined, objectId: route.objectId }
     return <MapWorkspace route={mapRoute} onRouteChange={(next) => navigate(mapRouteHref(next))}/>
   }
-  return <SettingsWorkspace route={{ view: route.view as SettingsWorkspaceRoute['view'] }} onRouteChange={(next: SettingsWorkspaceRoute) => navigate(next.view === 'profile' ? '#/settings' : `#/settings/${next.view}`)}/>
+  return <SettingsWorkspace route={{ view: route.view as SettingsWorkspaceRoute['view'] }} onRouteChange={(next: SettingsWorkspaceRoute) => navigate(routeHref('settings', next.view))}/>
 }
 
 export function App() {
   const route = useRoute()
   const [captureOpen, setCaptureOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
-  const [mobileContextOpen, setMobileContextOpen] = useState(false)
   const [selection, setSelection] = useState<InspectorSelection | null>(null)
   const [, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -95,15 +93,14 @@ export function App() {
       if (event.key !== 'Escape') return
       if (searchOpen) setSearchOpen(false)
       else if (captureOpen) setCaptureOpen(false)
-      else if (mobileContextOpen) setMobileContextOpen(false)
       else if (selection || (route.root === 'map' && route.objectId && route.view !== 'balance')) {
         setSelection(null)
-        if (route.root === 'map' && route.objectId && route.view !== 'balance') navigate(route.view === 'branches' ? '#/map/branches' : '#/map')
+        if (route.root === 'map' && route.objectId && route.view !== 'balance') navigate(routeHref('map', route.view))
       }
     }
     addEventListener('keydown', onKeyDown)
     return () => removeEventListener('keydown', onKeyDown)
-  }, [captureOpen, searchOpen, mobileContextOpen, selection])
+  }, [captureOpen, searchOpen, selection, route.root, route.objectId, route.view])
 
   useEffect(() => {
     const onOnline = () => { setOnline(true); void flushOfflineMutations() }
@@ -122,11 +119,11 @@ export function App() {
   const activeSelection = selection || routedMapSelection
   const closeSelection = () => {
     setSelection(null)
-    if (routedMapSelection) navigate(route.view === 'branches' ? '#/map/branches' : '#/map')
+    if (routedMapSelection) navigate(routeHref('map', route.view))
     else if (route.root === 'library' && route.objectId) {
       const from = route.query.get('from')
       const view = from || (route.objectType === 'artifact' ? 'files' : route.objectType === 'book' ? 'books' : route.objectType === 'collection' ? 'collections' : 'all')
-      navigate(view === 'queue' ? '#/library' : `#/library/${view}`)
+      navigate(routeHref('library', view))
     }
   }
   const refreshWorkspace = () => setRefreshKey((value) => value + 1)
@@ -137,8 +134,6 @@ export function App() {
       inspector={activeSelection ? <Inspector selection={activeSelection} onClose={closeSelection}/> : undefined}
       onCapture={() => { setCaptureOpen(true); setSearchOpen(false) }}
       onSearch={() => { setSearchOpen(true); setCaptureOpen(false) }}
-      mobileContextOpen={mobileContextOpen}
-      setMobileContextOpen={setMobileContextOpen}
     >
       <div key={`${route.canonical}:${refreshKey}`}>
         {workspace(route, () => setCaptureOpen(true), setSelection)}
