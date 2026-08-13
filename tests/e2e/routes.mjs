@@ -232,9 +232,13 @@ for (const alias of legacyAliases) {
   await page.goto(`${baseUrl}/#${alias.path}`, { waitUntil: 'networkidle' })
   if (!(await page.locator(`.studio-shell[data-root="${alias.root}"]`).count())) throw new Error(`${alias.path}: legacy alias did not recover into the right workspace`)
   if (!(await page.locator('.route-notice').count()) || (await page.locator('.route-warning').count())) throw new Error(`${alias.path}: legacy alias did not announce purposeful recovery`)
+  if (alias.focus) await page.locator('.workspace-filter-switcher, .error-state').first().waitFor({ state: 'attached', timeout: 15000 })
   const recoveredState = await page.locator('.studio-shell').evaluate((shell) => ({ mode: shell.getAttribute('data-mode') }))
   if (recoveredState.mode !== alias.mode) throw new Error(`${alias.path}: recovered to mode ${recoveredState.mode}, expected ${alias.mode}`)
-  if (alias.focus && !(await page.locator('.workspace-filter-switcher a.active, .workspace-filter-switcher a[aria-current="page"]').count())) throw new Error(`${alias.path}: recovery lost focus=${alias.focus}`)
+  if (alias.focus && !(await page.locator('.workspace-filter-switcher a.active, .workspace-filter-switcher a[aria-current="page"]').count())) {
+    const debugFilters = await page.locator('.workspace-filter-switcher a').evaluateAll((links) => links.map((link) => ({ text: link.textContent?.trim(), href: link.getAttribute('href'), className: link.className, current: link.getAttribute('aria-current') })))
+    throw new Error(`${alias.path}: recovery lost focus=${alias.focus} filters=${JSON.stringify(debugFilters)} hash=${await page.evaluate(() => location.hash)}`)
+  }
   if (await page.locator('.orbit-bar, .page-head, .subnav, .rail').count()) throw new Error(`${alias.path}: legacy alias rendered the retired shell`)
 }
 await page.goto(`${baseUrl}/#/not-a-real-destination`, { waitUntil: 'networkidle' })

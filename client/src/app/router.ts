@@ -319,8 +319,8 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const invalidModePath = !objectRoute && pathParts.length > 1 && !exactAlias && !pathState && !modeMeta(root, pathSegment)
   const invalid = state.invalid || Boolean(invalidObject) || Boolean(invalidModePath)
   const query = exactAlias ? mergeRecoveryQuery(originalQuery, state.mode, state.focus) : originalQuery
-  const forceLegacyFocus = Boolean(exactAlias || modePrefixedObject)
-  const forceLegacyMode = Boolean((exactAlias || modePrefixedObject) && root !== 'settings')
+  const forceLegacyFocus = Boolean(exactAlias || modePrefixedObject || queryFocus)
+  const forceLegacyMode = Boolean((exactAlias || modePrefixedObject || queryFocus) && root !== 'settings')
   const canonical = invalidObject || invalidModePath
     ? canonicalRoot(root, defaultState(root).mode, defaultState(root).focus)
     : objectRoute
@@ -355,14 +355,16 @@ function normalizeHrefState(root: RootKey, requestedMode?: string, requestedFocu
 export function routeHref(root: RootKey, mode?: string, focusValue?: string) {
   const state = normalizeHrefState(root, mode, focusValue)
   const explicitLeaf = Boolean(mode && !modeMeta(root, mode) && leafMeta(root, mode))
-  return `#${canonicalRoot(root, state.mode, state.focus, explicitLeaf)}`
+  const explicitFocus = Boolean(focusValue)
+  return `#${canonicalRoot(root, state.mode, state.focus, explicitLeaf || explicitFocus, (explicitLeaf || explicitFocus) && root !== 'settings')}`
 }
 
 /** Typed records remain addressable while their owning root/mode/focus is preserved. */
 export function objectHref(root: RootKey, type: string, id: string, mode?: string, focusValue?: string) {
   const state = normalizeHrefState(root, mode, focusValue)
   const explicitLeaf = Boolean(mode && !modeMeta(root, mode) && leafMeta(root, mode))
-  return `#${canonicalObject(root, type, id, state.mode, state.focus, explicitLeaf)}`
+  const explicitFocus = Boolean(focusValue)
+  return `#${canonicalObject(root, type, id, state.mode, state.focus, explicitLeaf || explicitFocus, (explicitLeaf || explicitFocus) && root !== 'settings')}`
 }
 
 export function modeLabel(route: Route) {

@@ -143,6 +143,7 @@ test('the router exposes five roots and eleven grouped modes with focus state', 
   assert.equal(routeHref('learn', 'notes'), '#/learn?mode=practice&focus=notes')
   assert.equal(routeHref('map', 'branches'), '#/map?mode=review&focus=branches')
   assert.equal(routeHref('settings', 'profile'), '#/settings?focus=profile')
+  assert.equal(routeHref('learn', 'practice', 'notes'), '#/learn?mode=practice&focus=notes')
 })
 
 test('root modes parse from query state while typed object links keep their identity', () => {
