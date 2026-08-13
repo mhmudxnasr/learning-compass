@@ -372,7 +372,7 @@ Observed completion evidence:
 - No leaked Wrangler/Workerd/Playwright processes after E2E.
 - No internal Hermes/Lite Visual prompt payload ships in the browser bundle.
 - The release checklist reflects the actual migration chain through `0030_hub_notes_files.sql` (or derives the latest migration dynamically).
-- Full gates observed on 2026-08-14: unit/typecheck 78/78; build base 43.24 KB gzip and CSS 10.66 KB gzip; E2E five roots, 18 internal states, legacy recovery, and mobile dock; diff check clean. Deployment remains outstanding.
+- Full gates observed on 2026-08-14: unit/typecheck 78/78; Hermes and migrations clean; build base 43.31 KB gzip and CSS 10.74 KB gzip; E2E five roots, 18 internal states, legacy recovery, and mobile dock; forbidden-pattern detector `[]`; diff check clean. Deployment remains outstanding.
 - Live deployment and the rollback window are not complete and are intentionally excluded from this task.
 
 ## Workstream ownership

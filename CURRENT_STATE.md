@@ -17,7 +17,7 @@ Capture always enters the unlimited Inbox. Queue normally caps queued/in-progres
 
 ## Verification observed
 
-Observed release-gate results: `npm test` 78/78 plus typecheck; production build clean (base entry 43.24 KB gzip, CSS 10.66 KB gzip); E2E clean across five roots, 18 internal states, legacy recovery, and mobile shell/dock; and `git diff --check` clean. The redesign is not deployed.
+Observed release-gate results: `npm test` 78/78 plus typecheck; Hermes and migration verification clean; production build clean (base entry 43.31 KB gzip, CSS 10.74 KB gzip); E2E clean across five roots, 18 internal states, legacy recovery, and mobile shell/dock; forbidden-pattern detector `[]`; and `git diff --check` clean. The redesign is not deployed.
 
 ## Next release gate
 
