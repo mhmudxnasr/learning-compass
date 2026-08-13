@@ -338,7 +338,7 @@ await requestJson(`/learning/core/threads/${thread.id}`, { method: 'PATCH', body
 const verifiedThread = await requestJson(`/learning/core/threads/${thread.id}/verify`, { method: 'POST' })
 if (verifiedThread.status !== 'verified') throw new Error('evidence-backed Thread did not verify')
 await page.goto(`${baseUrl}/#/learn/notes`, { waitUntil: 'networkidle' })
-await page.getByRole('heading', { name: 'Hermes source note' }).waitFor({ state: 'visible', timeout: 15000 })
+await page.locator('.folio-note-row strong', { hasText: 'Hermes source note' }).waitFor({ state: 'visible', timeout: 15000 })
 if (await page.getByText('Handwritten margin note').count()) throw new Error('Notes library leaked personal reflection content into the extracted library')
 await page.goto(`${baseUrl}/#/learn/note/e2e_source_note`, { waitUntil: 'networkidle' })
 await page.locator('.folio-note-document').waitFor({ state: 'visible', timeout: 15000 })

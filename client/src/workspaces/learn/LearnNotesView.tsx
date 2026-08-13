@@ -11,7 +11,12 @@ export function LearnNotesView({ noteId }: { noteId?: string }) {
   if (notes.error && !notes.data) return <ErrorState message={notes.error} retry={notes.reload} />
   const note = notes.data?.notes.find((item) => item.id === noteId)
   if (noteId) return <NoteEditor note={note} onBack={() => { location.hash = '#/learn/notes' }} onSaved={notes.reload} />
-  return <NotesBrowser notes={notes.data?.notes || []} reload={notes.reload} />
+  // Reflections remain attached to the source record and its activity surface;
+  // the Learn library is the editable extracted-note shelf, so keep that
+  // personal margin layer out of this collection even though /notes is the
+  // canonical combined read model.
+  const libraryNotes = (notes.data?.notes || []).filter((item) => item.kind !== 'reflection')
+  return <NotesBrowser notes={libraryNotes} reload={notes.reload} />
 }
 function NotesBrowser({ notes, reload }: { notes: NoteRecord[]; reload: () => void }) {
   const [query, setQuery] = useState('')
