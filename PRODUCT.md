@@ -1,44 +1,43 @@
 # Learning Compass
 
-Learning Compass is Mahmood’s private learning operating system. D1 is canonical; Obsidian is an archive copy for extracted notes.
+Learning Compass is Mahmood’s private learning operating system. D1 is canonical; R2 stores large artifacts; Obsidian is an archive/export copy for extracted notes only.
 
 ## Core loop
 
-Define a question, decision, build, or capability as a Learning Thread → attach deliberate sources → consume externally → preserve reflection → consolidate anchored Learning Units → retrieve or apply them → satisfy the Thread evidence contract → verify the outcome.
+Define a question, decision, build, or capability as a Learning Thread → attach deliberate sources → consume at the real source → preserve reflection → consolidate anchored Learning Units → retrieve or apply them → satisfy the Thread evidence contract → verify the outcome → resurface the next useful work.
 
-Sources are inputs. Notes are readable projections. Ratings train taste. Only delayed retrieval, explanation, transfer, decisions, artifacts, or application results count as learning evidence.
+Sources are inputs. Notes are readable projections. Ratings train taste, but enjoyment is not mastery. Delayed retrieval, explanation, transfer, decisions, artifacts, or application results are the evidence of learning.
 
-Manual captures, share targets, Telegram links, and subscribed RSS/Atom entries all land in the unlimited Inbox. Web feeds refresh every six hours and never bypass triage or the five-item Queue limit. Archive keeps a pinned RSS/Atom shelf above the manual archive so feed volume never buries finished sources.
+Every capture—including URL, text, PDF, HTML, video, Telegram, share-target, RSS, and Atom input—lands in the unlimited Inbox. The Queue normally holds at most five queued or in-progress items; exceeding that limit requires an explicit triage override.
 
-## Workspaces
+## Navigation contract
 
-The primary interface uses six stable workspaces: Now, Curate, Learn, Map, Reflect, and You. Nineteen purposeful views remain available contextually within those workspaces rather than competing as equal top-level tools. Momentum is the Now source dossier: the current source, its Queue rationale, complete file and NotebookLM access, the Thread question and evidence progress, and a small attention list containing only actionable new work. Opening links from Momentum or Library is passive browsing; sessions begin only through an explicit Queue or Compass start. You → System is the complete user-visible control plane for API operations, schedules, services, storage, health, and safety boundaries.
+The browser is the **Botanical Folio / Evidence Ledger**: one green-and-cream evidence studio with five stable roots and 18 named views. The global route roots are:
 
-Settings → Profile leads with the typed adaptive model: health, active assertions, hypotheses, confidence, source, versions, direct editing, deactivation, and one-click revision undo. The old singleton fields remain a readable/editable compatibility projection. Stored JSON is never dumped in the normal overview.
+- `#/home` — Home / Today
+- `#/library` — Queue, Inbox, All sources, Files, Books, Collections, Archive
+- `#/learn` — Paths, Notes, Recall
+- `#/map` — Atlas, Branches, Balance
+- `#/settings` — Profile, Preferences, Data & sync, System
 
-## User context
+The five roots plus their 18 named views are the complete global navigation contract. Sources, Learning Threads, Notes, Units, Recall Cards, branches, and artifacts use typed object routes inside their owning root so selection identity is preserved. Search opens the exact object result. Legacy hashes canonicalize to the nearest purposeful view without silently discarding an ID; an unknown hash renders a recovery state.
 
-Single user in Egypt. Desktop is for curation and synthesis; tablet/phone are for capture, external consumption, reflection, and review. UI is English. Notes support English and Egyptian Arabic with per-block direction. Future HTML/PDF learning companions are Arabic-first in clear, relatively formal Egyptian Arabic. Technical terms remain in English and receive natural contextual explanations rather than literal translated labels. Difficult or unfamiliar sources receive extra examples and demonstrations; easy sources remain concise.
+On desktop the studio is a four-pane composition: persistent root rail, workspace ledger, working canvas, and conditional object inspector. On mobile and tablet the rail becomes a bottom dock, workspace context opens as a navigation sheet, and the inspector becomes a full-height sheet or pushed detail view.
 
-## Intelligence rules
+## Product behavior
 
-- Active queue target is five, with an explicit override.
-- Feedback processing is explicit and never auto-recommends.
-- Recommendation feedback has distinct semantics: Not now is neutral; Bad fit requires a reason; rating, retain/apply/reference/drop disposition, and later learning evidence remain separate signals.
-- Compass optimizes expected learning value inside the active Thread using fit, bridge, and challenge lanes. Thread-aware scoring gives extra credit to candidates that target an open evidence requirement. V2 runs in shadow until global, lane, and evidence-quality gates pass. “Not now” may resurface a good source in Inbox after a delay; frontier exploration is shadow-only and cannot bypass Compass quality or Queue gates.
-- Every rating and reflection creates an auditable Taste Mapper decision. During the active conversation Hermes auto-applies strong typed profile improvements under Mahmood's standing authorization; weak evidence remains pending and every applied change can be undone.
-- Every Hermes conversation ends with one compact specialist handoff to `learning-compass-self-evolution`, the sole owner of cross-layer improvement. It records applied, failed/resumable, or evidence-backed no-change decisions for evaluated candidates, never runs on a schedule, and makes no change without evidence and verification.
+- Queue owns explicit start, resume, return, and completion. Opening a source or companion is passive; consumption is tracked through a learning session at the real source.
 - Completion records a separate `retain`, `apply`, `reference`, or `drop` disposition. Retain/apply creates anchored extraction and editable recall work regardless of enjoyment score.
-- Handwritten PDF annotations count as personal reflection while printed source text remains source material.
-- Invisible AI may enrich, rank, classify, and explain; user-authored reflections are never rewritten.
-- Real source URLs stay recommendations; owned PDFs/HTML/transcripts stay artifacts.
-- Inside an explicit source-learning or companion request, Hermes automatically chooses the smallest non-redundant NotebookLM and Lite Visual media set. This never runs as background generation.
-- Hermes also chooses the primary starting medium from the original, Arabic HTML, PDF, or NotebookLM. Future companion metadata carries that decision and Momentum uses it for the main start action.
+- Notes are structured, editable, searchable, and support per-block English/Egyptian-Arabic direction. Handwritten PDF annotations count as personal reflection while printed source text remains source material.
+- Ratings of 7–10 create editable SRS drafts. Approval is required before cards enter Review; approved cards use the versioned FSRS implementation and failed reviews never advance mastery.
+- Feedback distinguishes neutral Not now, explicit Bad fit with a reason, rating, disposition, and later learning evidence. Feedback processing never requests another recommendation automatically.
+- Recommendations are Thread-first and source-grounded. Compass can use fit, bridge, and challenge lanes; shadow serving remains gated by evidence quality. Mastered and consumed items, Mahmood’s explicit exclusions, and the five-item Queue contract are always enforced.
+- Invisible AI may enrich, rank, classify, and explain, but it never rewrites user-authored reflection. Hermes changes to typed profile knowledge are auditable, confidence-aware, reversible, and never scheduled as autonomous curation.
 
-## Product register
+## Reading companions and ownership
 
-Living Learning Room: an expressive, chromatic learning environment rather than a standard light/dark productivity app. The loop is accessed from a floating horizontal navigation ribbon, never a permanent sidebar. Momentum is a source stage beside a living activity instrument: source, rationale, and working materials lead; streak evidence remains available as an adjacent spatial object. The environment stays quiet through progressive disclosure and near-static continuity motion, not through gray minimalism or dashboard density.
+Lite Visual creates one linked HTML+PDF R2 pair for a normal source. For books, it creates one linked pair per chapter with stable chapter metadata, mines the complete source into a checksum-backed evidence packet and coverage matrix, reuses cached mining, runs Visual Mind first, and verifies the canonical source record. There is no Lite Visual QA gate and no automatic Notes Extractor chain. The PDF is the reading companion.
 
-Learn → Hub opens on the active Learning Thread's curriculum map. The map orients the learner, then the selected level becomes a Focus Study Room: one next required evidence action, a compact proof ledger, and a quiet reference rail for the objective, required proof, finish line, and linked sources. Paused paths and path creation remain available from the compact header, while full source rows, notes, files, and authoring stay progressively disclosed inside the selected level.
+Real source URLs remain recommendations; owned PDFs, HTML, transcripts, and generated companions remain artifacts. Inside an explicit source-learning or companion request, Hermes chooses the smallest non-redundant media set and starting medium. This never runs as background generation.
 
-Atlas opens as a sparse constellation of major R1 branches. Pan, zoom, search, and progressive expansion reveal deeper rounds without overwhelming the overview; restrained cluster colors support orientation.
+The visual system is documented in [DESIGN.md](DESIGN.md). Product behavior, API compatibility, D1/R2 ownership, and learning rules remain unchanged by the frontend replacement.

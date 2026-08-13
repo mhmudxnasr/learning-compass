@@ -5,12 +5,12 @@ self.addEventListener('activate', (event) => event.waitUntil(Promise.all([self.c
 self.addEventListener('push', (event) => {
   let payload = { title: 'Learning Compass', body: 'A learning review is ready.' }
   try { if (event.data) payload = { ...payload, ...event.data.json() } } catch { /* use the safe default */ }
-  event.waitUntil(self.registration.showNotification(payload.title, { body: payload.body, icon: '/icon.svg', data: { url: '/#/today/briefing' } }))
+  event.waitUntil(self.registration.showNotification(payload.title, { body: payload.body, icon: '/icon.svg', data: { url: '/#/home' } }))
 })
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
-    const target = event.notification.data?.url || '/#/today/briefing'
+    const target = event.notification.data?.url || '/#/home'
     const existing = windows.find((client) => 'focus' in client)
     if (existing) { existing.navigate(target); return existing.focus() }
     return clients.openWindow(target)

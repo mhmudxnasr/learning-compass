@@ -1,57 +1,46 @@
-# Scholar’s Instrument — Learning Compass Design System
+# Botanical Folio — Learning Compass Design System
 
 ## Register
 
-Living Learning Room: an expressive, calm, single-environment learning space. It is neither a standard light theme nor a standard dark theme. The interface uses a chromatic lilac atmosphere, warm vermilion actions, citrus activity signals, and deep plum anchors. Product information stays clear, but the surface should feel memorable before it feels administrative.
+Learning Compass is a **Botanical Folio / Evidence Ledger**: a green-and-cream evidence studio for one learner. The material is quiet and editorial, but the interface is operationally dense where evidence, sources, and decisions require it. The center canvas is the place where work happens; surrounding planes provide orientation and context.
 
 ## Tokens
 
-- One atmosphere only: lilac ambient field, pale lavender work surfaces, deep plum text, vermilion for committed actions, citrus for activity, and iris for navigation/wayfinding. Theme switching never changes this visual world.
-- Semantic color remains meaningful: green for a healthy/secured state, amber for attention, red for destructive consequences.
-- UI/body: IBM Plex Sans + IBM Plex Sans Arabic. Reading: Literata + Arabic fallback. Data: IBM Plex Mono.
-- Controls are tactile rounded objects; major surfaces use generous 18–30px corners and one deliberate offset shadow as a spatial cue, never as generic card elevation.
-- Motion is near-static and continuity-based: a selected nav item changes state, a control lifts a few pixels on intent, and a panel remains spatially anchored. There are no page-load sequences or ambient loops; reduced motion is instant.
+- Rail: `#16281f`; shell: `#f4f1eb`; ledger: `#faf8f3`; canvas: `#fffdf8`; inspector: `#f7f5ee`.
+- Ink: `#1c211d`; secondary: `#525b54`; muted: `#707a72`; seams: `#e2ddd2`.
+- Cypress: `#244f3b`; lichen: `#e8f0ea`; focus: `#2f634b`; due: `#a85f18`; danger: `#a8382b`; map: `#315f7b`.
+- UI/body: IBM Plex Sans and IBM Plex Sans Arabic. Long-form reading and reflection use Literata with an Arabic fallback. Measurements use IBM Plex Mono.
+- Controls use 6–8px radii; structural panels use 10px radii; major layout seams remain square. Shadows are reserved for floating dialogs, menus, and dragged objects.
+- Color is paired with icon and text. Sage identifies sources, ochre identifies notes and due work, and cobalt identifies paths/map objects; color is never the only state signal.
 
 ## Shell
 
-There is no permanent sidebar. The floating horizontal ribbon names only six stable workspaces: Now, Curate, Learn, Map, Reflect, and You. It never presents individual tools as competing global destinations. Each workspace owns a local tool row: for example, Learn contains Paths, Library, Notes, Recall, and Changes; Map contains Atlas, Branches, and Balance. Search and Capture stay at the ribbon’s trailing edge. On phone, the redundant header destinations disappear; the dock carries Now, Curate, Learn, Map, and More, with Reflect and You in More. Local tool rows can be intentionally touch-scrolled, never silently removed.
+Desktop uses four structural panes: a 68px persistent root rail, a 248px workspace ledger, a flexible working canvas, and a 304px contextual inspector when an object is selected. The rail contains Capture, Search, the five roots, and sync state. The ledger contains only the active root’s purposeful saved views or modes; it is not a backend object dump. The canvas is the primary task surface. The inspector exposes properties, relationships, provenance, files, history, and lifecycle actions for the selected object.
 
-## Content
+The five roots are Home, Library, Learn, Map, and Settings. Their named views total 18: Today; Queue, Inbox, All sources, Files, Books, Collections, Archive; Paths, Notes, Recall; Atlas, Branches, Balance; and Profile, Preferences, Data & sync, System.
 
-Momentum begins with a compact honest activity pulse and one dominant focus desk for the current source. The active Thread sits beside it as a concise question/finish-line brief; evidence and closure controls stay collapsed until requested. Show at most two recent companion shortcuts and route the complete library to Files. Never repeat the active source in a Queue manifest or render a chapter-file dump on Momentum. Opening an original, HTML, PDF, artifact, or NotebookLM link from Momentum or Files is passive browsing and never starts a session; Queue and Compass own explicit starts. Source records show Thread roles, exact reflection, consolidation state, anchored Units, recall/application evidence, and files. Infrastructure job details remain hidden; user-facing states are waiting, consolidating, repair required, closed, or waived.
+On mobile and tablet, the root rail becomes a compact bottom dock. Workspace context opens as a navigation sheet with focus management and a stable close action. The inspector becomes a full-height sheet or pushed detail view with a stable Back path. The dock never obscures a primary action, and tablet layouts retain two panes where width allows.
 
-Queue is a bounded shelf of commitments, not a data table. Each source gets a tactile rank marker, one strong Start/Resume action, and secondary Record / Not for me choices before its supporting rationale on phone. The mobile dock must never cover the primary action; source detail remains immediately below it rather than being discarded.
+## Content grammar
 
-Curate child views share the same decision-first grammar. Inbox leads with the waiting capture list and keeps RSS/Atom subscription operations in a secondary feed desk; Books leads with deliberate intake and then separates Inbox, Reading, and Finished shelves; Collections and Archive keep creation/filtering adjacent to the records they control. Administration is available, but never gets to occupy the first working column by accident.
+Home is an Evidence Desk: resume the active Thread/source, show one next evidence action, expose only actionable due work, and keep capture close. Library is one source ledger with saved views for Inbox, Queue, All sources, Files, Books, Collections, and Archive. Learn is the learning workspace: Paths foregrounds evidence-derived progress, Notes foregrounds the readable document, and Recall foregrounds one review action before card administration. Map is the spatial knowledge workspace: Atlas is the main canvas, while Branches and Balance are evidence-led lenses. Settings is a dedicated utility surface for Profile, Preferences, Data & sync, and System.
 
-Notes remain readable editorial documents, but their knowledge layer is a set of atomic anchored Learning Units. Atlas visualizes topic navigation and typed Unit relations; contradictory ratings are never presented as contradictory claims.
+Rows are dense, aligned, and object-shaped rather than equal card grids. An object header contains type, title, lifecycle state, primary action, and overflow. Selection is URL-restorable where deep linking matters. Empty, loading, partial, stale, error, offline, conflict, overflow, recovery, and destructive-action states are purposeful and use the same ledger grammar.
 
-Learn child views also have distinct jobs. Library is a readable source index, Notes puts the document reader before metadata, and Recall puts one review action before card administration. Review drafts remain editable and reversible, but they do not compete with the current recall prompt in the first reading position.
+Queue is a bounded commitment shelf. Each source gets a rank, rationale, one explicit Start/Resume action, and separate Record, Not now, and Bad fit paths. Notes are editorial documents backed by atomic anchored Learning Units. Branch review shows real evidence before Keep, Prune, Promote, Hold, Add, or Undo. Contradictory ratings are evidence about taste, not contradictory claims in the map.
 
-Future HTML/PDF companions are RTL Arabic reading experiences in clear, relatively formal Egyptian Arabic. Keep technical vocabulary in English and explain its function naturally in the surrounding Arabic instead of displaying awkward literal translations. Difficulty controls explanation density: hard, unfamiliar, abstract, or mechanism-heavy sources earn concrete examples, stepwise demonstrations, counterexamples, and diagrams; familiar sources do not receive artificial scaffolding.
+Source and companion links are passive. Only Queue or Compass starts a learning session. Internal job plumbing, prompt payloads, and infrastructure-only controls stay out of normal product surfaces. Settings → System is descriptive and guarded, with storage ownership, schedules, service health, and safety boundaries visible without exposing secrets.
 
-Momentum's primary source action follows the future companion's selected starting medium rather than always opening the original. Adaptive demonstrations may combine real-life examples, step-by-step mechanisms, visual diagrams, and comparisons/counterexamples when each materially helps that source.
+## Typography, motion, and access
 
-Profile is the deliberate exception to list-heavy management views: lead with a compact model-health strip and bounded assertion matrix showing category, source, confidence, status, and version. Every assertion is editable or deactivatable; revision history exposes Undo. Represent structured values as readable text/tags, not database rows. Keep compatibility-field editing behind an advanced action.
+Use alignment, type hierarchy, seams, and whitespace to organize dense information. Motion communicates continuity—pane opening, selection, reordering, and object focus—not ambience or page-load choreography. Reduced motion removes transitions. Keyboard navigation, visible focus, semantic landmarks, strong contrast, thumb-reachable actions, and mixed-direction English/Egyptian-Arabic note blocks are first-class requirements.
 
-Compass feedback must visually separate “Not now” from “Bad fit.” Not now is one neutral action. Bad fit opens compact reason chips; never label the neutral action “Not for me.” Insights → Hermes separates utility-labeled outcomes, explicit fit labels, and administrative exclusions, and shows shadow rollout gates plus reversible self-improvement receipts.
+The graph remains a real, lazy-loaded Cytoscape canvas with search, filtering, touch navigation, list alternatives, and a responsive inspector. It must not be flattened into a decorative image.
 
-Settings → System uses a restrained cloud-console layout: compact service status, the exact active schedule, explicitly on-demand workflows, storage ownership, safety boundaries, and searchable operation rows. It is a descriptive control plane, not a raw mutation console; secrets and infrastructure-only controls never render.
+## Boundaries
 
-Map, Reflect, and You keep the same task-first grammar at a different scale. Atlas gets a spatial canvas with controls that recede into the map; Branches opens as an evidence-led decision desk with a selected inspector, not an empty card game; Balance puts attention and retention signals next to the map rows they explain. Reflect separates overview, taste, Hermes quality, and memory review into readable sections. You treats Preferences as grouped choices, Data as ownership/synchronization, and System as an observable control plane with guarded operations.
-
-## Branch Deck
-
-Branch Deck is a review desk, not a card game. A two-column list + inspector: the left side is a bounded decision queue (waiting-on-you rows with a one-line state, round, category, and evidence count, then a decided section), and the right is a sticky inspector showing the selected branch's description, topics, contrast boundary, and real evidence (mapped sources, units, attention share, SRS load, recall) before an explicit action pad. Every row carries live evidence from the map; nothing is a guess. Actions are labeled buttons (Keep / Prune / Promote / Hold), not gestures; Undo is always available and reverses the system side effects, not just the row. Surprise suggestions arrive as reviewable candidate rows from a grounded server endpoint and write nothing until Add. A compact profile-effect strip shows what changed on the map and Compass.
-
-## Learning Hub
-
-Learning Hub is a curriculum map, not a dashboard. Opening a Thread removes the generic Learn header and sibling tabs so the path becomes a true Focus Study Room: one next required evidence action, a compact proof ledger, and quiet disclosed materials for the objective, finish line, and linked sources. Each proof row has one action; empty libraries do not render. Evidence is the only progress signal; source consumption never advances a level. Paused paths and new-path creation remain on the Hub overview, while notes, files, full source rows, and authoring stay progressively disclosed. On smaller screens the current next action remains thumb-reachable.
-
-## Atlas
-
-Atlas is the immersive exception to compact management layouts. Its default state shows only major R1 branches as freely navigable organic constellations. Deeper rounds expand on demand, unrelated nodes fade during focus, and subtle low-chroma cluster colors aid orientation in the shared room. Search, zoom, overview, and selection inspection remain visible alternatives to gestures.
-
-## Bans
-
-No sidebar-based app shell, generic white/gray SaaS dashboard, standard light/dark theme split, repeated card grids, metric-ring hero blocks, infinite motion, emoji UI, or unrelated fallback views.
+- Keep the five-root route model and 18-view contract; do not reintroduce feature sprawl as peer destinations.
+- Keep the persistent desktop rail, ledger/canvas/inspector topology, and mobile dock/sheet adaptation consistent across roots.
+- Do not turn the product into a generic white/gray SaaS dashboard, a repeated card wall, or a metric-ring hero.
+- Do not use decorative motion, emoji UI, rasterized mockup text, generated-logo artwork, or infrastructure-only fallback screens.
+- Preserve the learning loop, source/session distinction, evidence-derived mastery, reversible feedback, D1/R2 ownership, and all API compatibility.
