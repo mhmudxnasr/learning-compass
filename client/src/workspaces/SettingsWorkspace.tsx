@@ -55,16 +55,18 @@ const settingsViews: Array<{ key: SettingsView; label: string; description: stri
   { key: 'system', label: 'System', description: 'The complete observable operation inventory.' },
 ]
 
-const profileFields = [
-  { key: 'identity', apiKey: 'identity', label: 'Identity & context', description: 'Background and learning context.', structured: true },
-  { key: 'mega_priority', apiKey: 'mega_priority', label: 'Mega priority', description: 'The highest-level focus areas.', structured: true },
+type ProfileField = { key: string; apiKey: string; readKey?: string; label: string; description: string; structured: boolean }
+
+const profileFields: ProfileField[] = [
+  { key: 'identity', apiKey: 'identity', readKey: 'identity_json', label: 'Identity & context', description: 'Background and learning context.', structured: true },
+  { key: 'mega_priority', apiKey: 'mega_priority', readKey: 'mega_priority_json', label: 'Mega priority', description: 'The highest-level focus areas.', structured: true },
   { key: 'core_filter', apiKey: 'core_filter', label: 'Core curation filter', description: 'Criteria required for new content.', structured: false },
   { key: 'reaction_style_json', apiKey: 'reaction_style_json', label: 'Reaction style', description: 'How feedback should be interpreted.', structured: true },
   { key: 'quality_rules_json', apiKey: 'quality_rules_json', label: 'Quality & verification', description: 'Source verification and content boundaries.', structured: true },
   { key: 'operational_style_json', apiKey: 'operational_style_json', label: 'Operational style', description: 'How Hermes should work with you.', structured: true },
   { key: 'patterns_summary_json', apiKey: 'patterns_summary_json', label: 'Pattern summary', description: 'Recurring learning patterns.', structured: true },
   { key: 'recent_signal', apiKey: 'recent_signal', label: 'Recent signal', description: 'The latest approved learning signal.', structured: false },
-] as const
+]
 
 function normalizeView(value: string | undefined, fallback: SettingsView = 'profile'): SettingsView {
   if (value === 'profile' || value === 'preferences' || value === 'data' || value === 'system') return value
@@ -140,7 +142,7 @@ function ReadableValue({ value, compact = false }: { value: unknown; compact?: b
 
 function ProfileFieldList({ profile }: { profile: ProfileRecord }) {
   return <section class="profile-section profile-fields-section"><div class="section-head"><h2>Profile fields</h2><span>Canonical profile inputs</span></div><div class="profile-fields">{profileFields.map((field) => {
-    const value = profile[field.apiKey]
+    const value = profile[field.readKey || field.apiKey]
     const parsed = field.structured && typeof value === 'string' ? (() => { try { return { value: JSON.parse(value), valid: true } } catch { return { value: null, valid: false } } })() : { value, valid: true }
     return <article class="profile-field" key={field.key}><div class="profile-field-head"><span><strong>{field.label}</strong><small>{field.description}</small></span></div>{parsed.valid ? <ReadableValue value={parsed.value} /> : <p class="profile-empty">Needs review in the profile editor.</p>}</article>
   })}</div></section>
@@ -151,7 +153,7 @@ function ProfileRecordList({ items, empty, title, getTitle, getMeta }: { items: 
 }
 
 function ProfileEditor({ profile, onSaved }: { profile: ProfileRecord; onSaved: () => void }) {
-  const initial = useMemo(() => Object.fromEntries(profileFields.map((field) => [field.key, typeof profile[field.apiKey] === 'string' ? profile[field.apiKey] : readableText(profile[field.apiKey])])), [profile])
+  const initial = useMemo(() => Object.fromEntries(profileFields.map((field) => { const value = profile[field.readKey || field.apiKey]; return [field.key, typeof value === 'string' ? value : readableText(value)] })), [profile])
   const [draft, setDraft] = useState<Record<string, string>>(initial)
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState('')
