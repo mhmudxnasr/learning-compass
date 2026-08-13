@@ -2,227 +2,67 @@
 
 ## Purpose
 
-Learning Compass is Mahmood's private learning operating system. It turns scattered sources into a disciplined learning loop:
+Learning Compass is Mahmood’s private, single-user learning operating system. It turns scattered sources into a disciplined loop:
 
-**define a Learning Thread → capture/curate sources → consume externally → reflect → consolidate anchored Learning Units → retrieve/apply → verify evidence → resurface**
+**define a Learning Thread → capture/curate sources → consume at the real source → reflect → consolidate anchored Learning Units → retrieve/apply → verify evidence → resurface**
 
-The product is single-user, English-first, supports bilingual English/Egyptian-Arabic note blocks, and uses the `Africa/Cairo` timezone.
+The product is English-first, supports bilingual English/Egyptian-Arabic note blocks with per-block direction, and uses the `Africa/Cairo` timezone.
 
-## Product Model
+## Product model
 
-- **Learning Threads:** the purpose-first object for one question, decision, build, or capability. A Thread stores why it matters now, the Hub interview brief when relevant, its definition of done, evidence requirements, source roles, final synthesis, and verified state. Sources remain reusable inputs; they are never treated as proof of learning by themselves.
-- **Learning Hub:** Learn → Hub is the academic path surface over Learning Threads. Deep topic paths start with an interview brief — desired depth, prior knowledge, use case, constraints/source preferences, guiding question, and proof of competence — before levels are created. Relational stages, stage items, reusable source-role attachments, and stage-aware evidence live in D1. Once levels exist, source-fill work preserves the path structure and only researches, attaches, and verifies sources by stage role. Stage progress is derived from evidence; opening or finishing a source never advances a stage by itself. Queue remains the five-item active source shelf under Curate.
-- **Learning Units:** atomic claims, concepts, methods, examples, questions, applications, and counterclaims with exact source anchors, user synthesis, stance, confidence, and typed relations. Notes are readable projections; Atlas remains the navigation taxonomy.
-- **Verified mastery:** taste rating is separate from `retain`, `apply`, `reference`, or `drop`. Mastery is derived only from retrieval, explanation, transfer, decision, artifact, or application evidence.
-- **Recall scheduling:** approved cards use reference FSRS-6 through the official `ts-fsrs` implementation with persisted, versioned card state. Failed reviews never advance mastery.
-- **Consolidation:** explicit completion creates a durable run with visible terminal state: closed, repair required, or waived. Hermes processes the exact work during the active Learning Compass workflow; there is no learning-core poller, timer, or scheduled self-improvement.
+- **Learning Threads** are purpose-first objects for one question, decision, build, or capability. They hold the reason it matters, definition of done, evidence requirements, source roles, synthesis, and verified state.
+- **Sources** are reusable inputs, never proof by consumption alone. **Learning Units** are atomic claims, concepts, methods, examples, questions, applications, and counterclaims with exact anchors, user synthesis, stance, confidence, and typed relations. Notes are readable projections; Atlas is the navigation taxonomy.
+- **Mastery** is separate from enjoyment. `retain`, `apply`, `reference`, and `drop` are explicit completion dispositions. Verified learning requires retrieval, explanation, transfer, decision, artifact, or application evidence.
+- **Recall** uses approved, versioned FSRS cards. Ratings of 7–10 create editable SRS drafts, approval is required before Review, and failed reviews never advance mastery.
+- **Consolidation** is explicit and durable, with visible terminal states such as closed, repair required, or waived. Hermes processes the exact work during the active workflow; no learning-core poller or autonomous recommendation chain exists.
 
-- **Inbox:** the Curate destination for subscriptions, captures, books, and triage; it remains the unlimited landing place for URL, text, PDF, HTML, video, Telegram, share-target, RSS, and Atom captures. RSS/Atom entries stay grouped in the pinned Archive feed shelf instead of mixing into the manual archive list. Manual **Check now** imports at most five latest entries per feed.
-- **Queue:** five active queued/in-progress items by default. Each item can carry a compact source-grounded `context_brief`. Compass is Thread-first and researches fit, bridge, and challenge lanes. Shadow mode stores v1 and v2 decisions; v2 serves only after 20 global learning-value outcomes, eight per lane, ten shadow decisions, and zero invalid-evidence winners. Explicit starts enforce the cap. Completion moves a source to completed; bad fit/abandonment excludes it; `not_now` is neutral and returns it to Inbox.
-- **Workspace child surfaces:** Curate is decision-first: Queue is a ranked commitment shelf, Inbox is a waiting capture list with RSS/Atom management in a supporting feed desk, Books is intake plus separated reading shelves, Collections is goal grouping, and Archive is retrieval. Learn is task-first: Paths is the curriculum map, Library is the source index, Notes is a document reader, Recall is one review action plus disclosed card management, and Changes is the reversible Hermes journal. These compositions preserve every existing endpoint and action while preventing administrative controls from taking over the first working view.
-- **Queue and hidden sessions:** Queue owns explicit start, resume, return, and completion. Momentum and Files links open passively without creating sessions. Hidden session records preserve source/reflection linkage without a separate management destination.
-- **Source notes:** the Notes library shows only structured Notes Extractor source notes (Foundation → Case Studies → Exploitation → Defense) read in a dedicated typographic reader with section navigation and in-place editing. Each note keeps one explicit Source context hop back to the full source record, which presents the user's exact typed or handwritten feedback before the extracted note; incomplete legacy notes can be re-run from the site.
-- **Recommendation learning:** immutable events separate administrative exclusion, neutral dismissal, explicit fit rejection, rating, learning disposition, completion, and later evidence. `learning_value_v2` combines available rating (25%), explicit disposition (25%), and strongest retrieval/transfer/application evidence (50%); missing components are not treated as zero. Hermes retrieves `/compass/context` before researching sources, so candidate summaries/concepts/mechanisms are grounded in the active Thread, profile, exclusions, known sources, and learning balance. A bounded final-slate diversity rerank avoids near-duplicate choices without overriding source quality or Thread contribution; a shadow-only exploration receipt remains inactive until the outcome gates are met. Adaptation is frozen below the global/lane evidence gates.
-- **Profile and self-update:** the adaptive profile is typed, editable, versioned, and reversible. Hermes auto-applies a normal assertion at confidence ≥0.8 with a direct user statement or two evidence items; replacing an explicit user assertion requires direct contradiction or confidence ≥0.95 with three evidence items. Every applied/no-change/system attempt records a conversation-bound receipt. Narrow reversible skill, prompt, code, additive-schema, and workflow improvements may apply at confidence ≥0.9 after replay/tests and full verification; Hermes delegates repository edits to Codex and may deploy only with rollback state, the full release gate, and observed live smoke. No scheduled/background improvement exists. Destructive deletion and external publication remain explicit-only.
-- **Map, Reflect, and You surfaces:** Atlas is the spatial map, Branches is an evidence-led review desk, and Balance is a map-attention inspection surface. Reflect contains Overview, Taste, Hermes, and memory review with utility and profile signals separated from maintenance actions. You contains the adaptive Profile, grouped Preferences, data/synchronization controls, and the descriptive System control plane. Their visual hierarchy is task-specific but their underlying endpoints and data contracts remain canonical.
-- **Profile workspace:** Map → Branch Deck is an evidence-driven user control surface over the canonical map and profile model. Every branch row shows real evidence (consumed/mapped sources, attention share, priority rank, SRS load, recall strength, balance reasons). Branch decisions write typed, reversible preference assertions and taste signals: keep/promote steer Compass, prune is a reversible exclusion that blocks future recommendations, hold is a neutral hypothesis, add registers an active exploration branch, and undo reverses all side effects (undo of an add removes the branch). `POST /brain/branch-suggest` returns grounded, review-before-commit new-branch ideas (surprise/expand/bridge/challenge) built from live Compass context — nothing is written until the user explicitly adds one. A collapsed copy-prompt offers a grounded Hermes prompt as a fallback when the LLM is unavailable. Surprise is explicit and evidence-bound; it never auto-starts or chains recommendations.
-- **SRS:** explicit retain/apply completion queues Notes Extractor and editable drafts. Only approved drafts become FSRS review cards; legacy clients retain the old 7+ bridge.
-- **Knowledge map:** branches, edges, evidence, contradictions, coverage, health, and taste signals. Learning balance combines map depth (R1/R2/R3), recent attention share, explicit priority share, notes, SRS due cards, recall strength, explainable uncovered/at-risk/exposed states, and unmapped-source warnings; the site and Hermes read this same model.
-- **Mapping maintenance:** Hermes can explicitly attach completed sources to existing map nodes through `POST /recommendations/map`; ambiguous sources remain unresolved rather than creating speculative branches.
-- **Resurfacing:** brings useful knowledge back at the right time without auto-chaining recommendations.
-- **NotebookLM grounding:** Hermes uses the dedicated Master Corpus notebook for complete-corpus grounding during explicit recommendation-feedback workflows. Only original source material and Mahmood-authored reflections/feedback enter the corpus; generated translations and Lite Visual companions do not count as his thoughts. Explicit source-specific Studio requests create a fresh per-source notebook, add the link as a Website source, start the artifact without downloading/uploading or waiting, and immediately save the notebook URL on the matching site item.
-- **NotebookLM Q&A speed:** the active NotebookLM skill reuses compatible MCP sessions, starts fresh on topic changes or low confidence, and accepts exact 24-hour cache hits only when the latest corpus fingerprint is part of the cache key.
-- **Arabic learning media:** Future Lite Visual HTML/PDF companions and learner-facing NotebookLM Studio prompts default to clear, relatively formal Egyptian Arabic. Real technical terms remain in English every time and are explained by meaning in context, never replaced with awkward literal Arabic labels. Hard or unfamiliar sources adaptively combine real-life examples, step-by-step mechanisms, visual diagrams, and comparisons/counterexamples when useful; easy sources remain source-proportional. Within an explicit source-learning request Hermes chooses the smallest non-redundant media set and primary starting medium automatically; future pair metadata makes that medium Momentum's main action. No background generation is created.
+## Capture and recommendation rules
 
-## Visual and UX Direction
+- Every URL, text, PDF, HTML, video, Telegram, share-target, RSS, and Atom capture enters the unlimited Inbox. RSS/Atom refreshes never bypass triage; enabled feeds refresh every six hours, scheduled imports are capped at 20 deduplicated entries per feed, and manual Check now is capped at five latest entries per feed.
+- Queue normally holds five queued/in-progress sources. Explicit triage override is required to exceed the cap. Queue owns start, resume, return, and completion; opening a source, file, or companion elsewhere is passive and never creates a session.
+- Feedback is explicit and auditable. Not now is neutral and may resurface in Inbox; Bad fit requires a reason; rating, disposition, completion, and later learning evidence remain separate. Processing feedback never requests another recommendation automatically.
+- Compass is Thread-first and source-grounded. Fit, bridge, and challenge lanes are bounded by evidence and rollout gates; shadow decisions do not serve until quality thresholds pass. Mastered/consumed sources and Mahmood’s standing exclusions are always applied.
+- User-authored reflection is never rewritten. Invisible AI may enrich, rank, classify, and explain. Typed profile changes have provenance, confidence, version history, and reversible undo; Hermes self-evolution is evidence-gated, explicit, and unscheduled.
 
-The system is **Living Learning Room**: a calm but expressive single-environment learning space. It is neither a conventional light nor dark mode. A chromatic lilac field, pale work surfaces, deep plum anchors, vermilion commitments, citrus activity, and iris wayfinding give the operating system one recognizable atmosphere without turning it into a dashboard.
+## Frontend contract
 
-- Desktop uses a floating horizontal workspace ribbon, not a permanent sidebar: Now, Curate, Learn, Map, Reflect, and You. Individual tools are local to their workspace, never competing as global navigation. Mobile prioritizes Now, Curate, Learn, Map, and More; Reflect and You live in More, and the desktop ribbon does not duplicate the dock.
-- Momentum is source-first: the current source, its Queue rationale, all linked files and NotebookLM access, the active Thread question/evidence progress, and only actionable new attention changes. The source stage is visible early, with activity as a supporting instrument.
-- Queue is a ranked commitment shelf rather than a generic task table: each source makes Start/Resume unmistakable, keeps neutral and rejection controls secondary, and puts the primary action before lengthy rationale on phone so the persistent dock cannot conceal it.
-- IBM Plex Sans/Arabic is the UI family; IBM Plex Mono is only for compact factual measurements; Literata carries selected editorial titles and source content.
-- Route headers are concise wayfinding, not repeated hero screens. Content hierarchy and real work create the first impression.
-- Motion is near-static and continuity-based. No page-load choreography, ambient loops, or attention traps; reduced motion is instant.
-- Atlas may be immersive; management surfaces remain task-led, calm, and progressively disclosed.
+The shipped client is the **Botanical Folio / Evidence Ledger**: a green-and-cream studio with five root routes and 18 named views:
 
-`DESIGN.md` is the detailed design contract. `PRODUCT.md` is the concise product contract.
-
-## System Architecture
-
-```text
-Preact client ──HTTP──> Hono Worker ──> D1 (canonical structured state)
-                              │
-                              ├──────> R2 (PDF/HTML/transcript artifacts)
-                              │
-Hermes explicit workflow <── /agent/jobs ──┘
-    │
-    ├── learning-notes-extractor
-    ├── taste-mapper
-    └── Obsidian archive copy (extracted notes only)
-```
-
-- Worker entry: `src/index.ts`
-- Client entry: `client/src/main.tsx`
-- Route registry: `client/src/destinations.ts`
-- Shared domain logic: `src/domain.ts`
-- D1 bindings/schema: `wrangler.toml`, `schema.sql`, `migrations/`
-- API reference: `docs/API.md`
-- Architecture reference: `docs/architecture.md`
-
-## Canonical Ownership
-
-| Data | Canonical owner |
+| Root | Named views |
 |---|---|
-| Recommendations, captures, sessions, notes, ratings, SRS, map, settings | D1 |
-| PDFs, HTML, transcripts, generated companions | R2 |
-| Client preferences/offline mutations | Local storage/IndexedDB until synchronized |
-| Extracted-note archive copy | Obsidian |
-| Product/API source code | This repository |
-| Automated extraction and taste processing | Hermes durable jobs |
+| Home | Today |
+| Library | Queue, Inbox, All sources, Files, Books, Collections, Archive |
+| Learn | Paths, Notes, Recall |
+| Map | Atlas, Branches, Balance |
+| Settings | Profile, Preferences, Data & sync, System |
 
-Agents operate the product through `GET /agent/capabilities`, `GET /agent/openapi.json`, and authenticated `POST /agent/request` or `/agent/tool-call`. The adapter is allow-listed, reuses normal API validation, supports CRUD/process/job/analytics operations, and audits mutations in `agent_logs`; it never exposes arbitrary SQL or proxying.
+Desktop uses a persistent root rail, workspace ledger, main canvas, and contextual inspector. Mobile uses a bottom dock and navigation sheet; selected-object inspection becomes a sheet or pushed detail view. Typed object routes preserve Source, Thread, Note, Unit, Recall Card, Branch, Node, Collection, Book, and Artifact identity. Legacy hashes canonicalize to purposeful routes and unknown hashes render recovery.
 
-Obsidian is not bidirectional storage. Do not make an archive copy overwrite D1.
+`client/src/main.tsx` is cut over to `client/src/app/entry.tsx`. The replacement is composed under `client/src/app`, `client/src/shell`, `client/src/workspaces`, and shared components; the retired monolithic shell/registry/styles files are removed as part of the cutover.
 
-## Hermes Workflows
+## System architecture and ownership
 
-### Durable jobs
+- `src/` contains the Hono Cloudflare Worker, API routes, domain logic, and scheduled infrastructure.
+- `client/` contains the Vite + Preact + TypeScript application.
+- `schema.sql` is the base schema; `migrations/` are ordered, idempotent production migrations.
+- D1 is canonical for product records, learning state, graph data, receipts, and profile assertions. R2 stores large artifacts and linked reading companions. Obsidian is archive/export only.
+- API mutations retain stable client IDs, offline outbox/retry/discard behavior, conflict visibility, and successful-response receipts. REST compatibility remains intact.
+- Heavy graph code stays lazy-loaded. The base client target is at or below 150 KB gzip excluding lazy graph/vendor chunks.
 
-Hermes handles durable work only inside an explicit Learning Compass workflow. It claims the exact work created by that request, runs the specialist, then completes or fails it using the same stable identity. There is no automatic host poller, and internal job state is not exposed in the site UI. Job keys, leases, retries, and completion writes remain idempotent.
+## Hermes and reading companions
 
-Hermes self-improvement is conversation-driven, never scheduled. After the primary request is verified, every specialist emits a compact evolution handoff or `no_change`; `learning-compass-self-evolution` is the single owner that deduplicates evidence, applies thresholds, maintains the skill graph, and records applied, failed/resumable, or evidence-backed no-change receipts. Explicit user assertions remain editable but receive stronger supersession protection. At confidence ≥0.9, or after the same issue repeats twice, the owner may update skills, prompts, code, tests, additive migrations, and workflows after replay and the complete relevant verification suite. Repository edits are delegated to Codex; release changes may deploy only after the full release gate, rollback capture, and live smoke are observed. Every evaluated attempt writes a `self_improvement_runs` receipt plus linked provenance; no candidate creates no database churn. Destructive deletion and external publication remain explicit-only.
+Lite Visual creates one linked HTML+PDF R2 pair for normal sources. For books it creates one linked pair per chapter, with stable chapter metadata, complete-source checksum-backed evidence and coverage data, cached mining, Visual Mind first, and canonical source-record verification. The PDF is the reading companion. There is no Lite Visual QA gate and no automatic Notes Extractor chain.
 
-Hermes's global identity is `docs/learning-compass-hermes-soul.md`, mirrored into `~/.hermes/SOUL.md` and loaded on new sessions. It defines voice, initiative, uncertainty, and verification posture only. Project routing, source-of-truth order, mutations, and self-evolution boundaries live in `.hermes.md`, this context, `docs/hermes-contract.json`, and focused skills.
+Hermes remains the procedural Learning Compass operating system. Its active workflow owns recommendation research, source-grounded candidate submission, feedback handling, typed profile learning, memory provenance, NotebookLM, Lite Visual, Visual Mind, RSS feeds, site operations, and self-evolution. It uses idempotent leases and recovery receipts but has no scheduled autonomous poller. Internal prompt payloads, job controls, and secrets do not render in normal product surfaces.
 
-Every specialist returns the canonical receipt `intent → target → before → mutation/job → after → evidence → blocker`; endpoint ownership and permissions live in `docs/hermes-contract.json`.
+## Local verification and release truth
 
-The retained manual runner is `~/.hermes/scripts/taste-map-job.py`. Its User-Agent must remain:
-
-```text
-Mozilla/5.0 (compatible; HermesCron/1.0)
-```
-
-Cloudflare rejects Python's default User-Agent.
-
-### Lite Visual
-
-“Visual lite” and “lite visual” mean the `lite-visual` skill:
-
-1. Resolve the exact source and previous artifact pair by recommendation ID, canonical URL, then title.
-2. Retrieve the complete primary source, figures, tables, appendices, and substantive supplementary material; record any inaccessible scope.
-3. Create a checksum-backed evidence packet and coverage matrix mapping every material section, claim, method, result, caveat, and conclusion to the companion.
-4. Produce a source-proportional, tablet/print-friendly Arabic-first RTL HTML companion in separate coverage and design passes, with adaptive demonstrations for difficult material and English technical vocabulary explained naturally in context.
-   Dense sources of at least 5,000 words require a masterclass-scale companion: at least 2,500 visible words and normally at least 35% of source length up to 6,000 words, with every distinct mechanism, named example, qualification, and conclusion covered. Manual revisions use the same validator and may never bypass it.
-5. Calculate displayed metadata from the finished artifact and render a real tablet/print PDF before upload.
-6. No subjective Lite Visual QA score or review gate is required; deterministic release validation remains mandatory and blocks layout, accessibility, linkage, unresolved-placeholder, unfinished mixed-language-copy, duplicate-retrieval, and malformed-caption defects.
-   Visual batches are source-proportional rather than quota-shaped: manifests require a density/rationale plan, distinct claim and section placement, and a completed critic receipt. Draft delegation is isolated per source; rendering, validation, upload, deletion, and canonical verification remain serialized.
-7. Upload a new revision pair with explicit revision and superseded-pair metadata; never silently overwrite the previous pair.
-8. Re-read both uploaded artifacts and verify the canonical source record.
-9. Do not call Notes Extractor automatically; it remains an explicit/manual workflow.
-
-The Worker only enqueues `visualise_source` with `custom_prompt_required=true` and expected roles `html`/`pdf`; Hermes owns cached mining, Visual Mind planning, source-specific prompting, rendering, upload, and completion. Lite Visual HTML/PDF uploads have no subjective QA score, but must pass the deterministic release validator. Book jobs require one stable HTML/PDF pair per chapter; Notes Extractor is never auto-queued by Lite Visual.
-
-Books use Lite Visual Book Mode from the Books shelf: complete chapter/file mining, canonical Arabic-first explanations, first-page TOC, source-proportional pagination, and an approximately 6cm print annotation margin. The book API exposes each chapter's HTML/PDF pair, extraction state, and finished state, while visualise requests remain idempotent Hermes jobs. The Books page UI expands/collapses chapters on book title click, showing each chapter with number badge, title, status, file links (HTML/PDF/NBLM), upload buttons for missing files, and Finish/Undo toggle. Chapter file uploads use the existing `POST /artifacts` endpoint with chapter metadata.
-
-The HTML and PDF represent one source and must not count as two taste signals.
-
-### Taste intelligence
-
-- `taste-mapper` processes explicit feedback and proposes profile/map updates.
-- `taste-rec` recommends only when a new recommendation is explicitly requested.
-- Legacy Discovery interview heuristics are staged as reviewable `skill_revisions`; the Worker never writes local skill files. `learning-compass-self-evolution` may incorporate a staged patch only after current-conversation evidence, replay, and skill validation.
-- Explicit recommendation requests use the Personal Bayesian Cascade: resolve one required intent (`solve_problem`, `build_skill`, `deepen_thread`, `discover`, or `queue_fill`), research and compare 3–24 evidence-grounded candidates in one bounded pass, expose one server-scored pick, and wait for explicit Start and feedback. Hermes reads the private semantic research context first; Workers AI and Vectorize retrieve conceptually related prior sources, Threads, Notes, and Units without handing scoring authority to the model. Normal requests use the fit strategy; bridge and challenge are explicit-only exploration. Books are hard-excluded unless the request explicitly sets `allow_books: true`. A candidate needs anchored structured evidence plus an editorial review that states why it is worth the time, what is uniquely valuable, and whether it is substantive or deep; a plausible free-text rationale is never enough. A weak but safe winner is shown as a clearly labeled review pick with its score, confidence, source status, and reason it missed the automatic threshold; it reaches the Queue only if the curator explicitly chooses **Add to Queue anyway**. Normal requests expose one pick. Explicit Queue-fill requests may continue bounded waves and explicitly start only Worker-returned `ready` picks until five queued/in-progress items exist; withheld weak picks never bypass their separate exact override. The Worker owns source reachability checks, URL/semantic deduplication, hard exclusions, D1-context scoring, strategy-specific pairwise ranking, calibrated confidence, decision receipts, and predicted-versus-actual outcome learning. `/discovery` and `/ai/suggest` are compatibility/archive paths.
-- `learning-compass-self-evolution` owns explicit deep audits, evaluator/repair/recalibration/rollout decisions, skill health, and the one end-of-turn evolution pass.
-- Feedback jobs never call `taste-rec` automatically.
-- NotebookLM updates happen only when Hermes is handling explicit feedback on a recommendation; there is no automatic D1 mutation sync.
-
-### Site operations
-
-- `learning-compass-operating-system` is Hermes's single entry point. It classifies every Learning Compass request into a verified procedure, then calls one focused specialist skill. `learning-compass-site-operator` is its live Worker API execution layer: it uses `/agent/capabilities` and `/agent/request`, reads before writes, verifies after writes, and uses the Cloudflare-compatible Hermes User-Agent.
-- A reflection sent to Hermes is explicit feedback: preserve it verbatim, resolve the source/session, queue Taste Mapper analysis, create auditable proposals, apply only evidence-qualified profile/map/scoring changes during that conversation, and stop without recommending anything.
-- Every feedback analysis reads the complete archived feedback context plus the current profile and knowledge-map nodes through `GET /feedback/context`, so repeated signals can improve proposals without rewriting the user's original feedback.
-
-## Purposeful Destinations
-
-The route registry is the executable source of truth:
-
-- Momentum: 1
-- Curate: 5
-- Map: 2
-- Learn: 4
-- Insights: 3
-- Settings: 4
-
-Total: 19 purposeful views remain available through six clear workspaces: Now (Momentum), Curate (Queue, Inbox, Collections, Archive, Books), Learn (Paths, Library, Notes, Recall, Changes), Map (Atlas, Branches, Balance), Reflect (Overview, Taste, Hermes), and You (Profile, Preferences, Data, System). Settings → System exposes the complete API capability catalog, schedules, runtime services, storage, health, and safety boundaries without promoting infrastructure into the daily learning loop.
-
-## Data and Migrations
-
-Apply in order:
-
-1. `schema.sql`
-2. `migrations/0000_brain.sql`
-3. `migrations/0001_production_rebuild.sql`
-4. `migrations/0002_rss_feeds.sql`
-5. `migrations/0003_feedback_review.sql`
-6. `migrations/0004_discovery_engine.sql`
-7. `migrations/0005_recommendation_notebook_url.sql`
-8. `migrations/0006_hermes_upgrade.sql`
-9. `migrations/0007_sync_notifications.sql`
-10. `migrations/0008_compass_cascade.sql`
-11. `migrations/0009_proposal_dedup.sql`
-12. `migrations/0010_compass_queue_fill.sql`
-13. `migrations/0011_compass_adaptive_learning.sql`
-14. `migrations/0012_context_brief.sql`
-15. `migrations/0013_book_visual_chapters.sql`
-16. `migrations/0014_canonical_activity_ledger.sql`
-17. `migrations/0015_outcome_learning_integrity.sql`
-18. `migrations/0016_learning_integrity.sql`
-19. `migrations/0017_consolidation_workflows.sql`
-20. `migrations/0018_learning_threads.sql`
-21. `migrations/0019_learning_units.sql`
-22. `migrations/0020_mastery_evidence.sql`
-23. `migrations/0021_learning_outcomes_v2.sql`
-24. `migrations/0022_fsrs_and_thread_backfill.sql`
-25. `migrations/0023_intelligence_v2.sql`
-26. `migrations/0024_memory_context.sql`
-27. `migrations/0025_compass_contextual_reranking.sql`
-28. `migrations/0026_semantic_retrieval.sql`
-29. `migrations/0027_feedback_observability.sql`
-30. `migrations/0027_recommendation_quality_enhancements.sql`
-31. `migrations/0028_compass_thompson_pessimistic_prior.sql`
-32. `migrations/0029_learning_hub.sql`
-33. `migrations/0030_hub_notes_files.sql`
-
-New schema changes require a new numbered idempotent migration. Never hide schema mutation inside cron or request handlers.
-
-## Local Commands
+Run proportionate checks with the repository’s existing Node modules:
 
 ```bash
-npm install
-npm run dev:worker
-npm test
+npm run typecheck
 npm run build
-npm run test:e2e
+git diff --check
 ```
 
-Deployment:
-
-```bash
-npx wrangler deploy --config wrangler.toml
-```
-
-Do not use a different Wrangler config or deployment directory.
-
-## Definition of Production Quality
-
-- Every route has purposeful data, loading, empty, and error states.
-- No fallback view, console error, `undefined`, or `NaN`.
-- Large datasets remain usable.
-- Interactions normally respond within 100 ms on local data.
-- Base bundle stays ≤150 KB gzip excluding lazy chunks.
-- Offline mutations recover cleanly after reconnect.
-- Existing data and compatible REST clients remain intact.
-- Tests, docs, active Hermes skills, and deployed behavior agree.
-
-Formal security and accessibility audits are outside the current scope, but existing protections and basic semantic/keyboard behavior must not regress.
+The redesign implementation is built but not deployed. Focused live QA has been observed for the replacement; this contract cleanup does not claim E2E or full-suite verification. Deploy only after the release checklist, route/deep-link checks, responsive/accessibility checks, and required test suites are run.

@@ -11,7 +11,7 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 
 ## Product Invariants
 
-- Product: **Learning Compass**. Visual language: **Scholar's Instrument**.
+- Product: **Learning Compass**. Visual language: **Botanical Folio / Evidence Studio** — a cypress/cream Evidence Ledger with a persistent desktop root rail, a saved-view ledger, a working canvas, and a contextual inspector. On mobile, the rail becomes a bottom dock and navigation sheet.
 - Loop: capture → curate → consume externally → reflect → notes → review → map update → resurface.
 - D1 is canonical. R2 stores large artifacts. Obsidian is an archive/export for extracted notes only.
 - Every capture, including Telegram and share-target input, enters the unlimited Inbox.
@@ -21,7 +21,7 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 - Ratings of 7–10 create editable SRS drafts; approval is required before Review.
 - Feedback processing never requests another recommendation automatically.
 - Lite Visual creates one linked HTML+PDF R2 pair for normal sources. For books, it creates one linked pair per chapter with stable chapter metadata, mines the complete source into a checksum-backed evidence packet and coverage matrix, reuses cached mining, runs Visual Mind first, and verifies the canonical source record. There is no Lite Visual QA gate and no automatic Notes Extractor chain. The PDF is the reading companion.
-- All destinations in `client/src/destinations.ts` must resolve to a purposeful real view. No generic fallback screens or tabs that expose only infrastructure.
+- The five-root route registry in `client/src/app/router.ts` exposes 18 purposeful named views. Every root and view must resolve to a real product surface; no generic fallback screens or tabs may expose only infrastructure.
 
 ## Architecture Boundaries
 
@@ -43,7 +43,7 @@ When behavior changes, update its contract in the same task:
 | Product workflow or invariant | `PROJECT_CONTEXT.md`, relevant product/design docs, `CURRENT_STATE.md` |
 | API route or response | `docs/API.md`, tests, affected Hermes skills |
 | D1 schema | numbered migration, schema documentation, tests, affected Hermes skills |
-| UI destination/navigation | `client/src/destinations.ts`, E2E tests, `PRODUCT.md` or `DESIGN.md` when applicable |
+| UI destination/navigation | `client/src/app/router.ts`, E2E tests, `PRODUCT.md` or `DESIGN.md` when applicable |
 | Deployment/runtime | `README.md`, `docs/release-checklist.md`, Worker Ops skill |
 | Hermes workflow | all affected skills, `.hermes.md`, and durable Hermes memory if globally true |
 | Completed milestone or new blocker | `CURRENT_STATE.md` |
