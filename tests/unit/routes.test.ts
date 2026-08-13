@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { destinations, destinationForPath, mobilePrimary } from '../../client/src/destinations.ts'
+import { objectHref, roots, routeHref, views } from '../../client/src/app/router.ts'
 import { calibratedConfidence, canonicalizeUrl, compassPickIsUnresolved, deriveCandidateFeatures, pairwiseDominance, semanticSimilarity, serverScore } from '../../src/compass-scoring.ts'
 test('Compass ignores started picks whose recommendation is already completed or rejected', () => {
   assert.equal(compassPickIsUnresolved('started', 'consumed'), false)
@@ -121,43 +121,23 @@ test('Compass uses learning balance as a bounded branch signal', () => {
   assert.equal(redirected._branch_state, 'at-risk')
 })
 
-test('the product exposes purposeful distinct destinations', () => {
-  assert.equal(destinations.length, 21)
-  assert.equal(new Set(destinations.map((item) => item.key)).size, 21)
-  assert.ok(destinations.every((item) => item.title && item.purpose && item.kind))
-  assert.equal(destinationForPath('/curate/books')?.endpoint, '/recommendations/books')
-  assert.equal(destinationForPath('/settings/system')?.endpoint, '/agent/system')
+test('the five-root router exposes every view as a purposeful destination', () => {
+  assert.deepEqual(roots.map((root) => root.key), ['home', 'library', 'learn', 'map', 'settings'])
+  const declaredViews = roots.flatMap((root) => views[root.key].map((view) => ({ root: root.key, ...view })))
+  assert.equal(declaredViews.length, 18)
+  assert.equal(new Set(declaredViews.map((view) => `${view.root}/${view.key}`)).size, 18)
+  assert.ok(declaredViews.every((view) => view.label.trim() && view.description.trim()))
+  for (const root of roots) {
+    assert.equal(routeHref(root.key), `#/${root.key}`)
+    assert.equal(routeHref(root.key, root.defaultView), `#/${root.key}`)
+    for (const view of views[root.key]) {
+      const href = routeHref(root.key, view.key)
+      assert.match(href, new RegExp(`^#/${root.key}(?:/${view.key})?$`))
+    }
+  }
 })
 
-test('the Branch Deck is a profile-control desk over the real branch endpoint', () => {
-  const deck = destinations.find((item) => item.key === 'map.deck')
-  assert.ok(deck, 'map.deck destination exists')
-  assert.equal(deck.endpoint, '/brain/branch-deck')
-  assert.match(deck.purpose, /prune the old, add new/)
-  assert.match(deck.purpose, /grounded surprise/)
-})
-
-test('unknown hashes never fall back to an unrelated view', () => {
-  assert.equal(destinationForPath('/curate/queue')?.key, 'curate.queue')
-  assert.equal(destinationForPath('/today/briefing')?.key, 'today.momentum')
-  assert.equal(destinationForPath('/vault/files')?.key, 'learn.files')
-  assert.equal(destinationForPath('/learn/notebooklm')?.key, 'learn.files')
-  assert.equal(destinationForPath('/learn/reflections')?.key, 'learn.notes')
-  assert.equal(destinationForPath('/learn/notes?source=rec_1')?.key, 'learn.notes')
-  assert.equal(destinationForPath('/map/branches')?.key, 'map.atlas')
-  assert.equal(destinationForPath('/learn/review')?.key, 'learn.recall')
-  assert.equal(destinationForPath('/insights/memory')?.key, 'insights.hermes')
-  assert.equal(destinationForPath('/learn/sessions')?.key, 'curate.queue')
-  assert.equal(destinationForPath('/not/a-route'), null)
-})
-
-test('mobile keeps the daily loop in its primary navigation', () => {
-  assert.deepEqual(mobilePrimary, ['today', 'curate', 'learn', 'more'])
-})
-
-test('learn files destination maps correctly for artifact auto-push', () => {
-  const dest = destinationForPath('/learn/files')
-  assert.ok(dest)
-  assert.equal(dest.key, 'learn.files')
-  assert.equal(dest.endpoint, '/artifacts')
+test('router object links preserve the five-root contract', () => {
+  assert.equal(objectHref('library', 'source', 'rec/1'), '#/library/source/rec%2F1')
+  assert.equal(objectHref('learn', 'thread', 'path 1'), '#/learn/thread/path%201')
 })
