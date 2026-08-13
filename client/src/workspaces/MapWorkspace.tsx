@@ -88,9 +88,9 @@ function navigateTo(route: MapWorkspaceRoute, onRouteChange?: (route: MapWorkspa
   window.location.hash = `#/map${viewPart}${objectPart}`
 }
 
-function MapViewNav({ active, onRouteChange }: { active: MapView; onRouteChange?: (route: MapWorkspaceRoute) => void }) {
+function MapModeSwitcher({ active, onRouteChange }: { active: MapView; onRouteChange?: (route: MapWorkspaceRoute) => void }) {
   return (
-    <nav class="workspace-local-nav map-local-nav" aria-label="Map views">
+    <nav class="workspace-mode-switcher workspace-local-nav map-local-nav" aria-label="Map sections">
       {mapViews.map((item) => (
         <a
           key={item.key}
@@ -288,7 +288,7 @@ export function MapWorkspace({ route, view, onRouteChange }: MapWorkspaceProps) 
   const active = normalizeView(route?.view || route?.slug, view || 'atlas')
   return (
     <div class="map-workspace workspace-surface">
-      <MapViewNav active={active} onRouteChange={onRouteChange} />
+      <MapModeSwitcher active={active} onRouteChange={onRouteChange} />
       {active === 'atlas' && <Suspense fallback={<Loading label="Preparing spatial atlas" />}><AtlasPage /></Suspense>}
       {active === 'branches' && <Suspense fallback={<Loading label="Opening branch review" />}><BranchDeckPage /></Suspense>}
       {active === 'balance' && <BalanceView route={route} onRouteChange={onRouteChange} />}

@@ -77,9 +77,9 @@ function routeFor(view: SettingsView) {
   return view === 'profile' ? '#/settings' : `#/settings/${view}`
 }
 
-function SettingsNav({ active, onRouteChange }: { active: SettingsView; onRouteChange?: (route: SettingsWorkspaceRoute) => void }) {
+function SettingsModeSwitcher({ active, onRouteChange }: { active: SettingsView; onRouteChange?: (route: SettingsWorkspaceRoute) => void }) {
   return (
-    <nav class="workspace-local-nav settings-local-nav" aria-label="Settings views">
+    <nav class="workspace-mode-switcher workspace-local-nav settings-local-nav" aria-label="Settings sections">
       {settingsViews.map((item) => (
         <a
           key={item.key}
@@ -284,7 +284,7 @@ function SystemView() {
 
 export function SettingsWorkspace({ route, view, onRouteChange }: SettingsWorkspaceProps) {
   const active = normalizeView(route?.view || route?.slug, view || 'profile')
-  return <div class="settings-workspace workspace-surface"><SettingsNav active={active} onRouteChange={onRouteChange} />{active === 'profile' && <ProfileView />}{active === 'preferences' && <PreferencesView />}{active === 'data' && <DataView />}{active === 'system' && <SystemView />}</div>
+  return <div class="settings-workspace workspace-surface"><SettingsModeSwitcher active={active} onRouteChange={onRouteChange} />{active === 'profile' && <ProfileView />}{active === 'preferences' && <PreferencesView />}{active === 'data' && <DataView />}{active === 'system' && <SystemView />}</div>
 }
 
 export default SettingsWorkspace

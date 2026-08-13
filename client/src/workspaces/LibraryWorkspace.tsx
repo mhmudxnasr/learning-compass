@@ -26,6 +26,7 @@ import {
   type LibraryObjectType,
   type LibraryRecord,
   type LibrarySelection,
+  type LibraryView,
   type LibraryWorkspaceProps,
 } from './library/types'
 
@@ -72,10 +73,63 @@ function objectItem(type: LibraryObjectType, data: LibraryRecord, objectId: stri
   return null
 }
 
+type LibraryPrimaryMode = 'sources' | 'files' | 'collections'
+
+const sourceFilters: Array<{ key: Exclude<LibraryView, 'files' | 'collections'>; label: string; description: string }> = [
+  { key: 'queue', label: 'Queue', description: 'Committed next' },
+  { key: 'inbox', label: 'Inbox', description: 'Waiting for a decision' },
+  { key: 'all', label: 'All', description: 'Every source' },
+  { key: 'books', label: 'Books', description: 'Chapter-aware sources' },
+  { key: 'archive', label: 'Archive', description: 'Completed and excluded' },
+]
+
+const primaryModes: Array<{ key: LibraryPrimaryMode; label: string; description: string; view: LibraryView }> = [
+  { key: 'sources', label: 'Sources', description: 'Capture, decide, and revisit', view: 'all' },
+  { key: 'files', label: 'Files', description: 'Reading companions and uploads', view: 'files' },
+  { key: 'collections', label: 'Collections', description: 'Groups with a purpose', view: 'collections' },
+]
+
+function primaryModeFor(view: LibraryView, objectType?: LibraryObjectType): LibraryPrimaryMode {
+  if (objectType === 'artifact' || view === 'files') return 'files'
+  if (objectType === 'collection' || view === 'collections') return 'collections'
+  return 'sources'
+}
+
+function libraryHref(view: LibraryView) {
+  return `#/library?mode=${encodeURIComponent(view)}`
+}
+
+function LibraryModeSwitcher({ activeView, objectType, onNavigate }: { activeView: LibraryView; objectType?: LibraryObjectType; onNavigate?: (href: string) => void }) {
+  const activePrimary = primaryModeFor(activeView, objectType)
+  const navigate = (href: string) => {
+    onNavigate?.(href)
+    if (!onNavigate) location.hash = href.slice(1)
+  }
+  return <>
+    <nav class="workspace-mode-switcher workspace-local-nav" aria-label="Library sections">
+      {primaryModes.map((item) => {
+        const href = libraryHref(item.view)
+        return <a key={item.key} href={href} class={activePrimary === item.key ? 'active' : ''} aria-current={activePrimary === item.key ? 'page' : undefined} onClick={(event) => { if (!onNavigate) return; event.preventDefault(); navigate(href) }}>
+          <strong>{item.label}</strong><small>{item.description}</small>
+        </a>
+      })}
+    </nav>
+    {activePrimary === 'sources' && <nav class="workspace-filter-switcher workspace-local-nav" aria-label="Source filters">
+      {sourceFilters.map((item) => {
+        const href = libraryHref(item.key)
+        return <a key={item.key} href={href} class={activeView === item.key ? 'active' : ''} aria-current={activeView === item.key ? 'page' : undefined} onClick={(event) => { if (!onNavigate) return; event.preventDefault(); navigate(href) }}>
+          <strong>{item.label}</strong><small>{item.description}</small>
+        </a>
+      })}
+    </nav>}
+  </>
+}
+
 export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: LibraryWorkspaceProps) {
   const localRoute = useRoute()
   const activeRoute = route || localRoute
-  const view = asView(activeRoute.view)
+  const queryMode = activeRoute.query.get('mode') || ''
+  const view = asView(queryMode === 'sources' ? 'all' : queryMode || activeRoute.view)
   const objectType = activeRoute.objectType as LibraryObjectType | undefined
   const endpoint = endpointFor(view, objectType, activeRoute.objectId)
   const { data, error, loading, reload } = useData<LibraryRecord>(endpoint)
@@ -203,19 +257,22 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
   if (error) return <ErrorState message={error} retry={reload}/>
   const loaded = data || {}
 
+  const modeSwitcher = <LibraryModeSwitcher activeView={view} objectType={objectType} onNavigate={onNavigate} />
+
   if (activeRoute.objectId && objectType) {
     const item = objectItem(objectType, loaded, activeRoute.objectId)
     if (!item) return <ErrorState message={`The ${objectType} “${activeRoute.objectId}” is not available in this library.`} retry={reload}/>
     const objectData = objectType === 'source' ? loaded : { [objectType]: item }
     const backView = objectType === 'artifact' ? 'files' : objectType === 'book' ? 'books' : objectType === 'collection' ? 'collections' : 'all'
-    return <ObjectRouteView type={objectType} data={objectData} handlers={handlers} onBack={() => go(`#/library/${backView === 'all' ? '' : backView}`)}/>
+    return <div class="library-workspace workspace-surface">{modeSwitcher}<ObjectRouteView type={objectType} data={objectData} handlers={handlers} onBack={() => go(`#/library/${backView === 'all' ? '' : backView}`)}/></div>
   }
 
-  if (view === 'queue') return <QueueView data={loaded} handlers={handlers}/>
-  if (view === 'inbox') return <InboxView data={loaded} handlers={handlers}/>
-  if (view === 'all') return <AllSourcesView data={loaded} handlers={handlers}/>
-  if (view === 'files') return <FilesView data={loaded} handlers={handlers}/>
-  if (view === 'books') return <BooksView data={loaded} handlers={handlers}/>
-  if (view === 'collections') return <CollectionsView data={loaded} handlers={handlers}/>
-  return <ArchiveView data={loaded} handlers={handlers}/>
+  const content = view === 'queue' ? <QueueView data={loaded} handlers={handlers}/> :
+    view === 'inbox' ? <InboxView data={loaded} handlers={handlers}/> :
+      view === 'all' ? <AllSourcesView data={loaded} handlers={handlers}/> :
+        view === 'files' ? <FilesView data={loaded} handlers={handlers}/> :
+          view === 'books' ? <BooksView data={loaded} handlers={handlers}/> :
+            view === 'collections' ? <CollectionsView data={loaded} handlers={handlers}/> :
+              <ArchiveView data={loaded} handlers={handlers}/>
+  return <div class="library-workspace workspace-surface">{modeSwitcher}{content}</div>
 }
