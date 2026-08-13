@@ -531,7 +531,8 @@ output {
   font-size: 11px;
 }
 
-.context-head h1 {
+.context-title {
+  display: block;
   margin: 2px 0 0;
   font-family: Literata, Georgia, serif;
   font-size: 19px;
@@ -721,6 +722,52 @@ output {
   overflow: auto;
   padding: 24px clamp(18px, 3vw, 44px) 48px;
   outline: none;
+}
+
+.workspace-local-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 auto 24px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--studio-seam);
+}
+
+.workspace-local-nav a {
+  display: grid;
+  min-width: 132px;
+  min-height: 54px;
+  align-content: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--studio-seam);
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-shell);
+  color: var(--studio-secondary);
+  text-decoration: none;
+}
+
+.workspace-local-nav a strong {
+  color: var(--studio-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.workspace-local-nav a small {
+  color: var(--studio-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.workspace-local-nav a:hover,
+.workspace-local-nav a.active {
+  border-color: var(--studio-focus);
+  background: var(--studio-lichen);
+  color: var(--studio-focus);
+}
+
+.workspace-local-nav a.active strong {
+  color: var(--studio-focus);
 }
 
 .object-inspector {
@@ -3527,9 +3574,9 @@ details > summary {
   }
 
   .command-bar {
-    min-height: 54px;
+    min-height: 62px;
     gap: 7px;
-    padding: 8px 12px;
+    padding: 9px 12px;
   }
 
   .command-location {
@@ -3545,6 +3592,7 @@ details > summary {
 
   .command-search {
     min-width: 0;
+    height: 44px;
   }
 
   .command-search span {
@@ -3558,13 +3606,46 @@ details > summary {
   }
 
   .capture-button {
-    width: 36px;
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
     justify-content: center;
     padding: 0;
   }
 
+  .mobile-menu,
+  .dialog .icon-button,
+  .dialog button,
+  .dialog .button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .mobile-menu {
+    width: 44px;
+    height: 44px;
+  }
+
   .capture-button span {
     display: none;
+  }
+
+  .workspace-local-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+  }
+
+  .workspace-local-nav a {
+    min-width: 0;
+    min-height: 68px;
+    padding: 10px 11px;
+  }
+
+  .workspace-local-nav a small {
+    white-space: normal;
   }
 
   .workspace-canvas {

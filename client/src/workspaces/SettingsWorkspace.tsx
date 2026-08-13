@@ -205,6 +205,12 @@ function PreferencesView() {
   const [autoExtract, setAutoExtract] = useState(false)
   const [profileMode, setProfileMode] = useState('automatic')
   const [engineMode, setEngineMode] = useState('shadow')
+  useEffect(() => {
+    const labels = ['Reading density', 'Recall retention target', 'Profile learning']
+    document.querySelectorAll('.settings-page select').forEach((select, index) => {
+      if (labels[index]) select.setAttribute('aria-label', labels[index])
+    })
+  }, [])
   const resolved = settings.data?.resolved
   useEffect(() => {
     if (!resolved) return
