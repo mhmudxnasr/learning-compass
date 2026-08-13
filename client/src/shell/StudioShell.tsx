@@ -93,6 +93,6 @@ export function StudioShell({ route, children, inspector, onCapture, onSearch, m
     <nav class="mobile-dock" aria-label="Main navigation">
       {roots.map((item) => <a href={routeHref(item.key)} class={route.root === item.key ? 'active' : ''}><Icon name={rootIcons[item.key]}/><span>{item.label}</span></a>)}
     </nav>
-    {mobileContextOpen && <button class="context-scrim" aria-label="Close navigation" onClick={() => setMobileContextOpen(false)}/>}
+    {mobileContextOpen && <button class="context-scrim" aria-label="Dismiss navigation" onClick={() => setMobileContextOpen(false)}/>}
   </div>
 }
