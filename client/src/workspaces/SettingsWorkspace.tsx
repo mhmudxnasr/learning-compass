@@ -138,6 +138,14 @@ function ReadableValue({ value, compact = false }: { value: unknown; compact?: b
   return <div class="profile-readable-value"><p>{text}</p>{tags.length > 0 && <div class="profile-tag-list">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}</div>
 }
 
+function ProfileFieldList({ profile }: { profile: ProfileRecord }) {
+  return <section class="profile-section profile-fields-section"><div class="section-head"><h2>Profile fields</h2><span>Canonical profile inputs</span></div><div class="profile-fields">{profileFields.map((field) => {
+    const value = profile[field.apiKey]
+    const parsed = field.structured && typeof value === 'string' ? (() => { try { return { value: JSON.parse(value), valid: true } } catch { return { value: null, valid: false } } })() : { value, valid: true }
+    return <article class="profile-field" key={field.key}><div class="profile-field-head"><span><strong>{field.label}</strong><small>{field.description}</small></span></div>{parsed.valid ? <ReadableValue value={parsed.value} /> : <p class="profile-empty">Needs review in the profile editor.</p>}</article>
+  })}</div></section>
+}
+
 function ProfileRecordList({ items, empty, title, getTitle, getMeta }: { items: any[]; empty: string; title: string; getTitle: (item: any) => string; getMeta: (item: any) => string }) {
   return <section class="profile-record-section"><div class="section-head"><h2>{title}</h2><span>{items.length} recorded</span></div>{items.length ? <div class="profile-record-list">{items.slice(0, 24).map((item, index) => <article class="profile-record" key={String(item.id || item.label || item.name || index)}><div class="profile-record-title"><strong>{getTitle(item)}</strong><small>{getMeta(item)}</small></div><p>{readableText(item.description || item.reason || item.why || item.topic || item.notes || '')}</p></article>)}</div> : <p class="profile-empty">{empty}</p>}</section>
 }
@@ -177,6 +185,7 @@ function ProfileView() {
     <section class="model-header"><div class="model-header-main"><div class="model-identity"><span class="model-avatar" aria-hidden="true">{String(person.name || 'L').slice(0, 1).toUpperCase()}</span><div class="model-identity-copy"><span class="eyebrow">Settings / Profile</span><h1>{person.name || 'Your learning profile'}</h1><p class="model-context">{context === 'Not recorded' ? 'Your evidence-backed learning model will take shape as you capture, consume, and reflect.' : context}</p></div></div><span class="model-synced">Model {data.model_version || 'profile_v2'}</span></div></section>
     <div class="profile-health-strip"><div><strong>{labelize(health.status || 'unknown')}</strong><span>model health</span></div><div><strong>{health.active || assertions.length || 0}</strong><span>active assertions</span></div><div><strong>{health.hypotheses || 0}</strong><span>hypotheses</span></div><div><strong>{data.infrastructure_stats?.pending_proposals_count || 0}</strong><span>pending changes</span></div></div>
     <section class="profile-section"><div class="section-head"><h2>Adaptive model</h2><span>{assertions.length} typed signals</span></div>{assertions.length ? <div class="profile-assertion-list">{assertions.slice(0, 24).map((assertion: any) => <article key={assertion.id || assertion.assertion_key}><div class="profile-assertion-head"><div><span class="meta">{labelize(assertion.category || 'profile')} · {labelize(assertion.source_kind || 'recorded')}</span><strong>{labelize(assertion.assertion_key || 'Assertion')}</strong></div><span class={`state state-${assertion.status || 'active'}`}>{labelize(assertion.status || 'active')}</span></div><ReadableValue value={assertion.value} compact /><small>Confidence {Math.round(Number(assertion.confidence || 0) * 100)}% · version {assertion.version || 1}</small></article>)}</div> : <Empty title="No typed assertions yet" body="Your compatibility profile remains available below. New evidence-backed signals will appear here." />}</section>
+    <ProfileFieldList profile={person} />
     <ProfileEditor profile={person} onSaved={profile.reload} />
     <div class="profile-record-columns">
       <ProfileRecordList title="Priorities" items={data.priorities || []} empty="No priorities recorded." getTitle={(item) => item.label || item.branch_id || 'Priority'} getMeta={(item) => item.rank ? `Rank ${item.rank}` : ''} />
