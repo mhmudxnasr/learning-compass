@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { api } from '../api'
 import { uploadArtifact } from '../app/upload'
 import { Icon } from '../components/Icon'
@@ -8,15 +8,28 @@ export function CaptureDialog({ open, onClose, onCaptured }: { open: boolean; on
   const [file, setFile] = useState<File | null>(null)
   const [status, setStatus] = useState('')
   const dialogRef = useRef<HTMLElement>(null)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return
     const previouslyFocused = document.activeElement as HTMLElement | null
-    const focusTimer = window.setTimeout(() => dialogRef.current?.querySelector<HTMLElement>('[autofocus], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href]')?.focus(), 0)
     return () => {
-      window.clearTimeout(focusTimer)
       if (previouslyFocused && document.contains(previouslyFocused)) previouslyFocused.focus()
     }
   }, [open])
+  useLayoutEffect(() => {
+    if (!open) return
+    dialogRef.current?.querySelector<HTMLElement>('[autofocus], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href]')?.focus()
+  }, [open])
+  useEffect(() => {
+    if (!open) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
+    }
+    document.addEventListener('keydown', closeOnEscape, true)
+    return () => document.removeEventListener('keydown', closeOnEscape, true)
+  }, [open, onClose])
   const trapFocus = (event: KeyboardEvent) => {
     if (event.key === 'Escape') { event.preventDefault(); onClose(); return }
     if (event.key !== 'Tab') return

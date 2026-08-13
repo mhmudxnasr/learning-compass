@@ -151,7 +151,7 @@ await page.locator('.capture-dialog[role="dialog"]').waitFor({ state: 'visible' 
 if (!(await page.getByRole('heading', { name: 'Put it in the Inbox.' }).isVisible())) throw new Error('global Capture did not open its Inbox dialog')
 if (!(await page.locator('.capture-dialog textarea[placeholder*="Paste a URL"]').isVisible())) throw new Error('Capture dialog is missing its URL/text field')
 await page.keyboard.press('Escape')
-if (await page.locator('.capture-dialog[role="dialog"]').count()) throw new Error('Capture dialog did not close on Escape')
+await page.locator('.capture-dialog[role="dialog"]').waitFor({ state: 'detached', timeout: 2000 })
 
 const legacyAliases = [
   { path: '/today/briefing', root: 'home' },
