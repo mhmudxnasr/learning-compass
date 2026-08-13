@@ -12,7 +12,7 @@ Manual captures, share targets, Telegram links, and subscribed RSS/Atom entries 
 
 ## Workspaces
 
-The primary interface follows the learning loop: Momentum → Queue → Files → Notes → Activity → Inbox → Atlas. Nineteen purposeful views remain available contextually, but they no longer compete as equal top-level workspaces. Momentum is a source dossier: the current source, its Queue rationale, complete file and NotebookLM access, the Thread question and evidence progress, and a small attention list containing only actionable new work. Opening links from Momentum or Files is passive browsing; sessions begin only through an explicit Queue or Compass start. Settings → System is the complete user-visible control plane for API operations, schedules, services, storage, health, and safety boundaries.
+The primary interface uses six stable workspaces: Now, Curate, Learn, Map, Reflect, and You. Nineteen purposeful views remain available contextually within those workspaces rather than competing as equal top-level tools. Momentum is the Now source dossier: the current source, its Queue rationale, complete file and NotebookLM access, the Thread question and evidence progress, and a small attention list containing only actionable new work. Opening links from Momentum or Library is passive browsing; sessions begin only through an explicit Queue or Compass start. You → System is the complete user-visible control plane for API operations, schedules, services, storage, health, and safety boundaries.
 
 Settings → Profile leads with the typed adaptive model: health, active assertions, hypotheses, confidence, source, versions, direct editing, deactivation, and one-click revision undo. The old singleton fields remain a readable/editable compatibility projection. Stored JSON is never dumped in the normal overview.
 
@@ -37,6 +37,8 @@ Single user in Egypt. Desktop is for curation and synthesis; tablet/phone are fo
 
 ## Product register
 
-Scholar’s Instrument: neutral, typographic, precise, calm for learning, compact for management, immersive only inside the Atlas. No card soup, metric rings, gradients, glass, or decorative SaaS dashboard patterns.
+Living Learning Room: an expressive, chromatic learning environment rather than a standard light/dark productivity app. The loop is accessed from a floating horizontal navigation ribbon, never a permanent sidebar. Momentum is a source stage beside a living activity instrument: source, rationale, and working materials lead; streak evidence remains available as an adjacent spatial object. The environment stays quiet through progressive disclosure and near-static continuity motion, not through gray minimalism or dashboard density.
+
+Learn → Hub opens on the active Learning Thread's curriculum map. The map orients the learner, then the selected level becomes a Focus Study Room: one next required evidence action, a compact proof ledger, and a quiet reference rail for the objective, required proof, finish line, and linked sources. Paused paths and path creation remain available from the compact header, while full source rows, notes, files, and authoring stay progressively disclosed inside the selected level.
 
 Atlas opens as a sparse constellation of major R1 branches. Pan, zoom, search, and progressive expansion reveal deeper rounds without overwhelming the overview; restrained cluster colors support orientation.

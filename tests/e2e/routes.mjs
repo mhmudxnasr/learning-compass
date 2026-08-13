@@ -93,6 +93,8 @@ for (const [workspace, views] of Object.entries(workspaces)) {
   for (const view of views) {
     const before = errors.length
     await page.goto(`${baseUrl}/#/${workspace}/${view}`, { waitUntil: 'networkidle' })
+    if (!(await page.locator('.orbit-bar').count())) throw new Error(`${workspace}/${view}: missing the learning-loop ribbon`)
+    if (await page.locator('.rail').count()) throw new Error(`${workspace}/${view}: rendered the retired sidebar shell`)
     const heading = await page.locator('.page-head h1').textContent()
     if (!heading?.trim()) throw new Error(`${workspace}/${view}: missing heading`)
     if (errors.length !== before) throw new Error(`${workspace}/${view}: ${errors.at(-1)}`)
@@ -155,8 +157,9 @@ if (!(await page.locator('.hub-path').filter({ hasText: 'Systems Thinking' }).co
 await page.locator('.hub-path').filter({ hasText: 'Systems Thinking' }).getByRole('button', { name: 'Open' }).click()
 await page.locator('.learning-path-workspace').waitFor({ state: 'visible' })
 if (!(await page.locator('.path-index-row').filter({ hasText: 'Level 0' }).count())) throw new Error('Learning Hub did not render the authored stage workspace')
-if (!(await page.locator('.path-mode-note').filter({ hasText: 'Learn mode' }).count())) throw new Error('Learning Hub did not render Learn mode')
-if (!(await page.locator('.hub-source-row').filter({ hasText: 'Hub visible source' }).getByRole('link', { name: 'Open' }).count())) throw new Error('Learning Hub did not render attached source links')
+if (await page.locator('.main-focus .page-head').count()) throw new Error('focused Learning Hub repeated the workspace header')
+if (!(await page.getByRole('button', { name: 'All paths' }).count())) throw new Error('focused Learning Hub omitted its compact return action')
+if (!(await page.locator('.item-source-actions').count())) throw new Error('Learning Hub did not render inline source actions')
 const [capabilities, systemInventory] = await Promise.all([
   requestJson('/agent/capabilities'),
   requestJson('/agent/system'),
@@ -175,7 +178,7 @@ await page.goto(`${baseUrl}/#/settings/profile`, { waitUntil: 'networkidle' })
 await page.locator('.profile-overview').waitFor({ state: 'visible' })
 await page.getByRole('button', { name: 'Open sections' }).click()
 const profileBody = await page.locator('.page-content').innerText()
-for (const value of ['Personal learning model', 'Deep systems thinking', 'Profile rendering fixture', 'Reaction style', 'Patterns & heuristics', 'Profile activity', 'Feed sources', 'Statistics & system', 'Creator history', 'Taste affinities', 'Your reflections', 'Rating history']) {
+for (const value of ['Explore your model', 'Deep systems thinking', 'Profile rendering fixture', 'Reaction style', 'Patterns & heuristics', 'Profile activity', 'Feed sources', 'Statistics & system', 'Creator history', 'Taste affinities', 'Your reflections', 'Rating history']) {
   if (!profileBody.toLowerCase().includes(value.toLowerCase())) throw new Error(`profile page is missing rendered value or section: ${value}`)
 }
 if (profileBody.includes('Priority topics configured.')) throw new Error('profile page still renders the fake priority placeholder')
@@ -187,7 +190,7 @@ const curateNav = await page.locator('.subnav button').allTextContents()
 if (curateNav[0]?.trim() !== 'Queue' || curateNav[1]?.trim() !== 'Inbox') throw new Error('Curate navigation order or Inbox label is incorrect')
 await page.goto(`${baseUrl}/#/learn/notes`, { waitUntil: 'networkidle' })
 const learnNav = await page.locator('.subnav button').allTextContents()
-if (learnNav[0]?.trim() !== 'Hub' || learnNav[1]?.trim() !== 'Files' || learnNav.includes('NotebookLM') || learnNav.includes('Reflections')) throw new Error('Learn navigation order is incorrect')
+if (learnNav[0]?.trim() !== 'Paths' || learnNav[1]?.trim() !== 'Library' || learnNav.includes('NotebookLM') || learnNav.includes('Reflections')) throw new Error('Learn navigation order is incorrect')
 const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards, momentum, balance] = await Promise.all([
   fetch(`${baseUrl}/settings`).then((response) => response.json()),
   fetch(`${baseUrl}/manifest.json`).then((response) => response.json()),
@@ -329,11 +332,13 @@ if (!mobileScreenshot.length) throw new Error('mobile visual smoke screenshot wa
 await page.getByRole('button', { name: 'More' }).click()
 const moreDialog = page.locator('.mobile-more-dialog')
 await moreDialog.waitFor({ state: 'visible' })
-for (const workspace of ['Map', 'Insights', 'Settings']) {
+for (const workspace of ['Reflect', 'You']) {
   if (!(await moreDialog.locator('nav button').filter({ hasText: new RegExp(`^${workspace}`) }).isVisible())) throw new Error(`mobile More is missing ${workspace}`)
 }
-await moreDialog.locator('nav button').filter({ hasText: /^Map/ }).click()
-if (!page.url().includes('#/map/')) throw new Error('mobile More did not navigate to Map')
+await moreDialog.locator('nav button').filter({ hasText: /^Reflect/ }).click()
+if (!page.url().includes('#/insights/')) throw new Error('mobile More did not navigate to Reflect')
+await page.getByRole('button', { name: 'Map' }).click()
+if (!page.url().includes('#/map/')) throw new Error('mobile primary navigation did not navigate to Map')
 
 console.log(`E2E passed: ${count} purposeful destinations, mobile shell, and complete mobile navigation`)
 } finally {
