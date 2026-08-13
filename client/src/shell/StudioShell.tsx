@@ -66,10 +66,10 @@ export function StudioShell({ route, children, inspector, onCapture, onSearch, m
     <aside ref={contextPaneRef} class={`context-pane ${mobileContextOpen ? 'mobile-open' : ''}`} aria-label={`${rootMeta.label} views`} aria-hidden={mobileContextMode && !mobileContextOpen ? true : undefined}>
       <header class="context-head">
         <div><span>Learning Compass</span><strong class="context-title">{rootMeta.label}</strong></div>
-        <button ref={closeContextButtonRef} class="icon-button mobile-only" onClick={() => setMobileContextOpen(false)} aria-label="Close navigation"><Icon name="close"/></button>
+        <button ref={closeContextButtonRef} class="icon-button mobile-only" tabIndex={mobileContextMode ? (mobileContextOpen ? 0 : -1) : undefined} onClick={() => setMobileContextOpen(false)} aria-label="Close navigation"><Icon name="close"/></button>
       </header>
       <nav class="view-list">
-        {views[route.root].map((item) => <a href={routeHref(route.root, item.key)} class={route.view === item.key && !route.objectId ? 'active' : ''} aria-current={route.view === item.key && !route.objectId ? 'page' : undefined} onClick={() => setMobileContextOpen(false)}><Icon name={viewIcons[item.key] || 'source'}/><span><strong>{item.label}</strong><small>{item.description}</small></span></a>)}
+        {views[route.root].map((item) => <a href={routeHref(route.root, item.key)} class={route.view === item.key && !route.objectId ? 'active' : ''} aria-current={route.view === item.key && !route.objectId ? 'page' : undefined} tabIndex={mobileContextMode ? (mobileContextOpen ? 0 : -1) : undefined} onClick={() => setMobileContextOpen(false)}><Icon name={viewIcons[item.key] || 'source'}/><span><strong>{item.label}</strong><small>{item.description}</small></span></a>)}
       </nav>
       <footer class="context-foot"><span>Private workspace</span><small>D1 is canonical · R2 holds files</small></footer>
     </aside>

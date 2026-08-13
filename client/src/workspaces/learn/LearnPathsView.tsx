@@ -79,7 +79,7 @@ export function LearnPathsView() {
     <header class="learn-surface-head folio-surface-head">
       <div>
         <p class="folio-object-kicker">Learn / Paths</p>
-        <h2 id="learn-paths-title">Build a path that can prove itself.</h2>
+        <h1 id="learn-paths-title">Build a path that can prove itself.</h1>
         <p class="folio-lede">A curriculum map for the question, decision, build, or capability you are working toward. Progress comes from evidence, not from opening sources.</p>
       </div>
       <button class="button primary folio-primary" type="button" onClick={() => { setInterviewOpen((open) => !open); setMessage('') }} aria-expanded={interviewOpen} aria-controls="new-path-interview">
