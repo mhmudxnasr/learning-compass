@@ -1,10 +1,10 @@
 # Learning Compass Frontend Reset — Master Plan
 
-Status: authoritative planning baseline, reconciled with the dedicated Luna planning tasks. No implementation or deletion has started.
+Status: complete through verification and cutover; deployment and the post-deploy rollback window remain intentionally outstanding.
 
 ## Decision
 
-Replace the current frontend rather than incrementally polishing it. Preserve the canonical Worker APIs, D1/R2 ownership, domain rules, and learning workflows. Rebuild the browser experience as a Capacities-inspired single-user learning studio with Learning Compass's own product model and identity.
+Replace the current frontend rather than incrementally polishing it. Preserve the canonical Worker APIs, D1/R2 ownership, domain rules, and learning workflows. The replacement is now the active Botanical Folio / Evidence Ledger studio: a green-and-cream, Capacities-inspired single-user learning workspace with Learning Compass's own product model and identity.
 
 The design borrows Capacities' strongest structural principles—an object-oriented sidebar, a calm multi-pane canvas, contextual inspectors, compact controls, and progressive disclosure—without copying its brand, marketing language, or exact screens.
 
@@ -18,14 +18,14 @@ The design borrows Capacities' strongest structural principles—an object-orien
 
 ## New information architecture
 
-### Primary navigation: four workspaces
+### Primary navigation: five roots
 
 1. **Home** — resume the current Learning Thread/source, see the single next evidence action, capture quickly, and handle only genuinely due work.
 2. **Library** — one unified source collection with saved views for Inbox, Queue, All sources, Files, Books, Collections, and Archive.
 3. **Learn** — one learning workspace with modes for Paths, Notes, and Recall. The active Thread and its next evidence requirement are the default.
 4. **Map** — one spatial knowledge workspace. Atlas is the main canvas; Branch decisions and Balance are contextual lenses/inspectors.
 
-**Settings/Profile** sits at the bottom of the sidebar and opens a dedicated utility surface. It is not a primary learning workspace.
+5. **Settings** — Profile, Preferences, Data & sync, and System utility surfaces.
 
 ### Global actions
 
@@ -35,7 +35,7 @@ The design borrows Capacities' strongest structural principles—an object-orien
 
 ### Stable route model
 
-The global route registry is reduced to five stable paths:
+The global route registry exposes five roots and 18 purposeful named views:
 
 - `#/home`
 - `#/library`
@@ -151,12 +151,12 @@ The frontend treats these as first-class objects with consistent headers, proper
 
 An object header contains type, title, lifecycle state, primary action, and overflow. Its inspector contains properties, relationships, provenance, files, and history. This replaces feature-specific card grammars.
 
-## Visual-system direction
+## Visual-system direction (implemented)
 
 Working name: **Learning Compass Evidence Studio**.
 
 - Use two illuminations of one authored world: **Dawn** and **Dusk**. They share geometry, hierarchy, semantic colors, and behavior; only material lighting changes. Dawn is the default neutral studio canvas and Dusk is its charcoal counterpart, not a separate brand.
-- Use one Learning Compass accent family—plum/iris—for selection and committed action.
+- Use a restrained cypress/green accent family with cream vellum surfaces; plum/iris is retired.
 - Give object types muted, semantic tints; avoid rainbow decoration.
 - Use thin dividers and tonal surface changes for pane hierarchy. Shadows are reserved for floating menus, dialogs, and dragged objects.
 - Prefer 6–10px control radii and 10–14px panel radii. Remove the oversized rounded-card language.
@@ -165,13 +165,15 @@ Working name: **Learning Compass Evidence Studio**.
 - Motion communicates continuity: pane opening, inspector selection, list reordering, and object focus. No ambient loops or page-load choreography.
 - Ship keyboard navigation, visible focus, reduced motion, strong contrast, and English/Egyptian-Arabic block direction from the first component pass.
 
-## Demolition boundary
+## Demolition boundary (executed)
 
 Before deletion, create a recoverable snapshot of the complete current working tree, including untracked mockups and design outputs. Do not use reset, checkout-discard, or stash as the preservation mechanism.
 
 The snapshot lives outside the repository and contains a full working-tree copy (excluding `.git`), `git status --short --ignored --untracked-files=all`, the current HEAD/branch identity, binary worktree/index diffs, index entries, and a SHA-256 manifest. Keep it until the replacement is deployed, live-smoked, and outside the rollback window.
 
-Implementation preflight uses a task-specific snapshot directory, for example:
+The complete pre-reset working tree was snapshotted outside the repository before demolition. The old `mockups/` and `output/` directories were moved outside the project path after replacement verification; the snapshot remains the rollback source.
+
+Implementation preflight used a task-specific snapshot directory, for example:
 
 ```bash
 repo_path=/home/mahmud/recommendations-worker
@@ -187,7 +189,7 @@ git -C "$repo_path" ls-files --stage > "$snapshot_root/index.entries"
 find "$snapshot_root/worktree" -type f -print0 | sort -z | xargs -0 sha256sum > "$snapshot_root/sha256.txt"
 ```
 
-### Remove or replace
+### Removed or replaced
 
 - Current shell and route composition in `client/src/app.tsx`
 - Current destination registry in `client/src/destinations.ts`
@@ -276,9 +278,9 @@ Rules:
 - Route registration, shell entry, shared CSS entry, API transport, and E2E integration each have one serialized owner.
 - As a guardrail, a frontend file approaching roughly 450 lines requires explicit decomposition review.
 
-## Delivery sequence
+## Delivery sequence and status
 
-### Phase 0 — preservation and contract inventory
+### Phase 0 — preservation and contract inventory — complete
 
 1. Capture the full working-tree status and create a recoverable pre-reset snapshot outside the active path or on a dedicated `codex/` snapshot branch.
 2. Inventory every client endpoint, mutation, offline behavior, deep link, and E2E contract.
@@ -287,7 +289,7 @@ Rules:
 
 Exit gate: no current capability lacks a named new owner.
 
-### Phase 1 — side-by-side foundation
+### Phase 1 — side-by-side foundation — complete
 
 1. Keep the existing `app.tsx` entry operational as the rollback path.
 2. Create the new folder boundaries, typed five-root router, legacy alias registry, purposeful not-found state, error boundary, data providers, and empty Studio shell beside the old app.
@@ -297,7 +299,7 @@ Exit gate: no current capability lacks a named new owner.
 
 Exit gate: all five paths and legacy aliases resolve purposefully on desktop/mobile; the bundle builds; the new entry loads no old design CSS; the old app still launches when the entry pointer is restored.
 
-### Phase 2 — Home and Library vertical slice
+### Phase 2 — Home and Library vertical slice — complete
 
 1. Build Home around the active Thread, current source, next evidence action, due recall, and quick capture.
 2. Build the unified Library with saved views for Inbox, Queue, All, Files, Books, Collections, and Archive.
@@ -306,7 +308,7 @@ Exit gate: all five paths and legacy aliases resolve purposefully on desktop/mob
 
 Exit gate: capture → triage → queue → start/resume → return/complete works end-to-end.
 
-### Phase 3 — Learn workspace
+### Phase 3 — Learn workspace — complete
 
 1. Build Paths as the Learn default and preserve evidence-derived progress.
 2. Integrate Notes as an object browser/reader, not a separate application shell.
@@ -315,7 +317,7 @@ Exit gate: capture → triage → queue → start/resume → return/complete wor
 
 Exit gate: Thread planning, source attachment, reflection, note reading/editing, draft approval, and review flows pass.
 
-### Phase 4 — Map workspace
+### Phase 4 — Map workspace — complete
 
 1. Rehouse the lazy graph inside the new canvas.
 2. Build Branches as a full Map review mode with its bounded list/canvas plus a contextual inspector and Keep, Prune, Promote, Hold, Add, and Undo.
@@ -324,7 +326,7 @@ Exit gate: Thread planning, source attachment, reflection, note reading/editing,
 
 Exit gate: graph navigation, evidence inspection, branch decisions, suggestions, and reversibility pass.
 
-### Phase 5 — Settings and learning model
+### Phase 5 — Settings and learning model — complete
 
 1. Combine Profile, Taste, Hermes quality/memory, and change history into a readable Learning Model section.
 2. Preserve direct editing, confidence/provenance, deactivation, version history, and Undo.
@@ -333,15 +335,15 @@ Exit gate: graph navigation, evidence inspection, branch decisions, suggestions,
 
 Exit gate: all former Insights/Settings capabilities are available without reintroducing destination sprawl.
 
-### Phase 6 — cutover, demolition, hardening, and release
+### Phase 6 — cutover, demolition, hardening, and verification — complete; deployment pending
 
-1. After every vertical slice passes, switch `client/src/main.tsx` to the replacement entry and verify that the old app is no longer imported.
+1. Switch `client/src/main.tsx` to the replacement entry and verify that the old app is no longer imported.
 2. Remove old app-coupled markup/styles, obsolete feature presentation, `experience-polish.css`, `mockups/`, and `output/` last; preserve them in the external snapshot only.
 3. Complete empty, loading, partial, stale, error, offline, conflict, overflow, recovery, and destructive-action states.
 4. Verify keyboard navigation, screen-reader landmarks, focus restoration, contrast, reduced motion, touch targets, graph list alternatives, and RTL/mixed-script note blocks.
 5. Run desktop, tablet, and phone visual comparisons in a bounded two-pass review.
 6. Replace `DESIGN.md` in place from the implemented visual system and update `AGENTS.md`, `PRODUCT.md`, `PROJECT_CONTEXT.md`, `CURRENT_STATE.md`, `README.md`, architecture/release docs, route references, and active Hermes-facing navigation references.
-7. Update the service worker route/cache version, verify no deleted chunk can be served, then run the full verification and release gates before deployment.
+7. Update the service worker route/cache version, verify no deleted chunk can be served, and run the full verification and release gates. Deployment is a separate, still-pending step.
 
 Exit gate: the new UI is documented, audited, tested, and live-smoked; the old design files are absent from the project path.
 
@@ -358,7 +360,7 @@ npm run test:e2e
 git diff --check
 ```
 
-Additional completion evidence:
+Observed completion evidence:
 
 - Five stable global paths (four primary workspaces plus Settings) and no 21-item destination registry.
 - Every legacy destination and alias canonicalizes to the correct saved view or typed object without losing IDs.
@@ -371,7 +373,8 @@ Additional completion evidence:
 - No leaked Wrangler/Workerd/Playwright processes after E2E.
 - No internal Hermes/Lite Visual prompt payload ships in the browser bundle.
 - The release checklist reflects the actual migration chain through `0030_hub_notes_files.sql` (or derives the latest migration dynamically).
-- Live smoke tests only after an explicitly verified deployment.
+- Full gates observed on 2026-08-14: unit/typecheck 77/77; Hermes 32 migrations, 21 checks, 56 routes; migrations clean/idempotent; build base 40.78 KB gzip and Atlas lazy 148.91 KB gzip; E2E 18 purposeful destinations/mobile shell/navigation; diff check clean.
+- Live deployment and the rollback window are not complete and are intentionally excluded from this task.
 
 ## Workstream ownership
 
