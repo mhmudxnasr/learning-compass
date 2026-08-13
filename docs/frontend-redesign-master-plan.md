@@ -130,7 +130,7 @@ Global search is an overlay, not a workspace. Its resolver maps each result to t
 
 ### Mobile and tablet
 
-- Root rail becomes a compact five-item bottom dock plus navigation sheet.
+- Root rail becomes a compact five-item bottom dock; grouped modes and focus filters remain inline, compact, and horizontally scrollable.
 - Main canvas remains the primary surface.
 - Inspector becomes a full-height sheet or pushed detail screen with a stable Back action.
 - Primary actions remain thumb-reachable and are never obscured by the dock.

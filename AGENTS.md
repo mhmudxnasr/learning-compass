@@ -11,7 +11,7 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 
 ## Product Invariants
 
-- Product: **Learning Compass**. Visual language: **Botanical Folio / Evidence Studio** — a cypress/cream Evidence Ledger with a persistent desktop root rail, grouped workspace modes, a working canvas, and an optional contextual inspector. On mobile, the rail becomes a five-item bottom dock and navigation sheet.
+- Product: **Learning Compass**. Visual language: **Botanical Folio / Evidence Studio** — a cypress/cream Evidence Ledger with a persistent desktop root rail, grouped workspace modes, a working canvas, and an optional contextual inspector. On mobile, the rail becomes a five-item bottom dock with inline compact, horizontally scrollable mode/filter controls.
 - Loop: capture → curate → consume externally → reflect → notes → review → map update → resurface.
 - D1 is canonical. R2 stores large artifacts. Obsidian is an archive/export for extracted notes only.
 - Every capture, including Telegram and share-target input, enters the unlimited Inbox.

@@ -19,7 +19,7 @@ Desktop uses a persistent root rail, a flexible working canvas, and an optional 
 
 The five root destinations are Home, Library, Learn, Map, and Settings. Their 11 grouped modes are Today; Triage, Catalog, Assets; Paths, Practice; Atlas, Review; and Personal, Data & sync, System. Queue, Inbox, All sources, Files, Books, Collections, Archive, Notes, Recall, Branches, Balance, Profile, and Preferences are subordinate focus filters or mode surfaces, not peer destinations.
 
-On mobile and tablet, the root rail becomes a compact five-item bottom dock. Grouped modes and focus filters open as a navigation sheet with focus management and a stable close action. The inspector becomes a full-height sheet or pushed detail view with a stable Back path. The dock never obscures a primary action, and tablet layouts retain the canvas plus optional inspector where width allows.
+On mobile and tablet, the root rail becomes a compact five-item bottom dock. Grouped modes and focus filters remain inline compact, horizontally scrollable controls. The inspector becomes a full-height sheet or pushed detail view with a stable Back path. The dock never obscures a primary action, and tablet layouts retain the canvas plus optional inspector where width allows.
 
 ## Content grammar
 
