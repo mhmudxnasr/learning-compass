@@ -272,7 +272,7 @@ if (await page.locator('.folio-home-capture-signal').count() !== 1) throw new Er
 
 await page.goto(`${baseUrl}/#/library/files`, { waitUntil: 'networkidle' })
 if (artifacts.artifacts.length === 0) {
-  await page.locator('.empty-state').waitFor({ state: 'visible', timeout: 15000 })
+  await page.locator('.folio-files-view .state-empty').waitFor({ state: 'visible', timeout: 15000 })
 } else {
   await page.locator('.folio-files-view').waitFor({ state: 'visible', timeout: 15000 })
   if (!(await page.locator('.folio-files-view').innerText()).includes('Generated companions')) throw new Error('Files view is missing its library header')
