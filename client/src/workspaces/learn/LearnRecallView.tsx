@@ -43,7 +43,7 @@ export function LearnRecallView() {
         : <Empty title="Nothing is due" body="Approved cards will appear here when their FSRS schedule says it is time to retrieve them. A source opening or a rating does not count as recall evidence." />
 
   return <section class="learn-workspace folio-learn folio-recall" aria-labelledby="recall-title">
-    <header class="learn-surface-head folio-surface-head"><div><p class="folio-object-kicker">Learn / Recall</p><h2 id="recall-title">Retrieve before you reread.</h2><p class="folio-lede">One prompt first. Card administration stays below the current retrieval action so the review remains the work.</p></div><span class="folio-measure">{dueCards.length} due today</span></header>
+    <header class="learn-surface-head folio-surface-head"><div><p class="folio-object-kicker">Learn / Recall</p><h1 id="recall-title">Retrieve before you reread.</h1><p class="folio-lede">One prompt first. Card administration stays below the current retrieval action so the review remains the work.</p></div><span class="folio-measure">{dueCards.length} due today</span></header>
     {message && <output class="folio-status" aria-live="polite">{message}</output>}
     <section class="folio-review-stage" aria-labelledby="review-stage-title"><div class="folio-section-head"><div><p class="folio-object-kicker">Current review</p><h3 id="review-stage-title">Active recall</h3></div><span class="folio-measure">FSRS-6</span></div>{reviewView}</section>
     <DraftsSection drafts={drafts.data?.drafts || []} loading={drafts.loading && !drafts.data} error={drafts.error} reload={drafts.reload} />
