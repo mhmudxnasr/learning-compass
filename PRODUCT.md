@@ -26,7 +26,7 @@ On desktop the studio is a persistent root rail plus a working canvas and option
 
 ## Product behavior
 
-- Queue owns explicit start, resume, return, and completion. Opening a source or companion is passive; consumption is tracked through a learning session at the real source.
+- Queue owns explicit start, resume, return, and completion. Opening a source or companion is passive; an explicit session may target either the original source or a verified canonical companion.
 - Completion records a separate `retain`, `apply`, `reference`, or `drop` disposition. Retain/apply creates anchored extraction and editable recall work regardless of enjoyment score.
 - Notes are structured, editable, searchable, and support per-block English/Egyptian-Arabic direction. Handwritten PDF annotations count as personal reflection while printed source text remains source material.
 - Ratings of 7–10 create editable SRS drafts. Approval is required before cards enter Review; approved cards use the versioned FSRS implementation and failed reviews never advance mastery.
@@ -36,7 +36,7 @@ On desktop the studio is a persistent root rail plus a working canvas and option
 
 ## Reading companions and ownership
 
-Lite Visual creates one linked HTML+PDF R2 pair for a normal source. For books, it creates one linked pair per chapter with stable chapter metadata, mines the complete source into a checksum-backed evidence packet and coverage matrix, reuses cached mining, runs Visual Mind first, and verifies the canonical source record. There is no Lite Visual QA gate and no automatic Notes Extractor chain. The PDF is the reading companion.
+Lite Visual creates one Arabic canonical reading body and renders it as a linked HTML/PDF pair; books receive one pair per chapter with stable chapter metadata. Complete cached mining, semantic coverage, optional zero-asset Visual Mind, hard content/render validation, actual page inspection, automatic post-pass publication, and canonical record verification are required. Raw transcripts remain separate evidence and never inflate the reading body. No subjective QA score is stored and Notes Extractor is never chained automatically.
 
 Real source URLs remain recommendations; owned PDFs, HTML, transcripts, and generated companions remain artifacts. Inside an explicit source-learning or companion request, Hermes chooses the smallest non-redundant media set and starting medium. This never runs as background generation.
 

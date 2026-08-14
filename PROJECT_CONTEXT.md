@@ -4,7 +4,7 @@
 
 Learning Compass is Mahmood’s private, single-user learning operating system. It turns scattered sources into a disciplined loop:
 
-**define a Learning Thread → capture/curate sources → consume at the real source → reflect → consolidate anchored Learning Units → retrieve/apply → verify evidence → resurface**
+**define a Learning Thread → capture/curate sources → consume at the original source or a verified canonical companion → reflect → consolidate anchored Learning Units → retrieve/apply → verify evidence → resurface**
 
 The product is English-first, supports bilingual English/Egyptian-Arabic note blocks with per-block direction, and uses the `Africa/Cairo` timezone.
 
@@ -51,7 +51,7 @@ Desktop uses a persistent root rail, main canvas, and optional contextual inspec
 
 ## Hermes and reading companions
 
-Lite Visual creates one linked HTML+PDF R2 pair for normal sources. For books it creates one linked pair per chapter, with stable chapter metadata, complete-source checksum-backed evidence and coverage data, cached mining, Visual Mind first, and canonical source-record verification. The PDF is the reading companion. There is no Lite Visual QA gate and no automatic Notes Extractor chain.
+Lite Visual creates one linked HTML+PDF R2 pair for normal sources and one pair per book chapter, always in Arabic and always as two renderings of one canonical content body. The companion is designed to replace consuming the original while preserving every important argument and supporting detail. Complete-source checksum-backed mining, at least 90% semantic coverage, cached evidence, an optional zero-asset Visual Mind decision, deterministic content/render validation, real contact-sheet inspection, automatic post-pass publication, and canonical source-record verification are mandatory. Raw transcripts remain separate evidence and never count as companion prose. No subjective QA score is stored and Notes Extractor never starts automatically.
 
 Hermes remains the procedural Learning Compass operating system. Its active workflow owns recommendation research, source-grounded candidate submission, feedback handling, typed profile learning, memory provenance, NotebookLM, Lite Visual, Visual Mind, RSS feeds, site operations, and self-evolution. It uses idempotent leases and recovery receipts but has no scheduled autonomous poller. Internal prompt payloads, job controls, and secrets do not render in normal product surfaces.
 

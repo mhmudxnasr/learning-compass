@@ -57,7 +57,7 @@
     "recommendation_objective": "learning_value_v2: available rating 25%, explicit disposition 25%, strongest downstream evidence 50%; administrative exclusion and not_now are non-utility",
     "profile_automation": "automatic at confidence >= 0.8 with direct user statement or two evidence items; explicit assertion supersession requires direct contradiction or confidence >= 0.95 with three evidence items; all changes reversible",
     "notebooklm": "explicit feedback grounding or explicit Studio request only",
-    "visual_batches": "source-proportional visual_plan with distinct claims/placements, passing critic receipt, isolated draft workspaces, and serialized publication",
+    "visual_batches": "one Arabic canonical content body per source, complete semantic evidence coverage, optional none|selected visual decision without stored palettes, deterministic content/render validation, actual page inspection, and automatic serialized publication only after pass",
     "recommendations": "explicit request only; feedback never creates a recommendation",
     "ai_routing": {
       "basic_intro": "inbox",

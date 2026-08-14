@@ -16,11 +16,11 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 - D1 is canonical. R2 stores large artifacts. Obsidian is an archive/export for extracted notes only.
 - Every capture, including Telegram and share-target input, enters the unlimited Inbox.
 - Queue normally contains at most five queued/in-progress items; overflow requires an explicit override.
-- Consumption happens at the real source and is tracked through learning sessions.
+- Consumption happens through the original source or a verified canonical HTML/PDF companion and is tracked through target-aware learning sessions.
 - Notes are structured, editable, searchable, and support per-block English/Egyptian-Arabic direction.
 - Ratings of 7–10 create editable SRS drafts; approval is required before Review.
 - Feedback processing never requests another recommendation automatically.
-- Lite Visual creates one linked HTML+PDF R2 pair for normal sources. For books, it creates one linked pair per chapter with stable chapter metadata, mines the complete source into a checksum-backed evidence packet and coverage matrix, reuses cached mining, runs Visual Mind first, and verifies the canonical source record. There is no Lite Visual QA gate and no automatic Notes Extractor chain. The PDF is the reading companion.
+- Lite Visual creates one linked HTML+PDF R2 pair from one Arabic canonical content body; for books it creates one pair per chapter with stable chapter metadata. It mines and caches the complete source, proves semantic coverage, allows a zero-visual Visual Mind decision, blocks shallow/duplicated/defective output with deterministic validation plus actual render inspection, publishes automatically after an explicit media request, and verifies the canonical source record. It stores no subjective QA score and never auto-chains Notes Extractor.
 - The route registry in `client/src/app/router.ts` exposes five root destinations and 11 grouped modes, with subordinate focus filters. Every root and mode/focus surface must resolve to a real product surface; no generic fallback screens or tabs may expose only infrastructure.
 
 ## Architecture Boundaries
@@ -75,7 +75,7 @@ Learning Compass Hermes permanently holds and enforces these project rules:
 
 - **Tone & Format**: English-first responses for all tasks. Direct, casual, brutally honest tone. ZERO emojis by default. Default to text-only responses; no visual outputs/diagrams unless explicitly requested.
 - **Action Principle**: Decisive execution over discussion ("Fix all that", "do it" = execute immediately).
-- **Reading Companions**: Huawei TGR-W09 tablet (192.168.1.10). Every visual companion generates a linked HTML + PDF pair. PDF typography must be heavy weight (500+ for print), big font size (12.5pt+ body), and dark contrast (#222 min).
+- **Reading Companions**: Huawei TGR-W09 tablet (192.168.1.10). Every source companion is always Arabic and generates linked HTML + PDF from one canonical body. It must preserve every important point and the detail needed to replace consuming the source. PDF typography is weight 500+, body 12.5pt+, and dark ink. Stored palettes, theme presets, mockups, generic widgets, transcript padding, and decorative visuals are forbidden; zero visuals is valid.
 - **Mastered & Consumed Check**: ALWAYS verify `mastered` items and consumed recommendations before proposing/recommending content. NEVER recommend anything already read (e.g., *The 48 Laws of Power*, *Steal Like an Artist*, *Predictably Irrational*, *Thinking Fast and Slow*).
 - **Islamic Content**: ZERO book-derived content (no books, audiobooks, explained books, or book-based lecture series). ONLY pure original lectures/khutbahs/talks by trusted Sunni scholars.
 - **Dopamine & Habit Neuroscience**: Fully mastered. HARD REJECT all "dopamine hits", "break habit loops", or "rewire your brain" content.

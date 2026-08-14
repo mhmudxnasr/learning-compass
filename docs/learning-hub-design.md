@@ -240,7 +240,7 @@ The source remains one canonical record and one learning history, regardless of 
 
 ### Study and return
 
-Opening a source from a stage starts the existing learning session with both `thread_id` and `stage_id` context. Consumption happens at the original source. Returning from the source routes through the existing reflection handoff, augmented with stage-aware prompts.
+Opening a source from a stage starts the existing learning session with both `thread_id` and `stage_id` context. Consumption happens at the original source or a verified canonical Lite Visual companion. Returning from either target routes through the existing reflection handoff, augmented with stage-aware prompts.
 
 ### Record evidence
 

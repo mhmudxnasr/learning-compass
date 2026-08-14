@@ -2,7 +2,7 @@
 
 Learning Compass is a private, single-user learning system. It collects material from many sources, keeps the active queue small, tracks learning at the original source, turns reflection into structured notes and recall cards, and uses that history to maintain a personal knowledge map.
 
-It is not a replacement for books, articles, videos, or podcasts. Consumption happens at the real source. Learning Compass manages the work around consumption: deciding what matters, remembering where you stopped, processing what you learned, and resurfacing it later.
+Consumption normally happens at the real source. A verified Lite Visual companion is the deliberate exception: it is an Arabic, complete-source reading substitute rendered as linked HTML and PDF from one canonical body. Learning Compass manages deciding what matters, remembering where you stopped, processing what you learned, and resurfacing it later.
 
 ## The learning loop
 
@@ -276,14 +276,14 @@ Add offline mutation recovery, large-data tests, bilingual direction handling, r
 
 - Every capture enters the unlimited Inbox.
 - Queue normally contains at most five queued or in-progress items.
-- Consumption happens at the original source.
+- Consumption happens at the original source or a verified canonical Lite Visual companion.
 - Returning with reflection creates one linked structured reflection.
 - Every reflection produces confirmation-gated Taste Mapper proposals.
 - Ratings of 7–10 automatically create a separate extracted note and editable recall drafts; approval is required before Recall.
 - Feedback processing does not request a new recommendation.
 - Completed sources can be explicitly attached to existing knowledge-map nodes; ambiguous matches stay unresolved instead of creating speculative branches.
 - An abstained Compass Pick with a verified or restricted reachable source can be explicitly added to the Queue anyway; the override bypasses only the automatic threshold, and the five-item Queue cap still applies.
-- One Lite Visual source creates one linked HTML/PDF pair and counts as one taste signal.
+- One Lite Visual source creates one linked Arabic HTML/PDF pair from one complete canonical body and counts as one taste signal. Zero visuals is valid; stored palettes, generic mockups/widgets, transcript padding, and repeated decorative elements are forbidden.
 - D1 remains canonical; R2 stores large artifacts; Obsidian remains an archive export.
 - Every registered destination resolves to a purposeful view.
 
