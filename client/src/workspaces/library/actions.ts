@@ -11,7 +11,11 @@ export async function startLearningSession(
   targetArtifactId?: string,
 ) {
   event.preventDefault()
-  const popup = window.open('about:blank', '_blank', 'noopener,noreferrer')
+  // Reserve the new tab during the user gesture. Passing `noopener` to
+  // window.open can return null in some browsers, which would incorrectly
+  // send the source to the current tab via the fallback below.
+  const popup = window.open('', '_blank')
+  if (popup) popup.opener = null
   try {
     const result = await api<{ session_id: string }>('/sessions/start', {
       method: 'POST',

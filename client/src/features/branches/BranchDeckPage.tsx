@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'preact/hooks'
+import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'preact/hooks'
 import { api } from '../../api'
 
 export interface DeckBranch {
@@ -37,15 +37,6 @@ export interface DeckBranch {
   suggested_next_move?: string
   uncertainty_note?: string
 }
-
-type SuggestMode = 'surprise' | 'expand' | 'bridge' | 'challenge'
-
-const SUGGEST_MODES: Array<[SuggestMode, string]> = [
-  ['surprise', 'Surprise'],
-  ['expand', 'Expand'],
-  ['bridge', 'Bridge'],
-  ['challenge', 'Challenge'],
-]
 
 const ACTION_LABEL: Record<string, string> = {
   keep: 'Keep',
@@ -122,16 +113,50 @@ export function BranchDeckPage() {
   const [saving, setSaving] = useState(false)
   const [history, setHistory] = useState<Array<{ id: string; label: string; previousStatus: string; previousPriorityRank: number | null }>>([])
   const [suggestions, setSuggestions] = useState<DeckBranch[]>([])
-  const [suggestMode, setSuggestMode] = useState<SuggestMode>('surprise')
-  const [suggesting, setSuggesting] = useState(false)
-  const [agentSnapshot, setAgentSnapshot] = useState<any>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showBranchList, setShowBranchList] = useState(false)
   const [custom, setCustom] = useState({ label: '', round: 'R1', cat: 'cat-mind', description: '', leaves: '', contrast: '' })
+  const addDialogRef = useRef<HTMLDivElement>(null)
 
+  useLayoutEffect(() => {
+    if (!showAddModal) return
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    addDialogRef.current?.querySelector<HTMLElement>('input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled])')?.focus()
+    return () => {
+      if (previouslyFocused && document.contains(previouslyFocused)) previouslyFocused.focus()
+    }
+  }, [showAddModal])
+
+  useEffect(() => {
+    if (!showAddModal) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      setShowAddModal(false)
+    }
+    document.addEventListener('keydown', closeOnEscape, true)
+    return () => document.removeEventListener('keydown', closeOnEscape, true)
+  }, [showAddModal])
+
+  const trapAddDialogFocus = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') { event.preventDefault(); setShowAddModal(false); return }
+    if (event.key !== 'Tab') return
+    const dialog = addDialogRef.current
+    if (!dialog) return
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'))
+    if (!focusable.length) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+  }
+
+  const noticeTimerRef = useRef<number | null>(null)
   const flash = (message: string) => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
     setNotice(message)
-    window.setTimeout(() => setNotice(null), 5000)
+    noticeTimerRef.current = window.setTimeout(() => setNotice(null), 5000)
   }
 
   const fetchDeck = useCallback(async () => {
@@ -140,7 +165,7 @@ export function BranchDeckPage() {
     try {
       const data = await api<any>('/brain/branch-deck')
       setDeck(data.existing || [])
-      if (!data.existing?.length) setNotice('No branches on the map yet — add a first branch or ask for suggestions.')
+      if (!data.existing?.length) setNotice('No branches on the map yet — add a first branch.')
     } catch (err: any) {
       setError(err?.message || 'Error fetching branch deck')
     } finally {
@@ -148,17 +173,9 @@ export function BranchDeckPage() {
     }
   }, [])
 
-  const refreshAgentState = useCallback(async () => {
-    try {
-      const snapshot = await api<any>('/agent/context').catch(() => null)
-      setAgentSnapshot(snapshot)
-    } catch { /* context preview is optional */ }
-  }, [])
-
   useEffect(() => {
     fetchDeck()
-    refreshAgentState()
-  }, [fetchDeck, refreshAgentState])
+  }, [fetchDeck])
 
   const allBranches = [...deck]
   const pending = allBranches.filter((b) => b.is_candidate || ['candidate', 'active', 'fresh'].includes(b.status))
@@ -207,7 +224,6 @@ export function BranchDeckPage() {
       }
       setSelectedId(nextId || null)
       await fetchDeck()
-      await refreshAgentState()
     } catch (err: any) {
       flash(`That decision was not saved: ${err?.message || 'server error'}`)
     } finally {
@@ -234,35 +250,9 @@ export function BranchDeckPage() {
       setHistory((prev) => prev.slice(0, -1))
       flash(`${last.label} was restored.`)
       await fetchDeck()
-      await refreshAgentState()
     } catch (err: any) {
-      flash(`Undo could not be saved: ${err?.message || 'server error'}`)
-    } finally {
+      flash(`Undo could not be saved: ${err?.message || 'server error'}`)} finally {
       setSaving(false)
-    }
-  }
-
-  const runSuggest = async () => {
-    if (suggesting) return
-    setSuggesting(true)
-    setNotice(null)
-    try {
-      const data = await api<any>('/brain/branch-suggest', {
-        method: 'POST',
-        body: JSON.stringify({ mode: suggestMode, count: 3 }),
-      })
-      const fresh = (data.suggestions || []).map((s: any) => ({ ...s, source: 'suggest' as const }))
-      setSuggestions((prev) => {
-        const known = new Set(prev.map((p) => p.id))
-        return [...prev, ...fresh.filter((f: any) => !known.has(f.id))]
-      })
-      if (data.fallback) flash('LLM unavailable — suggestions are empty. The grounded Hermes prompt below still works.')
-      else if (!fresh.length) flash('No suggestions came back. Try another mode.')
-      else flash(`${fresh.length} suggestion${fresh.length > 1 ? 's' : ''} ready to review.`)
-    } catch (err: any) {
-      flash(`Suggest failed: ${err?.message || 'server error'}`)
-    } finally {
-      setSuggesting(false)
     }
   }
 
@@ -299,6 +289,8 @@ export function BranchDeckPage() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (showAddModal || !selected || saving) return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
       if (e.key === 'k' || e.key === 'K') decide(selected, 'keep')
       else if (e.key === 'x' || e.key === 'X') decide(selected, 'prune')
       else if (e.key === 'm' || e.key === 'M') decide(selected, 'priority')
@@ -315,37 +307,6 @@ export function BranchDeckPage() {
   const held = allBranches.filter((b) => b.status === 'held').length
   const priorities = allBranches.filter((b) => b.priority_rank != null).length
 
-  const creativePrompt = (() => {
-    const focus = selected?.label || pending[0]?.label || allBranches.find((b) => b.status === 'love')?.label || 'the next useful branch'
-    const prioritiesText = (agentSnapshot?.priorities || []).slice(0, 5).map((item: any) => item.label || item.branch_id).filter(Boolean).join(', ')
-    const gaps = (agentSnapshot?.learning_gaps || []).slice(0, 5).map((item: any) => item.topic).filter(Boolean).join(', ')
-    const known = (agentSnapshot?.known_sources?.length) || 0
-    const modeText = {
-      expand: `Extend "${focus}" into three non-obvious subtopics that are useful for building or applying something.`,
-      bridge: `Find one surprising but defensible bridge between "${focus}" and a different branch in my map. Explain the shared mechanism.`,
-      challenge: `Challenge "${focus}" with one serious counterexample, limitation, or rival mechanism that would improve my understanding.`,
-      surprise: `Choose one unexpected, high-value exploration that fits my profile but is not an obvious repeat of my existing interests. Make the surprise feel earned by the data.`,
-    }[suggestMode]
-    return `Use the current Learning Compass context before answering. ${modeText}\n\nCurrent priorities: ${prioritiesText || 'not recorded'}\nKnown learning gaps: ${gaps || 'not recorded'}\nKnown sources: ${known}\n\nRules: do not recommend mastered, consumed, excluded, or already-known material; do not infer mastery from preference; prefer original, evidence-grounded sources; explain why this is relevant now, what it would add, and what evidence would show progress. Return one primary idea, two alternatives, and a clear next action. Do not auto-start or queue anything.`
-  })()
-
-  const copyCreativePrompt = async () => {
-    await navigator.clipboard?.writeText(creativePrompt)
-    flash('Grounded Hermes prompt copied. Paste it into Hermes for a context-aware answer.')
-  }
-
-  const copyAgentBrief = async () => {
-    const brief = [
-      'Learning Compass branch update',
-      `Keep: ${allBranches.filter((c) => c.status === 'love').map((c) => c.label).slice(0, 8).join(', ') || 'none'}`,
-      `Prune: ${allBranches.filter((c) => c.status === 'pruned').map((c) => c.label).slice(0, 8).join(', ') || 'none'}`,
-      `Hold: ${allBranches.filter((c) => c.status === 'held').map((c) => c.label).slice(0, 8).join(', ') || 'none'}`,
-      'Use these signals as preference constraints. Do not infer mastery from branch preference alone.',
-    ].join('\n')
-    await navigator.clipboard?.writeText(brief)
-    flash('Agent brief copied. It contains preference constraints, not claims of mastery.')
-  }
-
   return (
     <div class="branch-desk">
       <h1 class="visually-hidden">Branch deck</h1>
@@ -360,6 +321,7 @@ export function BranchDeckPage() {
         <button
           class="desk-browse-toggle"
           aria-expanded={showBranchList}
+          aria-controls="branch-desk-list-section"
           onClick={() => setShowBranchList((open) => !open)}
         >
           <span class="desk-browse-icon" aria-hidden="true">{showBranchList ? '−' : '+'}</span>
@@ -370,7 +332,7 @@ export function BranchDeckPage() {
 
       <div class="desk-layout">
         {/* Left — the list */}
-        {showBranchList && <section class="desk-list desk-list-reveal" aria-label="Branches">
+        {showBranchList && <section id="branch-desk-list-section" class="desk-list desk-list-reveal" aria-label="Branches">
           <div class="desk-list-head">
             <span>Waiting on you</span>
             <button class="desk-text-action" onClick={() => setShowAddModal(true)}>+ Add branch</button>
@@ -386,7 +348,7 @@ export function BranchDeckPage() {
             ) : pending.length === 0 && suggestions.length === 0 ? (
               <div class="desk-empty">
                 <strong>No branch decisions waiting — the map is settled.</strong>
-                <span>Prune the old, add new ones, or ask for suggestions below.</span>
+                <span>Prune the old or add new ones.</span>
               </div>
             ) : (
               <>
@@ -417,7 +379,7 @@ export function BranchDeckPage() {
           {!selected ? (
             <div class="desk-inspector-empty">
               <strong>{allBranches.length ? 'Choose a branch to review it.' : 'Your branch map is settled for now.'}</strong>
-              <span>{allBranches.length ? 'Every row shows real evidence — consumed sources, units, attention share — not guesses.' : 'You can browse the full map, add a branch, or ask for a grounded suggestion when you are ready.'}</span>
+              <span>{allBranches.length ? 'Every row shows real evidence — consumed sources, units, attention share — not guesses.' : 'You can browse the full map or add a branch when you are ready.'}</span>
               <button class="primary-action desk-empty-action" onClick={() => setShowBranchList(true)}>{allBranches.length ? 'Browse branches' : 'Open branch map'}</button>
             </div>
           ) : (
@@ -504,40 +466,11 @@ export function BranchDeckPage() {
         <span class="desk-status-note">Pruned branches are blocked from future recommendations; kept and priority branches steer Compass.</span>
       </div>
 
-      {/* Surprise panel */}
-      <details class="desk-surprise" open={suggestions.length > 0}>
-        <summary>Suggest something new</summary>
-        <div class="desk-surprise-body">
-          <p class="desk-note">Grounded in your live Compass context — profile, feedback, branches, and knowledge. Suggestions are review-before-commit: nothing is written until you press Add.</p>
-          <div class="deck-hermes-modes" role="list" aria-label="Suggestion modes">
-            {SUGGEST_MODES.map(([mode, label]) => (
-              <button key={mode} class={suggestMode === mode ? 'active' : ''} onClick={() => setSuggestMode(mode)}>{label}</button>
-            ))}
-          </div>
-          <button class="primary-action desk-surprise-run" disabled={suggesting} onClick={runSuggest}>
-            {suggesting ? 'Thinking…' : 'Ask for suggestions'}
-          </button>
-        </div>
-      </details>
-
-      {/* Grounded Hermes prompt — collapsed secondary action */}
-      <details class="desk-hermes">
-        <summary>Copy a grounded Hermes prompt</summary>
-        <div class="deck-hermes-body">
-          <p class="deck-hermes-note">Grounded in your live agent context, so any surprise stays inside your actual boundaries.</p>
-          <textarea class="deck-hermes-prompt" readOnly value={creativePrompt} aria-label="Grounded Hermes prompt" />
-          <div class="desk-copy-row">
-            <button class="primary-action deck-hermes-copy" onClick={copyCreativePrompt}>Copy prompt</button>
-            <button class="secondary-action" onClick={copyAgentBrief}>Copy agent brief</button>
-          </div>
-        </div>
-      </details>
-
       {/* Add branch modal */}
       {showAddModal && (
-        <div class="modal-overlay" onClick={() => setShowAddModal(false)}>
-          <div class="modal-box" onClick={(e) => e.stopPropagation()}>
-            <h3>Add a branch for agents to explore</h3>
+        <div class="modal-overlay" onClick={(event) => event.target === event.currentTarget && setShowAddModal(false)}>
+          <div ref={addDialogRef} class="modal-box" role="dialog" aria-modal="true" aria-labelledby="add-branch-title" onClick={(e) => e.stopPropagation()} onKeyDown={trapAddDialogFocus}>
+            <header class="modal-header"><h3 id="add-branch-title">Add a branch for agents to explore</h3><button type="button" class="icon-button" onClick={() => setShowAddModal(false)} aria-label="Close add branch dialog">×</button></header>
             <form onSubmit={addCustom}>
               <label>
                 Branch name / topic:

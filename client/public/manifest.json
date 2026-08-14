@@ -1,0 +1,18 @@
+{
+  "name": "Learning Compass",
+  "short_name": "Compass",
+  "description": "A private evidence studio for deliberate learning.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#faf8f3",
+  "theme_color": "#16281f",
+  "icons": [
+    {
+      "src": "/brand-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

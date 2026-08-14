@@ -1,5 +1,5 @@
 export function Loading({ label = 'Loading workspace' }: { label?: string }) {
-  return <div class="state-block state-loading" role="status" aria-label={label}><i/><i/><i/><span>{label}…</span></div>
+  return <div class="state-block state-loading" role="status" aria-label={label}><i/><i/><i/><span aria-hidden="true">{label}…</span></div>
 }
 
 export function Empty({ title, body, action }: { title: string; body: string; action?: preact.ComponentChildren }) {

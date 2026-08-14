@@ -1,16 +1,53 @@
 export class ApiError extends Error {
-  status: number
-  body: any
-  offlineQueued = false
-  constructor(message: string, status: number, body: any) { super(message); this.name = 'ApiError'; this.status = status; this.body = body }
+  public status: number
+  public body: any
+  public offlineQueued = false
+  constructor(message: string, status: number, body: any) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.body = body
+  }
 }
 
-const mutationId = () => `mut_${Date.now()}_${crypto.randomUUID()}`
+function safeUUID(): string {
+  if (typeof crypto !== 'undefined') {
+    if (typeof crypto.randomUUID === 'function') {
+      try {
+        return crypto.randomUUID()
+      } catch {
+        // Fallback below
+      }
+    }
+    if (typeof crypto.getRandomValues === 'function') {
+      try {
+        const bytes = new Uint8Array(16)
+        crypto.getRandomValues(bytes)
+        bytes[6] = (bytes[6] & 0x0f) | 0x40
+        bytes[8] = (bytes[8] & 0x3f) | 0x80
+        return Array.from(bytes, (b) => b.toString(16).padStart(2, '0'))
+          .join('')
+          .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5')
+      } catch {
+        // Fallback below
+      }
+    }
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
+const mutationId = () => `mut_${Date.now()}_${safeUUID()}`
 
 export async function api<T = any>(url: string, init?: RequestInit): Promise<T> {
   const method = (init?.method || 'GET').toUpperCase()
   const headers = new Headers({ 'content-type': 'application/json', ...(init?.headers || {}) })
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && !headers.has('x-client-mutation-id')) headers.set('x-client-mutation-id', mutationId())
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && !headers.has('x-client-mutation-id')) {
+    headers.set('x-client-mutation-id', mutationId())
+  }
   let response: Response
   try {
     response = await fetch(url, { ...init, headers })
@@ -23,8 +60,24 @@ export async function api<T = any>(url: string, init?: RequestInit): Promise<T> 
     }
     throw error
   }
-  const body: any = await response.json().catch(() => ({}))
-  if (!response.ok) throw new ApiError(body.error || `Request failed (${response.status})`, response.status, body)
+
+  let body: any = {}
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    try {
+      body = await response.json()
+    } catch {
+      const rawText = await response.text().catch(() => '')
+      body = { error: 'invalid_json_response', rawText }
+    }
+  } else {
+    const rawText = await response.text().catch(() => '')
+    body = rawText ? { rawText } : {}
+  }
+
+  if (!response.ok) {
+    throw new ApiError(body?.error || body?.message || `Request failed (${response.status})`, response.status, body)
+  }
   return body as T
 }
 
@@ -36,6 +89,7 @@ const openOfflineDb = () => new Promise<IDBDatabase>((resolve, reject) => {
   request.onsuccess = () => resolve(request.result)
   request.onerror = () => reject(request.error)
 })
+
 const transact = async <T>(mode: IDBTransactionMode, action: (store: IDBObjectStore, resolve: (value: T) => void, reject: (reason?: unknown) => void) => void) => {
   const db = await openOfflineDb()
   return new Promise<T>((resolve, reject) => {
@@ -45,6 +99,7 @@ const transact = async <T>(mode: IDBTransactionMode, action: (store: IDBObjectSt
     transaction.onerror = () => reject(transaction.error)
   })
 }
+
 export async function queueOfflineMutation(url: string, init: RequestInit) {
   const id = mutationId()
   const headers: Record<string, string> = {}
@@ -55,26 +110,42 @@ export async function queueOfflineMutation(url: string, init: RequestInit) {
     request.onerror = () => reject(request.error)
   })
 }
+
 export async function listOfflineMutations() {
   return transact<any[]>('readonly', (store, resolve, reject) => {
-    const request = store.getAll(); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error)
+    const request = store.getAll()
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
   }).catch(() => [])
 }
+
 async function updateOfflineMutation(item: any, patch: Record<string, unknown>) {
   await transact<void>('readwrite', (store, resolve, reject) => {
-    const request = store.put({ ...item, ...patch }); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error)
+    const request = store.put({ ...item, ...patch })
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error)
   }).catch(() => undefined)
 }
+
 export async function resolveOfflineMutation(id: string, action: 'retry' | 'discard') {
-  const items = await listOfflineMutations()
-  const item = items.find((candidate) => candidate.id === id)
-  if (!item) return
   if (action === 'discard') {
-    await transact<void>('readwrite', (store, resolve, reject) => { const request = store.delete(id); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error) })
+    await transact<void>('readwrite', (store, resolve, reject) => {
+      const request = store.delete(id)
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+    }).catch(() => undefined)
     return
   }
-  await updateOfflineMutation(item, { state: 'pending', error: '' })
+  const item = await transact<any>('readonly', (store, resolve, reject) => {
+    const request = store.get(id)
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  }).catch(() => null)
+  if (item) {
+    await updateOfflineMutation(item, { state: 'pending', error: '' })
+  }
 }
+
 export async function flushOfflineMutations() {
   if (!navigator.onLine) return
   const queue = await listOfflineMutations()
@@ -83,7 +154,11 @@ export async function flushOfflineMutations() {
     try {
       await updateOfflineMutation(item, { attempts: Number(item.attempts || 0) + 1, state: 'syncing', error: '' })
       await api(item.url, { method: item.method, body: item.body || undefined, headers: { ...(item.headers || {}), 'x-client-mutation-id': item.id } })
-      await transact<void>('readwrite', (store, resolve, reject) => { const request = store.delete(item.id); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error) })
+      await transact<void>('readwrite', (store, resolve, reject) => {
+        const request = store.delete(item.id)
+        request.onsuccess = () => resolve()
+        request.onerror = () => reject(request.error)
+      })
     } catch (error: any) {
       const status = Number(error?.status || 0)
       await updateOfflineMutation(item, { state: status === 409 || status === 412 ? 'conflict' : status >= 400 && status < 500 ? 'failed' : 'pending', error: error?.message || 'Offline; waiting to reconnect' })
@@ -92,10 +167,12 @@ export async function flushOfflineMutations() {
   }
 }
 
-export function firstArray(value: any): any[] {
+export function firstArray<T = any>(value: unknown): T[] {
   if (Array.isArray(value)) return value
   if (!value || typeof value !== 'object') return []
-  for (const item of Object.values(value)) if (Array.isArray(item)) return item
+  for (const item of Object.values(value)) {
+    if (Array.isArray(item)) return item
+  }
   return []
 }
 

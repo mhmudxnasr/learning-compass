@@ -26,20 +26,26 @@ export type AtlasModel = {
   clusters: Map<string, AtlasNode[]>
 }
 
+/** Internal profile roots are useful for storage, not for the learner's map. */
+export function isPrivateAtlasNode(node: AtlasNode) {
+  const value = `${node.id} ${node.label}`.toLowerCase().replace(/[’']/g, '')
+  return /mahmoud.*taste\s*map|taste\s*map.*mahmoud/.test(value)
+}
+
 export function createAtlasModel(rawNodes: AtlasNode[] = [], rawEdges: AtlasEdge[] = []): AtlasModel {
-  const nodes = rawNodes.filter((node) => node?.id && node?.label)
+  const nodes = (Array.isArray(rawNodes) ? rawNodes : []).filter((node) => node && typeof node === 'object' && node.id && node.label && !isPrivateAtlasNode(node))
   const byId = new Map(nodes.map((node) => [node.id, node]))
   const adjacency = new Map(nodes.map((node) => [node.id, new Set<string>()]))
   const children = new Map<string, AtlasNode[]>()
   const clusters = new Map<string, AtlasNode[]>()
   const seen = new Set<string>()
-  const edges = rawEdges.filter((edge) => {
-    if (!byId.has(edge.source_id) || !byId.has(edge.target_id)) return false
+  const edges = (Array.isArray(rawEdges) ? rawEdges : []).filter((edge) => {
+    if (!edge || !byId.has(edge.source_id) || !byId.has(edge.target_id)) return false
     const key = `${edge.source_id}:${edge.target_id}:${edge.relation_type || 'evidence'}`
     if (seen.has(key)) return false
     seen.add(key)
-    adjacency.get(edge.source_id)!.add(edge.target_id)
-    adjacency.get(edge.target_id)!.add(edge.source_id)
+    adjacency.get(edge.source_id)?.add(edge.target_id)
+    adjacency.get(edge.target_id)?.add(edge.source_id)
     return true
   })
 
@@ -121,9 +127,11 @@ export function clusterFor(model: AtlasModel, nodeId: string) {
 }
 
 export function nodeRound(node: AtlasNode) {
-  return node.round_label?.toUpperCase() || node.label.match(/\bR[1-9]\b/i)?.[0].toUpperCase() || ''
+  if (!node) return ''
+  return node.round_label?.toUpperCase() || (typeof node.label === 'string' ? node.label.match(/\bR[1-9]\b/i)?.[0].toUpperCase() : '') || ''
 }
 
 export function nodeTitle(node: AtlasNode) {
-  return node.label.replace(/\s*\[[^\]]+\]\s*$/, '').trim()
+  if (!node) return 'Untitled'
+  return (typeof node.label === 'string' ? node.label : '').replace(/\s*\[[^\]]+\]\s*$/, '').trim() || node.id || 'Untitled'
 }

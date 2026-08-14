@@ -210,9 +210,9 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     finally { setWorking('') }
   }
 
-  const removeArtifact = async (item: LibraryRecord) => {
+  const removeArtifact = async (item: LibraryRecord, skipConfirm = false) => {
     const files = Array.isArray(item._group) ? item._group as LibraryRecord[] : [item]
-    if (!window.confirm(`Remove ${files.length > 1 ? `these ${files.length} linked files` : `“${item.filename || 'this file'}”`} from Files?`)) return
+    if (!skipConfirm && !window.confirm(`Remove ${files.length > 1 ? `these ${files.length} linked files` : `“${item.filename || 'this file'}”`} from Files?`)) return
     setWorking(String(item.id)); setNotice('Removing…')
     try { for (const file of files) await api(`/artifacts/${encodeURIComponent(String(file.id))}`, { method: 'DELETE' }); setNotice('Removed from Files.'); reload() }
     catch (actionError) { setNotice(actionMessage(actionError)) }

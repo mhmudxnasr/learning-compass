@@ -3,6 +3,7 @@ import { api, flushOfflineMutations, formatDate, labelize, listOfflineMutations,
 import { ErrorState, Empty, Loading } from '../components/States'
 import { useData } from '../app/useData'
 import { useRoute } from '../app/router'
+import { THEME_PRESETS, FONT_PRESETS, applyTheme, applyFont, getSavedTheme, getSavedFontId, getSavedCustomFont, getSavedCustomPalette, extractColorsFromText, normalizeColor, type CustomPalette, type CustomFont, DEFAULT_CUSTOM_PALETTE, DEFAULT_CUSTOM_FONT } from '../theme'
 
 export type SettingsView = 'profile' | 'preferences' | 'data' | 'system'
 export type SettingsMode = 'personal' | 'data' | 'system'
@@ -33,7 +34,7 @@ type ProfileRecord = Record<string, any>
 type SettingsPayload = {
   settings?: Record<string, any>
   resolved?: {
-    appearance?: { theme?: string; density?: string }
+    appearance?: { theme?: string; density?: string; font?: string; custom_font?: { ui?: string; reading?: string; mono?: string } }
     learning?: { retention?: number; queue_cap?: number }
     srs_drafts?: { enabled?: boolean; minimum_rating?: number; auto_extract?: boolean }
     ai_curation?: { enrich_capture?: boolean }
@@ -230,7 +231,12 @@ function PreferenceToggle({ label, description, checked, onChange }: { label: st
 function PreferencesView() {
   const settings = useData<SettingsPayload>('/settings')
   const [status, setStatus] = useState('')
+  const [theme, setTheme] = useState(() => getSavedTheme())
+  const [customPalette, setCustomPalette] = useState<CustomPalette>(() => getSavedCustomPalette())
+  const [pasteCodes, setPasteCodes] = useState('')
   const [density, setDensity] = useState('balanced')
+  const [font, setFont] = useState(() => getSavedFontId())
+  const [customFont, setCustomFont] = useState<CustomFont>(() => getSavedCustomFont())
   const [retention, setRetention] = useState(90)
   const [enrichCapture, setEnrichCapture] = useState(false)
   const [srsEnabled, setSrsEnabled] = useState(true)
@@ -238,9 +244,24 @@ function PreferencesView() {
   const [profileMode, setProfileMode] = useState('automatic')
   const [engineMode, setEngineMode] = useState('shadow')
   const resolved = settings.data?.resolved
+
   useEffect(() => {
     if (!resolved) return
+    const currentTheme = (resolved.appearance as any)?.theme || theme
+    const currentPalette = (resolved.appearance as any)?.custom_palette || customPalette
+    setTheme(currentTheme)
+    if ((resolved.appearance as any)?.custom_palette) {
+      setCustomPalette(currentPalette)
+    }
     setDensity(resolved.appearance?.density || 'balanced')
+    if ((resolved.appearance as any)?.font) {
+      const resolvedFont = (resolved.appearance as any)?.font
+      setFont(resolvedFont)
+      applyFont(resolvedFont, (resolved.appearance as any)?.custom_font)
+    }
+    if ((resolved.appearance as any)?.custom_font) {
+      setCustomFont((resolved.appearance as any)?.custom_font)
+    }
     setRetention(Number(resolved.learning?.retention || 90))
     setEnrichCapture(Boolean(resolved.ai_curation?.enrich_capture))
     setSrsEnabled(resolved.srs_drafts?.enabled !== false)
@@ -249,34 +270,646 @@ function PreferencesView() {
     setEngineMode(resolved.recommendation_engine?.mode || 'shadow')
     document.documentElement.dataset.density = resolved.appearance?.density || 'balanced'
   }, [resolved])
+
   if (settings.loading) return <Loading label="Reading preferences" />
   if (settings.error) return <ErrorState message={settings.error} retry={settings.reload} />
+
   const persist = async (key: string, value: unknown, after?: () => void) => {
     setStatus('Saving…')
-    try { await api(`/settings/${key}`, { method: 'PUT', body: JSON.stringify(value) }); after?.(); setStatus('Saved'); window.setTimeout(() => setStatus(''), 1400) }
-    catch (error: any) { setStatus(error?.message || 'Could not save this preference.') }
+    try {
+      await api(`/settings/${key}`, { method: 'PUT', body: JSON.stringify(value) })
+      after?.()
+      setStatus('Saved')
+      window.setTimeout(() => setStatus(''), 1400)
+    } catch (error: any) {
+      setStatus(error?.message || 'Could not save this preference.')
+    }
   }
-  const saveAppearance = (value: string) => { setDensity(value); document.documentElement.dataset.density = value; persist('appearance', { theme: resolved?.appearance?.theme || 'system', density: value }) }
+
+  const selectTheme = (newThemeId: string) => {
+    setTheme(newThemeId)
+    applyTheme(newThemeId, newThemeId === 'custom' ? customPalette : undefined)
+    persist('appearance', { theme: newThemeId, density, custom_palette: customPalette })
+  }
+
+  const selectFont = (fontId: string) => {
+    setFont(fontId)
+    applyFont(fontId, fontId === 'custom' ? customFont : undefined)
+    persist('appearance', { theme, density, custom_palette: customPalette, font: fontId, custom_font: fontId === 'custom' ? customFont : undefined })
+  }
+
+  const updateCustomFont = (key: keyof CustomFont, value: string) => {
+    const next = { ...customFont, [key]: value }
+    setCustomFont(next)
+    if (font === 'custom') applyFont('custom', next)
+    persist('appearance', { theme, density, custom_palette: customPalette, font: 'custom', custom_font: next })
+  }
+
+  const updateCustomColor = (key: keyof CustomPalette, value: string) => {
+    const nextPalette = { ...customPalette, [key]: value }
+    setCustomPalette(nextPalette)
+    if (theme === 'custom') {
+      applyTheme('custom', nextPalette)
+    }
+    persist('appearance', { theme: 'custom', density, custom_palette: nextPalette })
+  }
+
+  const handleApplyPastedCodes = () => {
+    const extracted = extractColorsFromText(pasteCodes)
+    if (extracted.length === 0) {
+      setStatus('No valid HEX or RGB color codes found.')
+      window.setTimeout(() => setStatus(''), 2000)
+      return
+    }
+    const brand = extracted[0] || customPalette.brand
+    const shell = extracted[1] || customPalette.shell
+    const highlight = extracted[2] || customPalette.highlight
+    const accent = extracted[3] || customPalette.accent
+    const ink = extracted[4] || customPalette.ink
+    const nextPalette: CustomPalette = { brand, shell, highlight, accent, ink }
+    setCustomPalette(nextPalette)
+    setTheme('custom')
+    applyTheme('custom', nextPalette)
+    persist('appearance', { theme: 'custom', density, custom_palette: nextPalette })
+    setStatus(`Applied ${extracted.length} color code${extracted.length > 1 ? 's' : ''}!`)
+    window.setTimeout(() => setStatus(''), 2000)
+  }
+
+  const saveAppearance = (value: string) => {
+    setDensity(value)
+    document.documentElement.dataset.density = value
+    persist('appearance', { theme, density: value, custom_palette: customPalette })
+  }
+
   const saveLearning = (value: number) => { setRetention(value); persist('learning', { retention: value, queue_cap: 5 }) }
   const saveSrs = (next: Partial<{ enabled: boolean; auto_extract: boolean }>) => { const current = { enabled: srsEnabled, minimum_rating: 7, auto_extract: autoExtract, ...next }; setSrsEnabled(current.enabled); setAutoExtract(current.auto_extract); persist('srs_drafts', current) }
-  return <div class="settings-page"><section class="settings-intro"><span class="eyebrow">Settings / Preferences</span><h1>Make the learning loop fit you</h1><p>Preferences are stored in the canonical settings record and applied to future captures, queue decisions, profile learning, and recall.</p></section><section><div class="section-head"><h2>Interface</h2><span>Quiet, readable defaults</span></div><div class="setting-row"><div><strong>Reading density</strong><span>Choose the amount of information visible in each working surface.</span></div><select aria-label="Reading density" value={density} onChange={(event) => saveAppearance((event.target as HTMLSelectElement).value)}><option value="balanced">Balanced</option><option value="compact">Compact</option></select></div></section><section><div class="section-head"><h2>Learning defaults</h2><span>Queue stays capped at five</span></div><div class="setting-row"><div><strong>Recall retention target</strong><span>FSRS target used when scheduling approved recall cards.</span></div><select aria-label="Recall retention target" value={retention} onChange={(event) => saveLearning(Number((event.target as HTMLSelectElement).value))}><option value="85">85%</option><option value="90">90%</option><option value="95">95%</option></select></div><div class="setting-row"><div><strong>Queue capacity</strong><span>The active source shelf remains intentionally bounded.</span></div><span class="setting-value">5 items</span></div></section><section><div class="section-head"><h2>Curation & profile</h2><span>Explicit, reversible behavior</span></div><PreferenceToggle label="Enrich new captures" description="Let the capture workflow add source metadata before triage." checked={enrichCapture} onChange={(value) => { setEnrichCapture(value); persist('ai_curation', { enrich_capture: value }) }} /><div class="setting-row"><div><strong>Profile learning</strong><span>How strong evidence is applied to your typed profile.</span></div><select aria-label="Profile learning" value={profileMode} onChange={(event) => { const value = (event.target as HTMLSelectElement).value; setProfileMode(value); persist('profile_automation', { mode: value, policy_version: 'profile_v2' }) }}><option value="automatic">Automatic when evidence is strong</option><option value="manual">Always ask first</option></select></div><div class="setting-row"><div><strong>Recommendation engine</strong><span>Shadow keeps the newer scorer observable while evidence accumulates.</span></div><span class="setting-value">{labelize(engineMode)}</span></div></section><section><div class="section-head"><h2>Recall drafts</h2><span>Approval remains required before Review</span></div><PreferenceToggle label="Create recall drafts for high ratings" description="Ratings of 7–10 can create editable SRS drafts; approval is still explicit." checked={srsEnabled} onChange={(value) => saveSrs({ enabled: value })} /><PreferenceToggle label="Extract notes automatically after retain/apply" description="When enabled, eligible completion feedback can start the structured extraction workflow." checked={autoExtract} onChange={(value) => saveSrs({ auto_extract: value })} /><div class="setting-row"><div><strong>Minimum rating</strong><span>This product invariant is fixed so high-value feedback stays deliberate.</span></div><span class="setting-value">7 / 10</span></div></section>{status && <output class="settings-status">{status}</output>}</div>
+
+  return <div class="settings-page">
+    <section class="settings-intro">
+      <span class="eyebrow">Settings / Preferences</span>
+      <h1>Make the learning loop fit you</h1>
+      <p>Preferences are stored in the canonical settings record and applied to future captures, queue decisions, profile learning, and recall.</p>
+    </section>
+
+    <section class="theme-section">
+      <div class="section-head">
+        <h2>Color Palette & Themes</h2>
+        <span>Curated presets or enter your own custom codes</span>
+      </div>
+
+      <div class="theme-presets-grid" role="radiogroup" aria-label="Color Themes">
+        {THEME_PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            type="button"
+            class={`theme-preset-card ${theme === preset.id ? 'active' : ''}`}
+            onClick={() => selectTheme(preset.id)}
+            role="radio"
+            aria-checked={theme === preset.id}
+          >
+            <div class="theme-preset-header">
+              <span class="theme-preset-title">{preset.name}</span>
+              <div class="theme-swatches" aria-hidden="true">
+                {preset.swatches.map((c, i) => (
+                  <span key={i} class="theme-swatch" style={{ background: c }} />
+                ))}
+              </div>
+            </div>
+            <p class="theme-preset-desc"><span class={`theme-preset-mode mode-${preset.mode}`}>{preset.mode === 'dark' ? 'Dark' : 'Day'}</span>{preset.description}</p>
+          </button>
+        ))}
+
+        <button
+          type="button"
+          class={`theme-preset-card ${theme === 'custom' ? 'active' : ''}`}
+          onClick={() => selectTheme('custom')}
+          role="radio"
+          aria-checked={theme === 'custom'}
+        >
+          <div class="theme-preset-header">
+            <span class="theme-preset-title">Custom Palette</span>
+            <div class="theme-swatches" aria-hidden="true">
+              <span class="theme-swatch" style={{ background: customPalette.brand }} />
+              <span class="theme-swatch" style={{ background: customPalette.shell }} />
+              <span class="theme-swatch" style={{ background: customPalette.highlight }} />
+              <span class="theme-swatch" style={{ background: customPalette.accent }} />
+            </div>
+          </div>
+          <p class="theme-preset-desc">Enter any HEX or RGB codes to customize your site colors anytime.</p>
+        </button>
+      </div>
+
+      {theme === 'custom' && (
+        <div class="custom-palette-panel">
+          <div class="custom-palette-header">
+            <div>
+              <h3>Custom Palette Codes</h3>
+              <p>Paste HEX (<code>#1D4533</code>) or RGB (<code>rgb(29, 69, 51)</code>) codes below, or tweak each shade directly.</p>
+            </div>
+          </div>
+
+          <div class="custom-palette-paste-box">
+            <textarea
+              aria-label="Paste color codes"
+              placeholder={`Paste any color codes, for example:\n#1D4533\n#F7EAE0\n#F9D2BA\n#5E3122\nrgb(29, 69, 51)`}
+              value={pasteCodes}
+              onInput={(e) => setPasteCodes((e.target as HTMLTextAreaElement).value)}
+              rows={3}
+            />
+            <div class="custom-palette-actions">
+              <button type="button" class="btn-apply" onClick={handleApplyPastedCodes}>
+                Apply Pasted Codes
+              </button>
+              <button
+                type="button"
+                class="btn-secondary"
+                onClick={() => {
+                  setPasteCodes(`#1D4533\n#F7EAE0\n#F9D2BA\n#5E3122\nrgb(29, 69, 51)`)
+                }}
+              >
+                Insert Sample Codes
+              </button>
+              <button
+                type="button"
+                class="btn-secondary"
+                onClick={() => {
+                  setCustomPalette(DEFAULT_CUSTOM_PALETTE)
+                  applyTheme('custom', DEFAULT_CUSTOM_PALETTE)
+                  persist('appearance', { theme: 'custom', density, custom_palette: DEFAULT_CUSTOM_PALETTE })
+                }}
+              >
+                Reset to Default
+              </button>
+            </div>
+          </div>
+
+          <div class="custom-palette-fields">
+            <div class="custom-color-item">
+              <label for="color-brand">Primary / Brand</label>
+              <div class="custom-color-input-group">
+                <input
+                  id="color-brand-picker"
+                  type="color"
+                  value={normalizeColor(customPalette.brand, '#1D4533')}
+                  onInput={(e) => updateCustomColor('brand', (e.target as HTMLInputElement).value)}
+                />
+                <input
+                  id="color-brand"
+                  type="text"
+                  value={customPalette.brand}
+                  onInput={(e) => updateCustomColor('brand', (e.target as HTMLInputElement).value)}
+                  placeholder="#1D4533 or rgb(29, 69, 51)"
+                />
+              </div>
+            </div>
+
+            <div class="custom-color-item">
+              <label for="color-shell">Background / Shell</label>
+              <div class="custom-color-input-group">
+                <input
+                  id="color-shell-picker"
+                  type="color"
+                  value={normalizeColor(customPalette.shell, '#F7EAE0')}
+                  onInput={(e) => updateCustomColor('shell', (e.target as HTMLInputElement).value)}
+                />
+                <input
+                  id="color-shell"
+                  type="text"
+                  value={customPalette.shell}
+                  onInput={(e) => updateCustomColor('shell', (e.target as HTMLInputElement).value)}
+                  placeholder="#F7EAE0 or rgb(247, 234, 224)"
+                />
+              </div>
+            </div>
+
+            <div class="custom-color-item">
+              <label for="color-highlight">Badge / Highlight</label>
+              <div class="custom-color-input-group">
+                <input
+                  id="color-highlight-picker"
+                  type="color"
+                  value={normalizeColor(customPalette.highlight, '#F9D2BA')}
+                  onInput={(e) => updateCustomColor('highlight', (e.target as HTMLInputElement).value)}
+                />
+                <input
+                  id="color-highlight"
+                  type="text"
+                  value={customPalette.highlight}
+                  onInput={(e) => updateCustomColor('highlight', (e.target as HTMLInputElement).value)}
+                  placeholder="#F9D2BA or rgb(249, 210, 186)"
+                />
+              </div>
+            </div>
+
+            <div class="custom-color-item">
+              <label for="color-accent">Secondary / Earth</label>
+              <div class="custom-color-input-group">
+                <input
+                  id="color-accent-picker"
+                  type="color"
+                  value={normalizeColor(customPalette.accent, '#5E3122')}
+                  onInput={(e) => updateCustomColor('accent', (e.target as HTMLInputElement).value)}
+                />
+                <input
+                  id="color-accent"
+                  type="text"
+                  value={customPalette.accent}
+                  onInput={(e) => updateCustomColor('accent', (e.target as HTMLInputElement).value)}
+                  placeholder="#5E3122 or rgb(94, 49, 34)"
+                />
+              </div>
+            </div>
+
+            <div class="custom-color-item">
+              <label for="color-ink">Text / Ink</label>
+              <div class="custom-color-input-group">
+                <input
+                  id="color-ink-picker"
+                  type="color"
+                  value={normalizeColor(customPalette.ink || '#2B170F', '#2B170F')}
+                  onInput={(e) => updateCustomColor('ink', (e.target as HTMLInputElement).value)}
+                />
+                <input
+                  id="color-ink"
+                  type="text"
+                  value={customPalette.ink || ''}
+                  onInput={(e) => updateCustomColor('ink', (e.target as HTMLInputElement).value)}
+                  placeholder="#2B170F or rgb(43, 23, 15)"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+
+    <section class="font-section">
+      <div class="section-head">
+        <h2>Fonts & Typography</h2>
+        <span>Interface, reading, and code faces</span>
+      </div>
+      <div class="font-presets-grid" role="radiogroup" aria-label="Fonts">
+        {FONT_PRESETS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            class={`font-preset-card ${font === f.id ? 'active' : ''}`}
+            onClick={() => selectFont(f.id)}
+            role="radio"
+            aria-checked={font === f.id}
+          >
+            <span class="font-preset-sample" style={{ fontFamily: f.ui }}>Aa</span>
+            <span class="font-preset-copy">
+              <strong>{f.name}</strong>
+              <small>{f.description}</small>
+            </span>
+          </button>
+        ))}
+        <button
+          type="button"
+          class={`font-preset-card ${font === 'custom' ? 'active' : ''}`}
+          onClick={() => selectFont('custom')}
+          role="radio"
+          aria-checked={font === 'custom'}
+        >
+          <span class="font-preset-sample" style={{ fontFamily: customFont.ui }}>Aa</span>
+          <span class="font-preset-copy">
+            <strong>Custom Fonts</strong>
+            <small>Enter your own font-family stacks.</small>
+          </span>
+        </button>
+      </div>
+
+      {font === 'custom' && (
+        <div class="custom-font-panel">
+          <div class="custom-font-header">
+            <h3>Custom Font Stacks</h3>
+            <p>Paste CSS <code>font-family</code> stacks below. Any Google Font name is loaded automatically — no install needed.</p>
+          </div>
+          <div class="custom-font-fields">
+            <label>
+              <span>Interface / Body</span>
+              <input
+                type="text"
+                value={customFont.ui}
+                onInput={(e) => updateCustomFont('ui', (e.target as HTMLInputElement).value)}
+                placeholder='"IBM Plex Sans", system-ui, sans-serif'
+              />
+            </label>
+            <label>
+              <span>Reading / Display</span>
+              <input
+                type="text"
+                value={customFont.reading}
+                onInput={(e) => updateCustomFont('reading', (e.target as HTMLInputElement).value)}
+                placeholder='"IBM Plex Serif", Georgia, serif'
+              />
+            </label>
+            <label>
+              <span>Code / Data</span>
+              <input
+                type="text"
+                value={customFont.mono}
+                onInput={(e) => updateCustomFont('mono', (e.target as HTMLInputElement).value)}
+                placeholder='"IBM Plex Mono", ui-monospace, monospace'
+              />
+            </label>
+          </div>
+          <p class="custom-font-hint">Try: Inter, Space Grotesk, Fraunces, Playfair Display, JetBrains Mono, DM Serif Display.</p>
+          <div class="custom-font-actions">
+            <button
+              type="button"
+              class="btn-secondary"
+              onClick={() => {
+                setCustomFont(DEFAULT_CUSTOM_FONT)
+                applyFont('custom', DEFAULT_CUSTOM_FONT)
+                persist('appearance', { theme, density, custom_palette: customPalette, font: 'custom', custom_font: DEFAULT_CUSTOM_FONT })
+              }}
+            >
+              Reset to Default
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Interface Density</h2>
+        <span>Display metrics</span>
+      </div>
+      <div class="setting-row">
+        <div>
+          <strong>Reading density</strong>
+          <span>Choose the amount of information visible in each working surface.</span>
+        </div>
+        <select aria-label="Reading density" value={density} onChange={(event) => saveAppearance((event.target as HTMLSelectElement).value)}>
+          <option value="balanced">Balanced</option>
+          <option value="compact">Compact</option>
+        </select>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Learning defaults</h2>
+        <span>Queue stays capped at five</span>
+      </div>
+      <div class="setting-row">
+        <div>
+          <strong>Recall retention target</strong>
+          <span>FSRS target used when scheduling approved recall cards.</span>
+        </div>
+        <select aria-label="Recall retention target" value={retention} onChange={(event) => saveLearning(Number((event.target as HTMLSelectElement).value))}>
+          <option value="85">85%</option>
+          <option value="90">90%</option>
+          <option value="95">95%</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <div>
+          <strong>Queue capacity</strong>
+          <span>The active source shelf remains intentionally bounded.</span>
+        </div>
+        <span class="setting-value">5 items</span>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Curation & profile</h2>
+        <span>Explicit, reversible behavior</span>
+      </div>
+      <PreferenceToggle label="Enrich new captures" description="Let the capture workflow add source metadata before triage." checked={enrichCapture} onChange={(value) => { setEnrichCapture(value); persist('ai_curation', { enrich_capture: value }) }} />
+      <div class="setting-row">
+        <div>
+          <strong>Profile learning</strong>
+          <span>How strong evidence is applied to your typed profile.</span>
+        </div>
+        <select aria-label="Profile learning" value={profileMode} onChange={(event) => { const value = (event.target as HTMLSelectElement).value; setProfileMode(value); persist('profile_automation', { mode: value, policy_version: 'profile_v2' }) }}>
+          <option value="automatic">Automatic when evidence is strong</option>
+          <option value="manual">Always ask first</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <div>
+          <strong>Recommendation engine</strong>
+          <span>Shadow keeps the newer scorer observable while evidence accumulates.</span>
+        </div>
+        <span class="setting-value">{labelize(engineMode)}</span>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Recall drafts</h2>
+        <span>Approval remains required before Review</span>
+      </div>
+      <PreferenceToggle label="Create recall drafts for high ratings" description="Ratings of 7–10 can create editable SRS drafts; approval is still explicit." checked={srsEnabled} onChange={(value) => saveSrs({ enabled: value })} />
+      <PreferenceToggle label="Extract notes automatically after retain/apply" description="When enabled, eligible completion feedback can start the structured extraction workflow." checked={autoExtract} onChange={(value) => saveSrs({ auto_extract: value })} />
+      <div class="setting-row">
+        <div>
+          <strong>Minimum rating</strong>
+          <span>This product invariant is fixed so high-value feedback stays deliberate.</span>
+        </div>
+        <span class="setting-value">7 / 10</span>
+      </div>
+    </section>
+
+    {status && <output class="settings-status">{status}</output>}
+  </div>
 }
 
 function OfflineQueue() {
   const [items, setItems] = useState<any[]>([])
   const [working, setWorking] = useState(false)
   const [status, setStatus] = useState('')
+  const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
+
   const refresh = () => listOfflineMutations().then(setItems)
-  useEffect(() => { refresh(); const onOnline = () => refresh(); addEventListener('online', onOnline); return () => removeEventListener('online', onOnline) }, [])
-  const sync = async () => { setWorking(true); setStatus('Syncing queued changes…'); try { await flushOfflineMutations(); await refresh(); setStatus('Sync complete.'); } catch (error: any) { setStatus(error?.message || 'Sync could not complete.') } finally { setWorking(false) } }
-  return <section><div class="section-head"><h2>Offline changes</h2><span>{items.length ? `${items.length} waiting` : 'No pending local changes'}</span></div>{items.length ? <div class="offline-mutation-list">{items.map((item) => <article class="offline-mutation" key={item.id}><div><strong>{labelize(item.state || 'pending')}</strong><small>{item.method} {item.url} · {item.error || 'Waiting to sync'}</small></div><div class="row-actions">{['failed', 'conflict'].includes(item.state) && <button class="button secondary" onClick={() => resolveOfflineMutation(item.id, 'retry').then(refresh)}>Retry</button>}<button class="button secondary" onClick={() => resolveOfflineMutation(item.id, 'discard').then(refresh)}>Discard</button></div></article>)}</div> : <Empty title="Everything is synced" body="Offline mutations are recoverable in this browser and will remain visible here until they succeed or you discard them." />}{(items.length > 0 || !navigator.onLine) && <div class="row-actions"><button class="button primary" disabled={working || !navigator.onLine} onClick={sync}>{working ? 'Syncing…' : 'Sync now'}</button>{!navigator.onLine && <span class="status">Browser is offline</span>}</div>}{status && <output class="settings-status">{status}</output>}</section>
+
+  useEffect(() => {
+    refresh()
+    const handleStatus = () => {
+      setOnline(navigator.onLine)
+      refresh()
+    }
+    window.addEventListener('online', handleStatus)
+    window.addEventListener('offline', handleStatus)
+    return () => {
+      window.removeEventListener('online', handleStatus)
+      window.removeEventListener('offline', handleStatus)
+    }
+  }, [])
+
+  const sync = async () => {
+    setWorking(true)
+    setStatus('Syncing queued changes…')
+    try {
+      await flushOfflineMutations()
+      await refresh()
+      setStatus('Sync complete.')
+    } catch (error: unknown) {
+      setStatus(error instanceof Error ? error.message : 'Sync could not complete.')
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  return (
+    <section>
+      <div class="section-head">
+        <h2>Offline changes</h2>
+        <span>{items.length ? `${items.length} waiting` : 'No pending local changes'}</span>
+      </div>
+      {items.length ? (
+        <div class="offline-mutation-list">
+          {items.map((item) => (
+            <article class="offline-mutation" key={item.id}>
+              <div>
+                <strong>{labelize(item.state || 'pending')}</strong>
+                <small>
+                  {item.method} {item.url} · {item.error || 'Waiting to sync'}
+                </small>
+              </div>
+              <div class="row-actions">
+                {['failed', 'conflict'].includes(item.state) && (
+                  <button class="button secondary" onClick={() => resolveOfflineMutation(item.id, 'retry').then(refresh)}>
+                    Retry
+                  </button>
+                )}
+                <button class="button secondary" onClick={() => resolveOfflineMutation(item.id, 'discard').then(refresh)}>
+                  Discard
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <Empty
+          title="Everything is synced"
+          body="Offline mutations are recoverable in this browser and will remain visible here until they succeed or you discard them."
+        />
+      )}
+      {(items.length > 0 || !online) && (
+        <div class="row-actions">
+          <button class="button primary" disabled={working || !online} onClick={sync}>
+            {working ? 'Syncing…' : 'Sync now'}
+          </button>
+          {!online && <span class="status">Browser is offline</span>}
+        </div>
+      )}
+      {status && <output class="settings-status">{status}</output>}
+    </section>
+  )
 }
 
 function DataView() {
   const system = useData<SystemPayload>('/agent/system')
+  const [downloading, setDownloading] = useState('')
+
   if (system.loading) return <Loading label="Checking data ownership" />
   if (system.error) return <ErrorState message={system.error} retry={system.reload} />
-  return <div class="settings-page data-settings-page"><section class="settings-intro"><span class="eyebrow">Settings / Data & sync</span><h1>Your library, your files, your recovery path</h1><p>D1 is the canonical learning record. R2 holds larger companions. Browser storage only holds recoverable pending mutations.</p></section><OfflineQueue /><section><div class="section-head"><h2>Export</h2><span>Portable copies of your source record</span></div><div class="setting-row"><div><strong>Source library JSON</strong><span>Download recommendation history and metadata for backup or inspection.</span></div><a class="button secondary" href="/recommendations/export?format=json&limit=5000">Download JSON</a></div><div class="setting-row"><div><strong>Source library Markdown</strong><span>Download a readable ledger of your captured and consumed sources.</span></div><a class="button secondary" href="/recommendations/export?format=md&limit=5000">Download Markdown</a></div><div class="setting-row"><div><strong>Agent API specification</strong><span>Machine-readable inventory for the allow-listed product surface.</span></div><a class="button secondary" href="/agent/openapi.json" target="_blank" rel="noreferrer">Open specification</a></div></section><section><div class="section-head"><h2>Storage ownership</h2><span>{system.data?.timezone || 'Africa/Cairo'}</span></div><div class="system-storage">{(system.data?.storage || []).map((item) => <article key={item.name}><div><strong>{item.name}</strong><span>{item.purpose}</span></div><em>{labelize(item.status)}</em></article>)}</div><div class="system-counts">{Object.entries(system.data?.counts || {}).map(([key, value]) => <span key={key}><strong>{String(value)}</strong>{labelize(key)}</span>)}</div></section></div>
+
+  const triggerExport = async (url: string, filename: string) => {
+    try {
+      setDownloading(filename)
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`Export failed (${res.status})`)
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      window.open(url, '_blank')
+    } finally {
+      setDownloading('')
+    }
+  }
+
+  return (
+    <div class="settings-page data-settings-page">
+      <section class="settings-intro">
+        <span class="eyebrow">Settings / Data & sync</span>
+        <h1>Your library, your files, your recovery path</h1>
+        <p>D1 is the canonical learning record. R2 holds larger companions. Browser storage only holds recoverable pending mutations.</p>
+      </section>
+      <OfflineQueue />
+      <section>
+        <div class="section-head">
+          <h2>Export</h2>
+          <span>Portable copies of your source record</span>
+        </div>
+        <div class="setting-row">
+          <div>
+            <strong>Source library JSON</strong>
+            <span>Download recommendation history and metadata for backup or inspection.</span>
+          </div>
+          <button
+            type="button"
+            class="button secondary"
+            disabled={Boolean(downloading)}
+            onClick={() => triggerExport('/recommendations/export?format=json&limit=5000', 'learning-compass-library.json')}
+          >
+            {downloading.endsWith('.json') ? 'Exporting…' : 'Download JSON'}
+          </button>
+        </div>
+        <div class="setting-row">
+          <div>
+            <strong>Source library Markdown</strong>
+            <span>Download a readable ledger of your captured and consumed sources.</span>
+          </div>
+          <button
+            type="button"
+            class="button secondary"
+            disabled={Boolean(downloading)}
+            onClick={() => triggerExport('/recommendations/export?format=md&limit=5000', 'learning-compass-library.md')}
+          >
+            {downloading.endsWith('.md') ? 'Exporting…' : 'Download Markdown'}
+          </button>
+        </div>
+        <div class="setting-row">
+          <div>
+            <strong>Agent API specification</strong>
+            <span>Machine-readable inventory for the allow-listed product surface.</span>
+          </div>
+          <a class="button secondary" href="/agent/openapi.json" target="_blank" rel="noreferrer">
+            Open specification
+          </a>
+        </div>
+      </section>
+      <section>
+        <div class="section-head">
+          <h2>Storage ownership</h2>
+          <span>{system.data?.timezone || 'Africa/Cairo'}</span>
+        </div>
+        <div class="system-storage">
+          {(system.data?.storage || []).map((item) => (
+            <article key={item.name}>
+              <div>
+                <strong>{item.name}</strong>
+                <span>{item.purpose}</span>
+              </div>
+              <em>{labelize(item.status)}</em>
+            </article>
+          ))}
+        </div>
+        <div class="system-counts">
+          {Object.entries(system.data?.counts || {}).map(([key, value]) => (
+            <span key={key}>
+              <strong>{String(value)}</strong>
+              {labelize(key)}
+            </span>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
 }
 
 function capabilityArea(path: string) {

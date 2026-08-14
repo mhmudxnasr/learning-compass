@@ -28,7 +28,7 @@ export type LibraryViewHandlers = {
   onExclude: (item: LibraryRecord) => void
   onStart: (event: MouseEvent, item: LibraryRecord, href: string, kind?: 'original' | 'html' | 'pdf' | 'artifact' | 'notebooklm', artifactId?: string) => void
   onProcessArtifact: (item: LibraryRecord) => void
-  onDeleteArtifact: (item: LibraryRecord) => void
+  onDeleteArtifact: (item: LibraryRecord, skipConfirm?: boolean) => void
   onCompleteChapter: (book: LibraryRecord, chapter: LibraryRecord) => void
   onAddBook: (payload: { title: string; author: string; isbn: string }) => void
   onCreateCollection: (payload: { name: string; description: string }) => void
@@ -44,7 +44,7 @@ function RecordMeta({ children }: { children: preact.ComponentChildren }) {
 
 function RowTitle({ item, type = 'source', onInspect }: { item: LibraryRecord; type?: 'source' | 'artifact' | 'book' | 'collection'; onInspect: (selection: LibrarySelection) => void }) {
   const selection = type === 'artifact' ? artifactSelection(item) : type === 'book' ? bookSelection(item) : type === 'collection' ? collectionSelection(item) : sourceSelection(item)
-  return <button type="button" class="folio-object-row" onClick={() => onInspect(selection)}>
+  return <button type="button" class="folio-object-btn" onClick={() => onInspect(selection)}>
     <span class={`folio-object-mark folio-object-${type}`} aria-hidden="true"><Icon name={type === 'source' ? 'source' : type === 'artifact' ? 'file' : type === 'book' ? 'book' : 'collection'} size={17}/></span>
     <span class="folio-object-copy">
       <strong>{selection.title}</strong>
@@ -142,13 +142,187 @@ function artifactGroups(items: LibraryRecord[]) {
 }
 
 export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
+  const [query, setQuery] = useState('')
+  const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null)
   const items = Array.isArray(data.artifacts) ? data.artifacts : []
-  const groups = artifactGroups(items)
-  return <div class="folio-library-view folio-files-view">
-    <div class="folio-view-intro"><div><p class="folio-kicker">R2-backed reading material</p><h1>Files</h1><p>Generated companions and owned uploads stay attached to their source. Opening a file is passive; start a session from Queue.</p></div><span class="folio-count-readout"><strong>{groups.length}</strong><small>file groups</small></span></div>
-    {groups.length ? <div class="folio-record-list" aria-label="Source artifacts">{groups.map((group) => { const primary = group[0]; const metadata = primary.metadata || {}; const groupRecord = { ...primary, _group: group }; return <article class="folio-record folio-file-record" key={metadata.pair_id || primary.id}><div class="folio-record-main"><RecordMeta>{metadata.source_title || 'Owned artifact'} · {formatDate(primary.created_at)}</RecordMeta><RowTitle item={primary} type="artifact" onInspect={handlers.onInspect}/><p class="folio-record-reason">{group.length > 1 ? `${group.length} linked files · ${metadata.source_title || 'paired reading companion'}` : 'One source file'}</p><div class="folio-file-links">{group.map((file) => <span class="folio-file-link" key={file.id}><a href={artifactLink(file)} target="_blank" rel="noreferrer">Open {fileKind(file)}</a><small>{file.filename || fileKind(file)}{file.size_bytes ? ` · ${formatBytes(file.size_bytes)}` : ''}</small></span>)}</div><div class="folio-row-actions"><button type="button" class="folio-button" onClick={() => handlers.onProcessArtifact(primary)} disabled={handlers.busyId === primary.id}>Queue note extraction</button><button type="button" class="folio-button" onClick={() => handlers.onDeleteArtifact(groupRecord)} disabled={handlers.busyId === primary.id}>Remove group</button></div></div></article> })}</div> : <ViewEmpty title="No files yet" body="Uploaded documents and generated HTML/PDF companions will appear here."/>}
-    {handlers.notice && <p class="folio-action-status" role="status">{handlers.notice}</p>}
-  </div>
+  const groups = useMemo(() => artifactGroups(items), [items])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return groups
+    return groups.filter((group) => {
+      const primary = group[0]
+      const metadata = primary.metadata || {}
+      const topic = group.find((f) => f.topic || f.metadata?.topic)?.topic || group.find((f) => f.metadata?.topic)?.metadata?.topic || primary.topic || metadata.topic || ''
+      const text = `${metadata.source_title || ''} ${primary.filename || ''} ${topic} ${group.map((f) => f.filename || '').join(' ')}`.toLowerCase()
+      return text.includes(q)
+    })
+  }, [groups, query])
+
+  return (
+    <div class="folio-library-view folio-files-view">
+      <div class="folio-view-intro">
+        <div>
+          <p class="folio-kicker">R2-backed reading material</p>
+          <h1>Files</h1>
+          <p>Generated companions and uploaded documents. Open HTML to read or download PDF for offline annotation.</p>
+        </div>
+        <span class="folio-count-readout">
+          <strong>{filtered.length}</strong>
+          <small>{filtered.length === 1 ? 'document' : 'documents'}</small>
+        </span>
+      </div>
+
+      <label class="folio-search-field">
+        <span>Filter files</span>
+        <input
+          type="search"
+          value={query}
+          onInput={(event) => setQuery((event.currentTarget as HTMLInputElement).value)}
+          placeholder="Filter by title, topic, or filename…"
+        />
+      </label>
+
+      {filtered.length ? (
+        <div class="folio-files-ledger" aria-label="Source artifacts">
+          {filtered.map((group) => {
+            const primary = group[0]
+            const metadata = primary.metadata || {}
+            const groupRecord = { ...primary, _group: group }
+            const groupKey = String(metadata.pair_id || primary.id)
+            const htmlFile = group.find((f) => fileKind(f) === 'HTML' || String(f.filename || '').endsWith('.html'))
+            const pdfFile = group.find((f) => fileKind(f) === 'PDF' || String(f.filename || '').endsWith('.pdf'))
+            const originalUrl = group.find((f) => f.source_url || f.metadata?.source_url)?.source_url || group.find((f) => f.metadata?.source_url)?.metadata?.source_url || primary.source_url || metadata.source_url || primary.video_url || null
+            const notebookUrl = group.find((f) => f.notebook_url || f.metadata?.notebook_url)?.notebook_url || group.find((f) => f.metadata?.notebook_url)?.metadata?.notebook_url || primary.notebook_url || metadata.notebook_url || null
+            const topic = group.find((f) => f.topic || f.metadata?.topic)?.topic || group.find((f) => f.metadata?.topic)?.metadata?.topic || primary.topic || metadata.topic || null
+            const title = metadata.source_title || primary.filename || 'Owned reading artifact'
+            const primaryHref = htmlFile ? artifactLink(htmlFile) : pdfFile ? artifactLink(pdfFile) : artifactLink(primary)
+
+            return (
+              <article class="folio-file-card" key={groupKey}>
+                <a
+                  class="folio-file-main-link"
+                  href={primaryHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Open ${title}`}
+                >
+                  <span class="folio-file-body">
+                    <span class="folio-file-title" dir="auto">{title}</span>
+                    <span class="folio-file-sub">
+                      <span>{formatDate(primary.created_at)}</span>
+                      {topic && (
+                        <>
+                          <span class="folio-file-sep">·</span>
+                          <span class="folio-file-topic">{topic}</span>
+                        </>
+                      )}
+                      {group.length > 1 && <span class="folio-file-sep">·</span>}
+                      {group.length > 1 && <span>{group.length} files</span>}
+                    </span>
+                  </span>
+                </a>
+
+                <div class="folio-file-actions">
+                  {originalUrl && (
+                    <a
+                      class="folio-file-badge folio-badge-source"
+                      href={originalUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Open original source"
+                    >
+                      <span class="badge-format">Source</span>
+                    </a>
+                  )}
+
+                  {notebookUrl && (
+                    <a
+                      class="folio-file-badge folio-badge-nblm"
+                      href={notebookUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Open Google NotebookLM notebook"
+                    >
+                      <span class="badge-format">NBLM</span>
+                    </a>
+                  )}
+
+                  {htmlFile && (
+                    <a
+                      class="folio-file-badge folio-badge-html"
+                      href={artifactLink(htmlFile)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Open HTML Companion"
+                    >
+                      <span class="badge-format">HTML</span>
+                    </a>
+                  )}
+
+                  {pdfFile && (
+                    <a
+                      class="folio-file-badge folio-badge-pdf"
+                      href={artifactLink(pdfFile)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Open / Download PDF Companion"
+                    >
+                      <span class="badge-format">PDF</span>
+                    </a>
+                  )}
+
+                  <div class="folio-file-admin">
+                    {confirmDeleteKey === groupKey ? (
+                      <div class="folio-inline-confirm">
+                        <span class="folio-confirm-label">Delete?</span>
+                        <button
+                          type="button"
+                          class="folio-file-admin-btn folio-btn-danger folio-btn-confirm-yes"
+                          onClick={() => {
+                            setConfirmDeleteKey(null)
+                            handlers.onDeleteArtifact(groupRecord, true)
+                          }}
+                          disabled={handlers.busyId === primary.id}
+                          title="Confirm delete"
+                        >
+                          Yes
+                        </button>
+                        <button
+                          type="button"
+                          class="folio-file-admin-btn folio-btn-confirm-no"
+                          onClick={() => setConfirmDeleteKey(null)}
+                          title="Cancel delete"
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        class="folio-file-admin-btn folio-btn-danger"
+                        onClick={() => setConfirmDeleteKey(groupKey)}
+                        disabled={handlers.busyId === primary.id}
+                        title="Remove file group"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      ) : (
+        <ViewEmpty
+          title={query ? 'No matching files' : 'No files yet'}
+          body={query ? 'Try a shorter search query.' : 'Uploaded documents and generated HTML/PDF companions will appear here.'}
+        />
+      )}
+      {handlers.notice && <p class="folio-action-status" role="status">{handlers.notice}</p>}
+    </div>
+  )
 }
 
 export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
@@ -197,7 +371,8 @@ export function ArchiveView({ data, handlers }: { data: LibraryRecord; handlers:
   const items = filter === 'all' ? archived : archived.filter((item: LibraryRecord) => item.status === filter)
   return <div class="folio-library-view folio-archive-view">
     <div class="folio-view-intro"><div><p class="folio-kicker">Recovery without clutter</p><h1>Archive</h1><p>Completed sources and explicit exclusions stay findable. Feed entries retain their own pinned shelf in Inbox.</p></div><span class="folio-count-readout"><strong>{archived.length}</strong><small>archived</small></span></div>
-    <div class="folio-filter-row" role="group" aria-label="Archive status"><span>Show</span>{(['all', 'consumed', 'rejected'] as const).map((value) => <button type="button" class={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{value === 'all' ? 'All' : value === 'consumed' ? 'Completed' : 'Excluded'}</button>)}</div>
+    <div class="folio-filter-row" role="group" aria-label="Archive status"><span>Show</span>{(['all', 'consumed', 'rejected'] as const).map((value) => <button type="button" class={filter === value ? 'active' : ''} onClick={() => setFilter(value)} key={value}>{value === 'all' ? 'All' : value === 'consumed' ? 'Completed' : 'Excluded'}</button>)}</div>
+    {items.length ? <div class="folio-record-list" aria-label="Archived sources">{items.map((item: LibraryRecord) => <article class="folio-record" key={item.id}><div class="folio-record-main"><RecordMeta>{sourceFormat(item)} · {formatStatus(item.status)} · {formatDate(item.created_at)}</RecordMeta><RowTitle item={item} onInspect={handlers.onInspect}/><p class="folio-record-reason">{item.user_review || formatReason(item)}</p></div></article>)}</div> : <ViewEmpty title="No archived items" body="Completed and excluded sources will appear here."/>}
   </div>
 }
 
@@ -218,8 +393,13 @@ function SourceObject({ item, record, handlers }: { item: LibraryRecord; record:
   const thread = (record.threads || [])[0]
   const artifacts = record.artifacts || []
   const notes = record.notes || []
+  const notebookUrl = item.notebook_url
+    || item.metadata?.notebook_url
+    || artifacts.find((f: LibraryRecord) => f.notebook_url || f.metadata?.notebook_url)?.notebook_url
+    || artifacts.find((f: LibraryRecord) => f.metadata?.notebook_url)?.metadata?.notebook_url
+    || null
   return <div class="folio-object-sections">
-    <section class="folio-object-section"><h2>Source access</h2><div class="folio-row-actions">{sourceLink(item) && <a class="folio-button folio-button-primary" href={sourceLink(item)!} target="_blank" rel="noreferrer">Open original</a>}{item.notebook_url && <a class="folio-button" href={item.notebook_url} target="_blank" rel="noreferrer">Open NotebookLM</a>}</div><p class="folio-record-note">Opening this source is passive. Start a tracked learning session from Queue.</p></section>
+    <section class="folio-object-section"><h2>Source access</h2><div class="folio-row-actions">{sourceLink(item) && <a class="folio-button folio-button-primary" href={sourceLink(item)!} target="_blank" rel="noreferrer">Open original</a>}{notebookUrl && <a class="folio-button" href={notebookUrl} target="_blank" rel="noreferrer">Open NotebookLM</a>}</div><p class="folio-record-note">Opening this source is passive. Start a tracked learning session from Queue.</p></section>
     {thread && <section class="folio-object-section"><h2>Learning Thread</h2><a class="folio-linked-object" href={`#/learn/thread/${encodeURIComponent(String(thread.id))}`}><strong>{thread.title}</strong><span>{thread.role || 'Attached source'} · {formatStatus(thread.status)}</span></a>{thread.expected_contribution && <p>{thread.expected_contribution}</p>}</section>}
     <section class="folio-object-section"><div class="folio-section-heading"><h2>Files</h2><span>{artifacts.length}</span></div>{artifacts.length ? artifacts.map((file: LibraryRecord) => <a class="folio-linked-object" href={artifactLink(file)} target="_blank" rel="noreferrer" key={file.id}><strong>{file.filename || fileKind(file)}</strong><span>{fileKind(file)} · passive open</span></a>) : <p class="folio-record-note">No linked files yet.</p>}</section>
     {notes.map((note: LibraryRecord) => <section class="folio-object-section" key={note.id}><div class="folio-section-heading"><h2>{note.kind === 'reflection' ? 'Reflection' : 'Extracted note'}</h2><span>{formatStatus(note.status || 'draft')}</span></div>{(note.sections || []).map((section: LibraryRecord) => <div class="folio-bilingual-block" dir={section.direction || 'auto'} key={section.section_key}><strong>{section.label || labelize(section.section_key || 'section')}</strong><p>{section.content}</p></div>)}</section>)}

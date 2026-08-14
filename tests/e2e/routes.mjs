@@ -358,7 +358,7 @@ if (balance.branches?.[0]?.id) {
 await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
 await page.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout: 15000 })
 const homeBody = await page.locator('.workspace-canvas').innerText()
-for (const value of ['Current source', 'Active Thread', 'Single next action', 'Due recall', 'Capture signal']) {
+for (const value of ['Current source', 'Active Thread', 'Queue', 'Due recall', 'Capture signal']) {
   if (!homeBody.toLowerCase().includes(value.toLowerCase())) throw new Error(`Home is missing ${value}: ${homeBody}`)
 }
 if (await page.locator('.folio-home-focus').count() !== 1) throw new Error('Home must expose exactly one current-source focus')

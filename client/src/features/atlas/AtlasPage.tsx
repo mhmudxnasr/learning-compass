@@ -1,7 +1,7 @@
 import cytoscape, { Core, ElementDefinition, Position } from 'cytoscape'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { api } from '../../api'
-import { AtlasModel, AtlasNode, branchSubtreeIds, clusterFor, createAtlasModel, expandVisibleIds, initialVisibleIds, nodeRound, nodeTitle, visibleIdsForDepth } from './model'
+import { AtlasEdge, AtlasModel, AtlasNode, branchSubtreeIds, clusterFor, createAtlasModel, expandVisibleIds, initialVisibleIds, nodeRound, nodeTitle, visibleIdsForDepth } from './model'
 
 const palette = ['#2f71b8', '#41938f', '#7967ad', '#af6a54', '#838e4f', '#a95f82', '#65829c', '#a07c43']
 const svgIcon = (path: string) => <svg viewBox="0 0 24 24" aria-hidden="true"><path d={path} /></svg>
@@ -12,7 +12,7 @@ type LayoutMap = {
   clusters: Map<string, Position[]>
 }
 
-function constellationLayout(model: AtlasModel, visible: Set<string>): LayoutMap {
+function constellationLayout(model: AtlasModel, visible: Set<string>, gravity = 0.62): LayoutMap {
   const positions = new Map<string, Position>()
   const clusters = new Map<string, Position[]>()
   const groups = [...model.clusters.entries()]
@@ -31,16 +31,47 @@ function constellationLayout(model: AtlasModel, visible: Set<string>): LayoutMap
     const ordered = [...nodes].sort((a, b) =>
       (nodeRound(a) || 'R9').localeCompare(nodeRound(b) || 'R9') || nodeTitle(a).localeCompare(nodeTitle(b))
     )
-    const points = ordered.map((node, index) => {
-      if (index === 0) return center
-      const ring = Math.floor((index - 1) / 7)
-      const slot = (index - 1) % 7
-      const slots = Math.min(7, ordered.length - ring * 7 - 1)
-      const angle = (slot / Math.max(slots, 1)) * Math.PI * 2 - Math.PI / 2 + clusterIndex * .31
-      const radius = 78 + ring * 58
-      return { x: center.x + Math.cos(angle) * radius * 1.12, y: center.y + Math.sin(angle) * radius }
+    const anchors = ordered.filter((node) => ['R1', 'R2'].includes(nodeRound(node)) || node.type === 'root' || node.type === 'category')
+    const anchorPoints = new Map<string, Position>()
+    anchors.forEach((node, index) => {
+      if (index === 0) anchorPoints.set(node.id, center)
+      else {
+        const angle = ((index - 1) / Math.max(1, anchors.length - 1)) * Math.PI * 2 - Math.PI / 2
+        const radius = Math.min(105, 48 + anchors.length * 15)
+        anchorPoints.set(node.id, { x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius * .78 })
+      }
     })
-    ordered.forEach((node, index) => positions.set(node.id, points[index]))
+    const anchorFor = (node: AtlasNode) => {
+      let current = node
+      const visited = new Set<string>()
+      while (current.parent_id && !visited.has(current.parent_id)) {
+        visited.add(current.parent_id)
+        const parent = model.byId.get(current.parent_id)
+        if (!parent) break
+        if (anchorPoints.has(parent.id)) return parent.id
+        current = parent
+      }
+      return anchors[0]?.id || ''
+    }
+    anchors.forEach((node) => positions.set(node.id, anchorPoints.get(node.id)!))
+    const descendants = ordered.filter((node) => !anchorPoints.has(node.id))
+    const grouped = new Map<string, AtlasNode[]>()
+    descendants.forEach((node) => {
+      const anchor = anchorFor(node)
+      grouped.set(anchor, [...(grouped.get(anchor) || []), node])
+    })
+    for (const [anchorId, group] of grouped) {
+      const anchor = anchorPoints.get(anchorId) || center
+      group.forEach((node, index) => {
+        const ring = Math.floor(index / 7)
+        const slot = index % 7
+        const slots = Math.min(7, group.length - ring * 7)
+        const angle = (slot / Math.max(slots, 1)) * Math.PI * 2 - Math.PI / 2 + clusterIndex * .31
+        const radius = Math.max(38, 148 - gravity * 105) + ring * 48
+        positions.set(node.id, { x: anchor.x + Math.cos(angle) * radius * 1.12, y: anchor.y + Math.sin(angle) * radius })
+      })
+    }
+    const points = ordered.map((node) => positions.get(node.id) || center)
     clusters.set(name, points)
   })
   return { positions, clusters }
@@ -217,7 +248,7 @@ export default function AtlasPage() {
   const resetViewportRef = useRef(false)
   const inspectorPinnedRef = useRef(false)
   const selectedIdRef = useRef('')
-  const [raw, setRaw] = useState<any>(null)
+  const [raw, setRaw] = useState<{ nodes: AtlasNode[]; edges: AtlasEdge[] } | null>(null)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState('')
@@ -226,13 +257,23 @@ export default function AtlasPage() {
   const [clusterFilter, setClusterFilter] = useState('all')
   const [branchFocus, setBranchFocus] = useState('all')
   const [depth, setDepth] = useState<'R1' | 'R2' | 'R3' | 'all'>('R1')
+  const [gravity, setGravity] = useState(0.62)
   const [hint, setHint] = useState(true)
+  const [showListDrawer, setShowListDrawer] = useState(false)
+  const [themeTick, setThemeTick] = useState(0)
+
   useEffect(() => { inspectorPinnedRef.current = inspectorPinned }, [inspectorPinned])
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
+  useEffect(() => {
+    const onThemeChange = () => setThemeTick((t) => t + 1)
+    window.addEventListener('themechange', onThemeChange)
+    return () => window.removeEventListener('themechange', onThemeChange)
+  }, [])
+
   const model = useMemo(() => createAtlasModel(raw?.nodes, raw?.edges), [raw])
   const colors = useMemo(() => new Map([...model.clusters.keys()].sort().map((name, index) => [name, palette[index % palette.length]])), [model])
   const filteredVisible = useMemo(() => clusterFilter === 'all' ? visible : new Set([...visible].filter((id) => clusterFor(model, id) === clusterFilter)), [visible, clusterFilter, model])
-  const layout = useMemo(() => constellationLayout(model, filteredVisible), [model, filteredVisible])
+  const layout = useMemo(() => constellationLayout(model, filteredVisible, gravity), [model, filteredVisible, gravity])
   const selected = selectedId ? model.byId.get(selectedId) : undefined
   const searchResults = query.trim() ? model.nodes.filter((node) => node.label.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 8) : []
   const branchGroups = useMemo(() => {
@@ -249,16 +290,22 @@ export default function AtlasPage() {
     }))
   }, [model])
 
-  useEffect(() => { api('/knowledge/graph').then(setRaw).catch((reason) => setError(reason.message)) }, [])
+  useEffect(() => {
+    api<{ nodes: AtlasNode[]; edges: AtlasEdge[] }>('/knowledge/graph')
+      .then(setRaw)
+      .catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : String(reason || 'Failed to load graph'))
+      })
+  }, [])
   useEffect(() => { if (model.nodes.length) setVisible(initialVisibleIds(model)) }, [model])
 
   useEffect(() => {
     if (!canvasRef.current || !model.nodes.length || !filteredVisible.size) return
-    const dark = document.documentElement.dataset.theme === 'dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches)
-    const ink = dark ? '#edf1f7' : '#202734'
-    const surface = dark ? '#111720' : '#ffffff'
-    const line = dark ? '#485466' : '#b5bdc8'
-    const accent = dark ? '#77ade8' : '#2868aa'
+    const compStyle = getComputedStyle(document.documentElement)
+    const ink = compStyle.getPropertyValue('--studio-ink').trim() || '#1c211d'
+    const surface = compStyle.getPropertyValue('--studio-canvas').trim() || '#ffffff'
+    const line = compStyle.getPropertyValue('--studio-seam').trim() || '#e2ddd2'
+    const accent = compStyle.getPropertyValue('--studio-cypress').trim() || '#204936'
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
     const cy = cytoscape({
       container: canvasRef.current,
@@ -270,13 +317,13 @@ export default function AtlasPage() {
       boxSelectionEnabled: false,
       style: [
         { selector: 'node', style: {
-          width: 9, height: 9, 'background-color': 'data(color)', 'border-color': surface, 'border-width': 2,
-          label: 'data(displayLabel)', color: ink, 'font-family': 'IBM Plex Sans', 'font-size': 10, 'font-weight': 500,
-          'text-valign': 'bottom', 'text-margin-y': 8, 'text-background-color': surface, 'text-background-opacity': .88, 'text-background-padding': 3,
+          width: 10, height: 10, 'background-color': 'data(color)', 'border-color': surface, 'border-width': 2,
+          label: 'data(displayLabel)', color: ink, 'font-family': 'IBM Plex Sans', 'font-size': 10.5, 'font-weight': 500,
+          'text-valign': 'bottom', 'text-margin-y': 9, 'text-background-color': surface, 'text-background-opacity': .92, 'text-background-padding': 4,
         } },
         { selector: 'node[type = "branch"]', style: { width: 14, height: 14, 'border-width': 3 } },
         { selector: 'node[round = "R1"], node[type = "root"], node[type = "category"]', style: {
-          width: 25, height: 25, 'border-width': 5, 'font-size': 12, 'font-weight': 600, 'text-margin-y': 10,
+          width: 27, height: 27, 'border-width': 5, 'font-size': 12.5, 'font-weight': 600, 'text-margin-y': 11,
         } },
         { selector: 'node[hiddenCount > 0]', style: { 'border-color': 'data(color)', 'border-width': 5, 'border-opacity': .28 } },
         { selector: 'edge', style: { width: 1, 'line-color': line, 'curve-style': 'bezier', opacity: .3 } },
@@ -293,6 +340,15 @@ export default function AtlasPage() {
       ] as any,
     })
     cyRef.current = cy
+    const focusGraph = (id: string) => {
+      cy.elements().removeClass('muted')
+      if (!id) return
+      const node = cy.getElementById(id)
+      if (!node.length) return
+      const neighborhood = node.neighborhood().nodes().union(node)
+      cy.nodes().not(neighborhood).addClass('muted')
+      cy.edges().not(node.connectedEdges()).addClass('muted')
+    }
     if (viewportRef.current && !resetViewportRef.current) {
       cy.zoom(viewportRef.current.zoom)
       cy.pan(viewportRef.current.pan)
@@ -300,7 +356,10 @@ export default function AtlasPage() {
       cy.fit(cy.elements(), 105)
       resetViewportRef.current = false
     }
-    if (selectedIdRef.current && cy.getElementById(selectedIdRef.current).length) cy.getElementById(selectedIdRef.current).select()
+    if (selectedIdRef.current && cy.getElementById(selectedIdRef.current).length) {
+      cy.getElementById(selectedIdRef.current).select()
+      focusGraph(selectedIdRef.current)
+    }
 
     let hullFrame = 0
     let minimapTimer = 0
@@ -321,10 +380,15 @@ export default function AtlasPage() {
     })
     const select = (id: string) => {
       setSelectedId(id)
-      expand(id)
-      cy.elements().removeClass('muted')
-      const node = cy.getElementById(id)
-      cy.edges().not(node.connectedEdges()).addClass('muted')
+      const selectedNode = model.byId.get(id)
+      if (selectedNode && ['R1', 'R2'].includes(nodeRound(selectedNode))) {
+        setVisible((current) => {
+          const next = new Set(current)
+          branchSubtreeIds(model, id).forEach((childId) => next.add(childId))
+          return next
+        })
+      } else expand(id)
+      focusGraph(id)
     }
     cy.on('tap', 'node', (event) => select(event.target.id()))
     let followerFrame = 0
@@ -434,7 +498,19 @@ export default function AtlasPage() {
     const cy = cyRef.current
     if (!cy) return
     cy.nodes().unselect()
-    if (selectedId && cy.getElementById(selectedId).length) cy.getElementById(selectedId).select()
+    cy.elements().removeClass('muted')
+    if (selectedId && cy.getElementById(selectedId).length) {
+      const node = cy.getElementById(selectedId)
+      node.select()
+      const neighborhood = node.neighborhood().nodes().union(node)
+      cy.nodes().not(neighborhood).addClass('muted')
+      cy.edges().not(node.connectedEdges()).addClass('muted')
+      requestAnimationFrame(() => {
+        if (!node.length || node.removed()) return
+        const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 240
+        cy.animate({ center: { eles: node }, zoom: Math.max(cy.zoom(), 1.25) }, { duration, easing: 'ease-out-cubic' })
+      })
+    }
     drawOverlays(cy, model, filteredVisible, colors, hullRef.current, minimapRef.current, selectedId)
   }, [selectedId, model, filteredVisible, colors])
 
@@ -488,27 +564,199 @@ export default function AtlasPage() {
   if (!raw) return <div class="atlas-loading"><div /><span>Mapping knowledge clusters…</span></div>
   if (!model.nodes.length) return <div class="empty-state atlas-empty-state"><h1 class="visually-hidden">Atlas</h1><span class="empty-rule" /><h2>The Atlas has no mapped nodes</h2><p>Processed notes and branch changes will form your first constellation.</p></div>
 
-  return <div class={`atlas atlas-canvas-view ${selected ? 'has-selection' : ''}`}>
-    <h1 class="visually-hidden">Atlas</h1>
-    <div class="atlas-stage">
-      <div class="atlas-canvas-shell">
-        <div class="atlas-controls">
-          <div class="atlas-search"><span>{svgIcon('m21 21-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z')}</span><input aria-label="Search Atlas" value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="Search the map" />{query && <button onClick={() => setQuery('')} aria-label="Clear search">×</button>}
-            {searchResults.length > 0 && <div class="atlas-search-results">{searchResults.map((node) => <button onClick={() => focusNode(node.id)}><span>{nodeRound(node) || node.type}</span><strong>{nodeTitle(node)}</strong><small>{clusterFor(model, node.id)}</small></button>)}</div>}
+  return (
+    <div class={`atlas atlas-canvas-view ${selected ? 'has-selection' : ''}`}>
+      <h1 class="visually-hidden">Atlas</h1>
+      <div class="atlas-stage">
+        <div class="atlas-canvas-shell">
+          {/* Unified Floating Top Toolbar */}
+          <div class="atlas-controls" role="toolbar" aria-label="Atlas controls">
+            <div class="atlas-controls-left">
+              <div class="atlas-search">
+                <span>{svgIcon('m21 21-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z')}</span>
+                <input
+                  aria-label="Search Atlas"
+                  value={query}
+                  onInput={(event) => setQuery((event.target as HTMLInputElement).value)}
+                  placeholder="Search the map"
+                />
+                {query && <button onClick={() => setQuery('')} aria-label="Clear search">×</button>}
+                {searchResults.length > 0 && (
+                  <div class="atlas-search-results">
+                    {searchResults.map((node) => (
+                      <button key={node.id} onClick={() => focusNode(node.id)}>
+                        <span>{nodeRound(node) || node.type}</span>
+                        <strong>{nodeTitle(node)}</strong>
+                        <small>{clusterFor(model, node.id)}</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <select
+                class="atlas-branch-focus"
+                aria-label="Focus branch"
+                value={branchFocus}
+                onChange={(event) => focusBranch((event.target as HTMLSelectElement).value)}
+              >
+                <option value="all">Focus a branch…</option>
+                {[...branchGroups].map(([round, nodes]) => (
+                  <optgroup key={round} label={round}>
+                    {nodes.map((node) => (
+                      <option key={node.id} value={node.id}>
+                        {round !== 'No round' ? `${round} · ` : ''}{nodeTitle(node)}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+
+              <select
+                class="atlas-cluster-filter"
+                aria-label="Filter by cluster"
+                value={clusterFilter}
+                onChange={(event) => {
+                  resetViewportRef.current = true
+                  setBranchFocus('all')
+                  setClusterFilter((event.target as HTMLSelectElement).value)
+                }}
+              >
+                <option value="all">All clusters</option>
+                {[...model.clusters.keys()].sort().map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+
+              <select
+                class="atlas-depth-select"
+                aria-label="Atlas depth"
+                value={depth}
+                onChange={(event) => changeDepth((event.target as HTMLSelectElement).value as 'R1' | 'R2' | 'R3' | 'all')}
+              >
+                <option value="R1">Major branches</option>
+                <option value="R2">Branches and topics</option>
+                <option value="R3">Include detailed topics</option>
+                <option value="all">Every node</option>
+              </select>
+
+              <button
+                type="button"
+                class={`atlas-list-toggle ${showListDrawer ? 'active' : ''}`}
+                onClick={() => setShowListDrawer((v) => !v)}
+                aria-expanded={showListDrawer}
+                aria-controls="atlas-node-drawer"
+                title="Browse nodes as a list"
+              >
+                {svgIcon('M4 6h16M4 12h16M4 18h16')}
+                <span>Browse list</span>
+              </button>
+            </div>
+
+            <div class="atlas-controls-right">
+              <label class="atlas-gravity" title="How tightly topics gather around R1 and R2 anchors">
+                <span>Gravity</span>
+                <input aria-label="Anchor gravity" type="range" min="0" max="1" step="0.05" value={gravity} onInput={(event) => {
+                  resetViewportRef.current = true
+                  positionCacheRef.current.clear()
+                  setGravity(Number((event.target as HTMLInputElement).value))
+                }} />
+                <output>{Math.round(gravity * 100)}%</output>
+              </label>
+              <div class="atlas-stats-badge" aria-label="Atlas statistics">
+                <span><strong>{filteredVisible.size}</strong> visible</span>
+                <span class="atlas-meta-sep">/</span>
+                <span><strong>{model.nodes.length}</strong> total</span>
+                <span class="atlas-meta-sep">·</span>
+                <span><strong>{model.edges.length}</strong> links</span>
+              </div>
+            </div>
           </div>
-          <select class="atlas-branch-focus" aria-label="Focus branch" value={branchFocus} onChange={(event) => focusBranch((event.target as HTMLSelectElement).value)}><option value="all">Focus a branch…</option>{[...branchGroups].map(([round, nodes]) => <optgroup label={round}>{nodes.map((node) => <option value={node.id}>{round !== 'No round' ? `${round} · ` : ''}{nodeTitle(node)}</option>)}</optgroup>)}</select>
-          <select class="atlas-cluster-filter" aria-label="Filter by cluster" value={clusterFilter} onChange={(event) => { resetViewportRef.current = true; setBranchFocus('all'); setClusterFilter((event.target as HTMLSelectElement).value) }}><option value="all">All clusters</option>{[...model.clusters.keys()].sort().map((name) => <option value={name}>{name}</option>)}</select>
-          <select class="atlas-depth-select" aria-label="Atlas depth" value={depth} onChange={(event) => changeDepth((event.target as HTMLSelectElement).value as 'R1' | 'R2' | 'R3' | 'all')}><option value="R1">Major branches</option><option value="R2">Branches and topics</option><option value="R3">Include detailed topics</option><option value="all">Every node</option></select>
+
+          <svg ref={hullRef} class="atlas-hulls" aria-hidden="true" />
+          <div ref={canvasRef} class="atlas-canvas" role="img" aria-label="Visual knowledge map. Use the accessible node list to browse and select nodes." />
+
+          {/* Slide-over Node List Drawer */}
+          {showListDrawer && (
+            <aside id="atlas-node-drawer" class="atlas-node-drawer" aria-label="Visible Atlas nodes">
+              <div class="atlas-drawer-header">
+                <h3>Nodes in view <span>({filteredVisible.size})</span></h3>
+                <button type="button" class="icon-button" onClick={() => setShowListDrawer(false)} aria-label="Close node list">×</button>
+              </div>
+              <div class="atlas-drawer-list" role="list">
+                {[...filteredVisible].map((id) => {
+                  const node = model.byId.get(id)
+                  if (!node) return null
+                  return (
+                    <div key={id} role="listitem">
+                      <button
+                        type="button"
+                        class={`atlas-drawer-item ${selectedId === id ? 'active' : ''}`}
+                        onClick={() => focusNode(id)}
+                        aria-current={selectedId === id ? 'true' : undefined}
+                      >
+                        <span class="atlas-node-badge">{nodeRound(node) || node.type || 'Node'}</span>
+                        <strong class="atlas-node-title">{nodeTitle(node)}</strong>
+                        <small class="atlas-node-cluster">{clusterFor(model, id)}</small>
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </aside>
+          )}
+
+          {/* Floating Gesture Hint (Clean non-overlapping pill) */}
+          {hint && (
+            <div class="atlas-gesture-hint" role="status">
+              <span>Drag a branch to move its constellation · scroll or pinch to zoom</span>
+              <button type="button" class="atlas-hint-close" onClick={() => setHint(false)} aria-label="Dismiss hint">×</button>
+            </div>
+          )}
+
+          {/* Floating Category Legend Card */}
+          <div class="atlas-legend-card" aria-label="Cluster categories">
+            {[...colors].slice(0, 6).map(([name, color]) => (
+              <span key={name} class="atlas-legend-item">
+                <i style={{ background: color }} aria-hidden="true" />
+                {name}
+              </span>
+            ))}
+          </div>
+
+          {/* Minimap */}
+          <div class="atlas-minimap" aria-label="Atlas overview map">
+            <span class="atlas-minimap-label">Minimap</span>
+            <svg ref={minimapRef} aria-hidden="true" />
+          </div>
+
+          {/* Zoom and Fit Controls */}
+          <div class="atlas-zoom-controls" aria-label="Map zoom controls">
+            <button onClick={() => viewport('in')} aria-label="Zoom in" title="Zoom in">+</button>
+            <button onClick={() => viewport('out')} aria-label="Zoom out" title="Zoom out">−</button>
+            <button onClick={() => viewport('fit')} aria-label="Fit graph to screen" title="Fit to view">{svgIcon('M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5')}</button>
+            <span ref={zoomLabelRef} class="atlas-zoom-percentage">100%</span>
+          </div>
+
+          <div class="visually-hidden" aria-live="polite">{selected ? `Selected ${nodeTitle(selected)}.` : 'No Atlas node selected.'}</div>
         </div>
-        <div class="atlas-canvas-meta"><span>{filteredVisible.size} visible</span><span>{model.nodes.length} total nodes</span><span>{model.edges.length} connections</span></div>
-        <svg ref={hullRef} class="atlas-hulls" aria-hidden="true" />
-        <div ref={canvasRef} class="atlas-canvas" role="application" aria-label="Interactive knowledge map. Drag to pan, scroll or pinch to zoom." />
-        {hint && <div class="atlas-gesture-hint">Drag a branch to move its constellation · scroll or pinch to zoom</div>}
-        <div class="atlas-zoom-controls" aria-label="Map controls"><button onClick={() => viewport('in')} aria-label="Zoom in">+</button><button onClick={() => viewport('out')} aria-label="Zoom out">−</button><button onClick={() => viewport('fit')} aria-label="Fit graph">{svgIcon('M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5')}</button><span ref={zoomLabelRef}>100%</span></div>
-        <div class="atlas-legend">{[...colors].slice(0, 6).map(([name, color]) => <span><i style={{ background: color }} />{name}</span>)}</div>
-        <div class="atlas-minimap"><svg ref={minimapRef} aria-label="Atlas overview map" /></div>
+
+        {selected && (
+          <AtlasInspector
+            node={selected}
+            model={model}
+            pinned={inspectorPinned}
+            onClose={() => {
+              setSelectedId('')
+              setInspectorPinned(false)
+              cyRef.current?.elements().removeClass('muted')
+            }}
+            onSelect={focusNode}
+            onExpand={() => expandNode(selected.id)}
+            onTogglePin={() => setInspectorPinned((value) => !value)}
+          />
+        )}
       </div>
-      {selected && <AtlasInspector node={selected} model={model} pinned={inspectorPinned} onClose={() => { setSelectedId(''); setInspectorPinned(false); cyRef.current?.elements().removeClass('muted') }} onSelect={focusNode} onExpand={() => expandNode(selected.id)} onTogglePin={() => setInspectorPinned((value) => !value)} />}
     </div>
-  </div>
+  )
 }

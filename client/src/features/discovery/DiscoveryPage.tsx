@@ -1,27 +1,82 @@
 import { useEffect, useState } from 'preact/hooks'
 import { api } from '../../api'
 
+export type DiscoveryState = {
+  gate_state?: {
+    can_start_discovery?: boolean
+    is_gate_blocked?: boolean
+    blocked_reason?: string
+  }
+  active_run?: {
+    id: string
+    wave: number
+    lifecycle: string
+    mission: string
+    model_version?: string
+    skill_version?: string
+    selected_branch_id?: string
+    decision_receipt?: {
+      why_this?: string
+      why_now?: string
+      explored_branch?: string
+      surprise?: string
+      confidence?: number
+      what_feedback_will_teach?: string
+    }
+  }
+  selected_candidate?: {
+    title: string
+    creator?: string
+    canonical_url: string
+    source_class: string
+    format: string
+    total_score: number
+    is_verified?: boolean
+  }
+  active_interview?: {
+    questions?: string[]
+    unresolved_ambiguities?: string[]
+  }
+  frontier?: Array<{
+    id: string
+    name: string
+    confidence_score?: number
+    lifecycle_state?: string
+  }>
+  pruned_branches?: Array<{
+    id: string
+    name: string
+    pruning_reason?: string
+  }>
+}
+
 export default function DiscoveryPage() {
-  const [state, setState] = useState<any>(null)
+  const [state, setState] = useState<DiscoveryState | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [showGuide, setShowGuide] = useState(false)
 
   // Interview state
   const [feedbackText, setFeedbackText] = useState('')
-  const [openedFrontier, setOpenedFrontier] = useState(false)
-  const [realLifeImpact, setRealLifeImpact] = useState(false)
-  const [sourceLove, setSourceLove] = useState(false)
+  const [openedFrontier] = useState(false)
+  const [realLifeImpact] = useState(false)
+  const [sourceLove] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  const flash = (message: string) => {
+    setNotice(message)
+    window.setTimeout(() => setNotice(null), 5000)
+  }
 
   const loadState = async () => {
     try {
       setLoading(true)
-      const data = await api<any>('/discovery/state')
+      const data = await api<DiscoveryState>('/discovery/state')
       setState(data)
       setError(null)
-    } catch (err: any) {
-      setError(err.message || 'Failed to load discovery state')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load discovery state')
     } finally {
       setLoading(false)
     }
@@ -35,9 +90,10 @@ export default function DiscoveryPage() {
     try {
       setSubmitting(true)
       await api('/discovery/runs', { method: 'POST', body: JSON.stringify({ mission: 'Adaptive frontier discovery wave' }) })
+      flash('Discovery wave started.')
       await loadState()
-    } catch (err: any) {
-      alert(`Could not start discovery: ${err.message}`)
+    } catch (err: unknown) {
+      flash(`Could not start discovery: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setSubmitting(false)
     }
@@ -46,15 +102,15 @@ export default function DiscoveryPage() {
   const activateRun = async (runId: string) => {
     try {
       setSubmitting(true)
-      const res = await api<any>(`/discovery/runs/${runId}/activate`, { method: 'POST' })
-      if (res.activated) {
-        alert('Discovery activated into Queue and session started!')
+      const res = await api<{ activated?: boolean; message?: string }>(`/discovery/runs/${runId}/activate`, { method: 'POST' })
+      if (res?.activated) {
+        flash('Discovery activated into Queue and session started!')
       } else {
-        alert(res.message || 'Winner retained waiting for capacity.')
+        flash(res?.message || 'Winner retained waiting for capacity.')
       }
       await loadState()
-    } catch (err: any) {
-      alert(`Activation failed: ${err.message}`)
+    } catch (err: unknown) {
+      flash(`Activation failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setSubmitting(false)
     }
@@ -69,9 +125,10 @@ export default function DiscoveryPage() {
         body: JSON.stringify({ raw_feedback: feedbackText, answers: { response: feedbackText } }),
       })
       setFeedbackText('')
+      flash('Interview answer submitted.')
       await loadState()
-    } catch (err: any) {
-      alert(`Interview submission failed: ${err.message}`)
+    } catch (err: unknown) {
+      flash(`Interview submission failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setSubmitting(false)
     }
@@ -95,10 +152,10 @@ export default function DiscoveryPage() {
           },
         }),
       })
-      alert('Discovery resolved and learning receipt applied!')
+      flash('Discovery resolved and learning receipt applied!')
       await loadState()
-    } catch (err: any) {
-      alert(`Resolution failed: ${err.message}`)
+    } catch (err: unknown) {
+      flash(`Resolution failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setSubmitting(false)
     }
@@ -107,15 +164,19 @@ export default function DiscoveryPage() {
   const reopenBranch = async (branchId: string) => {
     if (!state?.active_run?.id) return
     try {
+      setSubmitting(true)
       await api(`/discovery/runs/${state.active_run.id}/resolve`, {
         method: 'POST',
         body: JSON.stringify({
           branch_mutations: [{ branch_id: branchId, action: 'reopen', reason: 'User reopened branch' }],
         }),
       })
+      flash('Branch reopened.')
       await loadState()
-    } catch (err: any) {
-      alert(`Reopen branch failed: ${err.message}`)
+    } catch (err: unknown) {
+      flash(`Reopen branch failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -123,9 +184,10 @@ export default function DiscoveryPage() {
     try {
       setSubmitting(true)
       await api(`/discovery/runs/${runId}/cancel`, { method: 'POST' })
+      flash('Discovery run cancelled.')
       await loadState()
-    } catch (err: any) {
-      alert(`Could not cancel discovery run: ${err.message}`)
+    } catch (err: unknown) {
+      flash(`Could not cancel discovery run: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setSubmitting(false)
     }
@@ -153,17 +215,6 @@ export default function DiscoveryPage() {
     )
   }
 
-  return (
-    <div class="page-content discovery-page">
-      <section class="discovery-card">
-        <span class="meta">LEGACY DISCOVERY ARCHIVE</span>
-        <h2 style={{ font: '600 24px/1.2 var(--font-reading)', margin: '4px 0 0' }}>Recommendation research now lives behind one Compass Pick.</h2>
-        <p>New recommendations start from Momentum when the active shelf is empty. The system searches adaptively, stops when confidence is sufficient, and can abstain instead of filling the queue with candidates.</p>
-        <a class="primary-action" href="#/home">Open Home</a>
-      </section>
-    </div>
-  )
-
   const gate = state?.gate_state
   const activeRun = state?.active_run
   const candidate = state?.selected_candidate
@@ -174,6 +225,12 @@ export default function DiscoveryPage() {
 
   return (
     <div class="page-content discovery-page">
+      {notice && (
+        <div class="desk-notice" role="status" aria-live="polite">
+          {notice}
+        </div>
+      )}
+
       {/* Top Metric Summary Strip */}
       <div class="discovery-summary-strip">
         <div>
@@ -198,10 +255,10 @@ export default function DiscoveryPage() {
       <div class="section-head">
         <div>
           <div class="workspace-label">CURATE // DISCOVERY ENGINE V2</div>
-          <h2 style={{ font: '600 24px/1.2 var(--font-reading)', margin: '4px 0 0' }}>Recommendation Discovery</h2>
+          <h2 class="discovery-headline">Recommendation Discovery</h2>
         </div>
         <div class="row-actions">
-          <button onClick={() => setShowGuide(!showGuide)} style={{ minHeight: '38px', padding: '0 12px', background: 'transparent', border: '1px solid var(--line-strong)', borderRadius: '9px', font: '500 12px var(--font-mono)' }}>
+          <button type="button" class="button secondary" onClick={() => setShowGuide(!showGuide)}>
             {showGuide ? 'Hide How It Works' : 'How Discovery Works'}
           </button>
           {gate?.can_start_discovery ? (
@@ -209,7 +266,7 @@ export default function DiscoveryPage() {
               {submitting ? 'Starting…' : 'Start New Discovery Wave'}
             </button>
           ) : (
-            <button class="primary-action" disabled style={{ opacity: 0.65 }}>
+            <button class="primary-action" disabled>
               Gate Blocked
             </button>
           )}
@@ -239,7 +296,7 @@ export default function DiscoveryPage() {
 
       {/* Gate Warning Notification */}
       {gate?.is_gate_blocked && gate?.blocked_reason && (
-        <div class="queue-warning">
+        <div class="queue-warning" role="alert">
           <span>{gate.blocked_reason}</span>
           <span class="meta">gate locked</span>
         </div>
@@ -248,9 +305,9 @@ export default function DiscoveryPage() {
       {/* Active Research Mission */}
       {activeRun && (
         <section class="discovery-card active-mission">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div class="mission-header">
             <span class="meta">ACTIVE RESEARCH MISSION (WAVE {activeRun.wave})</span>
-            <div class="row-actions" style={{ gap: '10px' }}>
+            <div class="row-actions">
               <span class={`job-badge state-${activeRun.lifecycle}`}>
                 <i class="job-pulse-dot" data-state={activeRun.lifecycle} />
                 {activeRun.lifecycle.replace(/_/g, ' ')}
@@ -261,9 +318,9 @@ export default function DiscoveryPage() {
             </div>
           </div>
 
-          <h2 style={{ font: '600 22px/1.3 var(--font-reading)', margin: '4px 0' }}>{activeRun.mission}</h2>
+          <h2 class="mission-title">{activeRun.mission}</h2>
           <div class="record-state">
-            Model: <code>{activeRun.model_version}</code> | Skill Version: <code>{activeRun.skill_version}</code>
+            Model: <code>{activeRun.model_version || 'standard'}</code> | Skill Version: <code>{activeRun.skill_version || 'v2'}</code>
           </div>
 
           {/* Decision Receipt Grid */}
@@ -292,7 +349,7 @@ export default function DiscoveryPage() {
 
           {/* Winner Candidate Card */}
           {candidate && (
-            <div class="suggestion-card" style={{ margin: '8px 0 0' }}>
+            <div class="suggestion-card">
               <div class="suggestion-body">
                 <span class="meta">
                   VERIFIED CANDIDATE WINNER • {candidate.source_class} ({candidate.format})
@@ -304,14 +361,14 @@ export default function DiscoveryPage() {
                 </h3>
                 {candidate.creator && <span class="suggestion-creator">by {candidate.creator}</span>}
               </div>
-              <div class="suggestion-actions" style={{ flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-                <strong style={{ font: '500 20px var(--font-mono)', color: 'var(--success)' }}>
-                  {Math.round(candidate.total_score * 100)} <small style={{ fontSize: '11px', color: 'var(--ink-3)' }}>pts</small>
+              <div class="suggestion-actions">
+                <strong class="candidate-score">
+                  {Math.round(candidate.total_score * 100)} <small>pts</small>
                 </strong>
                 {candidate.is_verified && <span class="state state-healthy">Verified Source</span>}
 
                 {(activeRun.lifecycle === 'selected' || activeRun.lifecycle === 'waiting_for_capacity') && (
-                  <div class="row-actions" style={{ marginTop: '4px' }}>
+                  <div class="row-actions">
                     <button class="primary-action" onClick={() => activateRun(activeRun.id)} disabled={submitting}>
                       {submitting ? 'Activating…' : 'Accept & Start Session'}
                     </button>
@@ -330,7 +387,7 @@ export default function DiscoveryPage() {
               </div>
 
               {/* Active Hermes Question */}
-              {interview?.questions?.length > 0 ? (
+              {interview?.questions && interview.questions.length > 0 ? (
                 <div class="interview-question">
                   <span>Hermes Question {interview.questions.length}:</span>
                   <p>{interview.questions[interview.questions.length - 1]}</p>
@@ -342,7 +399,7 @@ export default function DiscoveryPage() {
               )}
 
               {/* Unresolved Ambiguities */}
-              {interview?.unresolved_ambiguities?.length > 0 && (
+              {interview?.unresolved_ambiguities && interview.unresolved_ambiguities.length > 0 && (
                 <div class="ambiguity-box">
                   <strong>Unresolved Ambiguities ({interview.unresolved_ambiguities.length}):</strong>
                   <ul>
@@ -354,14 +411,13 @@ export default function DiscoveryPage() {
               )}
 
               {/* Feedback Input */}
-              <div style={{ display: 'grid', gap: '10px' }}>
+              <div class="interview-input-area">
                 <textarea
                   value={feedbackText}
-                  onInput={(e: any) => setFeedbackText(e.target.value)}
+                  onInput={(e) => setFeedbackText((e.target as HTMLTextAreaElement).value)}
                   placeholder="Answer Hermes's question or provide explicit feedback rationale…"
                   rows={3}
                   class="note-editor"
-                  style={{ minHeight: '80px' }}
                 />
                 <div class="row-actions">
                   <button class="primary-action" onClick={() => submitInterview(activeRun.id)} disabled={submitting || !feedbackText.trim()}>
@@ -371,17 +427,17 @@ export default function DiscoveryPage() {
               </div>
 
               {/* Resolution Action */}
-              {interview?.questions?.length > 0 && (!interview?.unresolved_ambiguities || interview.unresolved_ambiguities.length === 0) ? (
-                <div class="interview-question" style={{ background: 'color-mix(in oklch, var(--success) 12%, var(--surface))', border: '1px solid color-mix(in oklch, var(--success) 30%, transparent)' }}>
+              {interview?.questions && interview.questions.length > 0 && (!interview?.unresolved_ambiguities || interview.unresolved_ambiguities.length === 0) ? (
+                <div class="interview-question interview-complete">
                   <span>Interview Complete: Ready to resolve discovery run</span>
-                  <div class="row-actions" style={{ marginTop: '8px' }}>
+                  <div class="row-actions">
                     <button class="primary-action success-action" onClick={() => resolveDiscovery(activeRun.id)} disabled={submitting}>
                       {submitting ? 'Resolving…' : 'Resolve Discovery & Apply Learning Receipt'}
                     </button>
                   </div>
                 </div>
               ) : (
-                <span class="meta" style={{ fontStyle: 'italic' }}>
+                <span class="meta interview-pending-note">
                   Resolution unlocked after answering Hermes adaptive interview questions.
                 </span>
               )}
@@ -392,15 +448,15 @@ export default function DiscoveryPage() {
 
       {/* Interactive Exploration Frontier */}
       <section class="discovery-card">
-        <div class="section-head" style={{ borderBottom: 'none', paddingBottom: 0 }}>
-          <h2 style={{ font: '600 20px var(--font-reading)', margin: 0 }}>Interactive Exploration Frontier</h2>
+        <div class="section-head borderless">
+          <h2 class="frontier-title">Interactive Exploration Frontier</h2>
           <span class="meta">topology branches</span>
         </div>
 
-        <div class="two-column-data" style={{ marginTop: '16px' }}>
+        <div class="two-column-data">
           {/* Expanding Frontier Nodes */}
           <div>
-            <div class="module-head" style={{ marginBottom: '12px' }}>
+            <div class="module-head">
               <h3>Expanding Frontier Branches</h3>
               <span>{frontier.length} nodes</span>
             </div>
@@ -408,7 +464,7 @@ export default function DiscoveryPage() {
               {frontier.length === 0 ? (
                 <span class="meta">No active frontier nodes.</span>
               ) : (
-                frontier.map((b: any) => (
+                frontier.map((b) => (
                   <div key={b.id} class="discovery-branch-item">
                     <div class="discovery-branch-info">
                       <span class="discovery-branch-name">{b.name}</span>
@@ -425,7 +481,7 @@ export default function DiscoveryPage() {
 
           {/* Pruned Branches */}
           <div>
-            <div class="module-head" style={{ marginBottom: '12px' }}>
+            <div class="module-head">
               <h3>Pruned Branches</h3>
               <span>{pruned.length} nodes</span>
             </div>
@@ -433,14 +489,16 @@ export default function DiscoveryPage() {
               {pruned.length === 0 ? (
                 <span class="meta">No pruned branches.</span>
               ) : (
-                pruned.map((b: any) => (
+                pruned.map((b) => (
                   <div key={b.id} class="discovery-branch-item">
                     <div class="discovery-branch-info">
                       <span class="discovery-branch-name">{b.name}</span>
-                      {b.pruning_reason && <span class="danger-action" style={{ font: '500 11px var(--font-mono)' }}>{b.pruning_reason}</span>}
+                      {b.pruning_reason && <span class="danger-action">{b.pruning_reason}</span>}
                     </div>
                     <div class="row-actions">
-                      <button onClick={() => reopenBranch(b.id)}>Reopen</button>
+                      <button class="button secondary" onClick={() => reopenBranch(b.id)} disabled={submitting}>
+                        Reopen
+                      </button>
                     </div>
                   </div>
                 ))

@@ -14,7 +14,7 @@ app.get('/briefing', async (c) => {
         (SELECT COUNT(*) FROM notes n WHERE n.recommendation_id=r.id) note_count
         FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
         WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')
-        ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 5`).all<any>(),
+        ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE due_at<=date('now')`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND m.learning_state='inbox'`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM feedback_proposals WHERE status='pending'`).first<any>(),
@@ -46,7 +46,9 @@ app.get('/briefing', async (c) => {
       const rows = await DB.prepare(`SELECT id,filename,media_type,created_at,
         json_extract(metadata_json,'$.recommendation_id') recommendation_id,
         json_extract(metadata_json,'$.role') role,
-        json_extract(metadata_json,'$.recommended_start') recommended_start
+        json_extract(metadata_json,'$.recommended_start') recommended_start,
+        json_extract(metadata_json,'$.notebook_url') notebook_url,
+        metadata_json
         FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${placeholders})
         ORDER BY created_at DESC`).bind(...activeItems.map((item: any) => item.id)).all<any>()
       artifacts = rows.results || []

@@ -337,6 +337,36 @@ app.delete('/threads/:id/sources/:sourceId', async (c) => {
   return c.json({ ok: true })
 })
 
+app.delete('/threads/:id', async (c) => {
+  const id = c.req.param('id')
+  const thread = await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=?`).bind(id).first()
+  if (!thread) return c.json({ error: 'thread not found' }, 404)
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(`DELETE FROM learning_path_sources WHERE stage_id IN (SELECT id FROM learning_path_stages WHERE thread_id=?)`).bind(id),
+      c.env.DB.prepare(`DELETE FROM learning_path_items WHERE stage_id IN (SELECT id FROM learning_path_stages WHERE thread_id=?)`).bind(id),
+      c.env.DB.prepare(`UPDATE learning_evidence SET stage_id=NULL WHERE stage_id IN (SELECT id FROM learning_path_stages WHERE thread_id=?)`).bind(id),
+      c.env.DB.prepare(`DELETE FROM learning_path_stages WHERE thread_id=?`).bind(id),
+      c.env.DB.prepare(`DELETE FROM thread_sources WHERE thread_id=?`).bind(id),
+      c.env.DB.prepare(`DELETE FROM thread_units WHERE thread_id=?`).bind(id),
+      c.env.DB.prepare(`DELETE FROM thread_evidence_requirements WHERE thread_id=?`).bind(id),
+      c.env.DB.prepare(`DELETE FROM source_learning_dispositions WHERE thread_id=?`).bind(id),
+      c.env.DB.prepare(`UPDATE learning_evidence SET thread_id=NULL WHERE thread_id=?`).bind(id),
+      c.env.DB.prepare(`UPDATE learning_sessions SET thread_id=NULL WHERE thread_id=?`).bind(id),
+      c.env.DB.prepare(`UPDATE srs_cards SET thread_id=NULL WHERE thread_id=?`).bind(id),
+      c.env.DB.prepare(`UPDATE srs_drafts SET thread_id=NULL WHERE thread_id=?`).bind(id),
+      c.env.DB.prepare(`UPDATE compass_picks SET thread_id=NULL WHERE thread_id=?`).bind(id),
+      c.env.DB.prepare(`UPDATE learning_events SET thread_id=NULL WHERE thread_id=?`).bind(id),
+      c.env.DB.prepare(`UPDATE notes SET thread_id=NULL WHERE thread_id=?`).bind(id),
+      c.env.DB.prepare(`UPDATE artifacts SET thread_id=NULL WHERE thread_id=?`).bind(id),
+      c.env.DB.prepare(`DELETE FROM learning_threads WHERE id=?`).bind(id),
+    ])
+    return c.json({ ok: true, id })
+  } catch (error: any) {
+    return c.json({ ok: false, error: error.message }, 500)
+  }
+})
+
 app.post('/threads/:id/verify', async (c) => {
   const thread = await c.env.DB.prepare(`SELECT final_synthesis FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!thread) return c.json({ error: 'thread not found' }, 404)

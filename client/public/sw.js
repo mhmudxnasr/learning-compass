@@ -1,4 +1,4 @@
-const CACHE = 'taste-map-scholar-v5'
+const CACHE = 'taste-map-scholar-v7'
 const DATA_CACHE = 'taste-map-data-v2'
 self.addEventListener('install', (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.add('/')).then(() => self.skipWaiting())))
 self.addEventListener('activate', (event) => event.waitUntil(Promise.all([self.clients.claim(), caches.keys().then((keys) => Promise.all(keys.filter((key) => ![CACHE, DATA_CACHE].includes(key)).map((key) => caches.delete(key))))])))
@@ -36,5 +36,14 @@ self.addEventListener('fetch', (event) => {
     return
   }
   if (url.pathname.startsWith('/capture') || url.pathname.startsWith('/notes') || url.pathname.startsWith('/recommendations')) return
-  event.respondWith(fetch(event.request).then((response) => { if (response.ok && ['script','style','font','image'].includes(event.request.destination)) caches.open(CACHE).then((cache) => cache.put(event.request, response.clone())); return response }).catch(() => caches.match(event.request).then((cached) => cached || caches.match('/'))))
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok && ['script', 'style', 'font', 'image'].includes(event.request.destination)) {
+          caches.open(CACHE).then((cache) => cache.put(event.request, response.clone()))
+        }
+        return response
+      })
+      .catch(() => caches.match(event.request))
+  )
 })

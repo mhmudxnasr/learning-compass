@@ -18,6 +18,16 @@ test('atlas model removes dangling and duplicate edges', () => {
   assert.equal(model.children.get('a')?.[0].id, 'b')
 })
 
+test('atlas hides the private Mahmoud taste-map root and its links', () => {
+  const model = createAtlasModel([
+    { id: 'taste-map', label: "Mahmoud's Taste Map", type: 'root' },
+    { id: 'branch', label: 'Writing', type: 'branch', parent_id: 'taste-map' },
+  ], [{ source_id: 'taste-map', target_id: 'branch', relation_type: 'hierarchy' }])
+  assert.equal(model.byId.has('taste-map'), false)
+  assert.deepEqual(model.nodes.map((node) => node.id), ['branch'])
+  assert.equal(model.edges.length, 0)
+})
+
 test('atlas starts with major R1 branches and expands descendants', () => {
   const nodes = [
     { id: 'r1', label: 'Main branch', type: 'branch', super_category: 'Mind', round_label: 'R1' },

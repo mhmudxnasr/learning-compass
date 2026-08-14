@@ -55,17 +55,24 @@ app.get('/', async (c) => {
     catch { return { ...row, metadata: {}, quality_assurance: normalizeQualityAssurance(), metadata_json: undefined, extraction: jobByArtifact.get(row.id) || null } }
   })
   const recIds = [...new Set(artifacts.map((a: any) => a.metadata?.recommendation_id).filter(Boolean))]
-  const notebookByRec = new Map<string, string>()
+  const recDetailsByRec = new Map<string, { notebook_url?: string; video_url?: string }>()
   if (recIds.length) {
     const placeholders = recIds.map(() => '?').join(',')
-    const notebooks = await c.env.DB.prepare(`SELECT id, notebook_url FROM recommendations WHERE id IN (${placeholders}) AND notebook_url IS NOT NULL`).bind(...recIds).all<{ id: string; notebook_url: string }>()
-    for (const row of notebooks.results || []) notebookByRec.set(row.id, row.notebook_url)
+    const recs = await c.env.DB.prepare(`
+      SELECT r.id, r.video_url, r.notebook_url
+      FROM recommendations r
+      WHERE r.id IN (${placeholders})
+    `).bind(...recIds).all<{ id: string; video_url: string; notebook_url: string }>()
+    for (const row of recs.results || []) recDetailsByRec.set(row.id, row)
   }
   for (const artifact of artifacts) {
     const recId = artifact.metadata?.recommendation_id
-    artifact.notebook_url = (recId && notebookByRec.get(recId)) || null
+    const rec = recId ? recDetailsByRec.get(recId) : undefined
+    artifact.notebook_url = rec?.notebook_url || null
+    artifact.source_url = artifact.metadata?.source_url || rec?.video_url || null
+    artifact.topic = artifact.metadata?.topic || null
   }
-  return c.json({ artifacts: [...artifacts, ...(legacy.results || []).map((row: any) => ({ ...row, legacy: true, metadata: {}, quality_assurance: normalizeQualityAssurance({}, true), notebook_url: null }))] })
+  return c.json({ artifacts: [...artifacts, ...(legacy.results || []).map((row: any) => ({ ...row, legacy: true, metadata: {}, quality_assurance: normalizeQualityAssurance({}, true), notebook_url: null, source_url: null, topic: null }))] })
 })
 
 app.get('/hub', async (c) => {

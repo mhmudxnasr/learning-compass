@@ -1,5 +1,5 @@
 export type TasteMapSettings = {
-  appearance: { theme: 'system' | 'light' | 'dark'; density: 'balanced' | 'compact' }
+  appearance: { theme: string; density: 'balanced' | 'compact'; custom_palette?: Record<string, string>; font?: string; custom_font?: Record<string, string> }
   learning: { retention: 85 | 90 | 95; queue_cap: 5 }
   srs_drafts: { enabled: boolean; minimum_rating: number; auto_extract: boolean }
   ai_curation: { enrich_capture: boolean }
@@ -9,7 +9,7 @@ export type TasteMapSettings = {
 }
 
 export const defaultSettings: TasteMapSettings = {
-  appearance: { theme: 'system', density: 'balanced' },
+  appearance: { theme: 'botanical', density: 'balanced' },
   learning: { retention: 90, queue_cap: 5 },
   srs_drafts: { enabled: true, minimum_rating: 7, auto_extract: false },
   ai_curation: { enrich_capture: false },

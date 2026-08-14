@@ -133,9 +133,9 @@ export function App() {
   return <AppErrorBoundary>
     <StudioShell
       route={route}
+      onCapture={() => setCaptureOpen(true)}
+      onSearch={() => setSearchOpen(true)}
       inspector={activeSelection ? <Inspector selection={activeSelection} onClose={closeSelection}/> : undefined}
-      onCapture={() => { setCaptureOpen(true); setSearchOpen(false) }}
-      onSearch={() => { setSearchOpen(true); setCaptureOpen(false) }}
     >
       <div key={`${route.canonical}:${refreshKey}`}>
         {workspace(route, () => setCaptureOpen(true), setSelection)}

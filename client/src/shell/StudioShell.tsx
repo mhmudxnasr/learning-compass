@@ -27,13 +27,13 @@ export function StudioShell({ route, children, inspector, onCapture, onSearch }:
     <aside class="root-rail" aria-label="Main navigation">
       <a class="studio-mark" href={routeHref('home')} aria-label="Learning Compass Home"><span>L</span><i/></a>
       <nav aria-label="Five workspaces">
-        {roots.map((item) => <a key={item.key} href={routeHref(item.key)} class={route.root === item.key ? 'active' : ''} aria-current={route.root === item.key ? 'page' : undefined} title={item.label}>
-          <Icon name={rootIcons[item.key]}/><span>{item.label}</span>
+        {roots.map((item) => <a key={item.key} href={routeHref(item.key)} class={route.root === item.key ? 'active' : ''} aria-current={route.root === item.key ? 'page' : undefined} title={item.label} aria-label={item.label}>
+          <Icon name={rootIcons[item.key]} size={20}/><span>{item.label}</span>
         </a>)}
       </nav>
       <div class="rail-bottom">
-        <button type="button" onClick={onSearch} aria-label="Search everything" title="Search everything"><Icon name="search"/><span>Search</span></button>
-        <button type="button" class="rail-capture" onClick={onCapture} aria-label="Capture a source" title="Capture a source"><Icon name="capture"/><span>Capture</span></button>
+        <button type="button" onClick={onSearch} aria-label="Search everything" title="Search everything"><Icon name="search" size={18}/><span>Search</span></button>
+        <button type="button" class="rail-capture" onClick={onCapture} aria-label="Capture a source" title="Capture a source"><Icon name="capture" size={18}/><span>Capture</span></button>
         <span class="sync-pip" title={online ? 'Synced' : 'Offline'} aria-label={online ? 'Synced' : 'Offline'}><i class={online ? 'online' : 'offline'}/></span>
       </div>
     </aside>

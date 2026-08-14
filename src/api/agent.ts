@@ -100,6 +100,7 @@ const CAPABILITIES = [
   ['POST', '/learning/core/threads/:id/stages/:stageId/verify', 'Verify a Learning Hub stage after its required evidence is ready.'],
   ['POST', '/learning/core/threads/:id/stages/:stageId/sources', 'Assign a source to an existing Learning Hub stage with a foundation, case, companion, counterevidence, or reference role; source-fill work preserves the path structure.'],
   ['DELETE', '/learning/core/threads/:id/sources/:sourceId', 'Remove a source from a Thread without deleting it.'],
+  ['DELETE', '/learning/core/threads/:id', 'Permanently delete a Learning Thread and its associated stages/requirements.'],
   ['POST', '/learning/core/threads/:id/verify', 'Verify a Thread only after synthesis and evidence gates are satisfied.'],
   ['GET', '/learning/core/units', 'Read atomic anchored Learning Units.'],
   ['POST', '/learning/core/units', 'Create an anchored Learning Unit.'],

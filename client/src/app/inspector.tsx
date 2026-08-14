@@ -69,7 +69,8 @@ function selectionFacts(selection: InspectorSelection) {
 
 export function Inspector({ selection, onClose }: { selection: InspectorSelection; onClose: () => void }) {
   const facts = selectionFacts(selection)
-  const description = selection.data.context_brief || selection.data.why_this || selection.data.description
+  const data = (selection?.data || {}) as Record<string, unknown>
+  const description = data.context_brief || data.why_this || data.description
   return <div class="desk-inspector">
     <header class="inspector-head">
       <div>

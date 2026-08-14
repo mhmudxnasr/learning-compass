@@ -308,7 +308,15 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const objectRoute = !exactAlias && (modePrefixedObject || (pathParts.length >= 3 && !isModeOrLeaf(root, pathSegment)))
   const objectType = objectRoute ? pathParts[modePrefixedObject ? 2 : 1] : undefined
   const objectStart = modePrefixedObject ? 3 : 2
-  const objectId = objectRoute ? decodeURIComponent(pathParts.slice(objectStart).join('/')) : undefined
+  let objectId: string | undefined
+  if (objectRoute) {
+    const rawSegment = pathParts.slice(objectStart).join('/')
+    try {
+      objectId = decodeURIComponent(rawSegment)
+    } catch {
+      objectId = rawSegment
+    }
+  }
   const pathState = segmentState || (pathSegment && modeMeta(root, pathSegment) ? { root, mode: pathSegment } : undefined)
   const queryMode = originalQuery.get('mode') || undefined
   const queryFocus = originalQuery.get('focus') || undefined

@@ -1,6 +1,6 @@
 import { ComponentChildren } from 'preact'
 
-export type IconName = 'home' | 'library' | 'learn' | 'map' | 'settings' | 'search' | 'capture' | 'queue' | 'inbox' | 'source' | 'file' | 'book' | 'collection' | 'archive' | 'note' | 'recall' | 'path' | 'branch' | 'balance' | 'close' | 'more' | 'chevron' | 'external' | 'check' | 'clock' | 'sync' | 'menu' | 'back' | 'trash' | 'edit' | 'spark'
+export type IconName = 'home' | 'library' | 'learn' | 'map' | 'settings' | 'search' | 'capture' | 'queue' | 'inbox' | 'source' | 'file' | 'book' | 'collection' | 'archive' | 'note' | 'recall' | 'path' | 'branch' | 'balance' | 'close' | 'more' | 'chevron' | 'external' | 'check' | 'clock' | 'sync' | 'menu' | 'back' | 'trash' | 'edit' | 'spark' | 'sun' | 'moon' | 'palette'
 
 const paths: Record<IconName, ComponentChildren> = {
   home: <><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10M9.5 20v-6h5v6"/></>,
@@ -34,6 +34,9 @@ const paths: Record<IconName, ComponentChildren> = {
   trash: <><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14"/><path d="M10 11v6M14 11v6"/></>,
   edit: <><path d="m4 20 4.5-1 10-10-3.5-3.5-10 10z"/><path d="m13.5 7 3.5 3.5"/></>,
   spark: <><path d="m12 3 1.2 4.8L18 9l-4.8 1.2L12 15l-1.2-4.8L6 9l4.8-1.2z"/><path d="m19 16 .6 2.4L22 19l-2.4.6L19 22l-.6-2.4L16 19l2.4-.6z"/></>,
+  sun: <><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></>,
+  moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>,
+  palette: <><path d="M12 2a10 10 0 1 0 10 10c0-1.5-1-2-2-2h-2a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.5A2.5 2.5 0 0 0 21 3.5 10 10 0 0 0 12 2Z"/><circle cx="7.5" cy="10.5" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16.5" cy="10.5" r="1"/></>,
 }
 
 export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {

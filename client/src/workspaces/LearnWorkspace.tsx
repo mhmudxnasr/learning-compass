@@ -58,7 +58,9 @@ export function LearnWorkspace({ route }: LearnWorkspaceProps = {}) {
       : activeMode === 'practice' && compatibleFocus === 'notes' ? <LearnNotesView noteId={activeRoute.query.get('note') || undefined} />
         : activeMode === 'practice' ? <LearnRecallView />
           : <LearnPathsView />
-  return <div class="learn-workspace-shell workspace-surface"><LearnModeSwitcher active={activeMode} focus={compatibleFocus} />{content}</div>
+  // A typed note route is already inside the Notes editor. Keep the editor
+  // focused instead of repeating the parent Learn navigation above it.
+  return <div class="learn-workspace-shell workspace-surface">{activeRoute.objectType !== 'note' && <LearnModeSwitcher active={activeMode} focus={compatibleFocus} />}{content}</div>
 }
 
 export default LearnWorkspace
