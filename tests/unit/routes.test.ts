@@ -128,7 +128,7 @@ test('the router exposes five roots and eleven grouped modes with focus state', 
   assert.equal(declaredModes.length, 11)
   assert.equal(new Set(declaredModes.map((mode) => `${mode.root}/${mode.key}`)).size, 11)
   assert.ok(declaredModes.every((mode) => mode.label.trim() && mode.description.trim()))
-  assert.equal(views.library.length, 7)
+  assert.equal(views.library.length, 8)
   assert.equal(views.learn.length, 3)
   for (const root of roots) {
     assert.equal(routeHref(root.key), `#/${root.key}`)

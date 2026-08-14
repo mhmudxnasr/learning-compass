@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { api, flushOfflineMutations, formatDate, labelize, listOfflineMutations, resolveOfflineMutation } from '../api'
 import { ErrorState, Empty, Loading } from '../components/States'
 import { useData } from '../app/useData'
 import { useRoute } from '../app/router'
-import { THEME_PRESETS, FONT_PRESETS, applyTheme, applyFont, getSavedTheme, getSavedFontId, getSavedCustomFont, getSavedCustomPalette, extractColorsFromText, normalizeColor, type CustomPalette, type CustomFont, DEFAULT_CUSTOM_PALETTE, DEFAULT_CUSTOM_FONT } from '../theme'
+import { THEME_PRESETS, FONT_PRESETS, applyTheme, applyFont, applyDisplayPreferences, getSavedTheme, getSavedFontId, getSavedCustomFont, getSavedCustomPalette, getSavedDisplayPreferences, contrastRatio, extractColorsFromText, normalizeColor, type CustomPalette, type CustomFont, type DisplayPreferences, DEFAULT_CUSTOM_PALETTE, DEFAULT_CUSTOM_FONT } from '../theme'
 
 export type SettingsView = 'profile' | 'preferences' | 'data' | 'system'
 export type SettingsMode = 'personal' | 'data' | 'system'
@@ -34,7 +34,7 @@ type ProfileRecord = Record<string, any>
 type SettingsPayload = {
   settings?: Record<string, any>
   resolved?: {
-    appearance?: { theme?: string; density?: string; font?: string; custom_font?: { ui?: string; reading?: string; mono?: string } }
+    appearance?: { theme?: string; density?: string; radius?: DisplayPreferences['radius']; font_size?: DisplayPreferences['fontSize']; reduced_motion?: boolean; custom_palette?: CustomPalette; font?: string; custom_font?: { ui?: string; reading?: string; mono?: string } }
     learning?: { retention?: number; queue_cap?: number }
     srs_drafts?: { enabled?: boolean; minimum_rating?: number; auto_extract?: boolean }
     ai_curation?: { enrich_capture?: boolean }
@@ -67,6 +67,8 @@ const personalFilters: Array<{ key: SettingsFocus; label: string; description: s
   { key: 'profile', label: 'Profile', description: 'Priorities and learned patterns' },
   { key: 'preferences', label: 'Preferences', description: 'Learning and curation defaults' },
 ]
+
+const paletteRoles = ['Brand', 'Surface', 'Highlight', 'Accent']
 
 type ProfileField = { key: string; apiKey: string; readKey?: string; label: string; description: string; structured: boolean }
 
@@ -228,13 +230,27 @@ function PreferenceToggle({ label, description, checked, onChange }: { label: st
   return <div class="setting-row"><div><strong>{label}</strong><span>{description}</span></div><input type="checkbox" checked={checked} onChange={(event) => onChange((event.target as HTMLInputElement).checked)} aria-label={label} /></div>
 }
 
+function ThemeContextPreview() {
+  return <section class="theme-context-preview">
+    <div class="section-head"><h2>Theme in context</h2><span>Preview the working interface, not just swatches</span></div>
+    <div class="theme-preview-frame">
+      <aside class="theme-preview-sidebar"><strong>Compass</strong><span class="active">Recommendations</span><span>Library</span><span>Learning</span></aside>
+      <div class="theme-preview-content"><div class="theme-preview-toolbar"><span>Today’s focus</span><button class="button primary" type="button">Capture</button></div><article class="theme-preview-card"><div><strong>Build a calmer review loop</strong><small>Evidence-backed recommendation · 8 min</small></div><span class="theme-preview-score">92</span></article><div class="theme-preview-grid"><div class="theme-preview-alert">Insight ready · Review when you have a quiet minute.</div><div class="theme-preview-chart" aria-label="Sample recommendation chart"><i style="height:35%"/><i style="height:55%"/><i style="height:48%"/><i style="height:78%"/><i style="height:66%"/><i style="height:90%"/></div></div><div class="theme-preview-actions"><button class="button secondary" type="button">Save for later</button><button class="button primary" type="button">Open recommendation</button></div></div>
+    </div>
+  </section>
+}
+
 function PreferencesView() {
   const settings = useData<SettingsPayload>('/settings')
   const [status, setStatus] = useState('')
   const [theme, setTheme] = useState(() => getSavedTheme())
   const [customPalette, setCustomPalette] = useState<CustomPalette>(() => getSavedCustomPalette())
   const [pasteCodes, setPasteCodes] = useState('')
-  const [density, setDensity] = useState('balanced')
+  const savedDisplay = getSavedDisplayPreferences()
+  const [density, setDensity] = useState<DisplayPreferences['density']>(savedDisplay.density)
+  const [radius, setRadius] = useState<DisplayPreferences['radius']>(savedDisplay.radius)
+  const [fontSize, setFontSize] = useState<DisplayPreferences['fontSize']>(savedDisplay.fontSize)
+  const [reducedMotion, setReducedMotion] = useState(savedDisplay.reducedMotion)
   const [font, setFont] = useState(() => getSavedFontId())
   const [customFont, setCustomFont] = useState<CustomFont>(() => getSavedCustomFont())
   const [retention, setRetention] = useState(90)
@@ -243,7 +259,9 @@ function PreferencesView() {
   const [autoExtract, setAutoExtract] = useState(false)
   const [profileMode, setProfileMode] = useState('automatic')
   const [engineMode, setEngineMode] = useState('shadow')
+  const [paletteDirty, setPaletteDirty] = useState(false)
   const resolved = settings.data?.resolved
+  const paletteSaveTimer = useRef<number | null>(null)
 
   useEffect(() => {
     if (!resolved) return
@@ -253,7 +271,15 @@ function PreferencesView() {
     if ((resolved.appearance as any)?.custom_palette) {
       setCustomPalette(currentPalette)
     }
-    setDensity(resolved.appearance?.density || 'balanced')
+    const nextDensity = (resolved.appearance?.density as DisplayPreferences['density']) || 'balanced'
+    const nextRadius = resolved.appearance?.radius || 'soft'
+    const nextFontSize = resolved.appearance?.font_size || 'medium'
+    const nextReducedMotion = Boolean(resolved.appearance?.reduced_motion)
+    setDensity(nextDensity)
+    setRadius(nextRadius)
+    setFontSize(nextFontSize)
+    setReducedMotion(nextReducedMotion)
+    applyDisplayPreferences({ density: nextDensity, radius: nextRadius, fontSize: nextFontSize, reducedMotion: nextReducedMotion })
     if ((resolved.appearance as any)?.font) {
       const resolvedFont = (resolved.appearance as any)?.font
       setFont(resolvedFont)
@@ -271,6 +297,10 @@ function PreferencesView() {
     document.documentElement.dataset.density = resolved.appearance?.density || 'balanced'
   }, [resolved])
 
+  useEffect(() => () => {
+    if (paletteSaveTimer.current !== null) window.clearTimeout(paletteSaveTimer.current)
+  }, [])
+
   if (settings.loading) return <Loading label="Reading preferences" />
   if (settings.error) return <ErrorState message={settings.error} retry={settings.reload} />
 
@@ -284,6 +314,15 @@ function PreferencesView() {
     } catch (error: any) {
       setStatus(error?.message || 'Could not save this preference.')
     }
+  }
+
+  const savePalette = (nextPalette: CustomPalette) => {
+    if (paletteSaveTimer.current !== null) window.clearTimeout(paletteSaveTimer.current)
+    setPaletteDirty(true)
+    paletteSaveTimer.current = window.setTimeout(() => {
+      persist('appearance', { theme: 'custom', density, radius, font_size: fontSize, reduced_motion: reducedMotion, custom_palette: nextPalette })
+        .then(() => setPaletteDirty(false))
+    }, 350)
   }
 
   const selectTheme = (newThemeId: string) => {
@@ -308,10 +347,9 @@ function PreferencesView() {
   const updateCustomColor = (key: keyof CustomPalette, value: string) => {
     const nextPalette = { ...customPalette, [key]: value }
     setCustomPalette(nextPalette)
-    if (theme === 'custom') {
-      applyTheme('custom', nextPalette)
-    }
-    persist('appearance', { theme: 'custom', density, custom_palette: nextPalette })
+    setTheme('custom')
+    applyTheme('custom', nextPalette)
+    savePalette(nextPalette)
   }
 
   const handleApplyPastedCodes = () => {
@@ -335,11 +373,17 @@ function PreferencesView() {
     window.setTimeout(() => setStatus(''), 2000)
   }
 
-  const saveAppearance = (value: string) => {
-    setDensity(value)
-    document.documentElement.dataset.density = value
-    persist('appearance', { theme, density: value, custom_palette: customPalette })
+  const saveDisplay = (next: Partial<DisplayPreferences>) => {
+    const value = { density, radius, fontSize, reducedMotion, ...next }
+    setDensity(value.density)
+    setRadius(value.radius)
+    setFontSize(value.fontSize)
+    setReducedMotion(value.reducedMotion)
+    applyDisplayPreferences(value)
+    persist('appearance', { theme, density: value.density, radius: value.radius, font_size: value.fontSize, reduced_motion: value.reducedMotion, custom_palette: customPalette })
   }
+
+  const saveAppearance = (value: string) => saveDisplay({ density: value as DisplayPreferences['density'] })
 
   const saveLearning = (value: number) => { setRetention(value); persist('learning', { retention: value, queue_cap: 5 }) }
   const saveSrs = (next: Partial<{ enabled: boolean; auto_extract: boolean }>) => { const current = { enabled: srsEnabled, minimum_rating: 7, auto_extract: autoExtract, ...next }; setSrsEnabled(current.enabled); setAutoExtract(current.auto_extract); persist('srs_drafts', current) }
@@ -371,10 +415,11 @@ function PreferencesView() {
               <span class="theme-preset-title">{preset.name}</span>
               <div class="theme-swatches" aria-hidden="true">
                 {preset.swatches.map((c, i) => (
-                  <span key={i} class="theme-swatch" style={{ background: c }} />
+                  <span key={i} class="theme-swatch" style={{ background: c }} title={`${paletteRoles[i]} · ${c}`} />
                 ))}
               </div>
             </div>
+            <div class="theme-preset-roles" aria-hidden="true">{paletteRoles.map((role) => <span key={role}>{role}</span>)}</div>
             <p class="theme-preset-desc"><span class={`theme-preset-mode mode-${preset.mode}`}>{preset.mode === 'dark' ? 'Dark' : 'Day'}</span>{preset.description}</p>
           </button>
         ))}
@@ -395,6 +440,7 @@ function PreferencesView() {
               <span class="theme-swatch" style={{ background: customPalette.accent }} />
             </div>
           </div>
+          <div class="theme-preset-roles" aria-hidden="true">{paletteRoles.map((role) => <span key={role}>{role}</span>)}</div>
           <p class="theme-preset-desc">Enter any HEX or RGB codes to customize your site colors anytime.</p>
         </button>
       </div>
@@ -483,6 +529,14 @@ function PreferencesView() {
             </div>
 
             <div class="custom-color-item">
+              <label for="color-surface">Surface / Cards</label>
+              <div class="custom-color-input-group">
+                <input id="color-surface-picker" type="color" value={normalizeColor(customPalette.surface || customPalette.shell, '#FFFFFF')} onInput={(e) => updateCustomColor('surface', (e.target as HTMLInputElement).value)} />
+                <input id="color-surface" type="text" value={customPalette.surface || ''} onInput={(e) => updateCustomColor('surface', (e.target as HTMLInputElement).value)} placeholder="#FFFFFF or rgb(255, 255, 255)" />
+              </div>
+            </div>
+
+            <div class="custom-color-item">
               <label for="color-highlight">Badge / Highlight</label>
               <div class="custom-color-input-group">
                 <input
@@ -539,6 +593,12 @@ function PreferencesView() {
               </div>
             </div>
           </div>
+          {(() => {
+            const background = customPalette.surface || customPalette.shell
+            const ratio = contrastRatio(customPalette.ink || customPalette.accent, background)
+            return ratio !== null && ratio < 4.5 ? <p class="theme-contrast-warning" role="alert">Text contrast is {ratio.toFixed(1)}:1 on the selected surface. Choose darker text or a lighter surface for comfortable reading. Semantic status colors remain protected.</p> : <p class="theme-contrast-ok" role="status">Text contrast passes the 4.5:1 readability target on the selected surface.</p>
+          })()}
+          <p class="theme-palette-save-note" aria-live="polite">{paletteDirty ? 'Saving palette changes…' : 'Palette changes save automatically.'}</p>
         </div>
       )}
     </section>
@@ -634,21 +694,14 @@ function PreferencesView() {
     </section>
 
     <section>
-      <div class="section-head">
-        <h2>Interface Density</h2>
-        <span>Display metrics</span>
-      </div>
-      <div class="setting-row">
-        <div>
-          <strong>Reading density</strong>
-          <span>Choose the amount of information visible in each working surface.</span>
-        </div>
-        <select aria-label="Reading density" value={density} onChange={(event) => saveAppearance((event.target as HTMLSelectElement).value)}>
-          <option value="balanced">Balanced</option>
-          <option value="compact">Compact</option>
-        </select>
-      </div>
+      <div class="section-head"><h2>Interface tokens</h2><span>Customize the reading surface</span></div>
+      <div class="setting-row"><div><strong>Density</strong><span>Choose how much information fits in each working surface.</span></div><select aria-label="Reading density" value={density} onChange={(event) => saveAppearance((event.target as HTMLSelectElement).value)}><option value="comfortable">Comfortable</option><option value="balanced">Balanced</option><option value="compact">Compact</option></select></div>
+      <div class="setting-row"><div><strong>Border radius</strong><span>Set the shape language for cards, controls, and panels.</span></div><select aria-label="Border radius" value={radius} onChange={(event) => saveDisplay({ radius: (event.target as HTMLSelectElement).value as DisplayPreferences['radius'] })}><option value="sharp">Sharp</option><option value="soft">Soft</option><option value="round">Round</option></select></div>
+      <div class="setting-row"><div><strong>Font size</strong><span>Scale interface text while preserving the chosen type system.</span></div><select aria-label="Font size" value={fontSize} onChange={(event) => saveDisplay({ fontSize: (event.target as HTMLSelectElement).value as DisplayPreferences['fontSize'] })}><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></div>
+      <PreferenceToggle label="Reduced motion" description="Minimize transitions and animation across the studio." checked={reducedMotion} onChange={(value) => saveDisplay({ reducedMotion: value })} />
     </section>
+
+    <ThemeContextPreview />
 
     <section>
       <div class="section-head">

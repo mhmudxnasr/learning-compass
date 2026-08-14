@@ -74,10 +74,13 @@ app.get('/threads/:id/path', async (c) => {
   const thread = await c.env.DB.prepare(`SELECT * FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!thread) return c.json({ error: 'thread not found' }, 404)
   await syncPathStatuses(c.env.DB, thread.id)
-  const [stages, items, sources, evidence, requirements, pathNotes, pathFiles, stageNotes, stageFiles, noteSections] = await Promise.all([
+  const [stages, items, sources, lessons, lessonSources, projects, evidence, requirements, pathNotes, pathFiles, stageNotes, stageFiles, noteSections] = await Promise.all([
     c.env.DB.prepare(`SELECT * FROM learning_path_stages WHERE thread_id=? ORDER BY position`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT i.* FROM learning_path_items i JOIN learning_path_stages s ON s.id=i.stage_id WHERE s.thread_id=? ORDER BY s.position,i.position`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT ps.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state FROM learning_path_sources ps JOIN learning_path_stages s ON s.id=ps.stage_id JOIN recommendations r ON r.id=ps.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE s.thread_id=? ORDER BY s.position,ps.position`).bind(thread.id).all<any>(),
+    c.env.DB.prepare(`SELECT * FROM thread_lessons WHERE thread_id=? ORDER BY stage_id,position`).bind(thread.id).all<any>(),
+    c.env.DB.prepare(`SELECT ls.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state FROM thread_lesson_sources ls JOIN thread_lessons l ON l.id=ls.lesson_id JOIN recommendations r ON r.id=ls.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE l.thread_id=? ORDER BY l.stage_id,l.position,ls.position`).bind(thread.id).all<any>(),
+    c.env.DB.prepare(`SELECT * FROM thread_projects WHERE thread_id=? ORDER BY CASE WHEN type='level' THEN 0 ELSE 1 END,created_at`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT * FROM learning_evidence WHERE thread_id=? ORDER BY occurred_at DESC LIMIT 100`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT * FROM thread_evidence_requirements WHERE thread_id=? ORDER BY COALESCE(stage_id,''),rowid`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT * FROM notes WHERE thread_id=? ORDER BY updated_at DESC LIMIT 100`).bind(thread.id).all<any>(),
@@ -86,11 +89,12 @@ app.get('/threads/:id/path', async (c) => {
     c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.size_bytes,a.metadata_json,a.created_at,s.id AS scope_stage_id FROM artifacts a JOIN learning_path_stages s ON s.id=a.stage_id WHERE s.thread_id=? ORDER BY a.created_at DESC LIMIT 300`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT note_id,section_key,label,content,direction,position FROM note_sections WHERE note_id IN (SELECT id FROM notes WHERE thread_id=? OR stage_id IN (SELECT id FROM learning_path_stages WHERE thread_id=?)) ORDER BY note_id,position`).bind(thread.id, thread.id).all<any>(),
   ])
-  const recIds = [...new Set((sources.results || []).map((s: any) => s.recommendation_id).filter(Boolean))]
+  const recIds = [...new Set([...(sources.results || []), ...(lessonSources.results || [])].map((s: any) => s.recommendation_id).filter(Boolean))]
   const artifactsByRec = new Map<string, { html?: any; pdf?: any }>()
   if (recIds.length) {
     const placeholders = recIds.map(() => '?').join(',')
-    const artRows = await c.env.DB.prepare(`SELECT id,filename,media_type,metadata_json FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${placeholders}) ORDER BY created_at DESC`).bind(...recIds).all<any>()
+    const artifactMatches = recIds.map(() => `metadata_json LIKE ?`).join(' OR ')
+    const artRows = await c.env.DB.prepare(`SELECT id,filename,media_type,metadata_json FROM artifacts WHERE ${artifactMatches} ORDER BY created_at DESC`).bind(...recIds.map((id) => `%"recommendation_id":"${id}"%`)).all<any>()
     for (const art of artRows.results || []) {
       let meta: any = {}
       try { meta = JSON.parse(art.metadata_json || '{}') } catch {}
@@ -120,23 +124,58 @@ app.get('/threads/:id/path', async (c) => {
     }))
     const stageRequirements = (requirements.results || []).filter((requirement: any) => requirement.stage_id === stage.id)
     const stageEvidence = (evidence.results || []).filter((item: any) => item.stage_id === stage.id)
+    const stageLessons = (lessons.results || []).filter((lesson: any) => lesson.stage_id === stage.id).map((lesson: any) => ({ ...lesson, sources: (lessonSources.results || []).filter((source: any) => source.lesson_id === lesson.id).map((source: any) => ({ ...source, artifacts: artifactsByRec.get(source.recommendation_id) || {} })) }))
+    const stageProjects = (projects.results || []).filter((project: any) => project.stage_id === stage.id)
     const requiredItems = stageItems.filter((item: any) => Number(item.required) === 1 && !['source_role', 'companion'].includes(item.item_type))
-    const completedItems = requiredItems.filter((item: any) => item.status !== 'open')
-    const nextItem = requiredItems.find((item: any) => item.status === 'open')
+    const completedItems = stageLessons.length ? stageLessons.filter((lesson: any) => lesson.status === 'completed') : requiredItems.filter((item: any) => item.status !== 'open')
+    const totalItems = stageLessons.length ? stageLessons.length : requiredItems.length
+    const nextItem = stageLessons.length ? stageLessons.find((lesson: any) => lesson.status !== 'completed') : requiredItems.find((item: any) => item.status === 'open')
     return {
       ...stage,
       items: stageItems,
+      lessons: stageLessons,
+      projects: stageProjects,
       sources: stageSources,
       requirements: stageRequirements,
       evidence: stageEvidence,
       notes: stageNoteRows.filter((note: any) => note.scope_stage_id === stage.id),
       files: stageFileRows.filter((file: any) => file.scope_stage_id === stage.id),
-      progress: { completed: completedItems.length, total: requiredItems.length },
-      next_action: stage.status === 'available' ? { kind: 'start', label: 'Start stage' } : stage.status === 'ready_to_verify' ? { kind: 'verify', label: 'Verify stage' } : nextItem ? { kind: 'item', item_id: nextItem.id, label: `Complete: ${nextItem.title}` } : { kind: 'review', label: 'Review stage' },
+      progress: { completed: completedItems.length, total: totalItems },
+      next_action: stage.status === 'available' ? { kind: 'start', label: 'Start stage' } : stage.status === 'ready_to_verify' ? { kind: 'verify', label: 'Verify stage' } : nextItem ? { kind: stageLessons.length ? 'lesson' : 'item', lesson_id: (nextItem as any).id, item_id: (nextItem as any).id, label: stageLessons.length ? `Continue: ${nextItem.title}` : `Complete: ${nextItem.title}` } : { kind: 'project', label: 'Open level project' },
     }
   })
-  const current = stageRows.find((stage: any) => ['available','in_progress','evidence_pending','ready_to_verify'].includes(stage.status)) || stageRows.find((stage: any) => stage.status === 'locked') || null
-  return c.json({ thread: { ...thread, evidence_requirements: JSON.parse(thread.evidence_requirements_json || '[]') }, stages: stageRows, current_stage: current, evidence: evidence.results || [], requirements: requirements.results || [], notes: (pathNotes.results || []).map((note: any) => ({ ...note, sections: sectionsByNote.get(note.id) || [] })), files: (pathFiles.results || []).map(parseMetadata) })
+  const current = stageRows.find((stage: any) => ['available','in_progress','evidence_pending','ready_to_verify'].includes(stage.status)) || stageRows.find((stage: any) => stage.status === 'locked') || stageRows[stageRows.length - 1] || null
+  return c.json({ thread: { ...thread, evidence_requirements: JSON.parse(thread.evidence_requirements_json || '[]') }, stages: stageRows, projects: projects.results || [], current_stage: current, evidence: evidence.results || [], requirements: requirements.results || [], notes: (pathNotes.results || []).map((note: any) => ({ ...note, sections: sectionsByNote.get(note.id) || [] })), files: (pathFiles.results || []).map(parseMetadata) })
+})
+
+app.patch('/threads/:id/lessons/:lessonId', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  const lesson = await c.env.DB.prepare(`SELECT l.* FROM thread_lessons l WHERE l.id=? AND l.thread_id=?`).bind(c.req.param('lessonId'), c.req.param('id')).first<any>()
+  if (!lesson) return c.json({ error: 'lesson not found' }, 404)
+  const status = ['not_started','in_progress','completed'].includes(body.status) ? body.status : null
+  if (!status) return c.json({ error: 'invalid lesson status' }, 400)
+  await c.env.DB.prepare(`UPDATE thread_lessons SET status=?,why_learn=COALESCE(?,why_learn),why_now=COALESCE(?,why_now),takeaway=COALESCE(?,takeaway),content=COALESCE(?,content),updated_at=datetime('now') WHERE id=?`).bind(status, body.why_learn || null, body.why_now || null, body.takeaway || null, body.content || null, lesson.id).run()
+  return c.json({ ok: true, id: lesson.id, status })
+})
+
+app.post('/threads/:id/lessons/:lessonId/sources', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  const lesson = await c.env.DB.prepare(`SELECT id FROM thread_lessons WHERE id=? AND thread_id=?`).bind(c.req.param('lessonId'), c.req.param('id')).first()
+  const source = await c.env.DB.prepare(`SELECT id FROM recommendations WHERE id=?`).bind(body.recommendation_id).first()
+  if (!lesson || !source) return c.json({ error: 'lesson and source required' }, 400)
+  const role = ['primary','case','challenge','reference','optional'].includes(body.role) ? body.role : 'primary'
+  await c.env.DB.prepare(`INSERT OR REPLACE INTO thread_lesson_sources (lesson_id,recommendation_id,role,position) VALUES (?,?,?,?)`).bind(c.req.param('lessonId'), body.recommendation_id, role, Math.max(0, Number(body.position || 0))).run()
+  return c.json({ ok: true }, 201)
+})
+
+app.patch('/threads/:id/projects/:projectId', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  const project = await c.env.DB.prepare(`SELECT * FROM thread_projects WHERE id=? AND thread_id=?`).bind(c.req.param('projectId'), c.req.param('id')).first<any>()
+  if (!project) return c.json({ error: 'project not found' }, 404)
+  const status = ['not_started','in_progress','completed','deferred'].includes(body.status) ? body.status : null
+  if (!status) return c.json({ error: 'invalid project status' }, 400)
+  await c.env.DB.prepare(`UPDATE thread_projects SET status=?,started_at=CASE WHEN ?='in_progress' AND started_at IS NULL THEN datetime('now') ELSE started_at END,completed_at=CASE WHEN ?='completed' THEN datetime('now') ELSE completed_at END,updated_at=datetime('now') WHERE id=?`).bind(status,status,status,project.id).run()
+  return c.json({ ok: true, id: project.id, status })
 })
 
 app.post('/threads/:id/stages', async (c) => {

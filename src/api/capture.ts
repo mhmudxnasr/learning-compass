@@ -63,15 +63,29 @@ app.get('/feeds', async (c) => {
 })
 
 app.get('/feeds/:id/entries', async (c) => {
+  const feedId = c.req.param('id')
   const limit = Math.min(Math.max(Number(c.req.query('limit') || 50), 1), 200)
   const offset = Math.max(Number(c.req.query('offset') || 0), 0)
-  const feed = await c.env.DB.prepare('SELECT id,title,feed_url FROM feed_sources WHERE id=?').bind(c.req.param('id')).first<any>()
+  if (feedId === 'all') {
+    const [rows, count] = await Promise.all([
+      c.env.DB.prepare(`SELECT r.*,fe.guid,fe.published_at,fe.created_at feed_imported_at,fs.title feed_title,fs.id feed_id
+        FROM feed_entries fe JOIN recommendations r ON r.id=fe.recommendation_id
+        JOIN feed_sources fs ON fs.id=fe.feed_id
+        WHERE (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL
+        ORDER BY COALESCE(fe.published_at,fe.created_at) DESC LIMIT ? OFFSET ?`).bind(limit, offset).all(),
+      c.env.DB.prepare(`SELECT COUNT(*) count FROM feed_entries fe JOIN recommendations r ON r.id=fe.recommendation_id WHERE (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL`).first<{ count: number }>(),
+    ])
+    return c.json({ feed: { id: 'all', title: 'All Subscribed Sources', feed_url: 'All feeds' }, items: rows.results || [], total: count?.count || 0, limit, offset })
+  }
+  const feed = await c.env.DB.prepare('SELECT id,title,feed_url,site_url,last_checked_at FROM feed_sources WHERE id=?').bind(feedId).first<any>()
   if (!feed) return c.json({ error: 'feed not found' }, 404)
   const [rows, count] = await Promise.all([
-    c.env.DB.prepare(`SELECT r.*,fe.guid,fe.published_at,fe.created_at feed_imported_at
+    c.env.DB.prepare(`SELECT r.*,fe.guid,fe.published_at,fe.created_at feed_imported_at,fs.title feed_title,fs.id feed_id
       FROM feed_entries fe JOIN recommendations r ON r.id=fe.recommendation_id
-      WHERE fe.feed_id=? ORDER BY COALESCE(fe.published_at,fe.created_at) DESC LIMIT ? OFFSET ?`).bind(feed.id, limit, offset).all(),
-    c.env.DB.prepare('SELECT COUNT(*) count FROM feed_entries WHERE feed_id=?').bind(feed.id).first<{ count: number }>(),
+      JOIN feed_sources fs ON fs.id=fe.feed_id
+      WHERE fe.feed_id=? AND (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL
+      ORDER BY COALESCE(fe.published_at,fe.created_at) DESC LIMIT ? OFFSET ?`).bind(feed.id, limit, offset).all(),
+    c.env.DB.prepare(`SELECT COUNT(*) count FROM feed_entries fe JOIN recommendations r ON r.id=fe.recommendation_id WHERE fe.feed_id=? AND (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL`).bind(feed.id).first<{ count: number }>(),
   ])
   return c.json({ feed, items: rows.results || [], total: count?.count || 0, limit, offset })
 })
@@ -110,6 +124,37 @@ app.post('/feeds/:id/sync', async (c) => {
   if (limit === null) return c.json({ error: 'limit must be a number from 1 to 20' }, 400)
   try { return c.json({ ok: true, ...(await syncFeed(c.env.DB, feed, limit)) }) }
   catch (error) { return c.json({ error: error instanceof Error ? error.message : 'Feed check failed' }, 400) }
+})
+
+app.delete('/feeds/:id/entries/:recId', async (c) => {
+  const feedId = c.req.param('id')
+  const recId = c.req.param('recId')
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM feed_entries WHERE feed_id=? AND recommendation_id=?').bind(feedId, recId),
+    c.env.DB.prepare(`UPDATE recommendations SET status='deleted',deleted_at=datetime('now'),updated_at=datetime('now') WHERE id=?`).bind(recId),
+    c.env.DB.prepare(`UPDATE recommendation_meta SET learning_state='excluded',updated_at=datetime('now') WHERE recommendation_id=?`).bind(recId),
+  ])
+  return c.json({ ok: true })
+})
+
+app.delete('/feeds/:id/entries', async (c) => {
+  const feedId = c.req.param('id')
+  if (feedId === 'all') {
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE recommendations SET status='deleted',deleted_at=datetime('now'),updated_at=datetime('now') WHERE id IN (SELECT recommendation_id FROM feed_entries)`),
+      c.env.DB.prepare(`UPDATE recommendation_meta SET learning_state='excluded',updated_at=datetime('now') WHERE recommendation_id IN (SELECT recommendation_id FROM feed_entries)`),
+      c.env.DB.prepare('DELETE FROM feed_entries'),
+    ])
+    return c.json({ ok: true })
+  }
+  const feed = await c.env.DB.prepare('SELECT id FROM feed_sources WHERE id=?').bind(feedId).first()
+  if (!feed) return c.json({ error: 'feed not found' }, 404)
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE recommendations SET status='deleted',deleted_at=datetime('now'),updated_at=datetime('now') WHERE id IN (SELECT recommendation_id FROM feed_entries WHERE feed_id=?)`).bind(feedId),
+    c.env.DB.prepare(`UPDATE recommendation_meta SET learning_state='excluded',updated_at=datetime('now') WHERE recommendation_id IN (SELECT recommendation_id FROM feed_entries WHERE feed_id=?)`).bind(feedId),
+    c.env.DB.prepare('DELETE FROM feed_entries WHERE feed_id=?').bind(feedId),
+  ])
+  return c.json({ ok: true })
 })
 
 app.delete('/feeds/:id', async (c) => {

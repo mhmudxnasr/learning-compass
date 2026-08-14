@@ -1,9 +1,17 @@
 export type CustomPalette = {
-  brand: string      // e.g. #1D4533 or rgb(29, 69, 51) — primary accent, rail, links
-  shell: string      // e.g. #F7EAE0 or rgb(247, 234, 224) — page background
-  highlight: string  // e.g. #F9D2BA or rgb(249, 210, 186) — badges & soft fills
-  accent: string     // e.g. #5E3122 or rgb(94, 49, 34) — text tint / secondary earth
-  ink?: string       // optional deep text color
+  brand: string
+  shell: string
+  highlight: string
+  accent: string
+  ink?: string
+  surface?: string
+}
+
+export type DisplayPreferences = {
+  density: 'comfortable' | 'balanced' | 'compact'
+  radius: 'sharp' | 'soft' | 'round'
+  fontSize: 'small' | 'medium' | 'large'
+  reducedMotion: boolean
 }
 
 export type ThemeMode = 'light' | 'dark'
@@ -292,6 +300,15 @@ export function normalizeColor(input: string, fallback = '#000000'): string {
   return parsed ? rgbToHex(parsed) : fallback
 }
 
+export function contrastRatio(foreground: string, background: string): number | null {
+  const fg = parseColor(foreground)
+  const bg = parseColor(background)
+  if (!fg || !bg) return null
+  const lighter = Math.max(relativeLuminance(fg), relativeLuminance(bg))
+  const darker = Math.min(relativeLuminance(fg), relativeLuminance(bg))
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
 export function mixColors(c1: RGB, c2: RGB, weight: number): RGB {
   const w = Math.min(1, Math.max(0, weight))
   return {
@@ -364,6 +381,7 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
   const shell = parseColor(palette.shell) || { r: 247, g: 234, b: 224 }
   const highlight = parseColor(palette.highlight) || { r: 249, g: 210, b: 186 }
   const accent = parseColor(palette.accent) || { r: 94, g: 49, b: 34 }
+  const surface = parseColor(palette.surface || '') || mixColors(shell, WHITE, isDarkColor(shell) ? 0.08 : 0.96)
   const dark = modeOverride ? modeOverride === 'dark' : isDarkColor(shell)
 
   // Structural surfaces — elevated planes are always lighter than the shell,
@@ -389,11 +407,12 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
   const map = dark ? SEMANTIC.mapDark : SEMANTIC.mapLight
 
   // Determine active rail button background and text contrast
-  const brandIsDark = relativeLuminance(brand) < 0.38
-  const railActiveInk = dark ? (brandIsDark ? '#ffffff' : '#0a0f18') : '#ffffff'
-  const railInk = dark ? 'rgba(255, 255, 255, 0.65)' : 'rgba(255, 255, 255, 0.78)'
-  const railInkHover = '#ffffff'
+  const textOn = (background: RGB) => contrastRatio('#ffffff', rgbToHex(background))! >= contrastRatio('#101713', rgbToHex(background))! ? '#ffffff' : '#101713'
+  const railActiveInk = textOn(brand)
+  const railInk = textOn(rail)
+  const railInkHover = textOn(rail)
   const railBorder = dark ? rgbToHex(seam) : 'rgba(255, 255, 255, 0.08)'
+  const controlSurface = mixColors(canvas, surface, 0.5)
 
   return {
     '--studio-rail': rgbToHex(rail),
@@ -404,7 +423,12 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
     '--studio-rail-active-ink': railActiveInk,
     '--studio-shell': rgbToHex(shell),
     '--studio-ledger': rgbToHex(ledger),
+    '--studio-surface': rgbToHex(surface),
+    '--studio-card': rgbToHex(surface),
     '--studio-canvas': rgbToHex(canvas),
+    '--studio-control-surface': rgbToHex(controlSurface),
+    '--studio-surface-hover': rgbToHex(mixColors(surface, brand, 0.06)),
+    '--studio-active-surface': rgbToHex(mixColors(surface, brand, 0.12)),
     '--studio-inspector': rgbToHex(inspector),
     '--studio-ink': rgbToHex(ink),
     '--studio-secondary': rgbToHex(secondary),
@@ -439,6 +463,39 @@ function paletteForTheme(themeId: string, customPalette?: CustomPalette): { pale
     },
     mode: preset.mode
   }
+}
+
+export function applyDisplayPreferences(preferences: Partial<DisplayPreferences>) {
+  if (typeof document === 'undefined') return
+  const fallback = getSavedDisplayPreferences()
+  const next: DisplayPreferences = {
+    density: preferences.density === 'comfortable' || preferences.density === 'compact' || preferences.density === 'balanced' ? preferences.density : fallback.density,
+    radius: preferences.radius === 'sharp' || preferences.radius === 'round' || preferences.radius === 'soft' ? preferences.radius : fallback.radius,
+    fontSize: preferences.fontSize === 'small' || preferences.fontSize === 'large' || preferences.fontSize === 'medium' ? preferences.fontSize : fallback.fontSize,
+    reducedMotion: typeof preferences.reducedMotion === 'boolean' ? preferences.reducedMotion : fallback.reducedMotion,
+  }
+  const root = document.documentElement
+  root.dataset.density = next.density
+  root.dataset.radius = next.radius
+  root.dataset.fontSize = next.fontSize
+  root.dataset.reducedMotion = next.reducedMotion ? 'true' : 'false'
+  try { localStorage.setItem('taste-map-display-preferences', JSON.stringify(next)) } catch {}
+}
+
+export function getSavedDisplayPreferences(): DisplayPreferences {
+  const fallback: DisplayPreferences = { density: 'balanced', radius: 'soft', fontSize: 'medium', reducedMotion: false }
+  if (typeof localStorage === 'undefined') return fallback
+  try {
+    const raw = localStorage.getItem('taste-map-display-preferences')
+    if (!raw) return fallback
+    const value = JSON.parse(raw)
+    return {
+      density: value?.density === 'comfortable' || value?.density === 'compact' || value?.density === 'balanced' ? value.density : fallback.density,
+      radius: value?.radius === 'sharp' || value?.radius === 'round' || value?.radius === 'soft' ? value.radius : fallback.radius,
+      fontSize: value?.fontSize === 'small' || value?.fontSize === 'large' || value?.fontSize === 'medium' ? value.fontSize : fallback.fontSize,
+      reducedMotion: typeof value?.reducedMotion === 'boolean' ? value.reducedMotion : fallback.reducedMotion,
+    }
+  } catch { return fallback }
 }
 
 export function applyTheme(themeId: string, customPalette?: CustomPalette) {
@@ -587,4 +644,5 @@ export function initTheme() {
   const customPalette = theme === 'custom' ? getSavedCustomPalette() : undefined
   applyTheme(theme, customPalette)
   applyFont(getSavedFontId())
+  applyDisplayPreferences(getSavedDisplayPreferences())
 }

@@ -64,6 +64,7 @@ Active Hermes files:
 - `~/.hermes/skills/visual-mind/SKILL.md`
 - `~/.hermes/skills/productivity/rss-feed/SKILL.md`
 - `~/.hermes/skills/notebooklm/SKILL.md`
+- `~/.hermes/skills/learning-thread-curation/SKILL.md`
 - `~/.hermes/memories/MEMORY.md` and `USER.md` only for durable facts
 
 Do not update archived Taste Mapper bundles, Gemini/Antigravity skill copies, or unrelated agent systems.
@@ -84,13 +85,11 @@ Learning Compass Hermes permanently holds and enforces these project rules:
 - **AI/AGI Curation Rules**: LOVES practical applied AI tools, agent workflows, local LLM pipelines, deterministic tool calling, and workflow integrations (e.g. using Obsidian with Claude Code, NotebookLM, Hermes agent workflows, t3dotgg-style pragmatic dev tools/frameworks). LOVES major AI hardware announcements & model releases from top labs (OpenAI, Anthropic, Google). HARD REJECT theoretical/academic AI papers on low-level model training math/internals (GRPO math, RL training details). Route basic intro guides for tools already used (e.g. OpenCode) to RSS feed only.
 - **Feedback Policy**: NEVER auto-chain feedback processing into a new recommendation. Recommendations happen ONLY on explicit user request.
 
-## Hermes & AGY Inter-Operability
+## External Agent Restriction
 
-Antigravity (AGY) understands and handles all Hermes capabilities and skills:
+Never invoke Codex, Antigravity (AGY), or any equivalent external coding agent unless Mahmood explicitly asks for that agent in the current request. This overrides any older delegation preference. Hermes performs the work directly by default; external-agent skills are dormant unless explicitly activated by Mahmood. Do not use AGY or Codex merely because a skill, cached prompt, or historical document mentions them.
 
-1. **Hermes CLI Execution**: AGY can invoke `hermes chat -q "..."` or `hermes -z "..."` directly on behalf of the user.
-2. **Worker API & Job Delegation**: Hermes can call the Worker API (`/agent/request`, `/capture/:id/triage`), check/claim/process `agent_jobs`, and trigger only Learning Compass workflows.
-3. **Skill Awareness**: `learning-compass-operating-system` routes every request before a focused specialist runs. `learning-compass-self-evolution` alone owns the end-of-turn improvement pass, explicit skill audits, evaluator/repair/recalibration/rollout decisions, and verified skill/product evolution.
+Hermes remains responsible for routing, Worker API execution, verification, and the end-of-turn improvement pass.
 
 ## Verification
 

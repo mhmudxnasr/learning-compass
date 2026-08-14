@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'preact/hooks'
-import { formatDate, labelize } from '../../api'
+import { useEffect, useMemo, useState } from 'preact/hooks'
+import { api, formatDate, labelize } from '../../api'
 import { Empty } from '../../components/States'
 import { Icon } from '../../components/Icon'
 import type { LibraryRecord, LibrarySelection } from './types'
@@ -33,6 +33,12 @@ export type LibraryViewHandlers = {
   onAddBook: (payload: { title: string; author: string; isbn: string }) => void
   onCreateCollection: (payload: { name: string; description: string }) => void
   onDeleteCollection: (item: LibraryRecord) => void
+  onAddFeed?: (url: string) => void
+  onSyncFeeds?: () => void
+  onSyncFeed?: (feedId: string) => void
+  onDeleteFeed?: (feed: LibraryRecord) => void
+  onDeleteFeedEntry?: (feedId: string, item: LibraryRecord) => void
+  onClearFeedEntries?: (feedId: string) => void
   busyId?: string
   blockedId?: string
   notice?: string
@@ -45,7 +51,6 @@ function RecordMeta({ children }: { children: preact.ComponentChildren }) {
 function RowTitle({ item, type = 'source', onInspect }: { item: LibraryRecord; type?: 'source' | 'artifact' | 'book' | 'collection'; onInspect: (selection: LibrarySelection) => void }) {
   const selection = type === 'artifact' ? artifactSelection(item) : type === 'book' ? bookSelection(item) : type === 'collection' ? collectionSelection(item) : sourceSelection(item)
   return <button type="button" class="folio-object-btn" onClick={() => onInspect(selection)}>
-    <span class={`folio-object-mark folio-object-${type}`} aria-hidden="true"><Icon name={type === 'source' ? 'source' : type === 'artifact' ? 'file' : type === 'book' ? 'book' : 'collection'} size={17}/></span>
     <span class="folio-object-copy">
       <strong>{selection.title}</strong>
       <small>{type === 'artifact' ? `${fileKind(item)}${item.size_bytes ? ` · ${formatBytes(item.size_bytes)}` : ''}` : type === 'collection' ? `${item.item_count || 0} sources · ${formatStatus(item.scope || 'library')}` : `${sourceCreator(item)} · ${sourceFormat(item)}`}</small>
@@ -115,6 +120,544 @@ export function InboxView({ data, handlers }: { data: LibraryRecord; handlers: L
     </div> : <ViewEmpty title="Inbox is clear" body="Captures, share-target links, Telegram links, and feed entries will appear here for triage."/>}
     {handlers.notice && <p class="folio-action-status" role="status">{handlers.notice}</p>}
   </div>
+}
+
+export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
+  const [feedUrl, setFeedUrl] = useState('')
+  const [selectedFeedId, setSelectedFeedId] = useState<string>('all')
+  const [feedEntries, setFeedEntries] = useState<LibraryRecord[]>([])
+  const [entriesTotal, setEntriesTotal] = useState(0)
+  const [loadingEntries, setLoadingEntries] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [confirmClearId, setConfirmClearId] = useState<string | null>(null)
+  const [showManageFeeds, setShowManageFeeds] = useState(false)
+
+  const feeds = Array.isArray(data.feeds) ? data.feeds : []
+  const totalEntries = useMemo(() => feeds.reduce((sum: number, f: LibraryRecord) => sum + Number(f.entry_count || 0), 0), [feeds])
+
+  useEffect(() => {
+    let active = true
+    setLoadingEntries(true)
+    api<{ feed: LibraryRecord; items: LibraryRecord[]; total: number }>(`/capture/feeds/${encodeURIComponent(selectedFeedId || 'all')}/entries?limit=50`)
+      .then((res) => {
+        if (active) {
+          setFeedEntries(res.items || [])
+          setEntriesTotal(res.total || (res.items || []).length)
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setFeedEntries([])
+          setEntriesTotal(0)
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingEntries(false)
+      })
+    return () => { active = false }
+  }, [selectedFeedId, handlers.busyId])
+
+  const submitSubscribe = (event: Event) => {
+    event.preventDefault()
+    if (feedUrl.trim() && handlers.onAddFeed) {
+      handlers.onAddFeed(feedUrl.trim())
+      setFeedUrl('')
+    }
+  }
+
+  const isAllFeeds = selectedFeedId === 'all'
+  const selectedFeed = isAllFeeds
+    ? { id: 'all', title: 'All Subscribed Sources', feed_url: `${feeds.length} subscribed publications` }
+    : feeds.find((f: LibraryRecord) => String(f.id) === selectedFeedId) || { id: 'all', title: 'All Subscribed Sources', feed_url: `${feeds.length} subscribed publications` }
+  const isSyncingCurrent = isAllFeeds
+    ? handlers.busyId === 'sync-feeds'
+    : Boolean(selectedFeed && (handlers.busyId === 'sync-feeds' || handlers.busyId === `sync:${selectedFeed.id}`))
+
+  return (
+    <div class="folio-library-view folio-feeds-view">
+      <div class="folio-view-intro">
+        <div>
+          <p class="folio-kicker">Incoming external publications</p>
+          <h1>RSS Feeds</h1>
+          <p>Subscribe to RSS/Atom feeds, check for new incoming material, and triage articles directly into Queue or Inbox.</p>
+        </div>
+        <div class="folio-view-intro-actions">
+          <button
+            type="button"
+            class={`folio-button${showManageFeeds ? ' folio-button-primary' : ''}`}
+            onClick={() => setShowManageFeeds((prev) => !prev)}
+            title={showManageFeeds ? 'Hide feed subscriptions' : 'Subscribe to a feed or manage feeds'}
+          >
+            <Icon name="rss" size={15}/>
+            {showManageFeeds ? 'Hide subscriptions' : 'Manage feeds'}
+          </button>
+          <span class="folio-count-readout">
+            <strong>{feeds.length}</strong>
+            <small>{feeds.length === 1 ? 'feed' : 'feeds'} · {totalEntries} {totalEntries === 1 ? 'entry' : 'entries'}</small>
+          </span>
+        </div>
+      </div>
+
+      {showManageFeeds && (
+        <>
+          <form class="folio-intake-form folio-feed-subscribe-form" onSubmit={submitSubscribe}>
+            <div class="folio-section-heading">
+              <div>
+                <h2>Subscribe to a feed</h2>
+                <p>Articles enter Inbox for triage; they never bypass deliberate commitment.</p>
+              </div>
+              {handlers.onSyncFeeds && (
+                <button
+                  type="button"
+                  class="folio-button"
+                  onClick={() => handlers.onSyncFeeds?.()}
+                  disabled={handlers.busyId === 'sync-feeds'}
+                  title="Check all subscribed feeds for new articles"
+                >
+                  <Icon name="sync" size={15} class={handlers.busyId === 'sync-feeds' ? 'folio-icon-spin' : ''}/>
+                  {handlers.busyId === 'sync-feeds' ? 'Checking…' : 'Check all feeds'}
+                </button>
+              )}
+            </div>
+            <div class="folio-feed-form-row">
+              <input
+                type="url"
+                value={feedUrl}
+                onInput={(event) => setFeedUrl((event.currentTarget as HTMLInputElement).value)}
+                placeholder="https://example.com/feed.xml or atom/everything/"
+                required
+                aria-label="Feed URL"
+              />
+              <button
+                type="submit"
+                class="folio-button folio-button-primary"
+                disabled={handlers.busyId === 'add-feed' || !feedUrl.trim()}
+              >
+                {handlers.busyId === 'add-feed' ? 'Subscribing…' : 'Subscribe'}
+              </button>
+            </div>
+          </form>
+
+          {feeds.length ? (
+            <section class="folio-shelf folio-feeds-shelf" aria-labelledby="feeds-shelf-title">
+              <div class="folio-section-heading">
+                <div>
+                  <h2 id="feeds-shelf-title">Subscribed Feeds</h2>
+                  <p>Select a feed to view and triage its imported articles.</p>
+                </div>
+                <span class="folio-badge-count">{feeds.length}</span>
+              </div>
+
+              <div class="folio-feeds-list" role="list">
+                {feeds.map((feed: LibraryRecord) => {
+                  const isSelected = String(feed.id) === selectedFeedId
+                  const isBusy = handlers.busyId === `sync:${feed.id}` || handlers.busyId === `delete:${feed.id}`
+                  return (
+                    <article class={`folio-record folio-feed-record${isSelected ? ' is-selected' : ''}`} key={feed.id} role="listitem">
+                      <div class="folio-record-main">
+                        <RecordMeta>
+                          {feed.entry_count || 0} {(feed.entry_count || 0) === 1 ? 'entry' : 'entries'} · Last checked {feed.last_checked_at ? formatDate(feed.last_checked_at) : 'never'}
+                        </RecordMeta>
+                        <div class="folio-feed-title-row">
+                          <button
+                            type="button"
+                            class="folio-feed-select-btn"
+                            onClick={() => setSelectedFeedId(String(feed.id))}
+                            title={`View articles from ${feed.title || feed.feed_url}`}
+                          >
+                            <strong>{feed.title || feed.feed_url}</strong>
+                          </button>
+                          {feed.site_url && (
+                            <a
+                              class="folio-feed-external-link"
+                              href={feed.site_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Visit publisher website"
+                            >
+                              <Icon name="external" size={14}/>
+                            </a>
+                          )}
+                        </div>
+                        <p class="folio-record-note">{feed.feed_url}</p>
+
+                        <div class="folio-row-actions">
+                          <button
+                            type="button"
+                            class={`folio-button${isSelected ? ' folio-button-primary' : ''}`}
+                            onClick={() => setSelectedFeedId(String(feed.id))}
+                          >
+                            {isSelected ? 'Viewing entries' : 'View entries'}
+                          </button>
+                          {handlers.onSyncFeed && (
+                            <button
+                              type="button"
+                              class="folio-button"
+                              onClick={() => handlers.onSyncFeed?.(String(feed.id))}
+                              disabled={isBusy}
+                              title="Check this feed for new articles"
+                            >
+                              <Icon name="sync" size={14} class={handlers.busyId === `sync:${feed.id}` ? 'folio-icon-spin' : ''}/>
+                              {handlers.busyId === `sync:${feed.id}` ? 'Checking…' : 'Check now'}
+                            </button>
+                          )}
+                          {confirmDeleteId === feed.id ? (
+                            <div class="folio-inline-confirm">
+                              <span class="folio-confirm-label">Unsubscribe?</span>
+                              <button
+                                type="button"
+                                class="folio-file-admin-btn folio-btn-danger folio-btn-confirm-yes"
+                                onClick={() => {
+                                  setConfirmDeleteId(null)
+                                  handlers.onDeleteFeed?.(feed)
+                                }}
+                                disabled={isBusy}
+                              >
+                                Yes
+                              </button>
+                              <button
+                                type="button"
+                                class="folio-file-admin-btn folio-btn-confirm-no"
+                                onClick={() => setConfirmDeleteId(null)}
+                              >
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              class="folio-button"
+                              onClick={() => setConfirmDeleteId(String(feed.id))}
+                              disabled={isBusy}
+                              title="Unsubscribe from feed"
+                            >
+                              Unsubscribe
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            </section>
+          ) : null}
+        </>
+      )}
+
+      {!feeds.length && !showManageFeeds && (
+        <ViewEmpty
+          title="No feed subscriptions"
+          body="Subscribe to high-quality RSS or Atom feeds to receive developer, tool, and essay updates for triage."
+        />
+      )}
+
+      {feeds.length > 0 && (
+        <div class="folio-feed-navigator">
+          <div class="folio-feed-pill-strip" role="tablist" aria-label="Select feed to triage">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isAllFeeds}
+              class={`folio-feed-pill${isAllFeeds ? ' is-active' : ''}`}
+              onClick={() => setSelectedFeedId('all')}
+              title="All subscribed feeds"
+            >
+              <Icon name="rss" size={13}/>
+              <span class="folio-feed-pill-label">All Feeds</span>
+              <span class="folio-feed-pill-badge">{totalEntries}</span>
+            </button>
+            {feeds.map((feed: LibraryRecord) => {
+              const isSelected = String(feed.id) === selectedFeedId
+              return (
+                <button
+                  key={feed.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isSelected}
+                  class={`folio-feed-pill${isSelected ? ' is-active' : ''}`}
+                  onClick={() => setSelectedFeedId(String(feed.id))}
+                  title={feed.title || feed.feed_url}
+                >
+                  <Icon name="rss" size={13}/>
+                  <span class="folio-feed-pill-label">{feed.title || feed.feed_url}</span>
+                  <span class="folio-feed-pill-badge">{feed.entry_count || 0}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          <div class="folio-feed-dropdown-wrapper">
+            <div class="folio-feed-select-container">
+              <Icon name="rss" size={14} class="folio-feed-select-lead-icon"/>
+              <select
+                class="folio-feed-select-dropdown"
+                value={selectedFeedId || 'all'}
+                onChange={(e) => setSelectedFeedId((e.currentTarget as HTMLSelectElement).value)}
+                aria-label="Switch feed"
+              >
+                <option value="all">All Feeds ({totalEntries} articles)</option>
+                {feeds.map((f: LibraryRecord) => (
+                  <option key={f.id} value={String(f.id)}>
+                    {f.title || f.feed_url} ({f.entry_count || 0} articles)
+                  </option>
+                ))}
+              </select>
+              <Icon name="chevron" size={14} class="folio-feed-select-chevron"/>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedFeed && (
+        <section class="folio-shelf folio-feed-entries-shelf" aria-labelledby="feed-entries-title">
+          <div class="folio-feed-stream-banner">
+            <div class="folio-feed-banner-info">
+              <div class="folio-feed-banner-top">
+                <span class="folio-object-kicker">{isAllFeeds ? 'Unified Feed Stream' : 'Active Feed Stream'}</span>
+                {!isAllFeeds && selectedFeed.site_url && (
+                  <a
+                    class="folio-feed-site-badge"
+                    href={selectedFeed.site_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Open publisher website"
+                  >
+                    <Icon name="external" size={12}/>
+                    <span>Visit publisher</span>
+                  </a>
+                )}
+              </div>
+              <h2 id="feed-entries-title" class="folio-feed-banner-title">
+                {selectedFeed.title || selectedFeed.feed_url}
+              </h2>
+              <div class="folio-feed-banner-meta">
+                <span class="folio-feed-meta-url" title={selectedFeed.feed_url}>{selectedFeed.feed_url}</span>
+                {!isAllFeeds && (
+                  <>
+                    <span class="folio-feed-meta-dot">·</span>
+                    <span class="folio-feed-meta-checked">
+                      Last checked {selectedFeed.last_checked_at ? formatDate(selectedFeed.last_checked_at) : 'never'}
+                    </span>
+                  </>
+                )}
+                {isAllFeeds && (
+                  <>
+                    <span class="folio-feed-meta-dot">·</span>
+                    <span class="folio-feed-meta-checked">
+                      {feeds.length} {feeds.length === 1 ? 'source' : 'sources'} active
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div class="folio-feed-banner-actions">
+              {isAllFeeds ? (
+                handlers.onSyncFeeds && (
+                  <button
+                    type="button"
+                    class={`folio-feed-btn folio-feed-btn-sync${isSyncingCurrent ? ' is-loading' : ''}`}
+                    onClick={() => handlers.onSyncFeeds?.()}
+                    disabled={isSyncingCurrent}
+                    title="Check all feeds for new incoming articles"
+                  >
+                    <Icon name="sync" size={14} class={isSyncingCurrent ? 'folio-icon-spin' : ''}/>
+                    <span>{isSyncingCurrent ? 'Checking all feeds…' : 'Check all feeds'}</span>
+                  </button>
+                )
+              ) : (
+                handlers.onSyncFeed && (
+                  <button
+                    type="button"
+                    class={`folio-feed-btn folio-feed-btn-sync${isSyncingCurrent ? ' is-loading' : ''}`}
+                    onClick={() => handlers.onSyncFeed?.(String(selectedFeed.id))}
+                    disabled={isSyncingCurrent}
+                    title="Check this feed for new incoming articles"
+                  >
+                    <Icon name="sync" size={14} class={isSyncingCurrent ? 'folio-icon-spin' : ''}/>
+                    <span>{isSyncingCurrent ? 'Checking…' : 'Check now'}</span>
+                  </button>
+                )
+              )}
+
+              {handlers.onClearFeedEntries && feedEntries.length > 0 && (
+                confirmClearId === (isAllFeeds ? 'all' : String(selectedFeed.id)) ? (
+                  <div class="folio-feed-confirm-box">
+                    <span class="folio-feed-confirm-text">Clear all {entriesTotal} articles{isAllFeeds ? ' across all feeds' : ''}?</span>
+                    <button
+                      type="button"
+                      class="folio-feed-btn folio-feed-btn-danger"
+                      onClick={() => {
+                        const targetId = isAllFeeds ? 'all' : String(selectedFeed.id)
+                        setConfirmClearId(null)
+                        handlers.onClearFeedEntries?.(targetId)
+                        setFeedEntries([])
+                        setEntriesTotal(0)
+                      }}
+                      disabled={handlers.busyId === 'clear-feed-entries'}
+                    >
+                      Yes, clear
+                    </button>
+                    <button
+                      type="button"
+                      class="folio-feed-btn folio-feed-btn-cancel"
+                      onClick={() => setConfirmClearId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    class="folio-feed-btn folio-feed-btn-clear"
+                    onClick={() => setConfirmClearId(isAllFeeds ? 'all' : String(selectedFeed.id))}
+                    disabled={handlers.busyId === 'clear-feed-entries'}
+                    title={isAllFeeds ? 'Clear all imported articles across all feeds' : 'Clear imported articles for this feed'}
+                  >
+                    <Icon name="trash" size={14}/>
+                    <span>{isAllFeeds ? 'Clear all feeds' : 'Clear articles'}</span>
+                  </button>
+                )
+              )}
+
+              <div class="folio-feed-stream-count-badge">
+                <strong>{entriesTotal}</strong>
+                <small>{entriesTotal === 1 ? 'article' : 'articles'}</small>
+              </div>
+            </div>
+          </div>
+
+          {loadingEntries ? (
+            <div class="folio-shelf-loading">
+              <Icon name="sync" size={16} class="folio-icon-spin"/>
+              <span>Loading feed articles…</span>
+            </div>
+          ) : feedEntries.length ? (
+            <div class="folio-record-list" aria-label={`Articles from ${selectedFeed.title || selectedFeed.feed_url}`}>
+              {feedEntries.map((item: LibraryRecord) => {
+                const href = sourceLink(item)
+                const isQueued = item.learning_state === 'in_progress' || (item.status === 'active' && item.learning_state !== 'inbox')
+                const isConsumed = item.status === 'consumed'
+                const isExcluded = item.status === 'rejected' || item.learning_state === 'excluded'
+                const isInbox = !isQueued && !isConsumed && !isExcluded
+                const isDeleting = handlers.busyId === `delete-entry:${item.id}`
+
+                return (
+                  <article class="folio-record" key={item.id}>
+                    <div class="folio-record-main">
+                      <RecordMeta>
+                        RSS · {selectedFeed.title || 'Feed'} · {formatDate(item.published_at || item.created_at || item.feed_imported_at)}
+                      </RecordMeta>
+                      <RowTitle item={item} onInspect={handlers.onInspect}/>
+                      <p class="folio-record-reason">{formatReason(item)}</p>
+
+                      <div class="folio-row-actions">
+                        {isInbox && (
+                          <>
+                            <button
+                              type="button"
+                              class="folio-button folio-button-primary"
+                              onClick={() => handlers.onQueue(item)}
+                              disabled={handlers.busyId === item.id}
+                            >
+                              Queue
+                            </button>
+                            <button
+                              type="button"
+                              class="folio-button"
+                              onClick={() => handlers.onExclude(item)}
+                              disabled={handlers.busyId === item.id}
+                            >
+                              Exclude
+                            </button>
+                          </>
+                        )}
+                        {isQueued && (
+                          <a class="folio-button folio-button-primary" href={objectHref('source', String(item.id))}>
+                            In Queue
+                          </a>
+                        )}
+                        {isConsumed && (
+                          <span class="folio-record-note">
+                            Consumed
+                          </span>
+                        )}
+                        {isExcluded && (
+                          <span class="folio-record-note">
+                            Excluded
+                          </span>
+                        )}
+                        {href && (
+                          <a class="folio-button" href={href} target="_blank" rel="noreferrer">
+                            Open source
+                          </a>
+                        )}
+                        <a class="folio-button" href={objectHref('source', String(item.id))}>Record</a>
+                        {handlers.onDeleteFeedEntry && (
+                          <button
+                            type="button"
+                            class="folio-button folio-btn-quiet-trash"
+                            onClick={() => {
+                              handlers.onDeleteFeedEntry?.(String(selectedFeed.id), item)
+                              setFeedEntries((prev) => prev.filter((e) => e.id !== item.id))
+                              setEntriesTotal((prev) => Math.max(0, prev - 1))
+                            }}
+                            disabled={isDeleting}
+                            title="Remove this article from feed"
+                          >
+                            <Icon name="trash" size={13}/>
+                            {isDeleting ? 'Removing…' : 'Remove'}
+                          </button>
+                        )}
+                      </div>
+
+                      {isInbox && (
+                        <small class="folio-action-note">Exclude is an administrative archive action. It does not teach Compass that the source was a bad fit.</small>
+                      )}
+                      {handlers.blockedId === item.id && (
+                        <div class="folio-queue-override" role="alert">
+                          <strong>Queue cap reached.</strong>
+                          <span>Adding this source is an explicit overflow choice.</span>
+                          <button
+                            type="button"
+                            class="folio-button folio-button-primary"
+                            onClick={() => handlers.onQueue(item, true)}
+                            disabled={handlers.busyId === item.id}
+                          >
+                            Add anyway — override cap
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          ) : (
+            <div class="folio-feed-empty-state">
+              <Icon name="rss" size={32}/>
+              <h3>No articles in this stream</h3>
+              <p>Imported articles appear here for triage. Click below to check for recent entries from this feed.</p>
+              {handlers.onSyncFeed && (
+                <button
+                  type="button"
+                  class="folio-button folio-button-primary"
+                  onClick={() => handlers.onSyncFeed?.(String(selectedFeed.id))}
+                  disabled={isSyncingCurrent}
+                >
+                  <Icon name="sync" size={14} class={isSyncingCurrent ? 'folio-icon-spin' : ''}/>
+                  {isSyncingCurrent ? 'Checking feed…' : 'Check feed now'}
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {handlers.notice && <p class="folio-action-status" role="status">{handlers.notice}</p>}
+    </div>
+  )
 }
 
 export function AllSourcesView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {

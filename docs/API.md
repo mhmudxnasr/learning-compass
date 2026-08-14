@@ -100,6 +100,7 @@ Hermes ownership, endpoint permissions, side-effect tiers, routing policy, and s
 - `POST /agent/jobs/:id/complete` — persist structured note/SRS output while its lease is current; send the claiming `worker`.
 - `POST /agent/jobs/:id/fail` — retry up to three attempts, then mark failed; send the claiming `worker`.
 - `POST /agent/jobs/:id/replay` — reset a failed/dead-lettered job for a clean, auditable replay.
+- `POST /agent/jobs/:id/cancel` — cancel only a pending or retrying job, clearing its lease; running, terminal, or unavailable jobs return `409`.
 - `GET/POST /agent/memory` — browse/search or write provenance-backed Hermes memory with relational evidence and recommendation influence links. Memory keys cannot own profile preferences or live learning state; use their canonical APIs. Verified reversible skill improvements use `memory_kind: "durable"`, a `skill_procedure:*` key, validation evidence, scope, and supersession metadata.
 - `GET /agent/memory/context` — compile a bounded deterministic context packet for `recommendation`, `feedback`, `learning`, or `self_evolution`, with ranked evidence, relevant typed assertions, exclusions, and an auditable retrieval receipt. `q`, `recommendation_id`, `thread_id`, `conversation_id`, and `limit` are optional.
 - `POST /agent/memory/:id/approve`, `/expire` — review memory lifecycle without deleting evidence.

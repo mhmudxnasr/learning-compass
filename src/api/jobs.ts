@@ -249,7 +249,7 @@ app.post('/:id/replay', async (c) => {
 })
 
 app.post('/:id/cancel', async (c) => {
-  const result = await c.env.DB.prepare(`UPDATE agent_jobs SET status='cancelled',error='Cancelled by user',lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=? AND status IN ('pending','running','retry')`).bind(c.req.param('id')).run()
+  const result = await c.env.DB.prepare(`UPDATE agent_jobs SET status='cancelled',error='Cancelled by user',lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=? AND status IN ('pending','retry')`).bind(c.req.param('id')).run()
   if (!result.meta.changes) return c.json({ error: 'job not cancellable or not found' }, 409)
   return c.json({ ok: true, status: 'cancelled' })
 })

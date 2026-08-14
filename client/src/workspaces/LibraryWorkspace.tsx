@@ -10,6 +10,7 @@ import {
   ArchiveView,
   BooksView,
   CollectionsView,
+  FeedsView,
   FilesView,
   InboxView,
   ObjectRouteView,
@@ -42,6 +43,7 @@ function endpointFor(view: string, objectType?: string, objectId?: string) {
   }
   switch (asView(view)) {
     case 'inbox': return '/capture'
+    case 'feeds': return '/capture/feeds'
     case 'all': return '/recommendations/list?limit=200'
     case 'files': return '/artifacts'
     case 'books': return '/recommendations/books'
@@ -77,9 +79,10 @@ function objectItem(type: LibraryObjectType, data: LibraryRecord, objectId: stri
 
 type LibraryPrimaryMode = 'triage' | 'catalog' | 'assets'
 
-const triageFilters: Array<{ key: Extract<LibraryView, 'queue' | 'inbox'>; label: string; description: string }> = [
+const triageFilters: Array<{ key: Extract<LibraryView, 'queue' | 'inbox' | 'feeds'>; label: string; description: string }> = [
   { key: 'queue', label: 'Queue', description: 'Committed next' },
   { key: 'inbox', label: 'Inbox', description: 'Waiting for a decision' },
+  { key: 'feeds', label: 'Feeds', description: 'Subscriptions & articles' },
 ]
 
 const catalogFilters: Array<{ key: Extract<LibraryView, 'all' | 'books' | 'collections' | 'archive'>; label: string; description: string }> = [
@@ -140,7 +143,7 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
   const activeRoute = route || localRoute
   const normalizedMode = activeRoute.mode || activeRoute.query.get('mode') || ''
   const normalizedFocus = activeRoute.focus || activeRoute.query.get('focus') || ''
-  const compatibleView = normalizedFocus || (/^(queue|inbox|all|files|books|collections|archive)$/.test(normalizedMode) ? normalizedMode : '') || (/^(queue|inbox|all|files|books|collections|archive)$/.test(activeRoute.view) ? activeRoute.view : '')
+  const compatibleView = normalizedFocus || (/^(queue|inbox|feeds|all|files|books|collections|archive)$/.test(normalizedMode) ? normalizedMode : '') || (/^(queue|inbox|feeds|all|files|books|collections|archive)$/.test(activeRoute.view) ? activeRoute.view : '')
   const view = compatibleView ? asView(compatibleView) : normalizedMode === 'catalog' ? 'all' : normalizedMode === 'assets' ? 'files' : 'queue'
   const objectType = activeRoute.objectType as LibraryObjectType | undefined
   const endpoint = endpointFor(view, objectType, activeRoute.objectId)
@@ -249,6 +252,94 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     finally { setWorking('') }
   }
 
+  const addFeed = async (url: string) => {
+    setWorking('add-feed')
+    setNotice('')
+    try {
+      await api('/capture/feeds', { method: 'POST', body: JSON.stringify({ url, limit: 5 }) })
+      setNotice('Feed subscribed and latest entries imported to Inbox.')
+      reload()
+    } catch (actionError) {
+      setNotice(actionMessage(actionError))
+    } finally {
+      setWorking('')
+    }
+  }
+
+  const syncFeeds = async () => {
+    setWorking('sync-feeds')
+    setNotice('')
+    try {
+      const res = await api<{ ok: boolean; imported: number }>('/capture/feeds/sync', { method: 'POST', body: JSON.stringify({ limit: 5 }) })
+      setNotice(`Feeds checked. ${res.imported || 0} new ${res.imported === 1 ? 'entry' : 'entries'} imported to Inbox.`)
+      reload()
+    } catch (actionError) {
+      setNotice(actionMessage(actionError))
+    } finally {
+      setWorking('')
+    }
+  }
+
+  const syncFeed = async (feedId: string) => {
+    const busyKey = `sync:${feedId}`
+    setWorking(busyKey)
+    setNotice('')
+    try {
+      const res = await api<{ ok: boolean; imported?: number }>(`/capture/feeds/${encodeURIComponent(feedId)}/sync`, { method: 'POST', body: JSON.stringify({ limit: 5 }) })
+      setNotice(`Feed checked. ${res.imported || 0} new ${res.imported === 1 ? 'entry' : 'entries'} imported to Inbox.`)
+      reload()
+    } catch (actionError) {
+      setNotice(actionMessage(actionError))
+    } finally {
+      setWorking('')
+    }
+  }
+
+  const deleteFeed = async (feed: LibraryRecord) => {
+    if (!window.confirm(`Unsubscribe from “${feed.title || feed.feed_url}”? Imported articles will remain in your library.`)) return
+    setWorking(`delete:${feed.id}`)
+    setNotice('')
+    try {
+      await api(`/capture/feeds/${encodeURIComponent(String(feed.id))}`, { method: 'DELETE' })
+      setNotice('Feed unsubscribed.')
+      reload()
+    } catch (actionError) {
+      setNotice(actionMessage(actionError))
+    } finally {
+      setWorking('')
+    }
+  }
+
+  const deleteFeedEntry = async (feedId: string, item: LibraryRecord) => {
+    const busyKey = `delete-entry:${item.id}`
+    setWorking(busyKey)
+    setNotice('')
+    try {
+      await api(`/capture/feeds/${encodeURIComponent(feedId)}/entries/${encodeURIComponent(String(item.id))}`, { method: 'DELETE' })
+      setNotice('Article removed from feed.')
+      reload()
+    } catch (actionError) {
+      setNotice(actionMessage(actionError))
+    } finally {
+      setWorking('')
+    }
+  }
+
+  const clearFeedEntries = async (feedId: string) => {
+    if (!window.confirm('Remove all imported articles for this feed?')) return
+    setWorking('clear-feed-entries')
+    setNotice('')
+    try {
+      await api(`/capture/feeds/${encodeURIComponent(feedId)}/entries`, { method: 'DELETE' })
+      setNotice('All articles removed for this feed.')
+      reload()
+    } catch (actionError) {
+      setNotice(actionMessage(actionError))
+    } finally {
+      setWorking('')
+    }
+  }
+
   const handlers: LibraryViewHandlers = useMemo(() => ({
     onInspect: inspect,
     onQueue: queue,
@@ -260,6 +351,12 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     onAddBook: addBook,
     onCreateCollection: createCollection,
     onDeleteCollection: deleteCollection,
+    onAddFeed: addFeed,
+    onSyncFeeds: syncFeeds,
+    onSyncFeed: syncFeed,
+    onDeleteFeed: deleteFeed,
+    onDeleteFeedEntry: deleteFeedEntry,
+    onClearFeedEntries: clearFeedEntries,
     busyId: working,
     blockedId,
     notice,
@@ -281,10 +378,11 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
 
   const content = view === 'queue' ? <QueueView data={loaded} handlers={handlers}/> :
     view === 'inbox' ? <InboxView data={loaded} handlers={handlers}/> :
-      view === 'all' ? <AllSourcesView data={loaded} handlers={handlers}/> :
-        view === 'files' ? <FilesView data={loaded} handlers={handlers}/> :
-          view === 'books' ? <BooksView data={loaded} handlers={handlers}/> :
-            view === 'collections' ? <CollectionsView data={loaded} handlers={handlers}/> :
-              <ArchiveView data={loaded} handlers={handlers}/>
+      view === 'feeds' ? <FeedsView data={loaded} handlers={handlers}/> :
+        view === 'all' ? <AllSourcesView data={loaded} handlers={handlers}/> :
+          view === 'files' ? <FilesView data={loaded} handlers={handlers}/> :
+            view === 'books' ? <BooksView data={loaded} handlers={handlers}/> :
+              view === 'collections' ? <CollectionsView data={loaded} handlers={handlers}/> :
+                <ArchiveView data={loaded} handlers={handlers}/>
   return <div class="library-workspace workspace-surface">{modeSwitcher}{content}</div>
 }

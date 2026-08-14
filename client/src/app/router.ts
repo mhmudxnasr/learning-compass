@@ -61,7 +61,7 @@ export const modes: Record<RootKey, ModeDefinition[]> = {
   library: [
     {
       key: 'triage', label: 'Triage', description: 'Capture, decide, and commit sources.', defaultView: 'queue', defaultFocus: 'queue',
-      focuses: [focus('queue', 'Queue', 'The five sources you committed to next.'), focus('inbox', 'Inbox', 'Everything captured and waiting for a decision.')],
+      focuses: [focus('queue', 'Queue', 'The five sources you committed to next.'), focus('inbox', 'Inbox', 'Everything captured and waiting for a decision.'), focus('feeds', 'RSS Feeds', 'Subscriptions and imported feed entries.')],
     },
     {
       key: 'catalog', label: 'Catalog', description: 'Find and filter source material.', defaultView: 'all', defaultFocus: 'all',
@@ -135,6 +135,10 @@ const legacyDestinations: Record<string, LegacyDestination> = {
   '/library/queue': { root: 'library', mode: 'triage', focus: 'queue' },
   '/curate/inbox': { root: 'library', mode: 'triage', focus: 'inbox' },
   '/library/inbox': { root: 'library', mode: 'triage', focus: 'inbox' },
+  '/curate/feeds': { root: 'library', mode: 'triage', focus: 'feeds' },
+  '/library/feeds': { root: 'library', mode: 'triage', focus: 'feeds' },
+  '/curate/rss': { root: 'library', mode: 'triage', focus: 'feeds' },
+  '/library/rss': { root: 'library', mode: 'triage', focus: 'feeds' },
   '/curate/discovery': { root: 'library', mode: 'catalog', focus: 'all' },
   '/library/all': { root: 'library', mode: 'catalog', focus: 'all' },
   '/curate/books': { root: 'library', mode: 'catalog', focus: 'books' },
@@ -175,6 +179,7 @@ const legacySegments: Record<RootKey, Record<string, LegacyDestination>> = {
   home: {},
   library: {
     queue: { root: 'library', mode: 'triage', focus: 'queue' }, inbox: { root: 'library', mode: 'triage', focus: 'inbox' },
+    feeds: { root: 'library', mode: 'triage', focus: 'feeds' }, rss: { root: 'library', mode: 'triage', focus: 'feeds' },
     all: { root: 'library', mode: 'catalog', focus: 'all' }, books: { root: 'library', mode: 'catalog', focus: 'books' },
     collections: { root: 'library', mode: 'catalog', focus: 'collections' }, archive: { root: 'library', mode: 'catalog', focus: 'archive' },
     files: { root: 'library', mode: 'assets', focus: 'files' },

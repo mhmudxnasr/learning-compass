@@ -98,13 +98,45 @@ export interface PathStage {
   description?: string | null
   status: string
   items: ThreadItem[]
+  lessons: ThreadLesson[]
+  projects: ThreadProject[]
   sources: PathSource[]
   requirements: Array<{ id: string; label?: string | null; status?: string | null; evidence_type?: string | null }>
   evidence: StageEvidence[]
   notes: NoteRecord[]
   files: PathArtifact[]
   progress: { completed: number; total: number }
-  next_action?: { kind: string; label: string; item_id?: string }
+  next_action?: { kind: string; label: string; lesson_id?: string }
+}
+
+export interface ThreadLesson {
+  id: string
+  stage_id: string
+  position: number
+  title: string
+  description?: string | null
+  objective?: string | null
+  content?: string | null
+  estimated_minutes?: number | null
+  status: 'not_started' | 'in_progress' | 'completed' | string
+  sources?: PathSource[]
+  why_learn?: string | null
+  why_now?: string | null
+  takeaway?: string | null
+}
+
+export interface ThreadProject {
+  id: string
+  thread_id: string
+  stage_id?: string | null
+  type: 'level' | 'final'
+  title: string
+  description: string
+  objective?: string | null
+  instructions?: string | null
+  suggested_context?: string | null
+  status: 'not_started' | 'in_progress' | 'completed' | 'deferred' | string
+  notes?: string | null
 }
 
 export interface PathResponse {
@@ -121,6 +153,7 @@ export interface PathResponse {
   }
   stages: PathStage[]
   current_stage?: PathStage | null
+  projects: ThreadProject[]
   evidence: StageEvidence[]
   requirements: Array<{ id: string; label?: string | null; status?: string | null; evidence_type?: string | null; stage_id?: string | null }>
   notes: NoteRecord[]

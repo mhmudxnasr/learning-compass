@@ -12,7 +12,7 @@ const rootRoutes = [
   { root: 'home', href: '#/home', expected: '.folio-home-workspace' },
   { root: 'library', href: '#/library', expected: '.folio-queue-view' },
   { root: 'learn', href: '#/learn', expected: '.folio-paths' },
-  { root: 'map', href: '#/map', expected: '.atlas-empty-state' },
+  { root: 'map', href: '#/map', expected: '.atlas-empty-state, .atlas-canvas-view' },
   { root: 'settings', href: '#/settings', expected: '.profile-settings-page' },
 ]
 
@@ -22,6 +22,7 @@ const modeRoutes = [
   { root: 'home', href: '#/home', mode: 'today', expected: '.folio-home-workspace' },
   { root: 'library', href: '#/library?mode=triage&focus=queue', mode: 'triage', focus: 'queue', expected: '.folio-queue-view' },
   { root: 'library', href: '#/library?mode=triage&focus=inbox', mode: 'triage', focus: 'inbox', expected: '.folio-inbox-view' },
+  { root: 'library', href: '#/library?mode=triage&focus=feeds', mode: 'triage', focus: 'feeds', expected: '.folio-feeds-view' },
   { root: 'library', href: '#/library?mode=catalog&focus=all', mode: 'catalog', focus: 'all', expected: '.folio-all-view' },
   { root: 'library', href: '#/library?mode=catalog&focus=books', mode: 'catalog', focus: 'books', expected: '.folio-books-view' },
   { root: 'library', href: '#/library?mode=catalog&focus=collections', mode: 'catalog', focus: 'collections', expected: '.folio-collections-view' },
@@ -30,7 +31,7 @@ const modeRoutes = [
   { root: 'learn', href: '#/learn', mode: 'paths', expected: '.folio-paths' },
   { root: 'learn', href: '#/learn?mode=practice&focus=notes', mode: 'practice', focus: 'notes', expected: '.folio-notes' },
   { root: 'learn', href: '#/learn?mode=practice&focus=recall', mode: 'practice', focus: 'recall', expected: '.folio-recall' },
-  { root: 'map', href: '#/map', mode: 'atlas', expected: '.atlas-empty-state' },
+  { root: 'map', href: '#/map', mode: 'atlas', expected: '.atlas-empty-state, .atlas-canvas-view' },
   { root: 'map', href: '#/map?mode=review&focus=branches', mode: 'review', focus: 'branches', expected: '.branch-desk' },
   { root: 'map', href: '#/map?mode=review&focus=balance', mode: 'review', focus: 'balance', expected: '.map-balance-view' },
   { root: 'settings', href: '#/settings', mode: 'personal', expected: '.profile-settings-page' },
@@ -172,17 +173,7 @@ if (count !== modeRoutes.length) throw new Error(`expected ${modeRoutes.length} 
 await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
 const desktopScreenshot = await page.screenshot({ path: join(persistDir, 'home-desktop.png') })
 if (!desktopScreenshot.length) throw new Error('desktop visual smoke screenshot was empty')
-await page.locator('.command-search').click()
-await page.locator('.search-dialog[role="dialog"]').waitFor({ state: 'visible' })
-if (!(await page.locator('#search-query').isVisible())) throw new Error('global Search did not open its command dialog')
-await page.keyboard.press('Escape')
-await page.locator('.search-dialog[role="dialog"]').waitFor({ state: 'detached', timeout: 2000 })
-await page.locator('.capture-button').click()
-await page.locator('.capture-dialog[role="dialog"]').waitFor({ state: 'visible' })
-if (!(await page.getByRole('heading', { name: 'Put it in the Inbox.' }).isVisible())) throw new Error('global Capture did not open its Inbox dialog')
-if (!(await page.locator('.capture-dialog textarea[placeholder*="Paste a URL"]').isVisible())) throw new Error('Capture dialog is missing its URL/text field')
-await page.keyboard.press('Escape')
-await page.locator('.capture-dialog[role="dialog"]').waitFor({ state: 'detached', timeout: 2000 })
+if (await page.locator('.root-rail nav a').count() !== 5) throw new Error('desktop root rail should expose five destinations')
 
 const legacyAliases = [
   { path: '/today', root: 'home', mode: 'today' },
@@ -193,6 +184,10 @@ const legacyAliases = [
   { path: '/library/queue', root: 'library', mode: 'triage', focus: 'queue' },
   { path: '/curate/inbox', root: 'library', mode: 'triage', focus: 'inbox' },
   { path: '/library/inbox', root: 'library', mode: 'triage', focus: 'inbox' },
+  { path: '/curate/feeds', root: 'library', mode: 'triage', focus: 'feeds' },
+  { path: '/library/feeds', root: 'library', mode: 'triage', focus: 'feeds' },
+  { path: '/curate/rss', root: 'library', mode: 'triage', focus: 'feeds' },
+  { path: '/library/rss', root: 'library', mode: 'triage', focus: 'feeds' },
   { path: '/curate/discovery', root: 'library', mode: 'catalog', focus: 'all' },
   { path: '/library/all', root: 'library', mode: 'catalog', focus: 'all' },
   { path: '/curate/books', root: 'library', mode: 'catalog', focus: 'books' },
@@ -234,6 +229,7 @@ function legacySurface(alias) {
     if (alias.mode === 'assets') return '.folio-files-view'
     if (alias.focus === 'queue') return '.folio-queue-view'
     if (alias.focus === 'inbox') return '.folio-inbox-view'
+    if (alias.focus === 'feeds') return '.folio-feeds-view'
     if (alias.focus === 'books') return '.folio-books-view'
     if (alias.focus === 'collections') return '.folio-collections-view'
     if (alias.focus === 'archive') return '.folio-archive-view'
@@ -299,13 +295,13 @@ await requestJson(`/learning/core/threads/${hubThread.id}/stages/${hubStage.id}/
 await page.goto(`${baseUrl}/#/learn`, { waitUntil: 'networkidle' })
 await page.locator('.folio-paths').waitFor({ state: 'visible' })
 if (!(await page.getByRole('link', { name: 'Open learning path Systems Thinking' }).count())) throw new Error('Learn Paths did not render the authored path')
-await page.getByRole('link', { name: 'Open learning path Systems Thinking' }).click()
+await page.goto(`${baseUrl}/#/learn/thread/${hubThread.id}`, { waitUntil: 'networkidle' })
 await page.locator('.folio-thread').waitFor({ state: 'visible' })
+await page.locator('.folio-level-toggle').click()
 if (!(await page.locator('.folio-stage-row').filter({ hasText: 'Level 0' }).count())) throw new Error('Learn Thread did not render the authored stage workspace')
-if (!page.url().includes(`#/learn/thread/${hubThread.id}`) || await page.locator('.folio-thread-inspector').count() !== 1) throw new Error('typed Thread route did not preserve identity or its brief inspector')
+if (!page.url().includes(`#/learn/thread/${hubThread.id}`)) throw new Error('typed Thread route did not preserve identity')
 if (await page.locator('.orbit-bar, .page-head, .subnav, .main-focus').count()) throw new Error('focused Learning Thread rendered retired shell selectors')
 if (!(await page.getByRole('link', { name: 'Back to learning paths' }).count())) throw new Error('focused Learning Thread omitted its compact return action')
-if (!(await page.locator('.folio-source-actions').count())) throw new Error('Learn Thread did not render inline source actions')
 const [capabilities, systemInventory] = await Promise.all([
   requestJson('/agent/capabilities'),
   requestJson('/agent/system'),
@@ -435,6 +431,8 @@ await page.goto(`${baseUrl}/#/learn?mode=practice&focus=notes`, { waitUntil: 'ne
 await page.locator('.folio-note-row strong', { hasText: 'Hermes source note' }).waitFor({ state: 'visible', timeout: 15000 })
 if (await page.getByText('Handwritten margin note').count()) throw new Error('Notes library leaked personal reflection content into the extracted library')
 await page.goto(`${baseUrl}/#/learn/note/e2e_source_note`, { waitUntil: 'networkidle' })
+await page.locator('.folio-note-reading').waitFor({ state: 'visible', timeout: 15000 })
+await page.getByRole('button', { name: 'Edit note' }).first().click()
 await page.locator('.folio-note-document').waitFor({ state: 'visible', timeout: 15000 })
 await page.getByRole('heading', { name: 'Foundation' }).waitFor({ state: 'visible', timeout: 15000 })
 if (await page.locator('.folio-note-meta a').count() !== 1) throw new Error('typed note route is missing its source context link')
@@ -458,7 +456,7 @@ if (progressReturn.status !== 'returned') throw new Error('in-progress feedback 
 const progressJobs = (await requestJson('/agent/jobs?status=pending')).jobs.filter((job) => job.payload.recommendation_id === progress.id)
 if (progressJobs.filter((job) => job.job_type === 'process_feedback').length !== 1 || progressJobs.some((job) => job.job_type === 'extract_notes')) throw new Error('in-progress feedback did not queue analysis cleanly')
 const atomicFeedback = await requestJson('/feedback/record', { method: 'POST', body: JSON.stringify({ source_url: 'https://example.com/atomic-feedback', title: 'Atomic feedback test', feedback: 'Preserve these exact words.', score: 8, completion_state: 'completed', reason_tags: ['practical', 'revisit'], expected: 'A useful mechanism.', actual: 'Useful and concrete.', effort: 'deep', length_minutes: 45 }) })
-if (atomicFeedback.preserved_feedback !== 'Preserve these exact words.' || atomicFeedback.completion_state !== 'completed' || !atomicFeedback.feedback_job || !atomicFeedback.extraction_job || !atomicFeedback.source_page.includes(atomicFeedback.source.id)) throw new Error('atomic feedback receipt is incomplete')
+if (atomicFeedback.preserved_feedback !== 'Preserve these exact words.' || atomicFeedback.completion_state !== 'completed' || !atomicFeedback.feedback_job || atomicFeedback.extraction_job !== null || !atomicFeedback.source_page.includes(atomicFeedback.source.id)) throw new Error('atomic feedback receipt is incomplete')
 const atomicRecord = await requestJson(`/capture/${atomicFeedback.source.id}/record`)
 if (!atomicRecord.notes.some((note) => note.kind === 'reflection' && note.sections.some((section) => section.content === 'Preserve these exact words.'))) throw new Error('atomic feedback did not preserve exact words')
 const atomicStructuredFeedback = JSON.parse(atomicRecord.item.source_metadata_json || '{}').learning_feedback

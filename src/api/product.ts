@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { Bindings, normalizeRating, safeError } from '../lib'
-import { defaultSettings, loadSettings } from '../services/settings'
+import { defaultSettings, loadSettings, normalizeSettings, type TasteMapSettings } from '../services/settings'
 import { createInboxCapture } from '../services/capture'
 import { activateWaitingRun } from './discovery'
 import { loadFeedbackContext } from '../services/feedback-context'
@@ -100,7 +100,8 @@ app.post('/feedback/record', async (c) => {
   const reflectionNoteId = reflectionNote?.id || `reflection_${recommendation.id}`
   const revision = Number(reflectionNote?.revision || 0) + 1
   const feedbackJobId = id('job')
-  const extractionJobId = complete && (disposition === 'retain' || disposition === 'apply') ? id('job') : null
+  const settings = await loadSettings(c.env.DB)
+  const extractionJobId = complete && (disposition === 'retain' || disposition === 'apply') && settings.srs_drafts.auto_extract ? id('job') : null
   const statements: D1PreparedStatement[] = []
   if (!session) statements.push(c.env.DB.prepare(`INSERT INTO learning_sessions (id,recommendation_id,intent,status,returned_at,completed_at,reflection,thread_id) VALUES (?,?,? ,?,datetime('now'),CASE WHEN ? THEN datetime('now') ELSE NULL END,?,?)`).bind(sessionId, recommendation.id, 'Feedback recorded through Hermes', complete ? 'completed' : 'returned', complete ? 1 : 0, feedback, body.thread_id || null))
   else statements.push(c.env.DB.prepare(`UPDATE learning_sessions SET reflection=?,returned_at=datetime('now'),status=?,completed_at=CASE WHEN ? THEN COALESCE(completed_at,datetime('now')) ELSE completed_at END WHERE id=?`).bind(feedback, complete ? 'completed' : 'returned', complete ? 1 : 0, sessionId))
@@ -200,7 +201,7 @@ app.post('/sessions/:id/return', async (c) => {
     if (allowJobs) {
       feedbackJobId = id('job')
       statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'process_feedback',?,?,?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(feedbackJobId, JSON.stringify({ recommendation_id: session.recommendation_id, session_id: session.id, note_id: reflectionNoteId, reflection, rating: rating.score, disposition, ...structured, review_required: true, feedback_context_endpoint: '/feedback/context', feedback_context_scope: 'all_archived_feedback_profile_and_nodes' }), `session-feedback:${session.id}`, session.recommendation_id, 'explicit_user_action'))
-      if (knowledgeRequested) {
+      if (knowledgeRequested && (body.auto_enqueue === true || settings.srs_drafts.auto_extract === true)) {
         extractionJobId = id('job')
         statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'extract_notes',?,?,?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(extractionJobId, JSON.stringify({
           recommendation_id: session.recommendation_id,
@@ -440,8 +441,15 @@ app.get('/settings', async (c) => {
   return c.json({ settings, resolved: await loadSettings(c.env.DB), defaults: defaultSettings })
 })
 app.put('/settings/:key', async (c) => {
-  try { const value = await c.req.json(); await c.env.DB.prepare(`INSERT INTO user_settings (setting_key,value_json) VALUES (?,?) ON CONFLICT(setting_key) DO UPDATE SET value_json=excluded.value_json,updated_at=datetime('now')`).bind(c.req.param('key'), JSON.stringify(value)).run(); return c.json({ ok: true }) }
-  catch (error) { return c.json(safeError('Settings update failed')(error), 500) }
+  try {
+    const key = c.req.param('key') as keyof TasteMapSettings
+    if (!['appearance', 'learning', 'srs_drafts', 'ai_curation', 'profile_proposals', 'profile_automation', 'recommendation_engine'].includes(key)) return c.json({ error: 'unknown settings key' }, 400)
+    const current = await loadSettings(c.env.DB)
+    const value = await c.req.json()
+    const resolved = normalizeSettings({ ...current, [key]: { ...(current[key] as Record<string, unknown>), ...(value && typeof value === 'object' && !Array.isArray(value) ? value : {}) } })
+    await c.env.DB.prepare(`INSERT INTO user_settings (setting_key,value_json) VALUES (?,?) ON CONFLICT(setting_key) DO UPDATE SET value_json=excluded.value_json,updated_at=datetime('now')`).bind(key, JSON.stringify(resolved[key])).run()
+    return c.json({ ok: true, key, value: resolved[key], resolved })
+  } catch (error) { return c.json(safeError('Settings update failed')(error), 500) }
 })
 
 export default app

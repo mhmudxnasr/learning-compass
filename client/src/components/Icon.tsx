@@ -1,6 +1,6 @@
 import { ComponentChildren } from 'preact'
 
-export type IconName = 'home' | 'library' | 'learn' | 'map' | 'settings' | 'search' | 'capture' | 'queue' | 'inbox' | 'source' | 'file' | 'book' | 'collection' | 'archive' | 'note' | 'recall' | 'path' | 'branch' | 'balance' | 'close' | 'more' | 'chevron' | 'external' | 'check' | 'clock' | 'sync' | 'menu' | 'back' | 'trash' | 'edit' | 'spark' | 'sun' | 'moon' | 'palette'
+export type IconName = 'home' | 'library' | 'learn' | 'map' | 'settings' | 'search' | 'capture' | 'queue' | 'inbox' | 'rss' | 'source' | 'file' | 'book' | 'collection' | 'archive' | 'note' | 'recall' | 'path' | 'branch' | 'balance' | 'close' | 'more' | 'chevron' | 'external' | 'check' | 'clock' | 'sync' | 'menu' | 'back' | 'trash' | 'edit' | 'spark' | 'sun' | 'moon' | 'palette'
 
 const paths: Record<IconName, ComponentChildren> = {
   home: <><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10M9.5 20v-6h5v6"/></>,
@@ -12,6 +12,7 @@ const paths: Record<IconName, ComponentChildren> = {
   capture: <path d="M12 5v14M5 12h14"/>,
   queue: <><path d="M5 6h14M5 12h14M5 18h9"/><circle cx="18" cy="18" r="2"/></>,
   inbox: <><path d="M4 5h16v14H4z"/><path d="M4 13h4l2 3h4l2-3h4"/></>,
+  rss: <><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></>,
   source: <><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5M9 12h6M9 16h6"/></>,
   file: <><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/></>,
   book: <><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 0-3 3z"/><path d="M5 4v16a3 3 0 0 1 3-3h11"/></>,
@@ -39,6 +40,7 @@ const paths: Record<IconName, ComponentChildren> = {
   palette: <><path d="M12 2a10 10 0 1 0 10 10c0-1.5-1-2-2-2h-2a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.5A2.5 2.5 0 0 0 21 3.5 10 10 0 0 0 12 2Z"/><circle cx="7.5" cy="10.5" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16.5" cy="10.5" r="1"/></>,
 }
 
-export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
-  return <svg class="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{paths[name]}</svg>
+export function Icon({ name, size = 20, class: classProp, className }: { name: IconName; size?: number; class?: string; className?: string }) {
+  const extraClass = classProp || className || ''
+  return <svg class={`icon ${extraClass}`.trim()} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{paths[name]}</svg>
 }
