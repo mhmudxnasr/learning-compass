@@ -416,8 +416,9 @@ export function BranchDeckPage() {
         <section class="desk-inspector" aria-label="Branch inspector">
           {!selected ? (
             <div class="desk-inspector-empty">
-              <strong>Select a branch to review it.</strong>
-              <span>Every row shows real evidence — consumed sources, units, attention share — not guesses.</span>
+              <strong>{allBranches.length ? 'Choose a branch to review it.' : 'Your branch map is settled for now.'}</strong>
+              <span>{allBranches.length ? 'Every row shows real evidence — consumed sources, units, attention share — not guesses.' : 'You can browse the full map, add a branch, or ask for a grounded suggestion when you are ready.'}</span>
+              <button class="primary-action desk-empty-action" onClick={() => setShowBranchList(true)}>{allBranches.length ? 'Browse branches' : 'Open branch map'}</button>
             </div>
           ) : (
             <div class="desk-card" key={selected.id}>
