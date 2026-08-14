@@ -1,6 +1,6 @@
 # Learning Compass Frontend Reset — Master Plan
 
-Status: complete through verification and cutover; deployment and the post-deploy rollback window remain intentionally outstanding.
+Status: complete through verification, cutover, production deployment, and live smoke; the post-deploy rollback window remains active.
 
 ## Decision
 
@@ -334,7 +334,7 @@ Exit gate: graph navigation, evidence inspection, branch decisions, suggestions,
 
 Exit gate: all former Insights/Settings capabilities are available without reintroducing destination sprawl.
 
-### Phase 6 — cutover, demolition, hardening, and verification — complete; deployment pending
+### Phase 6 — cutover, demolition, hardening, verification, and deployment — complete
 
 1. Switch `client/src/main.tsx` to the replacement entry and verify that the old app is no longer imported.
 2. Remove old app-coupled markup/styles, obsolete feature presentation, `experience-polish.css`, `mockups/`, and `output/` last; preserve them in the external snapshot only.
@@ -342,7 +342,7 @@ Exit gate: all former Insights/Settings capabilities are available without reint
 4. Verify keyboard navigation, screen-reader landmarks, focus restoration, contrast, reduced motion, touch targets, graph list alternatives, and RTL/mixed-script note blocks.
 5. Run desktop, tablet, and phone visual comparisons in a bounded two-pass review.
 6. Replace `DESIGN.md` in place from the implemented visual system and update `AGENTS.md`, `PRODUCT.md`, `PROJECT_CONTEXT.md`, `CURRENT_STATE.md`, `README.md`, architecture/release docs, route references, and active Hermes-facing navigation references.
-7. Update the service worker route/cache version, verify no deleted chunk can be served, and run the full verification and release gates. Deployment is a separate, still-pending step.
+7. Update the service worker route/cache version, verify no deleted chunk can be served, run the full verification and release gates, deploy the Worker, and live-smoke the production shell and APIs.
 
 Exit gate: the new UI is documented, audited, tested, and live-smoked; the old design files are absent from the project path.
 
@@ -372,8 +372,8 @@ Observed completion evidence:
 - No leaked Wrangler/Workerd/Playwright processes after E2E.
 - No internal Hermes/Lite Visual prompt payload ships in the browser bundle.
 - The release checklist reflects the actual migration chain through `0030_hub_notes_files.sql` (or derives the latest migration dynamically).
-- Full gates observed on 2026-08-14: unit/typecheck 78/78; Hermes and migrations clean; build base 43.31 KB gzip and CSS 10.74 KB gzip; E2E five roots, 18 internal states, legacy recovery, and mobile dock; forbidden-pattern detector `[]`; diff check clean. Deployment remains outstanding.
-- Live deployment and the rollback window are not complete and are intentionally excluded from this task.
+- Full gates observed on 2026-08-14: unit/typecheck 78/78; Hermes and migrations clean; build base 43.31 KB gzip and CSS 10.74 KB gzip; E2E five roots, 18 internal states, legacy recovery, and mobile dock; forbidden-pattern detector `[]`; diff check clean.
+- Production deployment observed on 2026-08-14 at `https://recommendations-worker.mhmudnasr30.workers.dev`, Worker version `74992fdb-3ae0-49f0-995e-f2fd1da7b186`. All required read-only API smokes returned HTTP 200; the five live roots, mobile dock, Settings/System layout, and no-overflow behavior passed in a 390 px browser with zero runtime errors. The rollback snapshot remains retained through the post-deploy window.
 
 ## Workstream ownership
 
