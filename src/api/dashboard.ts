@@ -9,11 +9,13 @@ app.get('/briefing', async (c) => {
     const weekStart = `date('now', printf('-%d days', (CAST(strftime('%w','now') AS INTEGER)+6)%7))`
     const [active, due, inbox, pending, drafts, momentum, bestWeek, recent, latestSignal, topFormat, activityDates, streakDays] = await Promise.all([
       DB.prepare(`SELECT r.id,r.video_title,r.creator,r.content_type,r.video_url,r.why_this,r.context_brief,r.notebook_url,r.created_at,
-        m.learning_state,m.priority_rank,m.progress_percent,m.estimated_minutes,m.started_at,m.last_opened_at,
-        (SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads lt ON lt.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND lt.status='active' LIMIT 1) thread_id,
-        (SELECT COUNT(*) FROM notes n WHERE n.recommendation_id=r.id) note_count
-        FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
-        WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')
+         m.learning_state,m.priority_rank,m.progress_percent,m.estimated_minutes,m.started_at,m.last_opened_at,
+         m.branch_id,COALESCE(n.label,r.branch) branch_label,COALESCE(n.round_label,r.round) round_label,COALESCE(n.status,'love') branch_status,
+         (SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads lt ON lt.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND lt.status='active' LIMIT 1) thread_id,
+         (SELECT COUNT(*) FROM notes n WHERE n.recommendation_id=r.id) note_count
+         FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
+         LEFT JOIN tree_nodes n ON n.id=m.branch_id
+         WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')
         ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE due_at<=date('now')`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND m.learning_state='inbox'`).first<any>(),

@@ -169,6 +169,9 @@ export interface RecallCard {
   question: string
   answer: string
   topic?: string | null
+  branch?: string | null
+  source_title?: string | null
+  note_id?: string | null
   due_at?: string | null
   last_reviewed_at?: string | null
   thread_id?: string | null
@@ -181,6 +184,9 @@ export interface RecallDraft {
   question: string
   answer: string
   topic?: string | null
+  branch?: string | null
+  source_title?: string | null
+  note_id?: string | null
   status: 'draft' | 'approved' | 'rejected' | string
   recommendation_id?: string | null
   thread_id?: string | null

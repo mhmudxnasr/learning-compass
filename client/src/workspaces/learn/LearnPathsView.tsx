@@ -121,14 +121,58 @@ export function LearnPathsView() {
 }
 
 function PathRow({ path }: { path: PathRecord }) {
-  const completion = percent(Number(path.completed_stage_count || 0), Number(path.stage_count || 0))
-  return <li class="folio-object-row folio-path-row">
-    <a href={threadHref(path.id)} aria-label={`Open learning path ${path.title}`}>
-      <span class="folio-row-mark folio-mark-path" aria-hidden="true" />
-      <span class="folio-row-main"><span class="folio-row-type">{statusLabel(path.status)} · {path.thread_type || 'Thread'}</span><strong>{path.title}</strong><span class="folio-row-detail">{path.guiding_question || 'No guiding question recorded.'}</span></span>
-      <span class="folio-row-progress"><span class="folio-progress-track"><i style={{ width: `${completion}%` }} /></span><small>{path.completed_stage_count || 0}/{path.stage_count || 0} levels · {completion}%</small></span>
-      <span class="folio-row-tail"><span>{path.current_stage_title || 'No level started'}</span><small>{path.current_stage_status ? statusLabel(path.current_stage_status) : formatDate(path.updated_at)}</small></span>
-      <span class="folio-row-chevron" aria-hidden="true">→</span>
-    </a>
-  </li>
+  const stageCount = Number(path.stage_count || 0)
+  const completedCount = Number(path.completed_stage_count || 0)
+  const completion = percent(completedCount, stageCount)
+  const statusKey = (path.status || 'draft').toLowerCase().replace(/\s+/g, '_')
+  const threadType = path.thread_type || 'understand'
+  const currentStageDisplay = path.current_stage_title || (stageCount > 0 ? 'No level started' : 'Planned')
+  const stageStatus = path.current_stage_status ? statusLabel(path.current_stage_status) : (path.updated_at ? `Updated ${formatDate(path.updated_at)}` : '')
+
+  return (
+    <li class={`folio-object-row folio-path-row status-${statusKey}`}>
+      <a href={threadHref(path.id)} aria-label={`Open learning path ${path.title}`}>
+        <span class={`folio-row-mark folio-mark-path status-${statusKey}`} aria-hidden="true" />
+
+        <div class="folio-row-main">
+          <div class="folio-row-type-line">
+            <span class={`folio-status-tag status-${statusKey}`}>
+              <i class="folio-tag-dot" aria-hidden="true" />
+              {statusLabel(path.status)}
+            </span>
+            <span class="folio-type-tag">
+              {threadType}
+            </span>
+          </div>
+
+          <strong class="folio-path-title">{path.title}</strong>
+
+          {path.guiding_question && (
+            <p class="folio-path-question">{path.guiding_question}</p>
+          )}
+
+          {path.definition_of_done && (
+            <p class="folio-path-proof-line">
+              <span class="folio-proof-tag">Proof</span>
+              <span>{path.definition_of_done}</span>
+            </p>
+          )}
+        </div>
+
+        <div class="folio-row-progress-block">
+          <div class="folio-progress-track" role="progressbar" aria-valuenow={completion} aria-valuemin={0} aria-valuemax={100}>
+            <i style={{ width: `${completion}%` }} />
+          </div>
+          <span class="folio-progress-stats">{completedCount}/{stageCount || 0} levels · {completion}%</span>
+        </div>
+
+        <div class="folio-row-tail">
+          <strong class="folio-tail-stage">{currentStageDisplay}</strong>
+          {stageStatus && <small class="folio-tail-status">{stageStatus}</small>}
+        </div>
+
+        <span class="folio-row-chevron" aria-hidden="true">→</span>
+      </a>
+    </li>
+  )
 }

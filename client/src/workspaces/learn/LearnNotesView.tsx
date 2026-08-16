@@ -97,7 +97,7 @@ function directionForText(text: string): 'ltr' | 'rtl' {
   return /[\u0590-\u08ff]/.test(text) ? 'rtl' : 'ltr'
 }
 
-function NoteReader({ note, onEdit }: { note: NoteRecord; onEdit: () => void }) {
+function NoteReader({ note, onEdit, onGenerate, generating }: { note: NoteRecord; onEdit: () => void; onGenerate: () => void; generating: boolean }) {
   const paragraphs = plainTextParagraphs(note)
   return <article class="folio-reading-shell">
     <header class="folio-reading-header">
@@ -108,13 +108,17 @@ function NoteReader({ note, onEdit }: { note: NoteRecord; onEdit: () => void }) 
     <div class="folio-reading-body">
       {paragraphs.length ? paragraphs.map((paragraph, index) => <p key={index} dir={directionForText(paragraph)}>{paragraph}</p>) : <Empty title="This note has no content" body="Switch to edit mode to start writing." />}
     </div>
-    <footer class="folio-reading-footer"><button class="button primary folio-primary" type="button" onClick={onEdit}>Edit note</button></footer>
+    <footer class="folio-reading-footer">
+      <button class="button secondary" type="button" onClick={onGenerate} disabled={generating}>{generating ? 'Generating recall…' : 'Generate recall cards'}</button>
+      <button class="button primary folio-primary" type="button" onClick={onEdit}>Edit note</button>
+    </footer>
   </article>
 }
 
 function NoteEditor({ note, onBack, onSaved }: { note?: NoteRecord; onBack: () => void; onSaved: () => void }) {
   const [draft, setDraft] = useState<NoteRecord | null>(null)
   const [working, setWorking] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [message, setMessage] = useState('')
   const [editing, setEditing] = useState(false)
 
@@ -125,9 +129,35 @@ function NoteEditor({ note, onBack, onSaved }: { note?: NoteRecord; onBack: () =
   if (!note) return <Empty title="Note not found" body="This note may have been removed, or the link may not include a valid note ID." action={<button class="button secondary" type="button" onClick={onBack}>Back to Notes</button>} />
   if (!draft) return <Loading label="Opening note" />
 
+  const generateRecall = async () => {
+    if (!draft) return
+    setGenerating(true)
+    setMessage('Generating smart recall cards with Gemini Flash Lite…')
+    try {
+      const res = await api<{ ok: boolean; count: number; message?: string }>('/learning/srs/generate', {
+        method: 'POST',
+        body: JSON.stringify({
+          note_id: draft.id,
+          topic: draft.title,
+          branch: (draft as any).branch_id || 'General'
+        })
+      })
+      if (res.count > 0) {
+        setMessage(`Generated ${res.count} recall cards in Learn / Recall drafts.`)
+      } else {
+        setMessage(res.message || 'No atomic recall cards extracted for this note.')
+      }
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : 'Recall generation failed.')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   if (!editing) return <section class="learn-workspace folio-learn folio-note-reading" aria-labelledby="note-reading-title">
-    <header class="folio-editor-head folio-reading-toolbar"><button class="folio-back-link" type="button" onClick={onBack}>← Notes</button><div class="folio-editor-actions"><button class="button primary folio-primary" type="button" onClick={() => setEditing(true)}>Edit note</button></div></header>
-    <NoteReader note={draft} onEdit={() => setEditing(true)} />
+    <header class="folio-editor-head folio-reading-toolbar"><button class="folio-back-link" type="button" onClick={onBack}>← Notes</button><div class="folio-editor-actions"><button class="button secondary" type="button" onClick={generateRecall} disabled={generating}>{generating ? 'Generating…' : 'Generate cards'}</button><button class="button primary folio-primary" type="button" onClick={() => setEditing(true)}>Edit note</button></div></header>
+    {message && <output class="folio-status" aria-live="polite">{message}</output>}
+    <NoteReader note={draft} onEdit={() => setEditing(true)} onGenerate={generateRecall} generating={generating} />
   </section>
 
   const updateSection = (sectionKey: string, patch: Partial<{ content: string; direction: Direction }>) => setDraft((current) => current ? { ...current, sections: current.sections.map((section) => section.section_key === sectionKey ? { ...section, ...patch } : section) } : current)
@@ -159,7 +189,7 @@ function NoteEditor({ note, onBack, onSaved }: { note?: NoteRecord; onBack: () =
   }
 
   return <section class="learn-workspace folio-learn folio-note-editor" aria-labelledby="note-editor-title">
-    <header class="folio-editor-head"><button class="folio-back-link" type="button" onClick={onBack}>← Notes</button><div class="folio-editor-actions"><button class="button quiet" type="button" onClick={remove} disabled={working}>Delete</button><button class="button primary folio-primary" type="submit" form="note-editor-form" disabled={working}>{working ? 'Saving…' : 'Save note'}</button></div></header>
+    <header class="folio-editor-head"><button class="folio-back-link" type="button" onClick={onBack}>← Notes</button><div class="folio-editor-actions"><button class="button secondary" type="button" onClick={generateRecall} disabled={generating || working}>{generating ? 'Generating…' : 'Generate cards'}</button><button class="button quiet" type="button" onClick={remove} disabled={working}>Delete</button><button class="button primary folio-primary" type="submit" form="note-editor-form" disabled={working}>{working ? 'Saving…' : 'Save note'}</button></div></header>
     {message && <output class="folio-status" aria-live="polite">{message}</output>}
     <form id="note-editor-form" class="folio-note-document" onSubmit={save}><label class="folio-note-title-label">Note title<input id="note-editor-title" value={draft.title} onInput={(event) => setDraft({ ...draft, title: (event.target as HTMLInputElement).value })} required /></label><div class="folio-note-meta"><span>{draft.kind || 'Note'}</span><span>{draft.status || 'draft'}</span><span>Updated {formatDate(draft.updated_at)}</span>{draft.source_url && <a href={draft.source_url} target="_blank" rel="noreferrer">Source ↗</a>}</div><div class="folio-note-sections">{draft.sections.length ? draft.sections.map((section) => <section class="folio-note-section" key={section.section_key} aria-labelledby={`section-title-${section.section_key}`}><div class="folio-note-section-head"><h2 id={`section-title-${section.section_key}`}>{section.label || section.section_key}</h2><label>Direction<select value={directionValue(section.direction)} onChange={(event) => updateSection(section.section_key, { direction: (event.target as HTMLSelectElement).value as Direction })}><option value="auto">Auto</option><option value="ltr">English / LTR</option><option value="rtl">Egyptian Arabic / RTL</option></select></label></div><textarea class="folio-note-textarea" value={section.content} dir={directionValue(section.direction)} onInput={(event) => updateSection(section.section_key, { content: (event.target as HTMLTextAreaElement).value })} aria-label={`${section.label || section.section_key} content`} /></section>) : <Empty title="This note has no sections" body="The note record exists, but it has no editable section content." />}</div></form>
   </section>

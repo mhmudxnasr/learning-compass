@@ -1,4 +1,6 @@
 const FREE_MODELS = ['mimo-v2.5-free', 'deepseek-v4-flash-free', 'nemotron-3-ultra-free', 'laguna-s-2.1-free', 'ling-3.0-flash-free', 'north-mini-code-free']
+export const GEMINI_THEME_MODEL = 'gemini-3.1-flash-lite-preview'
+const GEMINI_THEME_FALLBACKS = ['gemini-2.5-flash-lite']
 
 export async function freeAi(env: { OPENCODE_ZEN_API_KEY?: string }, system: string, prompt: string, maxTokens = 1024) {
   const apiKey = env.OPENCODE_ZEN_API_KEY
@@ -25,3 +27,24 @@ export async function freeAi(env: { OPENCODE_ZEN_API_KEY?: string }, system: str
 }
 
 export const freeAiModels = FREE_MODELS
+
+export async function geminiThemeAi(env: { GOOGLE_API_KEY?: string }, prompt: string) {
+  if (!env.GOOGLE_API_KEY) return null
+  for (const model of [GEMINI_THEME_MODEL, ...GEMINI_THEME_FALLBACKS]) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 9000)
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(env.GOOGLE_API_KEY)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 1.15, maxOutputTokens: 900, responseMimeType: 'application/json' } }),
+        signal: controller.signal,
+      })
+      if (!response.ok) continue
+      const json: any = await response.json()
+      const text = json?.candidates?.[0]?.content?.parts?.map((part: any) => part.text || '').join('').trim()
+      if (text) return { text, model }
+    } catch { /* try the compatible Flash-Lite fallback */ } finally { clearTimeout(timer) }
+  }
+  return null
+}

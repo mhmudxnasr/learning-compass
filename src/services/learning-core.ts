@@ -46,7 +46,16 @@ export async function createConsolidationRun(DB: D1Database, input: {
   extractionJobId?: string | null
 }) {
   const existing = await DB.prepare(`SELECT id,state FROM consolidation_runs WHERE session_id=?`).bind(input.sessionId).first<{ id: string; state: string }>()
-  if (existing) return existing
+  if (existing) {
+    // Feedback can be clarified after the first submission. Keep the run and
+    // its idempotency, but make the latest explicit disposition canonical.
+    await DB.batch([
+      DB.prepare(`UPDATE consolidation_runs SET disposition=?,updated_at=datetime('now') WHERE id=?`).bind(input.disposition, existing.id),
+      DB.prepare(`DELETE FROM source_learning_dispositions WHERE recommendation_id=? AND COALESCE(thread_id,'')=COALESCE(?,'')`).bind(input.recommendationId, input.threadId || null),
+      DB.prepare(`INSERT INTO source_learning_dispositions (recommendation_id,thread_id,disposition) VALUES (?,?,?)`).bind(input.recommendationId, input.threadId || null, input.disposition),
+    ])
+    return { ...existing, disposition: input.disposition }
+  }
   const runId = makeId('consolidation')
   const needsKnowledge = input.disposition === 'retain' || input.disposition === 'apply'
   const terminalState = needsKnowledge ? 'queued' : 'closed'

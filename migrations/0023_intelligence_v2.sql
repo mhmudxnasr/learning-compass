@@ -162,7 +162,7 @@ SELECT * FROM recommendation_outcomes
 WHERE training_eligible=1 AND learning_value IS NOT NULL AND objective_version='learning_value_v2';
 
 INSERT INTO user_settings(setting_key,value_json,updated_at)
-VALUES ('profile_automation','{"mode":"automatic","policy_version":"profile_v2"}',datetime('now'))
+VALUES ('profile_automation','{"mode":"manual","policy_version":"profile_v2"}',datetime('now'))
 ON CONFLICT(setting_key) DO UPDATE SET value_json=excluded.value_json,updated_at=datetime('now');
 INSERT INTO user_settings(setting_key,value_json,updated_at)
 VALUES ('recommendation_engine','{"mode":"shadow","engine_version":"v2","objective_version":"learning_value_v2"}',datetime('now'))

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { branchSubtreeIds, createAtlasModel, expandVisibleIds, initialVisibleIds, nodeRound, nodeTitle, visibleIdsForDepth } from '../../client/src/features/atlas/model.ts'
+import { branchConstellations, branchSubtreeIds, createAtlasModel, expandVisibleIds, initialVisibleIds, nodeRound, nodeTitle, rootBranchFor, visibleIdsForDepth } from '../../client/src/features/atlas/model.ts'
 
 test('atlas model removes dangling and duplicate edges', () => {
   const nodes = [
@@ -70,6 +70,42 @@ test('branch focus reveals the complete subtree and nothing unrelated', () => {
   assert.deepEqual([...branchSubtreeIds(model, 'r1')].sort(), ['leaf', 'r1', 'r2'])
 })
 
+test('rootBranchFor resolves branch root for nodes at any depth', () => {
+  const model = createAtlasModel([
+    { id: 'cat-faith', label: 'Faith & Soul', type: 'category' },
+    { id: 'pil', label: 'Pillars [R1]', type: 'branch', parent_id: 'cat-faith', super_category: 'cat-faith' },
+    { id: 'pil-shahada', label: 'Shahada', type: 'leaf', parent_id: 'pil', super_category: 'cat-faith' },
+    { id: 'pil-sub', label: 'Sub-topic', type: 'leaf', parent_id: 'pil-shahada', super_category: 'cat-faith' },
+    { id: 'r1-sunni', label: 'Sunni Scholar Khutbah [R1]', type: 'branch', parent_id: 'cat-faith', super_category: 'cat-faith' },
+  ], [])
+
+  assert.equal(rootBranchFor(model, 'pil')?.id, 'pil')
+  assert.equal(rootBranchFor(model, 'pil-shahada')?.id, 'pil')
+  assert.equal(rootBranchFor(model, 'pil-sub')?.id, 'pil')
+  assert.equal(rootBranchFor(model, 'r1-sunni')?.id, 'r1-sunni')
+})
+
+test('branchConstellations isolates separate branch constellations within the same category', () => {
+  const model = createAtlasModel([
+    { id: 'cat-faith', label: 'Faith & Soul', type: 'category' },
+    { id: 'pil', label: 'Pillars [R1]', type: 'branch', parent_id: 'cat-faith', super_category: 'cat-faith' },
+    { id: 'pil-shahada', label: 'Shahada', type: 'leaf', parent_id: 'pil', super_category: 'cat-faith' },
+    { id: 'pil-salah', label: 'Salah', type: 'leaf', parent_id: 'pil', super_category: 'cat-faith' },
+    { id: 'r1-sunni', label: 'Sunni Scholar Khutbah [R1]', type: 'branch', parent_id: 'cat-faith', super_category: 'cat-faith' },
+    { id: 'r1-khutbah-leaf', label: 'Khutbah Leaf', type: 'leaf', parent_id: 'r1-sunni', super_category: 'cat-faith' },
+  ], [])
+
+  const constellations = branchConstellations(model)
+  assert.ok(constellations.has('pil'))
+  assert.ok(constellations.has('r1-sunni'))
+
+  const pilNodes = constellations.get('pil')!.map((n) => n.id).sort()
+  assert.deepEqual(pilNodes, ['pil', 'pil-salah', 'pil-shahada'])
+
+  const sunniNodes = constellations.get('r1-sunni')!.map((n) => n.id).sort()
+  assert.deepEqual(sunniNodes, ['r1-khutbah-leaf', 'r1-sunni'])
+})
+
 test('depth view reveals rounds progressively or every node', () => {
   const model = createAtlasModel([
     { id: 'r1', label: 'Main [R1]', type: 'branch', super_category: 'Domain' },
@@ -82,3 +118,4 @@ test('depth view reveals rounds progressively or every node', () => {
   assert.deepEqual([...visibleIdsForDepth(model, 'R3')].sort(), ['r1', 'r2', 'r3'])
   assert.equal(visibleIdsForDepth(model, 'all').size, 4)
 })
+

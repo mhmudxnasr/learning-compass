@@ -10,6 +10,7 @@ export type Bindings = {
   COMPASS_VECTORS?: any
   API_TOKEN?: string
   GOOGLE_API_KEY?: string
+  GEMINI_API_KEY?: string
   OPENCODE_ZEN_API_KEY?: string
   TELEGRAM_BOT_TOKEN?: string
   VAPID_PUBLIC_KEY?: string

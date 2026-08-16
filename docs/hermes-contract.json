@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 5,
   "name": "learning-compass-hermes",
   "router": "learning-compass-operating-system",
   "self_evolution_owner": "learning-compass-self-evolution",
@@ -18,7 +18,9 @@
       {"name": "rss-feed", "path": "productivity/rss-feed", "role": "feeds"},
       {"name": "agent-cli-delegation", "path": "workflow/agent-cli-delegation", "role": "explicit_agy_delegation"},
       {"name": "youtube-playlist-verification", "path": "workflow/youtube-playlist-verification", "role": "youtube_source_verification"},
-      {"name": "progressive-learning-curriculum", "path": "learning/progressive-learning-curriculum", "role": "curriculum_design"}
+      {"name": "progressive-learning-curriculum", "path": "learning/progressive-learning-curriculum", "role": "curriculum_design"},
+      {"name": "learning-compass-source-ingestion", "path": "workflow/learning-compass-source-ingestion", "role": "capture_triage"},
+      {"name": "learning-hub-companion-authoring", "path": "learning/learning-hub-companion-authoring", "role": "hub_companions"}
     ],
     "retired": ["taste-enhancer", "compass-queue-fill", "learning-compass-curator-policy", "master-editorial-synthesis"]
   },
@@ -108,6 +110,9 @@
     "POST /feedback/proposals/:id/revert": {"owner": "learning-compass-site-operator", "permission": "reversible_profile_change"},
     "GET /brain/profile/intelligence": {"owner": "learning-compass-operating-system", "permission": "read"},
     "GET /brain/branch-deck": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "GET /brain/branches/:id/items": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "GET /capture/queue": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "GET /capture/:id/record": {"owner": "learning-compass-site-operator", "permission": "read"},
     "POST /brain/branch-explanations": {"owner": "learning-compass-site-operator", "permission": "explicit_branch_metadata_update"},
     "POST /capture/:id/branch-map": {"owner": "learning-compass-site-operator", "permission": "high_confidence_queue_branch_mapping"},
     "POST /brain/branch-swipe": {"owner": "learning-compass-site-operator", "permission": "explicit_branch_decision"},
@@ -138,6 +143,9 @@
     "GET /agent/memory": {"owner": "learning-compass-self-evolution", "permission": "read_or_verified_skill_evolution"},
     "POST /agent/memory": {"owner": "learning-compass-self-evolution", "permission": "verified_skill_evolution_only"},
     "POST /artifacts": {"owner": "learning-compass-site-operator", "permission": "explicit_media_request"},
+    "GET /recommendations/books": {"owner": "learning-compass-site-operator", "permission": "explicit_books_read"},
+    "POST /recommendations/books/:id/chapters": {"owner": "learning-compass-site-operator", "permission": "explicit_book_chapter_metadata"},
+    "POST /recommendations/books/:id/chapters/:chapterKey/complete": {"owner": "learning-compass-site-operator", "permission": "explicit_book_chapter_completion"},
     "npx wrangler deploy --config wrangler.toml": {"owner": "recommendations-worker-ops", "permission": "explicit_deployment"}
   }
 }

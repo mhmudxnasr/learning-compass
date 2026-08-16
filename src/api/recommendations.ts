@@ -38,25 +38,25 @@ app.get('/list', async (c) => {
 
   if (status) {
     if (!VALID_STATUS.has(status)) return c.json({ error: 'invalid status' }, 400)
-    where.push('status = ?')
+    where.push('recommendations.status = ?')
     bindings.push(status)
   }
   if (contentType) {
-    where.push('content_type = ?')
+    where.push('recommendations.content_type = ?')
     bindings.push(contentType)
   }
   if (rating) {
     if (!VALID_RATINGS.has(rating)) return c.json({ error: 'invalid rating' }, 400)
-    where.push('user_rating = ?')
+    where.push('recommendations.user_rating = ?')
     bindings.push(rating)
   }
   if (creator) {
-    where.push('creator LIKE ?')
+    where.push('recommendations.creator LIKE ?')
     bindings.push(`%${creator}%`)
   }
   if (since) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) return c.json({ error: 'invalid since date' }, 400)
-    where.push('created_at >= ?')
+    where.push('recommendations.created_at >= ?')
     bindings.push(since)
   }
   if (source) {
@@ -66,7 +66,7 @@ app.get('/list', async (c) => {
       : 'NOT EXISTS (SELECT 1 FROM feed_entries fe WHERE fe.recommendation_id = recommendations.id)')
   }
   if (q) {
-    where.push('(video_title LIKE ? OR creator LIKE ? OR why_this LIKE ?)')
+    where.push('(recommendations.video_title LIKE ? OR recommendations.creator LIKE ? OR recommendations.why_this LIKE ?)')
     const like = `%${q}%`
     bindings.push(like, like, like)
   }
@@ -75,13 +75,44 @@ app.get('/list', async (c) => {
 
   try {
     const [rows, countRow] = await Promise.all([
-      DB.prepare(`SELECT * FROM recommendations${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+      DB.prepare(`SELECT recommendations.*,
+        COALESCE(n.label, recommendations.branch) branch_label,
+        COALESCE(n.round_label, recommendations.round) round_label,
+        COALESCE(n.status, 'love') branch_status,
+        (SELECT ns.id FROM notes ns WHERE ns.recommendation_id = recommendations.id ORDER BY ns.updated_at DESC LIMIT 1) note_id,
+        (SELECT ns.title FROM notes ns WHERE ns.recommendation_id = recommendations.id ORDER BY ns.updated_at DESC LIMIT 1) note_title,
+        (SELECT COUNT(*) FROM srs_cards sc WHERE sc.recommendation_id = recommendations.id) recall_count,
+        (SELECT COUNT(*) FROM srs_cards sc WHERE sc.recommendation_id = recommendations.id AND sc.due_at IS NOT NULL AND sc.due_at<=date('now')) due_count,
+        (SELECT a.id FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id') = recommendations.id AND COALESCE(json_extract(a.metadata_json,'$.scope'),'') != 'book' AND (a.media_type LIKE '%html%' OR a.filename LIKE '%.html') ORDER BY a.created_at DESC LIMIT 1) html_artifact_id,
+        (SELECT a.id FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id') = recommendations.id AND COALESCE(json_extract(a.metadata_json,'$.scope'),'') != 'book' AND (a.media_type LIKE '%pdf%' OR a.filename LIKE '%.pdf') ORDER BY a.created_at DESC LIMIT 1) pdf_artifact_id
+        FROM recommendations
+        LEFT JOIN recommendation_meta m ON m.recommendation_id = recommendations.id
+        LEFT JOIN tree_nodes n ON n.id = m.branch_id${whereClause} ORDER BY recommendations.created_at DESC LIMIT ? OFFSET ?`)
         .bind(...bindings, limit, offset).all<Recommendation>(),
       DB.prepare(`SELECT COUNT(*) as c FROM recommendations${whereClause}`)
         .bind(...bindings).first<{ c: number }>()
     ])
     c.header('Content-Range', `items ${offset}-${offset + (rows.results?.length || 0)}/${countRow?.c || 0}`)
-    return c.json({ recommendations: rows.results, total: countRow?.c || 0, limit, offset })
+    const items = (rows.results || []).map((row: any) => {
+      const branchLabel = row.branch_label || row.branch
+      const roundLabel = row.round_label || row.round
+      return {
+        ...row,
+        branch_label: branchLabel,
+        round_label: roundLabel,
+        branch: branchLabel ? {
+          id: row.branch_id || branchLabel,
+          label: branchLabel,
+          round: roundLabel,
+          status: row.branch_status || 'love',
+        } : null,
+        note: row.note_id ? { id: row.note_id, title: row.note_title || 'Field note' } : null,
+        recall: { count: Number(row.recall_count || 0), due: Number(row.due_count || 0) },
+        companions: { html: row.html_artifact_id ? { id: row.html_artifact_id } : null, pdf: row.pdf_artifact_id ? { id: row.pdf_artifact_id } : null },
+        note_id: undefined, note_title: undefined, recall_count: undefined, due_count: undefined, html_artifact_id: undefined, pdf_artifact_id: undefined,
+      }
+    })
+    return c.json({ recommendations: items, total: countRow?.c || 0, limit, offset })
   } catch (err) {
     return c.json(safeError('List failed')(err), 500)
   }
@@ -131,7 +162,7 @@ app.get('/books', async (c) => {
         chapter = { key: row.chapter_key, title: row.chapter_title, number: null, html: null, pdf: null, completed: false }
         visual.chapters = [...(visual.chapters || []), chapter]
       }
-      chapter.title = row.chapter_title; chapter.position = row.position; chapter.completed = Boolean(row.completed_at); chapter.completed_at = row.completed_at
+      chapter.title = row.chapter_title; chapter.position = row.position; chapter.number = row.position || chapter.number || null; chapter.completed = Boolean(row.completed_at); chapter.completed_at = row.completed_at
     }
   }
   for (const row of jobs.results || []) {
@@ -159,6 +190,40 @@ app.post('/books/:id/chapters/:chapterKey/complete', async (c) => {
   const completed = body.completed !== false
   await c.env.DB.prepare(`UPDATE book_visual_chapters SET completed_at=?,updated_at=datetime('now') WHERE recommendation_id=? AND chapter_key=?`).bind(completed ? new Date().toISOString() : null, recommendationId, chapterKey).run()
   return c.json({ ok: true, completed })
+})
+
+// POST /recommendations/books/:id/chapters — register chapter metadata only.
+// This deliberately does not upload or create artifact records; book chapters
+// remain scoped to the book shelf and the Files library stays untouched.
+app.post('/books/:id/chapters', async (c) => {
+  const recommendationId = c.req.param('id')
+  const book = await c.env.DB.prepare(`SELECT id FROM recommendations WHERE id=? AND content_type='book'`).bind(recommendationId).first()
+  if (!book) return c.json({ error: 'book not found' }, 404)
+  const body = await c.req.json<{ chapters?: Array<{ key?: string; title?: string; number?: number; completed?: boolean }> }>().catch(() => ({} as { chapters?: Array<{ key?: string; title?: string; number?: number; completed?: boolean }> }))
+  const chapters = Array.isArray(body.chapters) ? body.chapters : []
+  if (!chapters.length || chapters.length > 100) return c.json({ error: 'chapters must contain 1 to 100 items' }, 400)
+  const normalized = chapters.map((chapter, index) => ({
+    key: String(chapter.key || `chapter-${index + 1}`).trim().slice(0, 120),
+    title: String(chapter.title || `Chapter ${index + 1}`).trim().slice(0, 500),
+    number: Number.isFinite(Number(chapter.number)) ? Number(chapter.number) : index + 1,
+    completed: chapter.completed === true,
+  }))
+  if (normalized.some((chapter) => !chapter.key || !chapter.title)) return c.json({ error: 'each chapter needs a key and title' }, 400)
+  try {
+    await c.env.DB.batch(normalized.map((chapter) => c.env.DB.prepare(`
+      INSERT INTO book_visual_chapters (recommendation_id,chapter_key,chapter_title,position,completed_at,updated_at)
+      VALUES (?,?,?,?,?,datetime('now'))
+      ON CONFLICT(recommendation_id,chapter_key) DO UPDATE SET
+        chapter_title=excluded.chapter_title,
+        position=excluded.position,
+        completed_at=CASE WHEN excluded.completed_at IS NOT NULL THEN excluded.completed_at ELSE book_visual_chapters.completed_at END,
+        updated_at=datetime('now')
+    `).bind(recommendationId, chapter.key, chapter.title, chapter.number, chapter.completed ? new Date().toISOString() : null)))
+    const saved = await c.env.DB.prepare(`SELECT chapter_key key,chapter_title title,position,completed_at FROM book_visual_chapters WHERE recommendation_id=? ORDER BY position,chapter_key`).bind(recommendationId).all()
+    return c.json({ ok: true, artifacts_created: 0, chapters: saved.results || [] })
+  } catch (err) {
+    return c.json(safeError('Book chapters could not be registered')(err), 500)
+  }
 })
 
 app.post('/books', async (c) => {
@@ -475,6 +540,79 @@ app.post('/delete', async (c) => {
     try { await activateWaitingRun(DB) } catch {}
     return c.json({ ok: true })
   } catch (err) { return c.json(safeError('Delete failed')(err), 500) }
+})
+
+// DELETE /recommendations/:id/permanent — irreversibly remove a source and its
+// linked learning history/artifacts. Kept separate from the reversible archive
+// action so ordinary triage cannot destroy evidence by accident.
+app.delete('/:id/permanent', async (c) => {
+  const { DB, ARTIFACTS } = c.env
+  const recommendationId = c.req.param('id')
+  if (!isNonEmptyStr(recommendationId, 100)) return c.json({ error: 'id required' }, 400)
+
+  try {
+    const recommendation = await DB.prepare('SELECT id,status FROM recommendations WHERE id=?').bind(recommendationId).first<{ id: string; status: string }>()
+    if (!recommendation) return c.json({ error: 'not found' }, 404)
+    if (recommendation.status === 'active') return c.json({ error: 'active sources must be archived before permanent deletion' }, 409)
+
+    const artifacts = await DB.prepare(`SELECT id,r2_key FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id')=?`).bind(recommendationId).all<{ id: string; r2_key: string | null }>()
+    if (ARTIFACTS) {
+      for (const artifact of artifacts.results || []) if (artifact.r2_key) await ARTIFACTS.delete(artifact.r2_key)
+    }
+
+    const unitIds = await DB.prepare('SELECT id FROM learning_units WHERE recommendation_id=?').bind(recommendationId).all<{ id: string }>()
+    const unitIdList = (unitIds.results || []).map((row) => row.id)
+    const unitPlaceholders = unitIdList.map(() => '?').join(',')
+    const statements: D1PreparedStatement[] = [
+      DB.prepare('DELETE FROM feed_entries WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM collection_items WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM thread_lesson_sources WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM learning_path_sources WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM thread_sources WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM book_visual_chapters WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM compass_feedback WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM compass_picks WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM branch_evidence WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM note_sections WHERE note_id IN (SELECT id FROM notes WHERE recommendation_id=?)').bind(recommendationId),
+      DB.prepare('DELETE FROM notes WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM srs_review_events WHERE card_id IN (SELECT id FROM srs_cards WHERE recommendation_id=?)').bind(recommendationId),
+      DB.prepare('DELETE FROM srs_cards WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM srs_drafts WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM consolidation_steps WHERE run_id IN (SELECT id FROM consolidation_runs WHERE recommendation_id=?)').bind(recommendationId),
+      DB.prepare('DELETE FROM consolidation_runs WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM source_learning_dispositions WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM learning_sessions WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM learning_events WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM learning_activity_ledger WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM recommendation_engagement WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM session_consumption_log WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM rating_events WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM recommendation_outcomes WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM resurfacing WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM memory_evidence WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare("DELETE FROM semantic_documents WHERE document_kind='recommendation' AND source_id=?").bind(recommendationId),
+      DB.prepare('DELETE FROM feedback_proposals WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare('DELETE FROM agent_jobs WHERE recommendation_id=?').bind(recommendationId),
+      DB.prepare("DELETE FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id')=?").bind(recommendationId),
+      DB.prepare('DELETE FROM recommendation_meta WHERE recommendation_id=?').bind(recommendationId),
+    ]
+    if (unitPlaceholders) {
+      statements.unshift(
+        DB.prepare(`DELETE FROM learning_evidence WHERE unit_id IN (${unitPlaceholders})`).bind(...unitIdList),
+        DB.prepare(`DELETE FROM unit_anchors WHERE unit_id IN (${unitPlaceholders})`).bind(...unitIdList),
+        DB.prepare(`DELETE FROM unit_relations WHERE source_unit_id IN (${unitPlaceholders}) OR target_unit_id IN (${unitPlaceholders})`).bind(...unitIdList, ...unitIdList),
+        DB.prepare(`DELETE FROM thread_units WHERE unit_id IN (${unitPlaceholders})`).bind(...unitIdList),
+        DB.prepare(`DELETE FROM unit_mastery_state WHERE unit_id IN (${unitPlaceholders})`).bind(...unitIdList),
+        DB.prepare(`DELETE FROM learning_unit_revisions WHERE unit_id IN (${unitPlaceholders})`).bind(...unitIdList),
+        DB.prepare(`DELETE FROM learning_units WHERE id IN (${unitPlaceholders})`).bind(...unitIdList),
+      )
+    }
+    statements.push(DB.prepare('DELETE FROM recommendations WHERE id=?').bind(recommendationId))
+    await DB.batch(statements)
+    return c.json({ ok: true, permanently_deleted: true, artifact_count: artifacts.results?.length || 0 })
+  } catch (err) {
+    return c.json(safeError('Permanent deletion failed')(err), 500)
+  }
 })
 
 app.post('/undo', async (c) => {

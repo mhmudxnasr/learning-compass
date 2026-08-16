@@ -64,7 +64,9 @@ Active Hermes files:
 - `~/.hermes/skills/visual-mind/SKILL.md`
 - `~/.hermes/skills/productivity/rss-feed/SKILL.md`
 - `~/.hermes/skills/notebooklm/SKILL.md`
-- `~/.hermes/skills/learning-thread-curation/SKILL.md`
+- `~/.hermes/skills/learning-thread-curation/SKILL.md` → retired (renamed); active name is `~/.hermes/skills/learning/progressive-learning-curriculum/SKILL.md`
+- `~/.hermes/skills/workflow/learning-compass-source-ingestion/SKILL.md`
+- `~/.hermes/skills/learning/learning-hub-companion-authoring/SKILL.md`
 - `~/.hermes/memories/MEMORY.md` and `USER.md` only for durable facts
 
 Do not update archived Taste Mapper bundles, Gemini/Antigravity skill copies, or unrelated agent systems.
@@ -84,6 +86,7 @@ Learning Compass Hermes permanently holds and enforces these project rules:
 - **Dark Patterns**: EXCLUDE Harry Brignull framing; follow Mathur/ProPublica deceptive patterns framing.
 - **AI/AGI Curation Rules**: LOVES practical applied AI tools, agent workflows, local LLM pipelines, deterministic tool calling, and workflow integrations (e.g. using Obsidian with Claude Code, NotebookLM, Hermes agent workflows, t3dotgg-style pragmatic dev tools/frameworks). LOVES major AI hardware announcements & model releases from top labs (OpenAI, Anthropic, Google). HARD REJECT theoretical/academic AI papers on low-level model training math/internals (GRPO math, RL training details). Route basic intro guides for tools already used (e.g. OpenCode) to RSS feed only.
 - **Feedback Policy**: NEVER auto-chain feedback processing into a new recommendation. Recommendations happen ONLY on explicit user request.
+- **Mandatory Branch Connection**: Every recommended, captured, or queued item MUST have a valid, verified knowledge branch connected to it (persisted `branch` and `round`). Branch pill badges must render across all views.
 
 ## External Agent Restriction
 

@@ -26,8 +26,11 @@ export function StudioShell({ route, children, inspector, onInspectorClose }: {
       lastFocus.current = null
       return
     }
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 940
+    if (isMobile) {
+      document.body.style.overflow = 'hidden'
+    }
     lastFocus.current = document.activeElement as HTMLElement | null
-    document.body.style.overflow = 'hidden'
     inspectorRef.current?.focus()
     return () => { document.body.style.overflow = '' }
   }, [Boolean(inspector)])

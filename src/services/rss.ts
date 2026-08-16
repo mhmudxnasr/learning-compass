@@ -55,7 +55,8 @@ async function importEntries(DB: D1Database, feed: FeedSource, parsed: ParsedFee
   for (const entry of entries) {
     const seen = await DB.prepare('SELECT 1 FROM feed_entries WHERE feed_id=? AND guid=?').bind(feed.id, entry.guid).first()
     if (seen) { duplicates++; continue }
-    const capture = await createInboxCapture(DB, { source: entry.url, title: entry.title })
+    // Feed refreshes populate the Feed stream and Inbox; they never create a Queue commitment.
+    const capture = await createInboxCapture(DB, { source: entry.url, title: entry.title, initialLearningState: 'inbox' })
     const metadata = JSON.stringify({ rss_feed_id: feed.id, rss_feed_title: parsed.title, rss_guid: entry.guid, published_at: entry.publishedAt })
     await DB.batch([
       DB.prepare(`UPDATE recommendations SET creator=COALESCE(NULLIF(creator,''),?),why_this=COALESCE(NULLIF(why_this,''),?),content_type='article',updated_at=datetime('now') WHERE id=?`)

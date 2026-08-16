@@ -31,10 +31,16 @@ function selectionType(selection: InspectorSelection) {
 function selectionFacts(selection: InspectorSelection) {
   const data = selection.data || {}
   if (selection.type === 'source' || selection.type === 'thread') {
+    const rawBranch = data.branch
+    const branch = typeof rawBranch === 'string'
+      ? { id: rawBranch, label: rawBranch, round: data.round_label || data.round }
+      : rawBranch || (data.branch_id ? { id: data.branch_id, label: data.branch_label || data.branch_id, round: data.round_label || data.round } : null)
     return [
       ['State', data.learning_state || data.status],
       ['Creator', data.creator || data.author],
       ['Format', data.content_type || data.format],
+      ['Branch', branch ? (branch.label || branch.id) : undefined],
+      ['Round', branch?.round || data.round_label || data.round],
       ['Thread', data.thread_title || data.thread_id],
     ] as Array<[string, unknown]>
   }

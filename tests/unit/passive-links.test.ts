@@ -10,7 +10,7 @@ test('Home source and file links remain passive and hand tracked starts to Queue
   assert.match(home, /href=\{routeHref\('library', 'triage', 'queue'\)\}>Open Queue to start/)
   assert.match(home, /href=\{routeHref\('library', 'assets', 'files'\)\}>All files/)
   assert.match(home, /href=\{routeHref\('learn', 'practice', 'recall'\)\}>.*Open Recall/)
-  assert.match(home, /href=\{routeHref\('library', 'triage', 'inbox'\)\}>Review Inbox/)
+  assert.match(home, /href=\{routeHref\('library', 'triage', 'feeds'\)\}>Open Feeds/)
   assert.equal(home.includes('openLearningTarget('), false)
   assert.equal(home.includes('startExternal('), false)
   assert.equal(home.includes('startLearningSession('), false)

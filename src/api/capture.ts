@@ -4,6 +4,7 @@ import { Bindings, safeError } from '../lib'
 import { createInboxCapture } from '../services/capture'
 import { addFeed, syncAllFeeds, syncFeed } from '../services/rss'
 import { recordRecommendationSignal } from '../services/intelligence-v2'
+import { displayRound } from '../services/branch-rounds'
 
 import { activateWaitingRun } from './discovery'
 
@@ -42,15 +43,35 @@ app.get('/', async (c) => {
 })
 
 app.get('/queue', async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.priority_rank,m.progress_percent,m.estimated_minutes,m.tags_json,m.started_at,m.last_opened_at,n.label branch_label,n.status branch_status,o.predicted_score,o.predicted_confidence,o.predicted_components_json,(SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND t.status NOT IN ('verified','abandoned') ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 1) thread_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id LEFT JOIN recommendation_outcomes o ON o.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all()
+  const rows = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.priority_rank,m.progress_percent,m.estimated_minutes,m.tags_json,m.started_at,m.last_opened_at,
+    COALESCE(n.label, r.branch) branch_label,
+    COALESCE(n.status, 'love') branch_status,
+    COALESCE(n.round_label, r.round) round_label,
+    o.predicted_score,o.predicted_confidence,o.predicted_components_json,(SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND t.status NOT IN ('verified','abandoned') ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 1) thread_id,(SELECT n.id FROM notes n WHERE n.recommendation_id=r.id ORDER BY n.updated_at DESC LIMIT 1) note_id,(SELECT n.title FROM notes n WHERE n.recommendation_id=r.id ORDER BY n.updated_at DESC LIMIT 1) note_title,(SELECT COUNT(*) FROM srs_cards sc WHERE sc.recommendation_id=r.id) recall_count,(SELECT COUNT(*) FROM srs_cards sc WHERE sc.recommendation_id=r.id AND sc.due_at IS NOT NULL AND sc.due_at<=date('now')) due_count,(SELECT a.id FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=r.id AND (a.media_type LIKE '%html%' OR a.filename LIKE '%.html') ORDER BY a.created_at DESC LIMIT 1) html_artifact_id,(SELECT a.id FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=r.id AND (a.media_type LIKE '%pdf%' OR a.filename LIKE '%.pdf') ORDER BY a.created_at DESC LIMIT 1) pdf_artifact_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id LEFT JOIN recommendation_outcomes o ON o.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all()
   // Surface Compass's persisted prediction on each row so the queue can show
   // why a source was chosen (score, confidence, feature breakdown) — the data
   // already lives in recommendation_outcomes from the pick.
   const items = (rows.results || []).map((row: any) => {
     let breakdown: any = null
     try { breakdown = row.predicted_components_json ? JSON.parse(row.predicted_components_json) : null } catch {}
+    const branchLabel = row.branch_label || row.branch
+    const branchId = row.branch_id || branchLabel
+    const roundLabel = row.round_label || row.round
     const branchStatus = String(row.branch_status || '').trim().toLowerCase()
-    return { ...row, branch_preflight: row.branch_id ? { branch_id: row.branch_id, branch_label: row.branch_label || row.branch_id, status: branchStatus || 'unverified', conflict: branchStatus === 'pruned' } : { status: 'unmapped', conflict: false }, compass: row.predicted_score != null ? { score: Number(row.predicted_score), confidence: Number(row.predicted_confidence ?? 0), breakdown } : null }
+    const round = displayRound({ round_label: roundLabel, id: branchId }, {
+      consumed: 0, notes: row.note_id ? 1 : 0, cards: Number(row.recall_count || 0), due: Number(row.due_count || 0), recallStrength: null,
+    })
+    return {
+      ...row,
+      branch_label: branchLabel,
+      round_label: roundLabel,
+      branch: branchLabel ? { id: branchId, label: branchLabel, round, status: branchStatus || 'love' } : null,
+      note: row.note_id ? { id: row.note_id, title: row.note_title || 'Field note' } : null,
+      recall: { count: Number(row.recall_count || 0), due: Number(row.due_count || 0) },
+      companions: { html: row.html_artifact_id ? { id: row.html_artifact_id } : null, pdf: row.pdf_artifact_id ? { id: row.pdf_artifact_id } : null },
+      branch_preflight: branchLabel ? { branch_id: branchId, branch_label: branchLabel, status: branchStatus || 'love', conflict: branchStatus === 'pruned' } : { status: 'unmapped', conflict: false },
+      compass: row.predicted_score != null ? { score: Number(row.predicted_score), confidence: Number(row.predicted_confidence ?? 0), breakdown } : null
+    }
   })
   return c.json({ items, count: items.length, cap: 5 })
 })
@@ -206,8 +227,8 @@ app.post('/:id/triage', async (c) => {
   }
   const thread = body.thread_id
     ? await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=? AND status NOT IN ('verified','abandoned')`).bind(body.thread_id).first<{ id: string }>()
-    : await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE status='active' ORDER BY priority DESC,updated_at DESC LIMIT 1`).first<{ id: string }>()
-  if (!thread) return c.json({ error: 'learning_thread_required' }, 409)
+    : null
+  if (body.thread_id && !thread) return c.json({ error: 'learning_thread_not_found' }, 404)
   const active = await c.env.DB.prepare(`SELECT COUNT(*) c FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')`).first<{ c: number }>()
   const decision = queueDecision(active?.c || 0, body.override_queue_cap === true)
   if (!decision.allowed) return c.json({ error: 'queue_full', ...decision }, 409)
@@ -216,8 +237,10 @@ app.post('/:id/triage', async (c) => {
     WHERE ?=1 OR (SELECT COUNT(*) FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress'))<5
     ON CONFLICT(recommendation_id) DO UPDATE SET learning_state='queued',updated_at=datetime('now')`).bind(c.req.param('id'), body.override_queue_cap === true ? 1 : 0).run()
   if (!result.meta.changes) return c.json({ error: 'queue_full', ...queueDecision(5, false) }, 409)
-  await c.env.DB.prepare(`INSERT INTO thread_sources (thread_id,recommendation_id,role,status) VALUES (?,?,'supporting','active') ON CONFLICT(thread_id,recommendation_id) DO UPDATE SET status='active',updated_at=datetime('now')`).bind(thread.id,c.req.param('id')).run()
-  return c.json({ ok: true, state: 'queued', thread_id: thread.id, ...decision })
+  if (thread) {
+    await c.env.DB.prepare(`INSERT INTO thread_sources (thread_id,recommendation_id,role,status) VALUES (?,?,'supporting','active') ON CONFLICT(thread_id,recommendation_id) DO UPDATE SET status='active',updated_at=datetime('now')`).bind(thread.id,c.req.param('id')).run()
+  }
+  return c.json({ ok: true, state: 'queued', ...(thread ? { thread_id: thread.id } : {}), ...decision })
 })
 
 // Apply a reviewed, high-confidence branch classification to an active Queue item.
@@ -286,8 +309,11 @@ app.get('/:id', async (c) => {
 
 app.get('/:id/record', async (c) => {
   const recommendationId = c.req.param('id')
-  const item = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.tags_json,m.source_metadata_json,m.progress_percent,m.estimated_minutes
-    FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?`).bind(recommendationId).first<any>()
+  const item = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.tags_json,m.source_metadata_json,m.progress_percent,m.estimated_minutes,
+    COALESCE(n.label, r.branch) branch_label,
+    COALESCE(n.status, 'love') branch_status,
+    COALESCE(n.round_label, r.round) round_label
+    FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(recommendationId).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
   const [sessions, notes, sections, artifacts, drafts, cards, outcome, memories, proposals, jobs, threads, units, anchors, relations, consolidation, evidence, disposition] = await Promise.all([
     c.env.DB.prepare(`SELECT id,status,intent,reflection,thread_id,target_kind,target_artifact_id,started_at,returned_at,completed_at,duration_seconds FROM learning_sessions WHERE recommendation_id=? ORDER BY started_at DESC`).bind(recommendationId).all<any>(),
@@ -324,7 +350,21 @@ app.get('/:id/record', async (c) => {
   for (const relation of relations.results || []) relationsByUnit.set(relation.source_unit_id, [...(relationsByUnit.get(relation.source_unit_id) || []), relation])
   const unitRows = (units.results || []).map((unit: any) => ({ ...unit, anchors: anchorsByUnit.get(unit.id) || [], relations: relationsByUnit.get(unit.id) || [] }))
   const consolidationSteps = consolidation ? await c.env.DB.prepare(`SELECT * FROM consolidation_steps WHERE run_id=? ORDER BY position`).bind(consolidation.id).all<any>() : { results: [] }
-  return c.json({ item, sessions: sessions.results || [], threads: threads.results || [], learning_units: unitRows, learning_evidence: evidence.results || [], disposition: disposition || null, consolidation: consolidation ? { ...consolidation, steps: consolidationSteps.results || [] } : null, notes: noteRows, artifacts: artifacts.results || [], srs: { drafts: drafts.results || [], cards: cards.results || [] }, outcome: outcome || null, memory_influences: memoryInfluences, proposals: (proposals.results || []).map((proposal: any) => ({ ...proposal, current: parseJson(proposal.current_json), proposed: parseJson(proposal.proposed_json), current_json: undefined, proposed_json: undefined })), jobs: (jobs.results || []).map((job: any) => ({ ...job, result: parseJson(job.result_json), result_json: undefined })) })
+  const cardRows = (cards.results || []).map((card: any) => ({ ...card }))
+  const today = new Date().toISOString().slice(0, 10)
+  const artifactsRows = artifacts.results || []
+  const htmlArtifact = artifactsRows.find((a: any) => /html/.test(String(a.media_type || '')) || String(a.filename || '').toLowerCase().endsWith('.html')) || null
+  const pdfArtifact = artifactsRows.find((a: any) => /pdf/.test(String(a.media_type || '')) || String(a.filename || '').toLowerCase().endsWith('.pdf')) || null
+  const cardCount = cardRows.length
+  const dueCount = cardRows.filter((card: any) => card.due_at && String(card.due_at) <= today).length
+  const noteCount = (notes.results || []).length
+  const branchLabel = item.branch_label || item.branch
+  const branchId = item.branch_id || branchLabel
+  const roundLabel = item.round_label || item.round
+  const round = displayRound({ round_label: roundLabel, id: branchId }, { consumed: item.status === 'consumed' ? 1 : 0, notes: noteCount, cards: cardCount, due: dueCount, recallStrength: null })
+  const branchInfo = branchLabel ? { id: branchId, label: branchLabel, round: roundLabel || round, status: String(item.branch_status || '').trim().toLowerCase() || 'love' } : null
+  const companions = { html: htmlArtifact ? { id: htmlArtifact.id, filename: htmlArtifact.filename, size_bytes: htmlArtifact.size_bytes } : null, pdf: pdfArtifact ? { id: pdfArtifact.id, filename: pdfArtifact.filename, size_bytes: pdfArtifact.size_bytes } : null }
+  return c.json({ item: { ...item, branch: branchInfo, round: roundLabel || round, branch_label: branchLabel, branch_status: item.branch_status || 'love', round_label: roundLabel }, sessions: sessions.results || [], threads: threads.results || [], learning_units: unitRows, learning_evidence: evidence.results || [], disposition: disposition || null, consolidation: consolidation ? { ...consolidation, steps: consolidationSteps.results || [] } : null, notes: noteRows, artifacts: artifactsRows, companions, srs: { drafts: drafts.results || [], cards: cardRows, recall_summary: { count: cardCount, due: dueCount } }, outcome: outcome || null, memory_influences: memoryInfluences, proposals: (proposals.results || []).map((proposal: any) => ({ ...proposal, current: parseJson(proposal.current_json), proposed: parseJson(proposal.proposed_json), current_json: undefined, proposed_json: undefined })), jobs: (jobs.results || []).map((job: any) => ({ ...job, result: parseJson(job.result_json), result_json: undefined })) })
 })
 
 export default app

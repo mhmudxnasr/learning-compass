@@ -361,11 +361,46 @@ app.post('/notes/:id/process', async (c) => {
 })
 
 app.get('/srs/drafts', async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT * FROM srs_drafts ORDER BY created_at DESC LIMIT 200`).all()
+  const rows = await c.env.DB.prepare(`
+    SELECT d.*,
+      COALESCE(
+        (SELECT title FROM notes WHERE id = d.note_id LIMIT 1),
+        (SELECT title FROM notes WHERE recommendation_id = d.recommendation_id AND d.recommendation_id IS NOT NULL LIMIT 1),
+        (SELECT video_title FROM recommendations WHERE id = d.recommendation_id AND d.recommendation_id IS NOT NULL LIMIT 1),
+        'Direct Draft'
+      ) as source_title,
+      COALESCE(
+        d.branch,
+        (SELECT branch_id FROM notes WHERE id = d.note_id LIMIT 1),
+        d.topic,
+        'General'
+      ) as branch
+    FROM srs_drafts d
+    ORDER BY d.created_at DESC
+    LIMIT 200
+  `).all()
   return c.json({ drafts: rows.results || [] })
 })
 app.get('/learning/srs/cards', async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT * FROM srs_cards ORDER BY due_at ASC, topic, question LIMIT 500`).all()
+  const rows = await c.env.DB.prepare(`
+    SELECT c.*,
+      COALESCE(
+        (SELECT title FROM notes WHERE id = c.note_id LIMIT 1),
+        (SELECT title FROM notes WHERE recommendation_id = c.recommendation_id AND c.recommendation_id IS NOT NULL LIMIT 1),
+        (SELECT video_title FROM recommendations WHERE id = c.recommendation_id AND c.recommendation_id IS NOT NULL LIMIT 1),
+        'Direct Card'
+      ) as source_title,
+      COALESCE(
+        c.branch,
+        (SELECT branch_id FROM notes WHERE id = c.note_id LIMIT 1),
+        c.topic,
+        'General'
+      ) as branch,
+      COALESCE(c.note_id, (SELECT id FROM notes WHERE recommendation_id = c.recommendation_id AND c.recommendation_id IS NOT NULL LIMIT 1)) as note_id
+    FROM srs_cards c
+    ORDER BY c.due_at ASC, c.topic, c.question
+    LIMIT 500
+  `).all()
   return c.json({ cards: rows.results || [] })
 })
 app.delete('/learning/srs/cards/:id', async (c) => {
@@ -374,7 +409,7 @@ app.delete('/learning/srs/cards/:id', async (c) => {
 })
 app.put('/srs/drafts/:id', async (c) => {
   const body = await c.req.json<any>()
-  await c.env.DB.prepare(`UPDATE srs_drafts SET question=COALESCE(?,question),answer=COALESCE(?,answer),topic=COALESCE(?,topic),updated_at=datetime('now') WHERE id=?`).bind(body.question || null, body.answer || null, body.topic || null, c.req.param('id')).run()
+  await c.env.DB.prepare(`UPDATE srs_drafts SET question=COALESCE(?,question),answer=COALESCE(?,answer),topic=COALESCE(?,topic),branch=COALESCE(?,branch),updated_at=datetime('now') WHERE id=?`).bind(body.question || null, body.answer || null, body.topic || null, body.branch || null, c.req.param('id')).run()
   return c.json({ ok: true })
 })
 app.post('/srs/drafts/:id/approve', async (c) => {
@@ -382,7 +417,7 @@ app.post('/srs/drafts/:id/approve', async (c) => {
   if (!draft) return c.json({ error: 'not found' }, 404)
   const approved = await c.env.DB.prepare(`UPDATE srs_drafts SET status='approved',updated_at=datetime('now') WHERE id=? AND status='draft'`).bind(draft.id).run()
   if (!approved.meta.changes) return c.json({ error: 'draft already processed' }, 409)
-  await c.env.DB.prepare(`INSERT INTO srs_cards (id,recommendation_id,question,answer,topic,due_at,unit_id,thread_id,scheduler_version) VALUES (?,?,?,?,?,date('now'),?,?,'fsrs-6-ts-fsrs-5.4.1')`).bind(id('card'), draft.recommendation_id, draft.question, draft.answer, draft.topic, draft.unit_id || null, draft.thread_id || null).run()
+  await c.env.DB.prepare(`INSERT INTO srs_cards (id,recommendation_id,note_id,question,answer,topic,branch,due_at,unit_id,thread_id,scheduler_version) VALUES (?,?,?,?,?,?,?,date('now'),?,?,'fsrs-6-ts-fsrs-5.4.1')`).bind(id('card'), draft.recommendation_id, draft.note_id || null, draft.question, draft.answer, draft.topic, draft.branch || null, draft.unit_id || null, draft.thread_id || null).run()
   return c.json({ ok: true })
 })
 app.post('/srs/drafts/:id/reject', async (c) => {
@@ -443,7 +478,7 @@ app.get('/settings', async (c) => {
 app.put('/settings/:key', async (c) => {
   try {
     const key = c.req.param('key') as keyof TasteMapSettings
-    if (!['appearance', 'learning', 'srs_drafts', 'ai_curation', 'profile_proposals', 'profile_automation', 'recommendation_engine'].includes(key)) return c.json({ error: 'unknown settings key' }, 400)
+    if (!['appearance', 'learning', 'srs_drafts', 'ai_curation', 'profile_proposals', 'profile_automation', 'recommendation_engine', 'atlas'].includes(key)) return c.json({ error: 'unknown settings key' }, 400)
     const current = await loadSettings(c.env.DB)
     const value = await c.req.json()
     const resolved = normalizeSettings({ ...current, [key]: { ...(current[key] as Record<string, unknown>), ...(value && typeof value === 'object' && !Array.isArray(value) ? value : {}) } })

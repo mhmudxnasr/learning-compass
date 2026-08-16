@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
 import { FSRS_SCHEDULER_VERSION, scheduleReview } from '../domain'
+import { generateRecallCardsWithGemini } from '../services/gemini-recall'
 import { loadSettings } from '../services/settings'
 import { buildLearningBalance } from '../services/learning-balance'
 import { recordLearningEvent } from '../services/learning-core'
@@ -118,9 +119,25 @@ app.get('/srs/due', async (c) => {
   c.header('Cache-Control', 'no-store')
   const today = new Date().toISOString().split('T')[0]
   try {
-    const cards = await DB.prepare(
-      "SELECT * FROM srs_cards WHERE due_at <= ? ORDER BY due_at ASC LIMIT 20"
-    ).bind(today).all()
+    const cards = await DB.prepare(`
+      SELECT c.*,
+        COALESCE(
+          (SELECT title FROM notes WHERE id = c.note_id LIMIT 1),
+          (SELECT title FROM notes WHERE recommendation_id = c.recommendation_id AND c.recommendation_id IS NOT NULL LIMIT 1),
+          (SELECT video_title FROM recommendations WHERE id = c.recommendation_id AND c.recommendation_id IS NOT NULL LIMIT 1),
+          'Direct Card'
+        ) as source_title,
+        COALESCE(
+          c.branch,
+          (SELECT branch_id FROM notes WHERE id = c.note_id LIMIT 1),
+          c.topic,
+          'General'
+        ) as branch
+      FROM srs_cards c
+      WHERE c.due_at <= ?
+      ORDER BY c.due_at ASC
+      LIMIT 100
+    `).bind(today).all()
     return c.json({ cards: cards.results || [], count: cards.results?.length || 0, today })
   } catch (err) {
     return c.json(safeError('SRS due failed')(err), 500)
@@ -174,18 +191,107 @@ app.post('/srs/review', async (c) => {
 app.post('/srs/create', async (c) => {
   const { DB } = c.env
   try {
-    const { recommendation_id, question, answer, topic } = await c.req.json<{ recommendation_id?: string; question: string; answer: string; topic?: string }>()
+    const { recommendation_id, note_id, question, answer, topic, branch } = await c.req.json<{ recommendation_id?: string; note_id?: string; question: string; answer: string; topic?: string; branch?: string }>()
     if (!question || !answer) return c.json({ error: 'question and answer required' }, 400)
 
     const id = `card_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     await DB.prepare(`
-      INSERT INTO srs_cards (id, recommendation_id, question, answer, topic, ease_factor, interval_days, repetitions, due_at)
-      VALUES (?, ?, ?, ?, ?, 2.5, 1, 0, date('now'))
-    `).bind(id, recommendation_id || null, question, answer, topic || 'general').run()
+      INSERT INTO srs_cards (id, recommendation_id, note_id, question, answer, topic, branch, ease_factor, interval_days, repetitions, due_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 2.5, 1, 0, date('now'))
+    `).bind(id, recommendation_id || null, note_id || null, question, answer, topic || 'general', branch || null).run()
 
     return c.json({ ok: true, card_id: id })
   } catch (err) {
     return c.json(safeError('Card creation failed')(err), 500)
+  }
+})
+
+// POST /learning/srs/generate — Synchronous direct card generator via Gemini Flash Lite
+app.post('/srs/generate', async (c) => {
+  const { DB } = c.env
+  const apiKey = c.env.GEMINI_API_KEY || c.env.GOOGLE_API_KEY
+  if (!apiKey) {
+    return c.json({ error: 'GEMINI_API_KEY or GOOGLE_API_KEY is not configured in worker secrets' }, 400)
+  }
+
+  try {
+    const { note_id, recommendation_id, content, topic, branch, auto_approve } = await c.req.json<{
+      note_id?: string
+      recommendation_id?: string
+      content?: string
+      topic?: string
+      branch?: string
+      auto_approve?: boolean
+    }>()
+
+    let textToAnalyze = (content || '').trim()
+    let resolvedTopic = topic || 'general'
+    let resolvedBranch = branch || 'General'
+    let resolvedRecId = recommendation_id || null
+    let resolvedNoteTitle: string | null = null
+
+    if (!textToAnalyze && note_id) {
+      const note = await DB.prepare('SELECT * FROM notes WHERE id = ?').bind(note_id).first<any>()
+      if (note) {
+        resolvedRecId = resolvedRecId || note.recommendation_id || null
+        resolvedNoteTitle = note.title
+        if (resolvedBranch === 'General') {
+          resolvedBranch = note.branch_id || 'General'
+        }
+        if (resolvedTopic === 'general') {
+          resolvedTopic = note.title || 'general'
+        }
+        const sections = await DB.prepare('SELECT content FROM note_sections WHERE note_id = ? ORDER BY position ASC').bind(note_id).all<any>()
+        const bodyText = (sections.results || []).map((s) => s.content || '').join('\n\n')
+        textToAnalyze = `${note.title}\n\n${bodyText}`
+      }
+    }
+
+    if (!textToAnalyze && resolvedRecId) {
+      const rec = await DB.prepare('SELECT * FROM recommendations WHERE id = ?').bind(resolvedRecId).first<any>()
+      if (rec) {
+        resolvedNoteTitle = rec.video_title
+        if (resolvedTopic === 'general') {
+          resolvedTopic = rec.video_title || 'general'
+        }
+        textToAnalyze = `${rec.video_title}\n\n${rec.why_this || ''}\n\n${rec.context_brief || ''}\n\n${rec.user_review || ''}`
+      }
+    }
+
+    if (!textToAnalyze || textToAnalyze.length < 20) {
+      return c.json({ error: 'Not enough content provided to generate recall cards' }, 400)
+    }
+
+    const cards = await generateRecallCardsWithGemini(textToAnalyze, apiKey, resolvedTopic, resolvedBranch)
+    if (!cards.length) {
+      return c.json({ ok: true, drafts: [], count: 0, message: 'No atomic recall cards extracted for this source.' })
+    }
+
+    const createdDrafts: any[] = []
+    for (const card of cards) {
+      const draftId = `draft_${crypto.randomUUID()}`
+      const cardBranch = card.branch || resolvedBranch
+      const cardTopic = card.topic || resolvedTopic
+      if (auto_approve) {
+        const cardId = `card_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+        await DB.prepare(`
+          INSERT INTO srs_cards (id, recommendation_id, note_id, question, answer, topic, branch, due_at, scheduler_version)
+          VALUES (?, ?, ?, ?, ?, ?, ?, date('now'), 'fsrs-6-ts-fsrs-5.4.1')
+        `).bind(cardId, resolvedRecId, note_id || null, card.question, card.answer, cardTopic, cardBranch).run()
+        createdDrafts.push({ id: cardId, question: card.question, answer: card.answer, topic: cardTopic, branch: cardBranch, source_title: resolvedNoteTitle || resolvedTopic, status: 'approved' })
+      } else {
+        await DB.prepare(`
+          INSERT INTO srs_drafts (id, recommendation_id, note_id, question, answer, topic, branch, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'draft')
+        `).bind(draftId, resolvedRecId, note_id || null, card.question, card.answer, cardTopic, cardBranch).run()
+        createdDrafts.push({ id: draftId, question: card.question, answer: card.answer, topic: cardTopic, branch: cardBranch, source_title: resolvedNoteTitle || resolvedTopic, status: 'draft' })
+      }
+    }
+
+    return c.json({ ok: true, drafts: createdDrafts, count: createdDrafts.length })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Recall generation failed'
+    return c.json({ error: msg }, 500)
   }
 })
 

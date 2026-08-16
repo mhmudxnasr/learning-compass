@@ -3,7 +3,7 @@ import { api, flushOfflineMutations, formatDate, labelize, listOfflineMutations,
 import { ErrorState, Empty, Loading } from '../components/States'
 import { useData } from '../app/useData'
 import { useRoute } from '../app/router'
-import { THEME_PRESETS, FONT_PRESETS, applyTheme, applyFont, applyDisplayPreferences, getSavedTheme, getSavedFontId, getSavedCustomFont, getSavedCustomPalette, getSavedDisplayPreferences, contrastRatio, extractColorsFromText, normalizeColor, type CustomPalette, type CustomFont, type DisplayPreferences, DEFAULT_CUSTOM_PALETTE, DEFAULT_CUSTOM_FONT } from '../theme'
+import { THEME_PRESETS, FONT_PRESETS, THEME_VARIANTS, applyTheme, applyFont, applyDisplayPreferences, applyTypography, getSavedTheme, getSavedFontId, getSavedCustomFont, getSavedCustomPalette, getSavedDisplayPreferences, getSavedTypography, getSavedThemePair, saveThemePair, contrastRatio, extractColorsFromText, normalizeColor, normalizeCustomFont, type CustomPalette, type CustomFont, type DisplayPreferences, type TypographyPreferences, type ThemePair, DEFAULT_CUSTOM_PALETTE, DEFAULT_CUSTOM_FONT, DEFAULT_TYPOGRAPHY } from '../theme'
 
 export type SettingsView = 'profile' | 'preferences' | 'data' | 'system'
 export type SettingsMode = 'personal' | 'data' | 'system'
@@ -34,7 +34,7 @@ type ProfileRecord = Record<string, any>
 type SettingsPayload = {
   settings?: Record<string, any>
   resolved?: {
-    appearance?: { theme?: string; density?: string; radius?: DisplayPreferences['radius']; font_size?: DisplayPreferences['fontSize']; reduced_motion?: boolean; custom_palette?: CustomPalette; font?: string; custom_font?: { ui?: string; reading?: string; mono?: string } }
+    appearance?: { theme?: string; density?: string; radius?: DisplayPreferences['radius']; font_size?: DisplayPreferences['fontSize']; reduced_motion?: boolean; custom_palette?: CustomPalette; font?: string; custom_font?: { ui?: string; display?: string; reading?: string; mono?: string }; typography?: Partial<TypographyPreferences> }
     learning?: { retention?: number; queue_cap?: number }
     srs_drafts?: { enabled?: boolean; minimum_rating?: number; auto_extract?: boolean }
     ai_curation?: { enrich_capture?: boolean }
@@ -70,6 +70,70 @@ const personalFilters: Array<{ key: SettingsFocus; label: string; description: s
 
 const paletteRoles = ['Brand', 'Surface', 'Highlight', 'Accent']
 
+type VisualPreset = {
+  id: string
+  name: string
+  description: string
+  theme: string
+  font: string
+  typography: TypographyPreferences
+  display: Pick<DisplayPreferences, 'density' | 'radius' | 'fontSize'>
+}
+
+type ThemeBundle = {
+  name: string
+  modes: ThemePair
+  appearance?: {
+    font?: string
+    customFont?: CustomFont
+    typography?: TypographyPreferences
+    density?: DisplayPreferences['density']
+    radius?: DisplayPreferences['radius']
+    fontSize?: DisplayPreferences['fontSize']
+    reducedMotion?: boolean
+    responsiveViewport?: 'auto'
+  }
+}
+
+const VISUAL_PRESETS: VisualPreset[] = [
+  {
+    id: 'focused',
+    name: 'Focused study',
+    description: 'Crisp sans text, generous sizing, and a calm paper surface.',
+    theme: 'botanical',
+    font: 'plex',
+    typography: { ...DEFAULT_TYPOGRAPHY, baseSize: 17, lineHeight: 1.62, readingMeasure: 70 },
+    display: { density: 'balanced', radius: 'soft', fontSize: 'large' },
+  },
+  {
+    id: 'quiet-reading',
+    name: 'Quiet reading',
+    description: 'A warm editorial palette with softer serif-led reading rhythm.',
+    theme: 'sepia',
+    font: 'editorial',
+    typography: { ...DEFAULT_TYPOGRAPHY, baseSize: 18, bodyWeight: 450, headingWeight: 650, lineHeight: 1.72, displayScale: 1.05, readingMeasure: 66 },
+    display: { density: 'comfortable', radius: 'soft', fontSize: 'large' },
+  },
+  {
+    id: 'night-lab',
+    name: 'Night lab',
+    description: 'Dark, high-focus contrast with compact data-friendly controls.',
+    theme: 'midnight',
+    font: 'system',
+    typography: { ...DEFAULT_TYPOGRAPHY, baseSize: 16, bodyWeight: 450, headingWeight: 650, lineHeight: 1.58, readingMeasure: 68 },
+    display: { density: 'compact', radius: 'sharp', fontSize: 'medium' },
+  },
+  {
+    id: 'clear-desk',
+    name: 'Clear desk',
+    description: 'Neutral, fast, and spacious when you want the interface to disappear.',
+    theme: 'indigo',
+    font: 'system',
+    typography: { ...DEFAULT_TYPOGRAPHY, baseSize: 16, lineHeight: 1.6, readingMeasure: 72 },
+    display: { density: 'balanced', radius: 'round', fontSize: 'medium' },
+  },
+]
+
 type ProfileField = { key: string; apiKey: string; readKey?: string; label: string; description: string; structured: boolean }
 
 const profileFields: ProfileField[] = [
@@ -92,6 +156,15 @@ function routeFor(mode: SettingsMode, focus?: SettingsFocus) {
   const query = new URLSearchParams({ mode })
   if (focus) query.set('focus', focus)
   return `#/settings?${query}`
+}
+
+function jumpToPreference(event: MouseEvent, id: string) {
+  event.preventDefault()
+  const target = document.getElementById(id)
+  const canvas = document.querySelector<HTMLElement>('.workspace-canvas')
+  if (!target || !canvas) return
+  const top = target.getBoundingClientRect().top - canvas.getBoundingClientRect().top + canvas.scrollTop - 16
+  canvas.scrollTo({ top, behavior: 'smooth' })
 }
 
 function SettingsModeSwitcher({ active, focus, onRouteChange }: { active: SettingsMode; focus: SettingsFocus; onRouteChange?: (route: SettingsWorkspaceRoute) => void }) {
@@ -245,7 +318,17 @@ function PreferencesView() {
   const [status, setStatus] = useState('')
   const [theme, setTheme] = useState(() => getSavedTheme())
   const [customPalette, setCustomPalette] = useState<CustomPalette>(() => getSavedCustomPalette())
+  const [themePair, setThemePair] = useState<ThemePair>(() => getSavedThemePair())
+  const [themeMode, setThemeMode] = useState<'day' | 'night'>(() => (typeof localStorage !== 'undefined' && localStorage.getItem('taste-map-theme-mode') === 'night' ? 'night' : 'day'))
+  const [paletteHistory, setPaletteHistory] = useState<CustomPalette[]>([])
+  const [paletteFuture, setPaletteFuture] = useState<CustomPalette[]>([])
+  const [variantIndex, setVariantIndex] = useState(0)
+  const [variantGenerating, setVariantGenerating] = useState(false)
+  const [savedThemes, setSavedThemes] = useState<Record<string, ThemeBundle>>(() => {
+    try { return typeof localStorage === 'undefined' ? {} : JSON.parse(localStorage.getItem('taste-map-saved-themes') || '{}') } catch { return {} }
+  })
   const [pasteCodes, setPasteCodes] = useState('')
+  const [promptCopied, setPromptCopied] = useState(false)
   const savedDisplay = getSavedDisplayPreferences()
   const [density, setDensity] = useState<DisplayPreferences['density']>(savedDisplay.density)
   const [radius, setRadius] = useState<DisplayPreferences['radius']>(savedDisplay.radius)
@@ -253,6 +336,8 @@ function PreferencesView() {
   const [reducedMotion, setReducedMotion] = useState(savedDisplay.reducedMotion)
   const [font, setFont] = useState(() => getSavedFontId())
   const [customFont, setCustomFont] = useState<CustomFont>(() => getSavedCustomFont())
+  const [typography, setTypography] = useState<TypographyPreferences>(() => getSavedTypography())
+  const [viewportWidth, setViewportWidth] = useState(() => typeof window === 'undefined' ? 1280 : window.innerWidth)
   const [retention, setRetention] = useState(90)
   const [enrichCapture, setEnrichCapture] = useState(false)
   const [srsEnabled, setSrsEnabled] = useState(true)
@@ -260,13 +345,24 @@ function PreferencesView() {
   const [profileMode, setProfileMode] = useState('automatic')
   const [engineMode, setEngineMode] = useState('shadow')
   const [paletteDirty, setPaletteDirty] = useState(false)
+  const [arrows, setArrows] = useState(true)
+  const [textFade, setTextFade] = useState(-0.7)
+  const [atlasNodeSize, setAtlasNodeSize] = useState(0.58)
+  const [linkThickness, setLinkThickness] = useState(1.16)
+  const [branchLinkThickness, setBranchLinkThickness] = useState(1)
+  const [atlasAnimate, setAtlasAnimate] = useState(true)
+  const [centerForce, setCenterForce] = useState(0.52)
+  const [repelForce, setRepelForce] = useState(10)
+  const [linkForce, setLinkForce] = useState(1)
   const resolved = settings.data?.resolved
   const paletteSaveTimer = useRef<number | null>(null)
+  const typographySaveTimer = useRef<number | null>(null)
 
   useEffect(() => {
     if (!resolved) return
     const currentTheme = (resolved.appearance as any)?.theme || theme
-    const currentPalette = (resolved.appearance as any)?.custom_palette || customPalette
+    const rawPalette = (resolved.appearance as any)?.custom_palette
+    const currentPalette = rawPalette ? { ...customPalette, ...rawPalette, ink: rawPalette.ink && rawPalette.ink !== rawPalette.accent ? rawPalette.ink : (rawPalette.brand || customPalette.ink), map: rawPalette.map || '#3f6e4e' } : customPalette
     setTheme(currentTheme)
     if ((resolved.appearance as any)?.custom_palette) {
       setCustomPalette(currentPalette)
@@ -280,13 +376,19 @@ function PreferencesView() {
     setFontSize(nextFontSize)
     setReducedMotion(nextReducedMotion)
     applyDisplayPreferences({ density: nextDensity, radius: nextRadius, fontSize: nextFontSize, reducedMotion: nextReducedMotion })
+    const resolvedCustomFont = normalizeCustomFont((resolved.appearance as any)?.custom_font)
     if ((resolved.appearance as any)?.font) {
       const resolvedFont = (resolved.appearance as any)?.font
       setFont(resolvedFont)
-      applyFont(resolvedFont, (resolved.appearance as any)?.custom_font)
+      applyFont(resolvedFont, resolvedCustomFont)
     }
     if ((resolved.appearance as any)?.custom_font) {
-      setCustomFont((resolved.appearance as any)?.custom_font)
+      setCustomFont(resolvedCustomFont)
+    }
+    if ((resolved.appearance as any)?.typography) {
+      const nextTypography = { ...getSavedTypography(), ...(resolved.appearance as any).typography }
+      setTypography(nextTypography)
+      applyTypography(nextTypography)
     }
     setRetention(Number(resolved.learning?.retention || 90))
     setEnrichCapture(Boolean(resolved.ai_curation?.enrich_capture))
@@ -294,15 +396,35 @@ function PreferencesView() {
     setAutoExtract(Boolean(resolved.srs_drafts?.auto_extract))
     setProfileMode(resolved.profile_automation?.mode || 'automatic')
     setEngineMode(resolved.recommendation_engine?.mode || 'shadow')
+    const atlas = (resolved as any).atlas || {}
+    setArrows(atlas.arrows ?? true)
+    setTextFade(typeof atlas.text_fade_threshold === 'number' ? atlas.text_fade_threshold : -0.7)
+    setAtlasNodeSize(typeof atlas.node_size === 'number' ? atlas.node_size : 0.58)
+    setLinkThickness(typeof atlas.link_thickness === 'number' ? atlas.link_thickness : 1.16)
+    setBranchLinkThickness(typeof atlas.branch_link_thickness === 'number' ? atlas.branch_link_thickness : 1)
+    setAtlasAnimate(atlas.animate ?? true)
+    setCenterForce(typeof atlas.center_force === 'number' ? atlas.center_force : 0.52)
+    setRepelForce(typeof atlas.repel_force === 'number' ? atlas.repel_force : 10)
+    setLinkForce(typeof atlas.link_force === 'number' ? atlas.link_force : 1)
     document.documentElement.dataset.density = resolved.appearance?.density || 'balanced'
   }, [resolved])
 
   useEffect(() => () => {
     if (paletteSaveTimer.current !== null) window.clearTimeout(paletteSaveTimer.current)
+    if (typographySaveTimer.current !== null) window.clearTimeout(typographySaveTimer.current)
+  }, [])
+
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
   }, [])
 
   if (settings.loading) return <Loading label="Reading preferences" />
   if (settings.error) return <ErrorState message={settings.error} retry={settings.reload} />
+
+  const viewportBoost = viewportWidth >= 1920 ? 14 : viewportWidth >= 1440 ? 8 : 0
+  const effectiveBaseSize = Math.round(typography.baseSize * (1 + viewportBoost / 100) * 10) / 10
 
   const persist = async (key: string, value: unknown, after?: () => void) => {
     setStatus('Saving…')
@@ -333,8 +455,62 @@ function PreferencesView() {
 
   const selectFont = (fontId: string) => {
     setFont(fontId)
-    applyFont(fontId, fontId === 'custom' ? customFont : undefined)
-    persist('appearance', { theme, density, custom_palette: customPalette, font: fontId, custom_font: fontId === 'custom' ? customFont : undefined })
+    const effectiveCustomFont = normalizeCustomFont(customFont)
+    applyFont(fontId, fontId === 'custom' ? effectiveCustomFont : undefined)
+    persist('appearance', { theme, density, custom_palette: customPalette, font: fontId, custom_font: fontId === 'custom' ? effectiveCustomFont : undefined })
+  }
+
+  const applyVisualPreset = (preset: VisualPreset, paletteOverride?: CustomPalette) => {
+    const nextPalette = paletteOverride || (preset.theme === 'custom' ? customPalette : undefined)
+    const nextDisplay = { density: preset.display.density, radius: preset.display.radius, fontSize: preset.display.fontSize, reducedMotion }
+    setTheme(preset.theme)
+    setFont(preset.font)
+    setTypography(preset.typography)
+    setDensity(nextDisplay.density)
+    setRadius(nextDisplay.radius)
+    setFontSize(nextDisplay.fontSize)
+    applyTheme(preset.theme, nextPalette)
+    applyFont(preset.font, preset.font === 'custom' ? customFont : undefined)
+    applyTypography(preset.typography)
+    applyDisplayPreferences(nextDisplay)
+    persist('appearance', {
+      theme: preset.theme,
+      density: nextDisplay.density,
+      radius: nextDisplay.radius,
+      font_size: nextDisplay.fontSize,
+      reduced_motion: reducedMotion,
+      custom_palette: nextPalette || customPalette,
+      font: preset.font,
+      custom_font: preset.font === 'custom' ? customFont : undefined,
+      typography: preset.typography,
+    })
+  }
+
+  const surpriseMe = async () => {
+    const choices = VISUAL_PRESETS.filter((preset) => preset.theme !== theme || preset.font !== font)
+    const preset = choices[Math.floor(Math.random() * choices.length)] || VISUAL_PRESETS[0]
+    setVariantGenerating(true)
+    try {
+      const generated = await api<{ day?: CustomPalette; night?: CustomPalette }>('/ai/theme-variants', { method: 'POST', body: JSON.stringify({ current: customPalette, mode: themeMode }) })
+      const generatedPalette = generated.day && generated.night ? generated[themeMode] : undefined
+      if (generated.day && generated.night) {
+        const nextPair = { day: generated.day, night: generated.night }
+        setThemePair(nextPair)
+        saveThemePair(nextPair)
+        setCustomPalette(generatedPalette || customPalette)
+        applyVisualPreset({ ...preset, theme: 'custom' }, generatedPalette)
+        setStatus(`Gemini remixed your palette with ${preset.name.toLowerCase()}`)
+      } else {
+        applyVisualPreset(preset)
+        setStatus(`${preset.name} applied`)
+      }
+    } catch {
+      applyVisualPreset(preset)
+      setStatus(`${preset.name} applied`)
+    } finally {
+      setVariantGenerating(false)
+      window.setTimeout(() => setStatus(''), 2400)
+    }
   }
 
   const updateCustomFont = (key: keyof CustomFont, value: string) => {
@@ -344,27 +520,202 @@ function PreferencesView() {
     persist('appearance', { theme, density, custom_palette: customPalette, font: 'custom', custom_font: next })
   }
 
-  const updateCustomColor = (key: keyof CustomPalette, value: string) => {
-    const nextPalette = { ...customPalette, [key]: value }
+  const updateTypography = (key: keyof TypographyPreferences, value: number) => {
+    const next = { ...typography, [key]: value }
+    setTypography(next)
+    applyTypography(next)
+    if (typographySaveTimer.current !== null) window.clearTimeout(typographySaveTimer.current)
+    setStatus('Applying type…')
+    typographySaveTimer.current = window.setTimeout(() => {
+      persist('appearance', { theme, density, radius, font_size: fontSize, reduced_motion: reducedMotion, custom_palette: customPalette, font, custom_font: font === 'custom' ? customFont : undefined, typography: next })
+    }, 280)
+  }
+
+  const resetTypography = () => {
+    if (typographySaveTimer.current !== null) window.clearTimeout(typographySaveTimer.current)
+    setTypography(DEFAULT_TYPOGRAPHY)
+    applyTypography(DEFAULT_TYPOGRAPHY)
+    persist('appearance', { theme, density, radius, font_size: fontSize, reduced_motion: reducedMotion, custom_palette: customPalette, font, custom_font: font === 'custom' ? customFont : undefined, typography: DEFAULT_TYPOGRAPHY })
+  }
+
+  const commitPalette = (nextPalette: CustomPalette, record = true) => {
+    if (record) {
+      setPaletteHistory((items) => [...items.slice(-19), customPalette])
+      setPaletteFuture([])
+    }
     setCustomPalette(nextPalette)
+    const nextPair = { ...themePair, [themeMode]: nextPalette } as ThemePair
+    setThemePair(nextPair)
+    saveThemePair(nextPair)
     setTheme('custom')
     applyTheme('custom', nextPalette)
     savePalette(nextPalette)
   }
 
+  const switchThemeMode = (mode: 'day' | 'night') => {
+    setThemeMode(mode)
+    try { localStorage.setItem('taste-map-theme-mode', mode) } catch {}
+    const nextPalette = themePair[mode]
+    setCustomPalette(nextPalette)
+    applyTheme('custom', nextPalette)
+    persist('appearance', { theme: 'custom', density, custom_palette: nextPalette })
+  }
+
+  const generateVariant = async (direction = 1) => {
+    setVariantGenerating(true)
+    try {
+      const generated = await api<{ day?: CustomPalette; night?: CustomPalette; model?: string }>('/ai/theme-variants', { method: 'POST', body: JSON.stringify({ current: customPalette, mode: themeMode }) })
+      if (generated.day && generated.night) {
+        const nextPair = { day: generated.day, night: generated.night }
+        setThemePair(nextPair)
+        saveThemePair(nextPair)
+        commitPalette(nextPair[themeMode])
+        setThemePair(nextPair)
+        saveThemePair(nextPair)
+        setStatus(`Gemini theme applied${generated.model ? ` · ${generated.model}` : ''}`)
+        window.setTimeout(() => setStatus(''), 2200)
+        setVariantGenerating(false)
+        return
+      }
+    } catch { /* use the instant local variant when Gemini is unavailable */ }
+    const nextIndex = (variantIndex + direction + THEME_VARIANTS.length) % THEME_VARIANTS.length
+    const variant = THEME_VARIANTS[nextIndex]
+    setVariantIndex(nextIndex)
+    const nextPair = { day: variant.day, night: variant.night }
+    setThemePair(nextPair)
+    saveThemePair(nextPair)
+    commitPalette(nextPair[themeMode])
+    setThemePair(nextPair)
+    saveThemePair(nextPair)
+    setStatus(`${variant.name} variant applied`)
+    window.setTimeout(() => setStatus(''), 1800)
+    setVariantGenerating(false)
+  }
+
+  const undoPalette = () => {
+    const previous = paletteHistory[paletteHistory.length - 1]
+    if (!previous) return
+    setPaletteHistory((items) => items.slice(0, -1))
+    setPaletteFuture((items) => [...items, customPalette])
+    commitPalette(previous, false)
+  }
+
+  const redoPalette = () => {
+    const next = paletteFuture[paletteFuture.length - 1]
+    if (!next) return
+    setPaletteFuture((items) => items.slice(0, -1))
+    setPaletteHistory((items) => [...items, customPalette])
+    commitPalette(next, false)
+  }
+
+  const copyThemeJson = async () => {
+    const effectiveCustomFont = normalizeCustomFont(customFont)
+    await navigator.clipboard.writeText(JSON.stringify({ name: 'Learning Compass visual system', modes: themePair, appearance: { font, customFont: effectiveCustomFont, typography, density, radius, fontSize, reducedMotion, responsiveViewport: 'auto' } }, null, 2))
+    setStatus('Visual system JSON copied — includes colors, fonts, typography, and interface settings')
+    window.setTimeout(() => setStatus(''), 1600)
+  }
+
+  const exportTheme = () => {
+    const effectiveCustomFont = normalizeCustomFont(customFont)
+    const blob = new Blob([JSON.stringify({ name: 'Learning Compass visual system', modes: themePair, appearance: { font, customFont: effectiveCustomFont, typography, density, radius, fontSize, reducedMotion, responsiveViewport: 'auto' } }, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a'); link.href = url; link.download = 'learning-compass-theme.json'; link.click(); URL.revokeObjectURL(url)
+  }
+
+  const applyThemeJson = (parsed: any) => {
+    const imported: ThemePair = {
+      day: { ...DEFAULT_CUSTOM_PALETTE, ...(parsed?.modes?.day || parsed?.day || {}) },
+      night: { ...DEFAULT_CUSTOM_PALETTE, ...(parsed?.modes?.night || parsed?.night || {}) },
+    }
+    const appearance = parsed?.appearance || {}
+    setThemePair(imported)
+    saveThemePair(imported)
+    const nextPalette = imported[themeMode]
+    const nextFont = typeof appearance.font === 'string' ? appearance.font : font
+    const nextCustomFont = normalizeCustomFont(appearance.customFont || customFont)
+    const nextTypography = { ...typography, ...(appearance.typography || {}) }
+    const nextDisplay = { density: appearance.density || density, radius: appearance.radius || radius, fontSize: appearance.fontSize || fontSize, reducedMotion: typeof appearance.reducedMotion === 'boolean' ? appearance.reducedMotion : reducedMotion }
+    setCustomPalette(nextPalette); setTheme('custom'); applyTheme('custom', nextPalette)
+    setFont(nextFont); setCustomFont(nextCustomFont); setTypography(nextTypography)
+    setDensity(nextDisplay.density); setRadius(nextDisplay.radius); setFontSize(nextDisplay.fontSize); setReducedMotion(nextDisplay.reducedMotion)
+    applyFont(nextFont, nextFont === 'custom' ? nextCustomFont : undefined); applyTypography(nextTypography); applyDisplayPreferences(nextDisplay)
+    persist('appearance', { theme: 'custom', density: nextDisplay.density, radius: nextDisplay.radius, font_size: nextDisplay.fontSize, reduced_motion: nextDisplay.reducedMotion, custom_palette: nextPalette, font: nextFont, custom_font: nextFont === 'custom' ? nextCustomFont : undefined, typography: nextTypography })
+    return Boolean(appearance.font || appearance.customFont || appearance.typography || appearance.density || appearance.radius || appearance.fontSize || appearance.reducedMotion !== undefined)
+  }
+
+  const importTheme = async (file?: File) => {
+    if (!file) return
+    try {
+      const fullSystem = applyThemeJson(JSON.parse(await file.text()))
+      setStatus(fullSystem ? 'Visual system imported — colors, fonts, type, and interface settings applied' : 'Palette imported — use a full visual-system JSON to include fonts and type')
+      window.setTimeout(() => setStatus(''), 1600)
+    } catch { setStatus('That file is not a valid theme JSON.') }
+  }
+
+  const saveNamedTheme = () => {
+    const name = window.prompt('Name this theme')?.trim()
+    if (!name) return
+    const next = { ...savedThemes, [name]: { name, modes: themePair, appearance: { font, customFont, typography, density, radius, fontSize, reducedMotion, responsiveViewport: 'auto' as const } } }
+    setSavedThemes(next)
+    try { localStorage.setItem('taste-map-saved-themes', JSON.stringify(next)) } catch {}
+    setStatus(`Saved “${name}”`)
+    window.setTimeout(() => setStatus(''), 1600)
+  }
+
+  const loadNamedTheme = (name: string) => {
+    const saved = savedThemes[name]
+    if (!saved) return
+    const pair = (saved as ThemeBundle).modes || (saved as unknown as ThemePair)
+    const appearance = (saved as ThemeBundle).appearance || {}
+    const nextPalette = pair[themeMode]
+    setThemePair(pair); saveThemePair(pair); setCustomPalette(nextPalette); setTheme('custom'); applyTheme('custom', nextPalette)
+    if (appearance.font) { setFont(appearance.font); applyFont(appearance.font, appearance.font === 'custom' ? appearance.customFont : undefined) }
+    const nextCustomFont = normalizeCustomFont(appearance.customFont || customFont)
+    if (appearance.customFont) setCustomFont(nextCustomFont)
+    if (appearance.typography) { setTypography(appearance.typography); applyTypography(appearance.typography) }
+    const nextDisplay = { density: appearance.density || density, radius: appearance.radius || radius, fontSize: appearance.fontSize || fontSize, reducedMotion: typeof appearance.reducedMotion === 'boolean' ? appearance.reducedMotion : reducedMotion }
+    setDensity(nextDisplay.density); setRadius(nextDisplay.radius); setFontSize(nextDisplay.fontSize); setReducedMotion(nextDisplay.reducedMotion); applyDisplayPreferences(nextDisplay)
+    persist('appearance', { theme: 'custom', density: nextDisplay.density, radius: nextDisplay.radius, font_size: nextDisplay.fontSize, reduced_motion: nextDisplay.reducedMotion, custom_palette: nextPalette, font: appearance.font || font, custom_font: nextCustomFont, typography: appearance.typography || typography })
+    setStatus(`Applied “${name}”`)
+  }
+
+  const updateCustomColor = (key: keyof CustomPalette, value: string) => {
+    commitPalette({ ...customPalette, [key]: value })
+  }
+
   const handleApplyPastedCodes = () => {
+    const pasted = pasteCodes.trim()
+    if (pasted.startsWith('{')) {
+      try {
+        const fullSystem = applyThemeJson(JSON.parse(pasted))
+        setStatus(fullSystem ? 'Visual system applied — colors, fonts, type, and interface settings updated' : 'JSON palette applied — add an appearance object to change fonts and type')
+      } catch {
+        setStatus('That JSON is not valid. Paste a complete visual-system JSON or color codes.')
+      }
+      window.setTimeout(() => setStatus(''), 2200)
+      return
+    }
     const extracted = extractColorsFromText(pasteCodes)
     if (extracted.length === 0) {
       setStatus('No valid HEX or RGB color codes found.')
       window.setTimeout(() => setStatus(''), 2000)
       return
     }
-    const brand = extracted[0] || customPalette.brand
-    const shell = extracted[1] || customPalette.shell
-    const highlight = extracted[2] || customPalette.highlight
-    const accent = extracted[3] || customPalette.accent
-    const ink = extracted[4] || customPalette.ink
-    const nextPalette: CustomPalette = { brand, shell, highlight, accent, ink }
+    const [brand, shell, surface, highlight, accent, ink, rail, seam, due, danger, map] = extracted
+    const nextPalette: CustomPalette = {
+      ...customPalette,
+      brand: brand || customPalette.brand,
+      shell: shell || customPalette.shell,
+      surface: surface || customPalette.surface,
+      highlight: highlight || customPalette.highlight,
+      accent: accent || customPalette.accent,
+      ink: ink || brand || customPalette.brand,
+      rail: rail || customPalette.rail,
+      seam: seam || customPalette.seam,
+      due: due || customPalette.due,
+      danger: danger || customPalette.danger,
+      map: map || customPalette.map || '#3f6e4e',
+    }
     setCustomPalette(nextPalette)
     setTheme('custom')
     applyTheme('custom', nextPalette)
@@ -372,6 +723,30 @@ function PreferencesView() {
     setStatus(`Applied ${extracted.length} color code${extracted.length > 1 ? 's' : ''}!`)
     window.setTimeout(() => setStatus(''), 2000)
   }
+
+  const copyThemePrompt = async () => {
+    const paletteBrief = Object.entries(customPalette).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`).join(', ')
+    const effectiveCustomFont = normalizeCustomFont(customFont)
+    const prompt = `Act as an award-winning visual designer for Learning Compass, a calm Botanical Folio / Evidence Ledger learning workspace. Create a fresh, genuinely distinctive theme from this brief: ${paletteBrief || 'no colors selected yet'}. Every run must invent a different creative direction and independently choose either DAY or NIGHT mode. Explore unusual but coherent combinations: editorial paper, mineral, ink, botanical, astronomical, lacquer, desert, coastal, or another strong art direction. Keep the palette intentional, restrained, and production-ready; no muddy near-duplicates, accidental brown swaps, generic SaaS blue, gradients, or neon unless the concept truly requires it. Preserve WCAG AA contrast (4.5:1 minimum) for ink on shell/surface and make rail, seams, due, danger, and map unmistakable.
+
+OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code per line, with no labels, no bullets, no markdown fences, no prose, no mode name, and no extra blank lines. The order is: brand, shell, surface, highlight, accent, ink, rail, seam, due, danger, map. Each line must match ^#[0-9A-F]{6}$; return exactly 11 lines and nothing else.`
+    const fullPrompt = [
+      'Act as an award-winning visual designer for Learning Compass. Create a complete visual system, not only a color palette.',
+      `Current visual system: palette ${paletteBrief || 'none'}; font preset ${font}; UI/body stack ${effectiveCustomFont.ui}; display/headings stack ${effectiveCustomFont.display}; reading/long-form stack ${effectiveCustomFont.reading}; mono/code-and-evidence stack ${effectiveCustomFont.mono}.`,
+      `Global typography settings: ${typography.baseSize}px base size; body weight ${typography.bodyWeight}; heading weight ${typography.headingWeight}; line height ${typography.lineHeight}; letter spacing ${typography.letterSpacing}em; display scale ${typography.displayScale}x; reading width ${typography.readingMeasure}ch. Global interface settings: ${density} density, ${radius} radius, ${fontSize} font size, reduced motion ${reducedMotion}. Responsive scaling is automatic: +8% from 1440px and +14% from 1920px; mobile stays at the selected size.`,
+      'Return a complete visual system that the Learning Compass importer can apply globally across Home, Library, Learn, Map, and Settings. The font field selects the active font system; when font is custom, all four customFont stacks must be populated and usable. The typography object controls the whole site, not only this settings preview. Use web-loadable font families or robust fallbacks; never return undefined or blank stacks. For Arabic, include Noto Sans Arabic or Noto Naskh Arabic. Berkeley Mono is local-only and must include IBM Plex Mono, JetBrains Mono, or ui-monospace as fallback. Preserve the Botanical Folio / Evidence Ledger identity, WCAG AA contrast, and a 45–75ch reading measure. Return only valid JSON with no markdown or prose.',
+      'Schema: {"name":"short name","modes":{"day":{11 color keys},"night":{11 color keys}},"appearance":{"font":"plex|system|editorial|terminal|custom","customFont":{"ui":"font stack for body and interface","display":"font stack for headings","reading":"font stack for long-form reading","mono":"font stack for code metadata and evidence"},"typography":{"baseSize":16,"bodyWeight":400,"headingWeight":600,"lineHeight":1.55,"letterSpacing":0,"displayScale":1,"readingMeasure":68},"density":"comfortable|balanced|compact","radius":"sharp|soft|round","fontSize":"small|medium|large","reducedMotion":false,"responsiveViewport":"auto"}}. Use uppercase #RRGGBB values for brand, shell, surface, highlight, accent, ink, rail, seam, due, danger, and map in both modes.'
+    ].join('\n')
+    try {
+      await navigator.clipboard.writeText(fullPrompt)
+      setPromptCopied(true)
+      window.setTimeout(() => setPromptCopied(false), 1800)
+    } catch {
+      setStatus('Copy was blocked by the browser. Select the prompt manually.')
+    }
+  }
+
+  const saveAtlas = (patch: Record<string, unknown>) => persist('atlas', patch)
 
   const saveDisplay = (next: Partial<DisplayPreferences>) => {
     const value = { density, radius, fontSize, reducedMotion, ...next }
@@ -387,15 +762,40 @@ function PreferencesView() {
 
   const saveLearning = (value: number) => { setRetention(value); persist('learning', { retention: value, queue_cap: 5 }) }
   const saveSrs = (next: Partial<{ enabled: boolean; auto_extract: boolean }>) => { const current = { enabled: srsEnabled, minimum_rating: 7, auto_extract: autoExtract, ...next }; setSrsEnabled(current.enabled); setAutoExtract(current.auto_extract); persist('srs_drafts', current) }
+  const activePreset = VISUAL_PRESETS.find((preset) => preset.theme === theme && preset.font === font && preset.display.density === density && preset.display.fontSize === fontSize)
+  const activeFontPreset = FONT_PRESETS.find((preset) => preset.id === font)
 
   return <div class="settings-page">
     <section class="settings-intro">
-      <span class="eyebrow">Settings / Preferences</span>
       <h1>Make the learning loop fit you</h1>
-      <p>Preferences are stored in the canonical settings record and applied to future captures, queue decisions, profile learning, and recall.</p>
+      <p>Start with a complete visual preset, then fine-tune the details. Every change applies immediately and saves automatically.</p>
     </section>
 
-    <section class="theme-section">
+    <section class="settings-active-system" aria-label="Active visual system">
+      <div><span class="settings-active-label">Active visual system</span><strong>{activePreset?.name || 'Custom tuning'}</strong><small>{activeFontPreset?.name || (font === 'custom' ? 'Custom font stacks' : font)} · {effectiveBaseSize}px effective body · {density} density</small></div>
+       <nav class="settings-jump-nav" aria-label="Preference sections"><a href="#visual-presets-heading" onClick={(event) => jumpToPreference(event, 'visual-presets-heading')}>Presets</a><a href="#theme-section" onClick={(event) => jumpToPreference(event, 'theme-section')}>Palette</a><a href="#font-section" onClick={(event) => jumpToPreference(event, 'font-section')}>Fonts</a><a href="#type-controls" onClick={(event) => jumpToPreference(event, 'type-controls')}>Type</a><a href="#interface-tokens" onClick={(event) => jumpToPreference(event, 'interface-tokens')}>Interface</a></nav>
+    </section>
+
+    <section class="visual-presets-section" aria-labelledby="visual-presets-heading" id="visual-presets-heading">
+      <div class="section-head">
+        <div><h2 id="visual-presets-heading">Choose your reading mood</h2><p class="section-description">Each preset updates the theme, font, size, spacing, and density together.</p></div>
+        <button type="button" class="btn-surprise" onClick={surpriseMe} disabled={variantGenerating}>{variantGenerating ? 'Gemini is remixing…' : 'Surprise me'}</button>
+      </div>
+      <div class="visual-presets-grid">
+        {VISUAL_PRESETS.map((preset) => {
+          const themePreset = THEME_PRESETS.find((item) => item.id === preset.theme)
+          const fontPreset = FONT_PRESETS.find((item) => item.id === preset.font)
+          const isActive = activePreset?.id === preset.id
+          return <button type="button" class={`visual-preset-card${isActive ? ' active' : ''}`} aria-pressed={isActive} key={preset.id} onClick={() => applyVisualPreset(preset)}>
+            <span class="visual-preset-swatch" aria-hidden="true">{themePreset?.swatches.map((color) => <i key={color} style={{ background: color }} />)}</span>
+            <span class="visual-preset-copy"><strong>{preset.name}</strong><small>{preset.description}</small><em>{fontPreset?.name} · {preset.typography.baseSize}px · {preset.display.fontSize}</em></span>
+          </button>
+        })}
+      </div>
+      {status && <output class="settings-status" aria-live="polite">{status}</output>}
+    </section>
+
+    <section class="theme-section" id="theme-section">
       <div class="section-head">
         <h2>Color Palette & Themes</h2>
         <span>Curated presets or enter your own custom codes</span>
@@ -419,7 +819,6 @@ function PreferencesView() {
                 ))}
               </div>
             </div>
-            <div class="theme-preset-roles" aria-hidden="true">{paletteRoles.map((role) => <span key={role}>{role}</span>)}</div>
             <p class="theme-preset-desc"><span class={`theme-preset-mode mode-${preset.mode}`}>{preset.mode === 'dark' ? 'Dark' : 'Day'}</span>{preset.description}</p>
           </button>
         ))}
@@ -440,7 +839,6 @@ function PreferencesView() {
               <span class="theme-swatch" style={{ background: customPalette.accent }} />
             </div>
           </div>
-          <div class="theme-preset-roles" aria-hidden="true">{paletteRoles.map((role) => <span key={role}>{role}</span>)}</div>
           <p class="theme-preset-desc">Enter any HEX or RGB codes to customize your site colors anytime.</p>
         </button>
       </div>
@@ -449,28 +847,50 @@ function PreferencesView() {
         <div class="custom-palette-panel">
           <div class="custom-palette-header">
             <div>
-              <h3>Custom Palette Codes</h3>
-              <p>Paste HEX (<code>#1D4533</code>) or RGB (<code>rgb(29, 69, 51)</code>) codes below, or tweak each shade directly.</p>
+              <h3>Custom visual system</h3>
+          <p>This controls the whole studio, not only the colors. The visual-system JSON includes day/night palettes, UI and display fonts, reading and mono fonts, typography, density, radius, font size, motion, and responsive scaling.</p>
             </div>
+            <button type="button" class="palette-prompt-button" onClick={copyThemePrompt} title="Copy a prompt for another AI to generate the full visual system" aria-label="Copy full visual system prompt">{promptCopied ? 'Copied' : 'Copy full AI prompt'}</button>
+      </div>
+      <div class="theme-json-explainer" role="note">
+        <strong>What the JSON changes</strong>
+        <span>Importing it applies the complete visual system globally across Home, Library, Learn, Map, and Settings. Font names control the actual font roles; typography controls size, weight, spacing, line height, display scale, and reading width.</span>
+        <small>Use web-loadable fonts or include fallbacks. Local fonts such as Berkeley Mono work only when installed on this device.</small>
+      </div>
+      <div class="theme-workshop-toolbar" aria-label="Theme workshop controls">
+            <div class="theme-mode-switch" role="group" aria-label="Theme mode">
+              <button type="button" class={themeMode === 'day' ? 'active' : ''} onClick={() => switchThemeMode('day')}>Day</button>
+              <button type="button" class={themeMode === 'night' ? 'active' : ''} onClick={() => switchThemeMode('night')}>Night</button>
+            </div>
+            <button type="button" class="btn-secondary" onClick={() => generateVariant(-1)} disabled={variantGenerating}>Previous variant</button>
+            <button type="button" class="btn-apply" onClick={() => generateVariant(1)} disabled={variantGenerating}>{variantGenerating ? 'Gemini is designing…' : 'Generate variant'}</button>
+            <button type="button" class="btn-secondary" onClick={surpriseMe} disabled={variantGenerating}>Surprise me</button>
+            <button type="button" class="btn-secondary" onClick={undoPalette} disabled={!paletteHistory.length}>Undo</button>
+            <button type="button" class="btn-secondary" onClick={redoPalette} disabled={!paletteFuture.length}>Redo</button>
+            <button type="button" class="btn-secondary" onClick={copyThemeJson} title="Copy colors, fonts, typography, and interface settings">Copy visual system JSON</button>
+            <button type="button" class="btn-secondary" onClick={exportTheme} title="Download the complete visual system">Export visual system JSON</button>
+            <label class="theme-import-button" title="Apply colors, fonts, typography, and interface settings across the studio">Import visual system JSON<input type="file" accept="application/json" onChange={(event) => importTheme((event.target as HTMLInputElement).files?.[0])} /></label>
+            <button type="button" class="btn-secondary" onClick={saveNamedTheme}>Save snapshot</button>
+            {Object.keys(savedThemes).length > 0 && <select class="theme-saved-select" aria-label="Saved themes" value="" onChange={(event) => loadNamedTheme((event.target as HTMLSelectElement).value)}><option value="">Saved themes…</option>{Object.keys(savedThemes).map((name) => <option value={name} key={name}>{name}</option>)}</select>}
           </div>
 
           <div class="custom-palette-paste-box">
             <textarea
-              aria-label="Paste color codes"
-              placeholder={`Paste any color codes, for example:\n#1D4533\n#F7EAE0\n#F9D2BA\n#5E3122\nrgb(29, 69, 51)`}
+              aria-label="Paste color codes or visual-system JSON"
+              placeholder={`Paste 11 color codes or a complete visual-system JSON. JSON applies colors, fonts, typography, and interface settings.`}
               value={pasteCodes}
               onInput={(e) => setPasteCodes((e.target as HTMLTextAreaElement).value)}
               rows={3}
             />
             <div class="custom-palette-actions">
               <button type="button" class="btn-apply" onClick={handleApplyPastedCodes}>
-                Apply Pasted Codes
+                Apply Colors or JSON
               </button>
               <button
                 type="button"
                 class="btn-secondary"
                 onClick={() => {
-                  setPasteCodes(`#1D4533\n#F7EAE0\n#F9D2BA\n#5E3122\nrgb(29, 69, 51)`)
+                  setPasteCodes(`#1D4533\n#F7EAE0\n#FFFFFF\n#F9D2BA\n#5E3122\n#1D4533\n#133325\n#DEDAD0\n#874606\n#9C2E21\n#3F6E4E`)
                 }}
               >
                 Insert Sample Codes
@@ -491,7 +911,7 @@ function PreferencesView() {
 
           <div class="custom-palette-fields">
             <div class="custom-color-item">
-              <label for="color-brand">Primary / Brand</label>
+              <label for="color-brand">Brand</label>
               <div class="custom-color-input-group">
                 <input
                   id="color-brand-picker"
@@ -510,7 +930,7 @@ function PreferencesView() {
             </div>
 
             <div class="custom-color-item">
-              <label for="color-shell">Background / Shell</label>
+              <label for="color-shell">Shell</label>
               <div class="custom-color-input-group">
                 <input
                   id="color-shell-picker"
@@ -529,7 +949,7 @@ function PreferencesView() {
             </div>
 
             <div class="custom-color-item">
-              <label for="color-surface">Surface / Cards</label>
+              <label for="color-surface">Surface</label>
               <div class="custom-color-input-group">
                 <input id="color-surface-picker" type="color" value={normalizeColor(customPalette.surface || customPalette.shell, '#FFFFFF')} onInput={(e) => updateCustomColor('surface', (e.target as HTMLInputElement).value)} />
                 <input id="color-surface" type="text" value={customPalette.surface || ''} onInput={(e) => updateCustomColor('surface', (e.target as HTMLInputElement).value)} placeholder="#FFFFFF or rgb(255, 255, 255)" />
@@ -537,7 +957,7 @@ function PreferencesView() {
             </div>
 
             <div class="custom-color-item">
-              <label for="color-highlight">Badge / Highlight</label>
+              <label for="color-highlight">Highlight</label>
               <div class="custom-color-input-group">
                 <input
                   id="color-highlight-picker"
@@ -556,7 +976,7 @@ function PreferencesView() {
             </div>
 
             <div class="custom-color-item">
-              <label for="color-accent">Secondary / Earth</label>
+              <label for="color-accent">Accent</label>
               <div class="custom-color-input-group">
                 <input
                   id="color-accent-picker"
@@ -575,12 +995,12 @@ function PreferencesView() {
             </div>
 
             <div class="custom-color-item">
-              <label for="color-ink">Text / Ink</label>
+              <label for="color-ink">Ink</label>
               <div class="custom-color-input-group">
                 <input
                   id="color-ink-picker"
                   type="color"
-                  value={normalizeColor(customPalette.ink || '#2B170F', '#2B170F')}
+                  value={normalizeColor(customPalette.ink || customPalette.brand, customPalette.brand)}
                   onInput={(e) => updateCustomColor('ink', (e.target as HTMLInputElement).value)}
                 />
                 <input
@@ -592,18 +1012,48 @@ function PreferencesView() {
                 />
               </div>
             </div>
+
+            {([
+              ['rail', 'Rail', '#133325'],
+              ['seam', 'Seam', '#DEDAD0'],
+              ['due', 'Due', '#874606'],
+              ['danger', 'Danger', '#9C2E21'],
+              ['map', 'Map', '#3F6E4E'],
+            ] as const).map(([key, label, fallback]) => <div class="custom-color-item" key={key}>
+              <label for={`color-${key}`}>{label}</label>
+              <div class="custom-color-input-group">
+                <input id={`color-${key}-picker`} type="color" value={normalizeColor(customPalette[key] || fallback, fallback)} onInput={(e) => updateCustomColor(key, (e.target as HTMLInputElement).value)} />
+                <input id={`color-${key}`} type="text" value={customPalette[key] || ''} onInput={(e) => updateCustomColor(key, (e.target as HTMLInputElement).value)} placeholder={`${fallback} or rgb(...)`} />
+              </div>
+            </div>)}
           </div>
           {(() => {
             const background = customPalette.surface || customPalette.shell
-            const ratio = contrastRatio(customPalette.ink || customPalette.accent, background)
-            return ratio !== null && ratio < 4.5 ? <p class="theme-contrast-warning" role="alert">Text contrast is {ratio.toFixed(1)}:1 on the selected surface. Choose darker text or a lighter surface for comfortable reading. Semantic status colors remain protected.</p> : <p class="theme-contrast-ok" role="status">Text contrast passes the 4.5:1 readability target on the selected surface.</p>
+            const checks = [
+              ['Ink / surface', customPalette.ink || customPalette.brand, background],
+              ['Ink / shell', customPalette.ink || customPalette.brand, customPalette.shell],
+              ['Rail / brand', customPalette.rail || customPalette.brand, customPalette.brand],
+              ['Map / canvas', customPalette.map || '#3F6E4E', background],
+            ]
+            return <div class="theme-contrast-grid">{checks.map(([label, foreground, backdrop]) => {
+              const ratio = contrastRatio(foreground, backdrop)
+              const pass = ratio !== null && ratio >= 4.5
+              return <span class={pass ? 'contrast-pass' : 'contrast-fail'} key={label}><strong>{label}</strong><small>{ratio === null ? 'Invalid color' : `${ratio.toFixed(1)}:1 · ${pass ? 'Pass' : 'Review'}`}</small></span>
+            })}</div>
           })()}
+          <div class="theme-token-map" aria-label="Theme token usage">
+            <span><strong>Brand</strong><small>primary actions · focus</small></span>
+            <span><strong>Rail</strong><small>navigation</small></span>
+            <span><strong>Seam</strong><small>borders · dividers</small></span>
+            <span><strong>Due / Danger</strong><small>status feedback</small></span>
+            <span><strong>Map</strong><small>atlas links · branches</small></span>
+          </div>
           <p class="theme-palette-save-note" aria-live="polite">{paletteDirty ? 'Saving palette changes…' : 'Palette changes save automatically.'}</p>
         </div>
       )}
     </section>
 
-    <section class="font-section">
+    <section class="font-section" id="font-section">
       <div class="section-head">
         <h2>Fonts & Typography</h2>
         <span>Interface, reading, and code faces</span>
@@ -644,7 +1094,7 @@ function PreferencesView() {
         <div class="custom-font-panel">
           <div class="custom-font-header">
             <h3>Custom Font Stacks</h3>
-            <p>Paste CSS <code>font-family</code> stacks below. Any Google Font name is loaded automatically — no install needed.</p>
+            <p>These four stacks control the whole studio. Interface is body text, Display is headings, Reading is long-form content, and Mono is code, metadata, and evidence labels. Google Font names load automatically; local-only faces need a reliable fallback.</p>
           </div>
           <div class="custom-font-fields">
             <label>
@@ -657,7 +1107,16 @@ function PreferencesView() {
               />
             </label>
             <label>
-              <span>Reading / Display</span>
+              <span>Display / Headings</span>
+              <input
+                type="text"
+                value={customFont.display}
+                onInput={(e) => updateCustomFont('display', (e.target as HTMLInputElement).value)}
+                placeholder='"IBM Plex Serif", Georgia, serif'
+              />
+            </label>
+            <label>
+              <span>Reading / Long-form</span>
               <input
                 type="text"
                 value={customFont.reading}
@@ -675,7 +1134,7 @@ function PreferencesView() {
               />
             </label>
           </div>
-          <p class="custom-font-hint">Try: Inter, Space Grotesk, Fraunces, Playfair Display, JetBrains Mono, DM Serif Display.</p>
+          <p class="custom-font-hint">Try: Inter, Space Grotesk, Fraunces, Playfair Display, IBM Plex Mono, JetBrains Mono, Noto Sans Arabic, Noto Naskh Arabic.</p>
           <div class="custom-font-actions">
             <button
               type="button"
@@ -693,12 +1152,55 @@ function PreferencesView() {
       )}
     </section>
 
-    <section>
+    <section class="typography-controls-section" id="type-controls">
+      <div class="section-head"><div><h2>Type controls</h2><p class="section-description">These settings apply to the whole studio independently from the font family. Changes apply instantly and save automatically.</p><p class="type-responsive-note"><strong>{effectiveBaseSize}px effective body size</strong> · {viewportBoost ? `wide-screen comfort adds ${viewportBoost}% at ${viewportWidth}px` : 'mobile and standard desktop use your selected size'} · reading measure stays {typography.readingMeasure}ch</p></div><button type="button" class="btn-secondary" onClick={resetTypography}>Reset type</button></div>
+      <div class="typography-layout">
+        <div class="typography-controls">
+          {([
+            ['baseSize', 'Base size', 'Interface text scale', 14, 20, 1, 'px'],
+            ['bodyWeight', 'Body weight', 'Reading comfort and density', 350, 700, 10, ''],
+            ['headingWeight', 'Heading weight', 'Title and section authority', 450, 800, 10, ''],
+            ['lineHeight', 'Line height', 'Vertical breathing room', 1.2, 2, 0.05, ''],
+            ['letterSpacing', 'Letter spacing', 'Tracking across interface text', -0.03, 0.08, 0.01, 'em'],
+            ['displayScale', 'Display scale', 'Heading size multiplier across the studio', 0.9, 1.3, 0.05, '×'],
+            ['readingMeasure', 'Reading width', 'Comfortable line length', 52, 82, 1, 'ch'],
+          ] as const).map(([key, label, description, min, max, step, suffix]) => {
+            const value = typography[key]
+            return <label class="type-range" key={key}><span class="type-range-label"><strong>{label}</strong><output>{value}{suffix}</output></span><small>{description}</small><input type="range" min={min} max={max} step={step} value={value} onInput={(event) => updateTypography(key, Number((event.target as HTMLInputElement).value))} /></label>
+          })}
+        </div>
+        <div class="typography-preview" style={{ fontFamily: 'var(--font-reading)', fontSize: `calc(${typography.baseSize * typography.displayScale}px * var(--font-viewport-scale, 1))`, lineHeight: typography.lineHeight, maxWidth: `${typography.readingMeasure}ch` }}>
+          <span class="typography-preview-kicker">Live specimen · display + reading</span>
+          <h3>Ideas become useful when they survive contact with practice.</h3>
+          <p style={{ fontFamily: 'var(--font-ui)', fontSize: `calc(${typography.baseSize}px * var(--font-viewport-scale, 1))`, fontWeight: typography.bodyWeight, letterSpacing: `${typography.letterSpacing}em` }}>A calmer type system makes the next decision easier to see. Adjust weight, rhythm, and measure until the page feels effortless to scan and comfortable to stay in.</p>
+          <code style={{ fontFamily: 'var(--font-mono)' }}>retain → apply → remember</code>
+        </div>
+      </div>
+    </section>
+
+    <section id="interface-tokens">
       <div class="section-head"><h2>Interface tokens</h2><span>Customize the reading surface</span></div>
       <div class="setting-row"><div><strong>Density</strong><span>Choose how much information fits in each working surface.</span></div><select aria-label="Reading density" value={density} onChange={(event) => saveAppearance((event.target as HTMLSelectElement).value)}><option value="comfortable">Comfortable</option><option value="balanced">Balanced</option><option value="compact">Compact</option></select></div>
       <div class="setting-row"><div><strong>Border radius</strong><span>Set the shape language for cards, controls, and panels.</span></div><select aria-label="Border radius" value={radius} onChange={(event) => saveDisplay({ radius: (event.target as HTMLSelectElement).value as DisplayPreferences['radius'] })}><option value="sharp">Sharp</option><option value="soft">Soft</option><option value="round">Round</option></select></div>
       <div class="setting-row"><div><strong>Font size</strong><span>Scale interface text while preserving the chosen type system.</span></div><select aria-label="Font size" value={fontSize} onChange={(event) => saveDisplay({ fontSize: (event.target as HTMLSelectElement).value as DisplayPreferences['fontSize'] })}><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></div>
       <PreferenceToggle label="Reduced motion" description="Minimize transitions and animation across the studio." checked={reducedMotion} onChange={(value) => saveDisplay({ reducedMotion: value })} />
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Atlas visualization</h2>
+        <span>Shape how the knowledge map renders and lays out</span>
+      </div>
+      <PreferenceToggle label="Show arrows" description="Draw direction arrows on relationship links." checked={arrows} onChange={(value) => { setArrows(value); saveAtlas({ arrows: value }) }} />
+      <PreferenceToggle label="Animate transitions" description="Smooth camera moves, expansions, and constellation drags." checked={atlasAnimate} onChange={(value) => { setAtlasAnimate(value); saveAtlas({ animate: value }) }} />
+      <label class="type-range"><span class="type-range-label"><strong>Text fade threshold</strong><output>{textFade.toFixed(2)}</output></span><small>Labels fade out as you zoom past this point (log scale).</small><input type="range" min={-1} max={1} step={0.05} value={textFade} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setTextFade(v); saveAtlas({ text_fade_threshold: v }) }} /></label>
+      <label class="type-range"><span class="type-range-label"><strong>Node size</strong><output>{atlasNodeSize.toFixed(2)}×</output></span><small>Scale every node on the map.</small><input type="range" min={0.1} max={3} step={0.02} value={atlasNodeSize} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setAtlasNodeSize(v); saveAtlas({ node_size: v }) }} /></label>
+      <label class="type-range"><span class="type-range-label"><strong>Link thickness</strong><output>{linkThickness.toFixed(2)}×</output></span><small>Weight of relationship lines.</small><input type="range" min={0.1} max={6} step={0.05} value={linkThickness} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setLinkThickness(v); saveAtlas({ link_thickness: v }) }} /></label>
+      <label class="type-range"><span class="type-range-label"><strong>Branch links</strong><output>{branchLinkThickness.toFixed(2)}×</output></span><small>Thickness of lines from a branch to its child nodes.</small><input type="range" min={0.1} max={6} step={0.05} value={branchLinkThickness} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setBranchLinkThickness(v); saveAtlas({ branch_link_thickness: v }) }} /></label>
+      <div class="section-head"><h3>Forces</h3><span>How constellations spread and hold together</span></div>
+      <label class="type-range"><span class="type-range-label"><strong>Center force</strong><output>{centerForce.toFixed(2)}</output></span><small>Pull of cluster islands toward the canvas center.</small><input type="range" min={0} max={2} step={0.01} value={centerForce} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setCenterForce(v); saveAtlas({ center_force: v }) }} /></label>
+      <label class="type-range"><span class="type-range-label"><strong>Repel force</strong><output>{repelForce.toFixed(2)}</output></span><small>How strongly nodes push apart to avoid overlap.</small><input type="range" min={0} max={40} step={0.5} value={repelForce} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setRepelForce(v); saveAtlas({ repel_force: v }) }} /></label>
+      <label class="type-range"><span class="type-range-label"><strong>Link force</strong><output>{linkForce.toFixed(2)}</output></span><small>Length of the links that connect related nodes.</small><input type="range" min={0} max={3} step={0.05} value={linkForce} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setLinkForce(v); saveAtlas({ link_force: v }) }} /></label>
     </section>
 
     <ThemeContextPreview />

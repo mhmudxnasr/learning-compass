@@ -20,8 +20,11 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
   const url = new URL(event.request.url)
   if (event.request.mode === 'navigate') {
-    event.respondWith(fetch(event.request).then(async (response) => {
-      if (response.ok) await caches.open(CACHE).then((cache) => cache.put('/', response.clone()))
+    event.respondWith(fetch(event.request).then((response) => {
+      if (response.ok) {
+        const copy = response.clone()
+        caches.open(CACHE).then((cache) => cache.put('/', copy)).catch(() => {})
+      }
       return response
     }).catch(() => caches.match('/')))
     return
@@ -30,17 +33,24 @@ self.addEventListener('fetch', (event) => {
   if (cacheableData) {
     event.respondWith(caches.open(DATA_CACHE).then(async (cache) => {
       const cached = await cache.match(event.request)
-      const network = fetch(event.request).then((response) => { if (response.ok) cache.put(event.request, response.clone()); return response })
+      const network = fetch(event.request).then((response) => {
+        if (response.ok) {
+          const copy = response.clone()
+          cache.put(event.request, copy).catch(() => {})
+        }
+        return response
+      })
       return network.catch(() => cached || Promise.reject(new Error('Offline and no cached data')))
     }))
     return
   }
-  if (url.pathname.startsWith('/capture') || url.pathname.startsWith('/notes') || url.pathname.startsWith('/recommendations')) return
+  if (url.pathname.startsWith('/capture') || url.pathname.startsWith('/notes') || url.pathname.startsWith('/recommendations') || url.pathname.startsWith('/settings')) return
   event.respondWith(
     fetch(event.request)
       .then((response) => {
         if (response.ok && ['script', 'style', 'font', 'image'].includes(event.request.destination)) {
-          caches.open(CACHE).then((cache) => cache.put(event.request, response.clone()))
+          const copy = response.clone()
+          caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {})
         }
         return response
       })

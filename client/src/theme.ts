@@ -5,6 +5,11 @@ export type CustomPalette = {
   accent: string
   ink?: string
   surface?: string
+  rail?: string
+  seam?: string
+  due?: string
+  danger?: string
+  map?: string
 }
 
 export type DisplayPreferences = {
@@ -196,7 +201,37 @@ export const DEFAULT_CUSTOM_PALETTE: CustomPalette = {
   shell: '#f6f4ee',
   highlight: '#d8f3dc',
   accent: '#2d3b32',
-  ink: '#17231c'
+  ink: '#1b4332',
+  map: '#3f6e4e'
+}
+
+export type ThemePair = { day: CustomPalette; night: CustomPalette }
+
+export const THEME_VARIANTS: Array<{ name: string; day: CustomPalette; night: CustomPalette }> = [
+  { name: 'Moss & Paper', day: { ...DEFAULT_CUSTOM_PALETTE }, night: { brand: '#8CCB9B', shell: '#111A16', surface: '#1B2921', highlight: '#274936', accent: '#D2A96A', ink: '#E6F1E8', rail: '#0B100D', seam: '#34483A', due: '#E5B76A', danger: '#E77D78', map: '#72B887' } },
+  { name: 'Indigo Archive', day: { brand: '#284B63', shell: '#F2F5F7', surface: '#FFFFFF', highlight: '#DCEAF1', accent: '#A05A3C', ink: '#183243', rail: '#1E394B', seam: '#C9D7DE', due: '#9A651E', danger: '#A63D40', map: '#3F6E4E' }, night: { brand: '#86B9D3', shell: '#10171D', surface: '#18242C', highlight: '#213B49', accent: '#D99877', ink: '#E6F2F7', rail: '#091016', seam: '#334650', due: '#E1B36B', danger: '#F08D8D', map: '#72B887' } },
+  { name: 'Mulberry Night', day: { brand: '#713B57', shell: '#FAF4F5', surface: '#FFFFFF', highlight: '#F1DDE5', accent: '#8A5A44', ink: '#402335', rail: '#552B40', seam: '#DECBD3', due: '#96651D', danger: '#A63F4E', map: '#3F6E4E' }, night: { brand: '#D58AA9', shell: '#1A1218', surface: '#281C25', highlight: '#442B3A', accent: '#D6A27E', ink: '#F6E8EF', rail: '#100B10', seam: '#4A3442', due: '#E7B86A', danger: '#EF8B9D', map: '#76B98B' } },
+  { name: 'Copper Observatory', day: { brand: '#8A4B2F', shell: '#FBF5EE', surface: '#FFFFFF', highlight: '#F2DFCB', accent: '#34586B', ink: '#3A241B', rail: '#6A3925', seam: '#E1CDC0', due: '#976117', danger: '#A33F32', map: '#3F6E4E' }, night: { brand: '#D58A5F', shell: '#181311', surface: '#28201B', highlight: '#453126', accent: '#83B3C7', ink: '#F5E9DE', rail: '#100C0A', seam: '#4B3930', due: '#E7B76B', danger: '#F08C7E', map: '#78B88B' } },
+]
+
+export const DEFAULT_THEME_PAIR: ThemePair = { day: DEFAULT_CUSTOM_PALETTE, night: THEME_VARIANTS[0].night }
+
+export function getSavedThemePair(): ThemePair {
+  if (typeof localStorage === 'undefined') return DEFAULT_THEME_PAIR
+  try {
+    const value = JSON.parse(localStorage.getItem('taste-map-theme-pair') || '{}')
+    return { day: { ...DEFAULT_CUSTOM_PALETTE, ...(value?.day || {}) }, night: { ...DEFAULT_THEME_PAIR.night, ...(value?.night || {}) } }
+  } catch { return DEFAULT_THEME_PAIR }
+}
+
+export function saveThemePair(pair: ThemePair) {
+  try { localStorage.setItem('taste-map-theme-pair', JSON.stringify(pair)) } catch {}
+}
+
+/** Resolve the palette for the currently selected day/night mode on every route. */
+export function getActiveCustomPalette(): CustomPalette {
+  const mode = typeof localStorage !== 'undefined' && localStorage.getItem('taste-map-theme-mode') === 'night' ? 'night' : 'day'
+  return getSavedThemePair()[mode]
 }
 
 export type FontPreset = {
@@ -204,6 +239,7 @@ export type FontPreset = {
   name: string
   description: string
   ui: string      // interface / body stack
+  display: string // headings & display stack
   reading: string // long-form & display stack
   mono: string    // code & data stack
 }
@@ -214,6 +250,7 @@ export const FONT_PRESETS: FontPreset[] = [
     name: 'Plex Studio',
     description: 'Crisp humanist sans with a warm serif for reading.',
     ui: '"IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif',
+    display: '"IBM Plex Serif", "Literata", Georgia, serif',
     reading: '"IBM Plex Serif", "Literata", Georgia, serif',
     mono: '"IBM Plex Mono", ui-monospace, monospace'
   },
@@ -222,6 +259,7 @@ export const FONT_PRESETS: FontPreset[] = [
     name: 'System Clean',
     description: 'Native platform fonts for a neutral, fast feel.',
     ui: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+    display: 'Georgia, "Times New Roman", serif',
     reading: 'Georgia, "Times New Roman", serif',
     mono: 'ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace'
   },
@@ -230,6 +268,7 @@ export const FONT_PRESETS: FontPreset[] = [
     name: 'Editorial Serif',
     description: 'Bookish serif throughout for a literary studio.',
     ui: '"Literata", Georgia, "Times New Roman", serif',
+    display: '"Literata", Georgia, serif',
     reading: '"Literata", Georgia, serif',
     mono: '"IBM Plex Mono", ui-monospace, monospace'
   },
@@ -238,6 +277,7 @@ export const FONT_PRESETS: FontPreset[] = [
     name: 'Terminal Mono',
     description: 'Monospace interface for a focused, code-like feel.',
     ui: '"IBM Plex Mono", ui-monospace, "SF Mono", monospace',
+    display: '"IBM Plex Serif", "Literata", Georgia, serif',
     reading: '"IBM Plex Serif", "Literata", Georgia, serif',
     mono: '"IBM Plex Mono", ui-monospace, monospace'
   }
@@ -247,14 +287,46 @@ export const DEFAULT_FONT_ID = 'plex'
 
 export type CustomFont = {
   ui: string
+  display: string
   reading: string
   mono: string
 }
 
 export const DEFAULT_CUSTOM_FONT: CustomFont = {
-  ui: '"IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif',
-  reading: '"IBM Plex Serif", "Literata", Georgia, serif',
+  ui: '"IBM Plex Sans", "Noto Sans Arabic", "IBM Plex Sans Arabic", system-ui, sans-serif',
+  display: '"IBM Plex Serif", "Literata", "Noto Naskh Arabic", Georgia, serif',
+  reading: '"IBM Plex Serif", "Literata", "Noto Naskh Arabic", Georgia, serif',
   mono: '"IBM Plex Mono", ui-monospace, monospace'
+}
+
+/** Merge imported or previously saved stacks with safe, renderable defaults. */
+export function normalizeCustomFont(input?: Partial<CustomFont> | null): CustomFont {
+  return {
+    ui: typeof input?.ui === 'string' && input.ui.trim() ? input.ui.trim() : DEFAULT_CUSTOM_FONT.ui,
+    display: typeof input?.display === 'string' && input.display.trim() ? input.display.trim() : DEFAULT_CUSTOM_FONT.display,
+    reading: typeof input?.reading === 'string' && input.reading.trim() ? input.reading.trim() : DEFAULT_CUSTOM_FONT.reading,
+    mono: typeof input?.mono === 'string' && input.mono.trim() ? input.mono.trim() : DEFAULT_CUSTOM_FONT.mono,
+  }
+}
+
+export type TypographyPreferences = {
+  baseSize: number
+  bodyWeight: number
+  headingWeight: number
+  lineHeight: number
+  letterSpacing: number
+  displayScale: number
+  readingMeasure: number
+}
+
+export const DEFAULT_TYPOGRAPHY: TypographyPreferences = {
+  baseSize: 16,
+  bodyWeight: 400,
+  headingWeight: 600,
+  lineHeight: 1.55,
+  letterSpacing: 0,
+  displayScale: 1,
+  readingMeasure: 68,
 }
 
 type RGB = { r: number; g: number; b: number }
@@ -390,7 +462,7 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
   const canvas = mixColors(shell, WHITE, dark ? 0.10 : 0.75)
   const inspector = mixColors(shell, WHITE, dark ? 0.07 : 0.25)
   // Seams/borders sit opposite the elevation: darker than shell in light, lighter in dark.
-  const seam = dark ? mixColors(shell, WHITE, 0.16) : mixColors(shell, BLACK, 0.12)
+  const seam = parseColor(palette.seam || '') || (dark ? mixColors(shell, WHITE, 0.16) : mixColors(shell, BLACK, 0.12))
 
   // Text — near-white on dark shells, deep ink on light shells.
   const parsedInk = palette.ink ? parseColor(palette.ink) : null
@@ -399,12 +471,12 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
   const muted = mixColors(secondary, shell, dark ? 0.42 : 0.35)
 
   // Rail is the deepest plane, anchored to the brand in light mode, or tinted obsidian in dark mode.
-  const rail = dark ? mixColors(mixColors(shell, brand, 0.12), BLACK, 0.40) : adjustBrightness(brand, -15)
+  const rail = parseColor(palette.rail || '') || (dark ? mixColors(mixColors(shell, brand, 0.12), BLACK, 0.40) : adjustBrightness(brand, -15))
 
   // Status colors brighten on dark backgrounds so they remain legible.
-  const due = dark ? SEMANTIC.dueDark : SEMANTIC.dueLight
-  const danger = dark ? SEMANTIC.dangerDark : SEMANTIC.dangerLight
-  const map = dark ? SEMANTIC.mapDark : SEMANTIC.mapLight
+  const due = parseColor(palette.due || '') || (dark ? SEMANTIC.dueDark : SEMANTIC.dueLight)
+  const danger = parseColor(palette.danger || '') || (dark ? SEMANTIC.dangerDark : SEMANTIC.dangerLight)
+  const map = parseColor(palette.map || '') || (dark ? SEMANTIC.mapDark : SEMANTIC.mapLight)
 
   // Determine active rail button background and text contrast
   const textOn = (background: RGB) => contrastRatio('#ffffff', rgbToHex(background))! >= contrastRatio('#101713', rgbToHex(background))! ? '#ffffff' : '#101713'
@@ -448,7 +520,13 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
 
 function paletteForTheme(themeId: string, customPalette?: CustomPalette): { palette: CustomPalette; mode: ThemeMode } {
   if (themeId === 'custom') {
-    const palette = customPalette || getSavedCustomPalette()
+    const source = customPalette || getSavedCustomPalette()
+    const palette: CustomPalette = {
+      ...DEFAULT_CUSTOM_PALETTE,
+      ...source,
+      ink: source.ink && source.ink !== source.accent ? source.ink : source.brand,
+      map: source.map || DEFAULT_CUSTOM_PALETTE.map,
+    }
     const shell = parseColor(palette.shell) || { r: 247, g: 234, b: 224 }
     return { palette, mode: isDarkColor(shell) ? 'dark' : 'light' }
   }
@@ -528,7 +606,16 @@ export function getSavedCustomPalette(): CustomPalette {
   if (typeof localStorage !== 'undefined') {
     try {
       const raw = localStorage.getItem('taste-map-custom-palette')
-      if (raw) return JSON.parse(raw)
+      if (raw) {
+        const value = JSON.parse(raw)
+        return {
+          ...DEFAULT_CUSTOM_PALETTE,
+          ...(value || {}),
+          // Ink follows the brand family unless the user explicitly chose a different ink.
+          ink: value?.ink && value.ink !== value?.accent ? value.ink : (value?.brand || DEFAULT_CUSTOM_PALETTE.ink),
+          map: value?.map || DEFAULT_CUSTOM_PALETTE.map,
+        }
+      }
     } catch {}
   }
   return DEFAULT_CUSTOM_PALETTE
@@ -560,10 +647,10 @@ export function getSavedCustomFont(): CustomFont {
   if (typeof localStorage !== 'undefined') {
     try {
       const raw = localStorage.getItem('taste-map-custom-font')
-      if (raw) return JSON.parse(raw)
+      if (raw) return normalizeCustomFont(JSON.parse(raw))
     } catch {}
   }
-  return DEFAULT_CUSTOM_FONT
+  return normalizeCustomFont()
 }
 
 // Generic keywords and system-only faces that are NOT available on Google Fonts.
@@ -574,7 +661,7 @@ const SYSTEM_FONTS = new Set([
   'menlo', 'consolas', 'monaco', 'arial', 'helvetica', 'helvetica neue',
   'georgia', 'times new roman', 'courier new', 'verdana', 'tahoma',
   'trebuchet ms', 'impact', 'comic sans ms', 'palatino linotype',
-  'book antiqua', 'garamond', 'dejavu sans', 'dejavu serif',
+  'book antiqua', 'garamond', 'dejavu sans', 'dejavu serif', 'berkeley mono',
   'dejavu sans mono', 'liberation sans', 'liberation serif',
   'liberation mono', 'cantarell', 'gill sans', 'futura', 'avenir',
   'optima', 'baskerville', 'century gothic', 'lucida grande', 'lucida console'
@@ -616,33 +703,115 @@ export function applyFont(fontId: string, customFont?: CustomFont) {
   let ui: string
   let reading: string
   let mono: string
+  let display: string
   if (fontId === 'custom') {
-    const cf = customFont || getSavedCustomFont()
+    const cf = normalizeCustomFont(customFont || getSavedCustomFont())
     ui = cf.ui
+    display = cf.display || cf.reading
     reading = cf.reading
     mono = cf.mono
   } else {
     const preset = FONT_PRESETS.find(f => f.id === fontId) || FONT_PRESETS[0]
     ui = preset.ui
+    display = preset.display || preset.reading
     reading = preset.reading
     mono = preset.mono
   }
   root.style.setProperty('--font-ui', ui)
+  root.style.setProperty('--font-display', display)
   root.style.setProperty('--font-reading', reading)
   root.style.setProperty('--font-mono', mono)
-  loadGoogleFonts([...extractFamilies(ui), ...extractFamilies(reading), ...extractFamilies(mono)])
+  loadGoogleFonts([...extractFamilies(ui), ...extractFamilies(display), ...extractFamilies(reading), ...extractFamilies(mono)])
   try {
     localStorage.setItem('taste-map-font', fontId)
-    if (customFont) localStorage.setItem('taste-map-custom-font', JSON.stringify(customFont))
+    if (fontId === 'custom') localStorage.setItem('taste-map-custom-font', JSON.stringify(normalizeCustomFont(customFont)))
   } catch {}
   window.dispatchEvent(new Event('fontchange'))
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number) {
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback
+}
+
+export function applyTypography(preferences: Partial<TypographyPreferences>) {
+  if (typeof document === 'undefined') return
+  const fallback = getSavedTypography()
+  const next: TypographyPreferences = {
+    baseSize: clampNumber(preferences.baseSize, 14, 20, fallback.baseSize),
+    bodyWeight: clampNumber(preferences.bodyWeight, 350, 700, fallback.bodyWeight),
+    headingWeight: clampNumber(preferences.headingWeight, 450, 800, fallback.headingWeight),
+    lineHeight: clampNumber(preferences.lineHeight, 1.2, 2, fallback.lineHeight),
+    letterSpacing: clampNumber(preferences.letterSpacing, -0.03, 0.08, fallback.letterSpacing),
+    displayScale: clampNumber(preferences.displayScale, 0.9, 1.3, fallback.displayScale),
+    readingMeasure: clampNumber(preferences.readingMeasure, 52, 82, fallback.readingMeasure),
+  }
+  const root = document.documentElement
+  root.style.setProperty('--font-base-size', `${next.baseSize}px`)
+  root.style.setProperty('--font-scale', `calc(${next.baseSize / DEFAULT_TYPOGRAPHY.baseSize} * var(--font-viewport-scale, 1))`)
+  root.style.setProperty('--font-body-weight', String(next.bodyWeight))
+  root.style.setProperty('--font-heading-weight', String(next.headingWeight))
+  root.style.setProperty('--font-medium-weight', String(Math.round((next.bodyWeight + next.headingWeight) / 2 / 10) * 10))
+  root.style.setProperty('--font-bold-weight', String(Math.min(800, next.headingWeight + 100)))
+  root.style.setProperty('--font-line-height', String(next.lineHeight))
+  root.style.setProperty('--font-letter-spacing', `${next.letterSpacing}em`)
+  root.style.setProperty('--font-display-scale', String(next.displayScale))
+  root.style.setProperty('--font-reading-measure', `${next.readingMeasure}ch`)
+  try { localStorage.setItem('taste-map-typography', JSON.stringify(next)) } catch {}
+  window.dispatchEvent(new Event('typographychange'))
+}
+
+export function getSavedTypography(): TypographyPreferences {
+  if (typeof localStorage === 'undefined') return DEFAULT_TYPOGRAPHY
+  try {
+    const value = JSON.parse(localStorage.getItem('taste-map-typography') || '{}')
+    return {
+      baseSize: clampNumber(value?.baseSize, 14, 20, DEFAULT_TYPOGRAPHY.baseSize),
+      bodyWeight: clampNumber(value?.bodyWeight, 350, 700, DEFAULT_TYPOGRAPHY.bodyWeight),
+      headingWeight: clampNumber(value?.headingWeight, 450, 800, DEFAULT_TYPOGRAPHY.headingWeight),
+      lineHeight: clampNumber(value?.lineHeight, 1.2, 2, DEFAULT_TYPOGRAPHY.lineHeight),
+      letterSpacing: clampNumber(value?.letterSpacing, -0.03, 0.08, DEFAULT_TYPOGRAPHY.letterSpacing),
+      displayScale: clampNumber(value?.displayScale, 0.9, 1.3, DEFAULT_TYPOGRAPHY.displayScale),
+      readingMeasure: clampNumber(value?.readingMeasure, 52, 82, DEFAULT_TYPOGRAPHY.readingMeasure),
+    }
+  } catch { return DEFAULT_TYPOGRAPHY }
 }
 
 export function initTheme() {
   if (typeof document === 'undefined') return
   const theme = getSavedTheme()
-  const customPalette = theme === 'custom' ? getSavedCustomPalette() : undefined
+  const customPalette = theme === 'custom' ? getActiveCustomPalette() : undefined
   applyTheme(theme, customPalette)
   applyFont(getSavedFontId())
+  applyTypography(getSavedTypography())
   applyDisplayPreferences(getSavedDisplayPreferences())
+}
+
+/** Rehydrate the server-owned visual system before a non-Settings route renders. */
+export async function hydrateThemeFromServer() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return
+  try {
+    const response = await fetch('/settings')
+    if (!response.ok) return
+    const payload = await response.json() as { resolved?: { appearance?: Record<string, unknown> } }
+    const appearance = payload.resolved?.appearance
+    if (!appearance) return
+    const theme = typeof appearance.theme === 'string' ? appearance.theme : getSavedTheme()
+    const storedPair = typeof localStorage !== 'undefined' ? localStorage.getItem('taste-map-theme-pair') : null
+    const serverPalette = appearance.custom_palette && typeof appearance.custom_palette === 'object' ? appearance.custom_palette as CustomPalette : undefined
+    const palette = theme === 'custom' ? (storedPair ? getActiveCustomPalette() : serverPalette) : undefined
+    applyTheme(theme, palette)
+    if (typeof appearance.font === 'string') {
+      applyFont(appearance.font, appearance.custom_font && typeof appearance.custom_font === 'object' ? normalizeCustomFont(appearance.custom_font as Partial<CustomFont>) : undefined)
+    }
+    if (appearance.typography && typeof appearance.typography === 'object') applyTypography(appearance.typography as Partial<TypographyPreferences>)
+    applyDisplayPreferences({
+      density: appearance.density as DisplayPreferences['density'],
+      radius: appearance.radius as DisplayPreferences['radius'],
+      fontSize: appearance.font_size as DisplayPreferences['fontSize'],
+      reducedMotion: appearance.reduced_motion as boolean,
+    })
+  } catch {
+    // Local startup values remain the deterministic offline fallback.
+  }
 }

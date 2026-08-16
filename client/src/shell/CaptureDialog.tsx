@@ -72,7 +72,7 @@ export function CaptureDialog({ open, onClose, onCaptured }: { open: boolean; on
         method: 'POST',
         body: JSON.stringify({ source: file?.name || source.trim(), artifact_id: artifact?.id }),
       })
-      setStatus(result?.duplicate ? 'Already captured. The existing source is safe.' : 'Captured to Inbox.')
+      setStatus(result?.duplicate ? 'Already captured. The existing source is safe.' : 'Captured to Queue.')
       setSource('')
       setFile(null)
       onCaptured()
@@ -101,13 +101,13 @@ export function CaptureDialog({ open, onClose, onCaptured }: { open: boolean; on
         <header>
           <div>
             <span>Global capture</span>
-            <h2 id="capture-title">Put it in the Inbox.</h2>
+            <h2 id="capture-title">Capture a source.</h2>
           </div>
           <button class="icon-button" onClick={onClose} aria-label="Close capture">
             <Icon name="close" />
           </button>
         </header>
-        <p>Links, text, and local files all enter the unlimited Inbox. Nothing is queued automatically.</p>
+        <p>Links, text, and local files are captured directly to your learning queue.</p>
         <form onSubmit={submit}>
           <label>
             Link or text
@@ -125,7 +125,7 @@ export function CaptureDialog({ open, onClose, onCaptured }: { open: boolean; on
             />
             <Icon name="file" />
             <span>{file ? file.name : 'Choose a file'}</span>
-            <small>Stored in R2 and linked to its Inbox source.</small>
+            <small>Stored in R2 and linked to its learning source.</small>
           </label>
           <footer>
             <output aria-live="polite">{status}</output>
@@ -134,7 +134,7 @@ export function CaptureDialog({ open, onClose, onCaptured }: { open: boolean; on
                 Cancel
               </button>
               <button class="button primary" disabled={!source.trim() && !file} type="submit">
-                Capture to Inbox
+                Capture to Queue
               </button>
             </div>
           </footer>

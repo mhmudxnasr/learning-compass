@@ -28,8 +28,9 @@ export type AtlasModel = {
 
 /** Internal profile roots are useful for storage, not for the learner's map. */
 export function isPrivateAtlasNode(node: AtlasNode) {
-  const value = `${node.id} ${node.label}`.toLowerCase().replace(/[’']/g, '')
-  return /mahmoud.*taste\s*map|taste\s*map.*mahmoud/.test(value)
+  if (node.id === 'root' || node.type === 'root') return true
+  const value = `${node.id} ${node.label}`.toLowerCase().replace(/[’'—–-]/g, ' ')
+  return /mahm[ou]+d.*taste\s*map|taste\s*map.*mahm[ou]+d|taste\s*map\s*root|^root$/i.test(value.trim())
 }
 
 export function createAtlasModel(rawNodes: AtlasNode[] = [], rawEdges: AtlasEdge[] = []): AtlasModel {
@@ -126,6 +127,50 @@ export function clusterFor(model: AtlasModel, nodeId: string) {
   return 'Unassigned'
 }
 
+export function rootBranchFor(model: AtlasModel, nodeId: string): AtlasNode | undefined {
+  const node = model.byId.get(nodeId)
+  if (!node) return undefined
+  let current: AtlasNode = node
+  const visited = new Set<string>()
+  while (current) {
+    if (visited.has(current.id)) break
+    visited.add(current.id)
+    if (!current.parent_id) return current
+    const parent = model.byId.get(current.parent_id)
+    if (!parent || parent.type === 'root' || parent.type === 'category') {
+      return current
+    }
+    current = parent
+  }
+  return current
+}
+
+export function branchConstellations(model: AtlasModel): Map<string, AtlasNode[]> {
+  const constellations = new Map<string, AtlasNode[]>()
+  const claimed = new Set<string>()
+
+  for (const node of model.nodes) {
+    if (node.type === 'root' || node.type === 'category') continue
+    const rootBranch = rootBranchFor(model, node.id)
+    if (rootBranch && !constellations.has(rootBranch.id)) {
+      const subtree = [...branchSubtreeIds(model, rootBranch.id)]
+        .map((id) => model.byId.get(id))
+        .filter(Boolean) as AtlasNode[]
+      subtree.forEach((n) => claimed.add(n.id))
+      constellations.set(rootBranch.id, subtree)
+    }
+  }
+
+  for (const node of model.nodes) {
+    if (node.type === 'root' || node.type === 'category' || claimed.has(node.id)) continue
+    const cluster = clusterFor(model, node.id)
+    const key = `cluster-${cluster}`
+    constellations.set(key, [...(constellations.get(key) || []), node])
+  }
+
+  return constellations
+}
+
 export function nodeRound(node: AtlasNode) {
   if (!node) return ''
   return node.round_label?.toUpperCase() || (typeof node.label === 'string' ? node.label.match(/\bR[1-9]\b/i)?.[0].toUpperCase() : '') || ''
@@ -135,3 +180,4 @@ export function nodeTitle(node: AtlasNode) {
   if (!node) return 'Untitled'
   return (typeof node.label === 'string' ? node.label : '').replace(/\s*\[[^\]]+\]\s*$/, '').trim() || node.id || 'Untitled'
 }
+

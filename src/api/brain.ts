@@ -3,6 +3,7 @@ import { Bindings, Recommendation, safeError, isNonEmptyStr, isValidLength, VALI
 import { cached } from '../cache'
 import { applyProfileAssertion, profileIntelligenceSnapshot, revertProfileRevision } from '../services/intelligence-v2'
 import { buildLearningBalance } from '../services/learning-balance'
+import { displayRound } from '../services/branch-rounds'
 import { loadCompassContext } from './compass'
 import { freeAi } from '../services/ai'
 
@@ -152,6 +153,86 @@ app.get('/branches', async (c) => {
     return c.json(data)
   } catch (err) {
     return c.json(safeError('Branches failed')(err), 500)
+  }
+})
+
+// ---- /brain/branches/:id/items — full linked-items ledger for one branch:
+// recommendations with ratings and recall metadata, notes, recall cards,
+// pending SRS drafts, and R2 artifacts. The authoritative branch dossier.
+app.get('/branches/:id/items', async (c) => {
+  const { DB } = c.env
+  c.header('Cache-Control', 'no-store')
+  const id = c.req.param('id')
+  try {
+    const branch = await DB.prepare('SELECT id,type,label,status,super_category,parent_id,round_label,meta_json FROM tree_nodes WHERE id=?').bind(id).first<any>()
+    if (!branch) return c.json({ error: 'branch not found' }, 404)
+    let meta: any = {}
+    try { if (branch.meta_json) meta = JSON.parse(branch.meta_json) } catch {}
+    const [path, recommendations, notes, cards, drafts, artifacts, balance] = await Promise.all([
+      DB.prepare(`WITH RECURSIVE chain(id,label,type,parent_id) AS (
+        SELECT id,label,type,parent_id FROM tree_nodes WHERE id=?
+        UNION ALL SELECT t.id,t.label,t.type,t.parent_id FROM tree_nodes t JOIN chain ch ON t.id=ch.parent_id)
+        SELECT * FROM chain`).bind(id).all<any>(),
+      DB.prepare(`SELECT r.id,r.video_title,r.creator,r.content_type,r.status,r.user_score,r.user_rating,r.user_review,r.consumed_date,r.created_at,m.learning_state,m.priority_rank,
+        (SELECT COUNT(*) FROM srs_cards sc WHERE sc.recommendation_id=r.id) recall_count,
+        (SELECT COUNT(*) FROM srs_cards sc WHERE sc.recommendation_id=r.id AND sc.due_at IS NOT NULL AND sc.due_at<=date('now')) due_count,
+        (SELECT COUNT(*) FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=r.id AND (a.media_type LIKE '%html%' OR a.filename LIKE '%.html')) html_count,
+        (SELECT COUNT(*) FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=r.id AND (a.media_type LIKE '%pdf%' OR a.filename LIKE '%.pdf')) pdf_count,
+        (SELECT n.id FROM notes n WHERE n.recommendation_id=r.id ORDER BY n.updated_at DESC LIMIT 1) note_id,
+        (SELECT n.title FROM notes n WHERE n.recommendation_id=r.id ORDER BY n.updated_at DESC LIMIT 1) note_title
+        FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
+        WHERE m.branch_id=? AND r.deleted_at IS NULL AND (r.status IS NULL OR r.status!='deleted')
+        ORDER BY CASE WHEN r.status='consumed' THEN 0 ELSE 1 END, COALESCE(r.consumed_date,r.created_at) DESC`).bind(id).all<any>(),
+      DB.prepare(`SELECT n.id,n.recommendation_id,n.title,n.kind,n.status,n.revision,n.updated_at,r.video_title source_title
+        FROM notes n LEFT JOIN recommendations r ON r.id=n.recommendation_id WHERE n.branch_id=?
+        ORDER BY n.updated_at DESC`).bind(id).all<any>(),
+      DB.prepare(`SELECT sc.id,sc.recommendation_id,sc.question,sc.answer,sc.topic,sc.due_at,sc.repetitions,sc.ease_factor,sc.scheduler_version,r.video_title source_title
+        FROM srs_cards sc LEFT JOIN recommendations r ON r.id=sc.recommendation_id
+        WHERE COALESCE(sc.branch,'')=? OR EXISTS (SELECT 1 FROM notes n WHERE n.id=sc.note_id AND n.branch_id=?)
+          OR sc.recommendation_id IN (SELECT m.recommendation_id FROM recommendation_meta m WHERE m.branch_id=?)
+        ORDER BY sc.due_at`).bind(id, id, id).all<any>(),
+      DB.prepare(`SELECT sd.id,sd.recommendation_id,sd.question,sd.answer,sd.topic,sd.status,r.video_title source_title
+        FROM srs_drafts sd LEFT JOIN recommendations r ON r.id=sd.recommendation_id
+        WHERE COALESCE(sd.branch,'')=? OR sd.recommendation_id IN (SELECT m.recommendation_id FROM recommendation_meta m WHERE m.branch_id=?)
+        ORDER BY sd.created_at DESC`).bind(id, id).all<any>(),
+      DB.prepare(`SELECT a.id,a.filename,a.media_type,a.size_bytes,a.metadata_json,a.created_at
+        FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id') IN (SELECT m.recommendation_id FROM recommendation_meta m WHERE m.branch_id=?)
+        ORDER BY a.created_at DESC LIMIT 100`).bind(id).all<any>(),
+      buildLearningBalance(DB, 90).catch(() => null),
+    ])
+    const balanceNode = (balance?.branches || []).find((b: any) => String(b.id) === id) || null
+    const evidence = {
+      consumed: Number(balanceNode?.consumed_count ?? 0),
+      notes: Number(balanceNode?.notes_count ?? (notes.results || []).length),
+      cards: Number(balanceNode?.srs_total ?? 0),
+      due: Number(balanceNode?.srs_due ?? 0),
+      recallStrength: balanceNode?.recall_strength != null ? Number(balanceNode.recall_strength) : null,
+    }
+    const priority = await DB.prepare('SELECT rank,label,rationale FROM priorities WHERE branch_id=?').bind(id).first<any>()
+    const recs = (recommendations.results || []).map((row: any) => ({
+      ...row,
+      recall: { count: Number(row.recall_count || 0), due: Number(row.due_count || 0) },
+      companions: { html: Number(row.html_count || 0) > 0, pdf: Number(row.pdf_count || 0) > 0 },
+      note: row.note_id ? { id: row.note_id, title: row.note_title || 'Field note' } : null,
+      recall_count: undefined, due_count: undefined, html_count: undefined, pdf_count: undefined, note_id: undefined, note_title: undefined,
+    }))
+    return c.json({
+      branch: {
+        id: branch.id, label: branch.label, type: branch.type, status: branch.status,
+        round: displayRound(branch, evidence), super_category: branch.super_category || null,
+        parent_id: branch.parent_id || null, description: meta.notes || meta.description || null,
+        priority: priority || null, balance: balanceNode,
+      },
+      path: (path.results || []).reverse(),
+      recommendations: recs,
+      notes: notes.results || [],
+      recall_cards: cards.results || [],
+      srs_drafts: drafts.results || [],
+      artifacts: artifacts.results || [],
+      generated_at: new Date().toISOString(),
+    })
+  } catch (err) {
+    return c.json(safeError('Branch items failed')(err), 500)
   }
 })
 

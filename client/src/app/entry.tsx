@@ -1,6 +1,6 @@
 import { render } from 'preact'
 import { App } from './App'
-import { initTheme } from '../theme'
+import { hydrateThemeFromServer, initTheme } from '../theme'
 import '../studio.css'
 
 const IMPORT_RECOVERY_KEY = 'learning-compass:dynamic-import-recovery'
@@ -23,5 +23,6 @@ addEventListener('error', (event: ErrorEvent) => recoverFromStaleImport(event.me
 addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => recoverFromStaleImport(String(event.reason?.message || event.reason || '')))
 
 initTheme()
+void hydrateThemeFromServer()
 
 render(<App />, document.getElementById('app')!)

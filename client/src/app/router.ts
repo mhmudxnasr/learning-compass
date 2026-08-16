@@ -61,7 +61,7 @@ export const modes: Record<RootKey, ModeDefinition[]> = {
   library: [
     {
       key: 'triage', label: 'Triage', description: 'Capture, decide, and commit sources.', defaultView: 'queue', defaultFocus: 'queue',
-      focuses: [focus('queue', 'Queue', 'The five sources you committed to next.'), focus('inbox', 'Inbox', 'Everything captured and waiting for a decision.'), focus('feeds', 'RSS Feeds', 'Subscriptions and imported feed entries.')],
+      focuses: [focus('queue', 'Queue', 'The five sources you committed to next.'), focus('inbox', 'Inbox', 'Every capture waiting for triage.'), focus('feeds', 'RSS Feeds', 'Subscriptions and imported feed entries.')],
     },
     {
       key: 'catalog', label: 'Catalog', description: 'Find and filter source material.', defaultView: 'all', defaultFocus: 'all',
@@ -170,13 +170,16 @@ const legacyDestinations: Record<string, LegacyDestination> = {
   '/settings/curation': { root: 'settings', mode: 'personal', focus: 'preferences' },
   '/settings/preferences': { root: 'settings', mode: 'personal', focus: 'preferences' },
   '/settings/data': { root: 'settings', mode: 'data' },
+  '/settings/sync': { root: 'settings', mode: 'data' },
+  '/settings/storage': { root: 'settings', mode: 'data' },
   '/settings/system': { root: 'settings', mode: 'system' },
+  '/settings/diagnostics': { root: 'settings', mode: 'system' },
   '/insights/taste': { root: 'settings', mode: 'personal', focus: 'profile' },
   '/insights/hermes': { root: 'settings', mode: 'personal', focus: 'profile' },
 }
 
 const legacySegments: Record<RootKey, Record<string, LegacyDestination>> = {
-  home: {},
+  home: { today: { root: 'home', mode: 'today' } },
   library: {
     queue: { root: 'library', mode: 'triage', focus: 'queue' }, inbox: { root: 'library', mode: 'triage', focus: 'inbox' },
     feeds: { root: 'library', mode: 'triage', focus: 'feeds' }, rss: { root: 'library', mode: 'triage', focus: 'feeds' },

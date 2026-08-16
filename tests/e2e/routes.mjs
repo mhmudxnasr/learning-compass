@@ -153,6 +153,15 @@ for (const route of modeRoutes) {
     if (await page.locator('.workspace-filter-switcher').count() !== 1) throw new Error(`${route.href}: missing the active mode's focus switcher`)
   }
   if (route.root !== 'home' && !(await page.locator('.workspace-mode-switcher a.active, .workspace-mode-switcher a[aria-current="page"]').count())) throw new Error(`${route.href}: mode switcher did not mark its active mode`)
+  const workspaceWidth = await page.evaluate(() => {
+    const canvas = document.querySelector('.workspace-canvas')
+    const surface = document.querySelector('.workspace-canvas > div > :first-child')
+    if (!canvas || !surface) return null
+    return { canvas: canvas.clientWidth, surface: surface.getBoundingClientRect().width }
+  })
+  if (!workspaceWidth || workspaceWidth.surface < workspaceWidth.canvas * 0.92) {
+    throw new Error(`${route.href}: workspace surface is not using the available desktop canvas (${JSON.stringify(workspaceWidth)})`)
+  }
   for (const selector of ['.orbit-bar', '.page-head', '.subnav', '.rail', '.app-shell', '.main']) {
     if (await page.locator(selector).count()) throw new Error(`${route.href}: rendered retired frontend selector ${selector}`)
   }
@@ -168,9 +177,22 @@ for (const route of modeRoutes) {
   count++
 }
 
-if (count !== modeRoutes.length) throw new Error(`expected ${modeRoutes.length} internal mode states, checked ${count}`)
+  if (count !== modeRoutes.length) throw new Error(`expected ${modeRoutes.length} internal mode states, checked ${count}`)
 
-await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
+  await page.goto(`${baseUrl}/#/settings?focus=preferences`, { waitUntil: 'networkidle' })
+  for (const section of ['visual-presets-heading', 'theme-section', 'font-section', 'type-controls', 'interface-tokens']) {
+    await page.locator(`.settings-jump-nav a[href="#${section}"]`).click()
+    await page.waitForTimeout(80)
+    const jumpState = await page.evaluate((id) => {
+      const canvas = document.querySelector('.workspace-canvas')
+      const target = document.getElementById(id)
+      return { hash: location.hash, heading: document.querySelector('h1')?.textContent, scrollTop: canvas?.scrollTop || 0, targetTop: target?.getBoundingClientRect().top || 0 }
+    }, section)
+    if (jumpState.hash !== '#/settings?focus=preferences' || jumpState.heading !== 'Make the learning loop fit you') throw new Error(`preference jump escaped settings route for ${section}: ${JSON.stringify(jumpState)}`)
+    if (section !== 'visual-presets-heading' && jumpState.targetTop < -20) throw new Error(`preference jump did not reach ${section}: ${JSON.stringify(jumpState)}`)
+  }
+
+  await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
 const desktopScreenshot = await page.screenshot({ path: join(persistDir, 'home-desktop.png') })
 if (!desktopScreenshot.length) throw new Error('desktop visual smoke screenshot was empty')
 if (await page.locator('.root-rail nav a').count() !== 5) throw new Error('desktop root rail should expose five destinations')
@@ -337,7 +359,7 @@ const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards, mo
   fetch(`${baseUrl}/learning/balance?window=90`).then((response) => response.json()),
 ])
 if (settings.resolved?.learning?.retention !== 90 || settings.resolved?.learning?.queue_cap !== 5) throw new Error('settings defaults are not resolved')
-if (settings.resolved?.srs_drafts?.minimum_rating !== 7 || settings.resolved?.profile_proposals?.review_required !== false || settings.resolved?.profile_automation?.mode !== 'automatic' || settings.resolved?.recommendation_engine?.mode !== 'shadow') throw new Error('learning automation defaults are incorrect')
+if (settings.resolved?.srs_drafts?.minimum_rating !== 7 || settings.resolved?.profile_proposals?.review_required !== true || settings.resolved?.profile_automation?.mode !== 'manual' || settings.resolved?.recommendation_engine?.mode !== 'shadow') throw new Error('learning automation defaults are incorrect')
 if (!manifest.icons?.some((icon) => icon.src === '/icon.svg')) throw new Error('manifest is missing the local app icon')
 if (!Array.isArray(artifacts.artifacts)) throw new Error('artifact library contract is invalid')
 if (!Array.isArray(feeds.feeds)) throw new Error('feed subscriptions contract is invalid')
@@ -395,8 +417,11 @@ const claim = async (jobType) => {
 const feedbackJob = await claim('process_feedback')
 const feedbackCompletion = await requestJson(`/agent/jobs/${feedbackJob.id}/complete`, { method: 'POST', body: JSON.stringify({ worker: 'e2e', proposals: [{ change_type: 'profile_signal', target_label: 'Learning priority', current: 'old', proposed: 'new', evidence: 'The reflection explicitly values the mechanism.', reasoning: 'Positive signal at rating 7.', confidence: 0.9 }] }) })
 const proposalId = feedbackCompletion.proposals?.created?.[0]
+const pendingProposal = (await requestJson('/feedback/proposals')).proposals.find((proposal) => proposal.id === proposalId)
+if (pendingProposal?.status !== 'pending' || pendingProposal?.decision_source != null) throw new Error('manual profile automation did not hold the proposal for review')
+await requestJson(`/feedback/proposals/${proposalId}/approve`, { method: 'POST' })
 const appliedProposal = (await requestJson('/feedback/proposals')).proposals.find((proposal) => proposal.id === proposalId)
-if (appliedProposal?.status !== 'applied' || appliedProposal?.decision_source !== 'hermes_auto') throw new Error('strong direct feedback did not auto-apply through the profile policy')
+if (appliedProposal?.status !== 'applied' || appliedProposal?.decision_source !== 'user') throw new Error('approved proposal did not apply through the profile policy')
 const agentContextAfterApply = await requestJson('/agent/context')
 if (!agentContextAfterApply.profile?.assertions?.some((assertion) => assertion.assertion_key === appliedProposal.validation?.assertion_key)) throw new Error('agent context omitted the typed adaptive profile')
 const feedbackContextAfterApply = await requestJson('/feedback/context')

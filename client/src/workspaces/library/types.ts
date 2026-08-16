@@ -1,7 +1,7 @@
 import type { Route } from '../../app/router'
 import { objectHref as canonicalObjectHref, routeHref } from '../../app/router'
 
-export type LibraryView = 'queue' | 'inbox' | 'feeds' | 'all' | 'files' | 'books' | 'collections' | 'archive'
+export type LibraryView = 'inbox' | 'queue' | 'feeds' | 'all' | 'files' | 'books' | 'collections' | 'archive'
 export type LibraryObjectType = 'source' | 'artifact' | 'book' | 'collection'
 
 export type LibraryRecord = Record<string, any>
@@ -24,8 +24,8 @@ export type LibraryWorkspaceProps = {
 export type LibraryActionResult = { ok: boolean; error?: string; code?: string }
 
 export const viewLabels: Record<LibraryView, string> = {
-  queue: 'Queue',
   inbox: 'Inbox',
+  queue: 'Queue',
   feeds: 'RSS Feeds',
   all: 'All sources',
   files: 'Files',
@@ -46,8 +46,8 @@ export function objectHref(type: LibraryObjectType, id: string) {
 }
 
 export function viewHref(view: LibraryView) {
-  if (view === 'queue') return routeHref('library', 'triage', 'queue')
   if (view === 'inbox') return routeHref('library', 'triage', 'inbox')
+  if (view === 'queue') return routeHref('library', 'triage', 'queue')
   if (view === 'feeds') return routeHref('library', 'triage', 'feeds')
   if (view === 'files') return routeHref('library', 'assets', 'files')
   return routeHref('library', 'catalog', view)

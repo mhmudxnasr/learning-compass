@@ -81,7 +81,7 @@ type LibraryPrimaryMode = 'triage' | 'catalog' | 'assets'
 
 const triageFilters: Array<{ key: Extract<LibraryView, 'queue' | 'inbox' | 'feeds'>; label: string; description: string }> = [
   { key: 'queue', label: 'Queue', description: 'Committed next' },
-  { key: 'inbox', label: 'Inbox', description: 'Waiting for a decision' },
+  { key: 'inbox', label: 'Inbox', description: 'Captured candidates' },
   { key: 'feeds', label: 'Feeds', description: 'Subscriptions & articles' },
 ]
 
@@ -163,6 +163,16 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     const item = objectItem(objectType, data, activeRoute.objectId)
     if (item) {
       const selection = selectionFor(objectType, item)
+      if (objectType === 'source') {
+        const linkedThread = Array.isArray(data.threads) ? data.threads[0] : null
+        selection.data = {
+          ...selection.data,
+          branch: data.item?.branch || selection.data.branch,
+          round: data.item?.round || selection.data.round,
+          thread_id: linkedThread?.id || selection.data.thread_id,
+          thread_title: linkedThread?.title || selection.data.thread_title,
+        }
+      }
       onInspect?.(selection)
       onSelect?.(selection)
     }
@@ -250,6 +260,23 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     try { await api(`/collections/${encodeURIComponent(String(item.id))}`, { method: 'DELETE' }); setNotice('Collection deleted.'); reload() }
     catch (actionError) { setNotice(actionMessage(actionError)) }
     finally { setWorking('') }
+  }
+
+  const deleteRecommendationPermanently = async (item: LibraryRecord) => {
+    const title = String(item.video_title || item.title || 'this source')
+    if (!window.confirm(`Permanently delete “${title}”? This removes the source, feedback, notes, learning history, and linked files from the site. This cannot be undone.`)) return
+    const busyKey = `permanent-delete:${item.id}`
+    setWorking(busyKey)
+    setNotice('Deleting forever…')
+    try {
+      await api(`/recommendations/${encodeURIComponent(String(item.id))}/permanent`, { method: 'DELETE' })
+      setNotice('Source permanently deleted.')
+      reload()
+    } catch (actionError) {
+      setNotice(actionMessage(actionError))
+    } finally {
+      setWorking('')
+    }
   }
 
   const addFeed = async (url: string) => {
@@ -347,6 +374,7 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     onStart: start,
     onProcessArtifact: process,
     onDeleteArtifact: removeArtifact,
+    onDeleteRecommendationPermanently: deleteRecommendationPermanently,
     onCompleteChapter: completeChapter,
     onAddBook: addBook,
     onCreateCollection: createCollection,
@@ -376,8 +404,8 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     return <div class="library-workspace workspace-surface">{modeSwitcher}<ObjectRouteView type={objectType} data={objectData} handlers={handlers} onBack={() => go(viewHref(backView))}/></div>
   }
 
-  const content = view === 'queue' ? <QueueView data={loaded} handlers={handlers}/> :
-    view === 'inbox' ? <InboxView data={loaded} handlers={handlers}/> :
+  const content = view === 'inbox' ? <InboxView data={loaded} handlers={handlers}/> :
+    view === 'queue' ? <QueueView data={loaded} handlers={handlers}/> :
       view === 'feeds' ? <FeedsView data={loaded} handlers={handlers}/> :
         view === 'all' ? <AllSourcesView data={loaded} handlers={handlers}/> :
           view === 'files' ? <FilesView data={loaded} handlers={handlers}/> :

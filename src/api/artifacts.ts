@@ -36,7 +36,7 @@ function markdownToHtml(markdown: string, title: string) {
 
 app.get('/', async (c) => {
   const [rows, jobs] = await Promise.all([
-    c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,created_at FROM artifacts WHERE thread_id IS NULL AND stage_id IS NULL ORDER BY created_at DESC LIMIT 200`).all(),
+    c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,created_at FROM artifacts WHERE thread_id IS NULL AND stage_id IS NULL AND COALESCE(json_extract(metadata_json,'$.scope'),'') != 'book' ORDER BY created_at DESC LIMIT 200`).all(),
     c.env.DB.prepare(`SELECT status,payload_json,error,updated_at FROM agent_jobs WHERE job_type='extract_notes' ORDER BY created_at DESC LIMIT 400`).all<any>(),
   ])
   const jobByArtifact = new Map<string, { status: string; error?: string; updated_at: string }>()
