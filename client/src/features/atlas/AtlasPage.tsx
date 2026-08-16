@@ -600,14 +600,7 @@ export default function AtlasPage() {
   const model = useMemo(() => createAtlasModel(raw?.nodes, raw?.edges), [raw])
   const colors = useMemo(() => new Map([...model.clusters.keys()].sort().map((name, index) => [name, palette[index % palette.length]])), [model])
   const filteredVisible = useMemo(() => clusterFilter === 'all' ? visible : new Set([...visible].filter((id) => clusterFor(model, id) === clusterFilter)), [visible, clusterFilter, model])
-  const layoutAtlas = useMemo(() => ({
-    center_force: atlas.center_force,
-    repel_force: atlas.repel_force,
-    link_force: atlas.link_force,
-    node_size: atlas.node_size,
-    // keep full shape for constellationLayout
-    ...atlas,
-  }), [atlas.center_force, atlas.repel_force, atlas.link_force, atlas.node_size])
+  const layoutAtlas = useMemo(() => ({ ...atlas }), [atlas])
   const layout = useMemo(() => constellationLayout(model, filteredVisible, gravity, layoutAtlas), [model, filteredVisible, gravity, layoutAtlas])
   const selected = selectedId ? model.byId.get(selectedId) : undefined
   const searchResults = query.trim() ? model.nodes.filter((node) => node.label.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 8) : []
@@ -923,7 +916,7 @@ export default function AtlasPage() {
     cy.on('grab', 'node', (event) => {
       const node = event.target
       draggedNodeId = node.id()
-      const part = particles.get(draggedNodeId)
+      const part = particles.get(node.id())
       if (part) part.pinned = true
       node.addClass('drag-leader')
       simAlpha = 1.0
@@ -1025,7 +1018,7 @@ export default function AtlasPage() {
         'text-margin-y': Math.max(6, Math.round(8 * Math.sqrt(ns))),
         'text-background-color': surface,
         'text-background-opacity': 0.94,
-        'text-background-padding': 4,
+        'text-background-padding': '4px',
         'text-background-shape': 'roundrectangle',
         'text-border-width': 1,
         'text-border-color': line,

@@ -809,12 +809,17 @@ app.post('/branch-swipe', async (c) => {
         .bind(id, branchLabel, cat, round).run()
       // One explicit renumbered priority list: promote this branch to rank 1 and
       // shift the rest down, instead of growing an unbounded MAX(rank)+1 tail.
+      // Move existing ranks through a temporary collision-free range first.
+      // A direct +1 update violates a UNIQUE(rank) constraint when ranks are
+      // contiguous, and the old swallowed batch failure made promotion look
+      // successful while writing no priority row.
       await DB.batch([
         DB.prepare('DELETE FROM priorities WHERE branch_id = ?').bind(id),
-        DB.prepare('UPDATE priorities SET rank = rank + 1'),
+        DB.prepare('UPDATE priorities SET rank = rank + 1000000'),
+        DB.prepare('UPDATE priorities SET rank = rank - 999999'),
         DB.prepare('INSERT INTO priorities (rank, branch_id, label, rationale) VALUES (1, ?, ?, ?)')
           .bind(id, branchLabel, rationale || 'Promoted in Branch Deck'),
-      ]).catch(() => {})
+      ])
       await log(`Branch ${branchLabel} promoted to priority #1`, { rank: 1 })
     } else if (action === 'hold') {
       await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'held', ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'held', updated_at = datetime('now')")

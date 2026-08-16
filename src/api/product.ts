@@ -101,7 +101,7 @@ app.post('/feedback/record', async (c) => {
   const revision = Number(reflectionNote?.revision || 0) + 1
   const feedbackJobId = id('job')
   const settings = await loadSettings(c.env.DB)
-  const extractionJobId = complete && (disposition === 'retain' || disposition === 'apply') && settings.srs_drafts.auto_extract ? id('job') : null
+  const extractionJobId = complete && rating.score !== null && rating.score >= 8 && (disposition === 'retain' || disposition === 'apply') && settings.srs_drafts.auto_extract ? id('job') : null
   const statements: D1PreparedStatement[] = []
   if (!session) statements.push(c.env.DB.prepare(`INSERT INTO learning_sessions (id,recommendation_id,intent,status,returned_at,completed_at,reflection,thread_id) VALUES (?,?,? ,?,datetime('now'),CASE WHEN ? THEN datetime('now') ELSE NULL END,?,?)`).bind(sessionId, recommendation.id, 'Feedback recorded through Hermes', complete ? 'completed' : 'returned', complete ? 1 : 0, feedback, body.thread_id || null))
   else statements.push(c.env.DB.prepare(`UPDATE learning_sessions SET reflection=?,returned_at=datetime('now'),status=?,completed_at=CASE WHEN ? THEN COALESCE(completed_at,datetime('now')) ELSE completed_at END WHERE id=?`).bind(feedback, complete ? 'completed' : 'returned', complete ? 1 : 0, sessionId))
