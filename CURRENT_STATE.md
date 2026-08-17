@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-08-17 (profile taste affinity labels)
+
+The Settings profile no longer exposes internal branch IDs in **Taste affinities**. `GET /brain/profile` keeps each vector's internal `topic` key for scoring but resolves a readable `label` from `tree_nodes` (or the priority label as a fallback); the profile list uses that label and shows an affinity score instead of repeating the storage key. The fix is deployed at `https://recommendations-worker.mhmudnasr30.workers.dev` as Worker version `32139a90-d5db-4070-b827-0b8d88a93718`.
+
+Verified with 106 unit tests plus typecheck, production build, full E2E, `git diff --check`, live `/health` HTTP 200, and a live profile read confirming the four previously leaked IDs resolve to their Arabic branch labels.
+
 ## Current truth — 2026-08-17 (Settings control-center redesign)
 
 The Settings workspace now leads with a readable learning-profile summary instead of the internal profile model: an explicit Edit profile action, health/status language oriented around user decisions, summary cards for context/priorities/boundaries/quality/workflow, and searchable learned signals behind progressive disclosure. Technical model identifiers remain available under Model details, malformed legacy JSON stays out of the normal view, and Data/System copy now distinguishes backup/recovery and advanced operations from everyday controls. Existing routes, API contracts, and operational inventory behavior remain compatible. This redesign is deployed at `https://recommendations-worker.mhmudnasr30.workers.dev` as Worker version `51469e14-fdd8-4ea8-896e-b98bac23d1c1`.

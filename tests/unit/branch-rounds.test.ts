@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { displayRound, explicitRound, progressionRound, roundEvidenceFromBalance } from '../../src/services/branch-rounds.ts'
+import { cleanProfileLabel, profileTasteLabel } from '../../src/services/profile-labels.ts'
 
 test('progressionRound starts at R1 for untouched branches', () => {
   assert.equal(progressionRound({ consumed: 0, notes: 0, cards: 0, due: 0, recallStrength: null }), 'R1')
@@ -39,4 +40,10 @@ test('displayRound prefers explicit label, then id prefix, then progression', ()
 test('roundEvidenceFromBalance maps balance node fields', () => {
   assert.deepEqual(roundEvidenceFromBalance(null), { consumed: 0, notes: 0, cards: 0, due: 0, recallStrength: null })
   assert.deepEqual(roundEvidenceFromBalance({ consumed_count: 2, notes_count: 3, srs_total: 4, srs_due: 1, recall_strength: 0.7 }), { consumed: 2, notes: 3, cards: 4, due: 1, recallStrength: 0.7 })
+})
+
+test('profile taste labels prefer readable branch names over internal ids and status suffixes', () => {
+  assert.equal(cleanProfileLabel('Readable branch  [LOVE · R1]'), 'Readable branch')
+  assert.equal(profileTasteLabel({ topic: 'fixture-branch-id', branch_label: 'Readable branch  [LOVE · R1]' }), 'Readable branch')
+  assert.equal(profileTasteLabel({ topic: 'fixture-branch-id' }), 'fixture-branch-id')
 })

@@ -104,7 +104,9 @@ try {
       recent_signal: 'Prefer evidence-backed applied material.',
     },
     priorities: [[1, 'systems', 'Systems thinking', 'Build durable models.']],
+    tree_nodes: [{ id: 'fixture-branch-id', type: 'branch', label: 'Readable fixture branch', super_category: 'cat-mind', parent_id: 'root', status: 'love', round_label: 'R1' }],
   }) })
+  await requestJson('/brain/profile/sync-swipes', { method: 'POST', body: JSON.stringify({}) })
   const seededProfile = await requestJson('/brain/profile?recent_limit=50')
   if (!seededProfile.profile) throw new Error(`profile fixture did not persist: ${JSON.stringify(seededProfile)}`)
 
@@ -344,6 +346,7 @@ const profileBody = await page.locator('.workspace-canvas').innerText()
 for (const value of ['Profile rendering fixture', 'Deep systems thinking', 'Reaction style', 'Priorities', 'Mastered knowledge', 'Exclusions', 'Learned patterns', 'Creator history', 'Taste affinities', 'Recent reflections', 'Recent ratings']) {
   if (!profileBody.toLowerCase().includes(value.toLowerCase())) throw new Error(`profile page is missing rendered value or section: ${value}`)
 }
+if (!profileBody.includes('Readable fixture branch') || profileBody.includes('fixture-branch-id')) throw new Error('profile taste affinities leaked an internal branch id instead of the branch label')
 if (profileBody.includes('Priority topics configured.')) throw new Error('profile page still renders the fake priority placeholder')
 if (profileBody.includes('{"malformed":')) throw new Error('profile page exposed raw JSON in its normal view')
 if (await page.locator('.profile-tag-list').count() < 1) throw new Error('profile page did not render visual topic tags')

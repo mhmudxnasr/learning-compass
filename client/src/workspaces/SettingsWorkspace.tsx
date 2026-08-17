@@ -319,8 +319,8 @@ function ProfileFieldList({ profile }: { profile: ProfileRecord }) {
   })}</div></section>
 }
 
-function ProfileRecordList({ items, empty, title, getTitle, getMeta }: { items: any[]; empty: string; title: string; getTitle: (item: any) => string; getMeta: (item: any) => string }) {
-  return <section class="profile-record-section"><div class="section-head"><h2>{title}</h2><span>{items.length} recorded</span></div>{items.length ? <div class="profile-record-list">{items.slice(0, 24).map((item, index) => <article class="profile-record" key={String(item.id || item.label || item.name || index)}><div class="profile-record-title"><strong>{getTitle(item)}</strong><small>{getMeta(item)}</small></div><p>{readableText(item.description || item.reason || item.why || item.topic || item.notes || '')}</p></article>)}</div> : <p class="profile-empty">{empty}</p>}</section>
+function ProfileRecordList({ items, empty, title, getTitle, getMeta, getDetail }: { items: any[]; empty: string; title: string; getTitle: (item: any) => string; getMeta: (item: any) => string; getDetail?: (item: any) => unknown }) {
+  return <section class="profile-record-section"><div class="section-head"><h2>{title}</h2><span>{items.length} recorded</span></div>{items.length ? <div class="profile-record-list">{items.slice(0, 24).map((item, index) => <article class="profile-record" key={String(item.id || item.label || item.name || index)}><div class="profile-record-title"><strong>{getTitle(item)}</strong><small>{getMeta(item)}</small></div><p>{readableText(getDetail ? getDetail(item) : item.description || item.reason || item.why || item.notes || '')}</p></article>)}</div> : <p class="profile-empty">{empty}</p>}</section>
 }
 
 function ProfileEditor({ profile, onSaved }: { profile: ProfileRecord; onSaved: () => void }) {
@@ -366,7 +366,7 @@ function ProfileView() {
       <ProfileRecordList title="Mastered knowledge" items={data.mastered || []} empty="No mastered topics recorded." getTitle={(item) => item.label || item.name || item.id || 'Mastered topic'} getMeta={(item) => item.kind || ''} />
       <ProfileRecordList title="Exclusions" items={data.blacklist || []} empty="No exclusions recorded." getTitle={(item) => [item.name, item.work].filter(Boolean).join(' · ') || 'Exclusion'} getMeta={(item) => item.severity == null ? '' : `Severity ${item.severity}`} />
       <ProfileRecordList title="Learned patterns" items={data.patterns || []} empty="No patterns recorded." getTitle={(item) => item.description || item.id || 'Pattern'} getMeta={(item) => item.strength || ''} />
-      <ProfileRecordList title="Taste affinities" items={data.taste_vectors || []} empty="No taste affinities recorded." getTitle={(item) => item.topic || 'Topic'} getMeta={(item) => `${item.consumption_count || 0} completed`} />
+      <ProfileRecordList title="Taste affinities" items={data.taste_vectors || []} empty="No taste affinities recorded." getTitle={(item) => item.label || item.topic || 'Topic'} getMeta={(item) => `${item.consumption_count || 0} completed`} getDetail={(item) => item.affinity_score == null ? '' : `Affinity score ${Number(item.affinity_score).toFixed(1)} / 5`} />
       <ProfileRecordList title="Creator history" items={data.creator_trust || []} empty="No creator history available." getTitle={(item) => item.creator || 'Creator'} getMeta={(item) => `${item.total || 0} consumed · ${item.average_score || '—'} avg`} />
       <ProfileRecordList title="Recent reflections" items={data.reflections || []} empty="No written reflections recorded." getTitle={(item) => item.video_title || 'Reflection'} getMeta={(item) => item.completed_at ? formatDate(item.completed_at) : ''} />
       <ProfileRecordList title="Recent ratings" items={data.rating_history || []} empty="No ratings recorded." getTitle={(item) => item.video_title || 'Rated source'} getMeta={(item) => item.user_score == null ? item.user_rating || '' : `${item.user_score}/10`} />
