@@ -22,6 +22,16 @@ test('parses RSS entries and resolves relative article links', () => {
   })
 })
 
+test('ignores self-closing namespaced links before the RSS channel link', () => {
+  const feed = parseFeed(`<rss xmlns:atom="http://www.w3.org/2005/Atom"><channel>
+    <title>AI News</title>
+    <atom:link href="https://example.com/feed/" rel="self" type="application/rss+xml" />
+    <link>https://example.com/ai/</link>
+    <item><title>First story</title><link>https://example.com/ai/first</link></item>
+  </channel></rss>`, 'https://example.com/feed')
+  assert.equal(feed.siteUrl, 'https://example.com/ai/')
+})
+
 test('parses Atom alternate links', () => {
   const feed = parseFeed(`<feed><title>Atom Source</title><link href="https://example.org"/>
     <entry><id>tag:example.org,1</id><title>New entry</title><link rel="alternate" href="/new"/>

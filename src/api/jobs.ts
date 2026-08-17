@@ -116,11 +116,15 @@ app.post('/:id/complete', async (c) => {
         if (missing.length || incomplete.length) return c.json({ error: 'Notes Extractor must return complete bilingual English and Egyptian Arabic sections', missing, incomplete }, 400)
       }
       const noteId = note.id || `note_${crypto.randomUUID()}`
-      statements.push(DB.prepare(`INSERT OR REPLACE INTO notes (id,recommendation_id,title,kind,branch_id,source_url,source_artifact_id,status,updated_at) VALUES (?,?,?,?,?,?,?,'draft',datetime('now'))`).bind(noteId, note.recommendation_id || null, note.title, note.kind || 'guide', note.branch_id || null, note.source_url || null, note.source_artifact_id || null))
+      const provenance = Array.isArray(note.provenance) ? note.provenance.slice(0, 20).map((item: any) => ({ annotation_id: String(item.annotation_id || '').slice(0, 120), reason: String(item.reason || '').slice(0, 500), confidence: item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))) })).filter((item: any) => item.annotation_id) : []
+      statements.push(DB.prepare(`INSERT OR REPLACE INTO notes (id,recommendation_id,title,kind,branch_id,source_url,source_artifact_id,status,provenance_json,updated_at) VALUES (?,?,?,?,?,?,?,'draft',?,datetime('now'))`).bind(noteId, note.recommendation_id || null, note.title, note.kind || 'guide', note.branch_id || null, note.source_url || null, note.source_artifact_id || null, JSON.stringify(provenance)))
       for (const [index, section] of (note.sections || []).entries()) statements.push(DB.prepare(`INSERT OR REPLACE INTO note_sections (id,note_id,section_key,label,content,direction,position,updated_at) VALUES (?,?,?,?,?,?,?,datetime('now'))`).bind(`${noteId}_${section.section_key}`, noteId, section.section_key, section.label, section.content || '', section.direction || 'auto', index))
       const retain = payload.disposition === 'retain' || payload.disposition === 'apply' || (!payload.disposition && Number(payload.rating || 0) >= 7)
       if (retain) {
-        for (const draft of body.srs_drafts || []) statements.push(DB.prepare(`INSERT INTO srs_drafts (id,recommendation_id,note_id,question,answer,topic,unit_id,thread_id) VALUES (?,?,?,?,?,?,?,?)`).bind(`draft_${crypto.randomUUID()}`, note.recommendation_id || null, noteId, draft.question, draft.answer, draft.topic || note.branch_id || 'general', draft.unit_id || null, payload.thread_id || null))
+        for (const draft of body.srs_drafts || []) {
+          const provenance = Array.isArray(draft.provenance) ? draft.provenance.slice(0, 20).map((item: any) => ({ annotation_id: String(item.annotation_id || '').slice(0, 120), reason: String(item.reason || '').slice(0, 500), confidence: item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))) })).filter((item: any) => item.annotation_id) : []
+          statements.push(DB.prepare(`INSERT INTO srs_drafts (id,recommendation_id,note_id,question,answer,topic,unit_id,thread_id,provenance_json) VALUES (?,?,?,?,?,?,?,?,?)`).bind(`draft_${crypto.randomUUID()}`, note.recommendation_id || null, noteId, draft.question, draft.answer, draft.topic || note.branch_id || 'general', draft.unit_id || null, payload.thread_id || null, JSON.stringify(provenance)))
+        }
       }
     }
     if (job.job_type === 'extract_notes' && Array.isArray(body.learning_units)) {
@@ -138,7 +142,7 @@ app.post('/:id/complete', async (c) => {
           const anchorType = ['page','timestamp','section','quote','url_fragment','user_observation'].includes(anchor.anchor_type) ? anchor.anchor_type : 'section'
           const locator = String(anchor.locator || '').trim().slice(0, 1000)
           if (!locator || !payload.recommendation_id) return c.json({ error: 'learning unit anchor requires locator and recommendation_id', index, anchor_index: anchorIndex }, 400)
-          statements.push(DB.prepare(`INSERT OR IGNORE INTO unit_anchors (id,unit_id,recommendation_id,artifact_id,anchor_type,locator,excerpt,checksum) VALUES (?,?,?,?,?,?,?,?)`).bind(`anchor_${job.id}_${index + 1}_${anchorIndex + 1}`, unitId, payload.recommendation_id, anchor.artifact_id || payload.source_artifact_id || null, anchorType, locator, String(anchor.excerpt || '').slice(0, 4000) || null, anchor.checksum || null))
+          statements.push(DB.prepare(`INSERT OR IGNORE INTO unit_anchors (id,unit_id,recommendation_id,artifact_id,annotation_id,anchor_type,locator,excerpt,checksum) VALUES (?,?,?,?,?,?,?,?,?)`).bind(`anchor_${job.id}_${index + 1}_${anchorIndex + 1}`, unitId, payload.recommendation_id, anchor.artifact_id || payload.source_artifact_id || null, anchor.annotation_id || null, anchorType, locator, String(anchor.excerpt || '').slice(0, 4000) || null, anchor.checksum || null))
         }
         if (payload.thread_id) statements.push(DB.prepare(`INSERT OR IGNORE INTO thread_units (thread_id,unit_id,role,importance,position) VALUES (?,?,?,?,?)`).bind(payload.thread_id, unitId, ['core','supporting','counterevidence','application'].includes(unit.role) ? unit.role : 'supporting', Math.max(0, Math.min(1, Number(unit.importance ?? .5))), index))
       }

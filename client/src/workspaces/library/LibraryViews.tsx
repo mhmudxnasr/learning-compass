@@ -981,6 +981,7 @@ function SourceObject({ item, record, handlers }: { item: LibraryRecord; record:
   const outcome = record.outcome
   return <div class="folio-object-sections">
     <section class="folio-object-section"><h2>Source access</h2><div class="folio-row-actions">{sourceLink(item) && <a class="folio-button folio-button-primary" href={sourceLink(item)!} target="_blank" rel="noreferrer">Open original</a>}{notebookUrl && <a class="folio-button" href={notebookUrl} target="_blank" rel="noreferrer">Open NotebookLM</a>}</div><p class="folio-record-note">Opening this source is passive. Start a tracked learning session from Queue.</p></section>
+    <SourceAnnotationPanel source={item} threadId={thread?.id} branchId={branch?.id}/>
     {branch && <section class="folio-object-section"><div class="folio-section-heading"><h2>Branch</h2><span class="folio-badge folio-badge-branch"><span class="badge-format">Branch</span><span>{branch.label}</span>{branch.round && <span class="badge-round">{branch.round}</span>}</span></div><div class="folio-row-actions"><a class="folio-button" href={`#/map/branch/${encodeURIComponent(String(branch.id))}`}>Open branch dossier</a></div><p class="folio-record-note">{branch.status === 'pruned' ? 'This branch is pruned — review the mapping before starting.' : branch.status && branch.status !== 'unverified' ? `Branch status: ${branch.status.replace(/_/g, ' ')}.` : 'Branch match is not verified yet.'}</p></section>}
     {(companions.html || companions.pdf) && <section class="folio-object-section"><div class="folio-section-heading"><h2>Reading companions</h2><span>{[(companions.html && 'HTML') || null, (companions.pdf && 'PDF') || null].filter(Boolean).join(' + ')}</span></div><div class="folio-row-actions">{companions.html && <a class="folio-button folio-button-primary" href={`/artifacts/${encodeURIComponent(String(companions.html.id))}`} target="_blank" rel="noreferrer">Read HTML companion</a>}{companions.pdf && <a class="folio-button" href={`/artifacts/${encodeURIComponent(String(companions.pdf.id))}`} target="_blank" rel="noreferrer">Download A4 PDF{companions.pdf.size_bytes ? ` · ${formatBytes(companions.pdf.size_bytes)}` : ''}</a>}</div><p class="folio-record-note">Canonical Arabic reading companion rendered from one verified body.</p></section>}
     <section class="folio-object-section"><div class="folio-section-heading"><h2>Active recall</h2><span>{recall.count} approved{recall.due > 0 ? ` · ${recall.due} due` : ''}</span></div>{(record.srs?.cards || []).length ? <ul class="folio-recall-list">{(record.srs.cards || []).map((card: LibraryRecord) => <li key={card.id}><strong>{card.question}</strong><span>Topic: {card.topic || 'General'} · Due {formatDate(card.due_at)} · {card.repetitions} reps</span></li>)}</ul> : <p class="folio-record-note">No approved recall cards yet.</p>}{drafts.length > 0 && <div class="folio-draft-strip"><span>{drafts.length} pending {drafts.length === 1 ? 'draft' : 'drafts'}</span><a class="folio-button" href="#/learn?mode=practice&focus=recall">Review drafts</a></div>}{recall.count === 0 && drafts.length === 0 && <div class="folio-row-actions"><a class="folio-button" href="#/learn?mode=practice&focus=notes">Take a note first</a></div>}</section>
@@ -989,6 +990,36 @@ function SourceObject({ item, record, handlers }: { item: LibraryRecord; record:
     <section class="folio-object-section"><div class="folio-section-heading"><h2>Files</h2><span>{artifacts.length}</span></div>{artifacts.length ? artifacts.map((file: LibraryRecord) => <a class="folio-linked-object" href={artifactLink(file)} target="_blank" rel="noreferrer" key={file.id}><strong>{file.filename || fileKind(file)}</strong><span>{fileKind(file)} · passive open</span></a>) : <p class="folio-record-note">No linked files yet.</p>}</section>
     {notes.map((note: LibraryRecord) => <section class="folio-object-section" key={note.id}><div class="folio-section-heading"><h2>{note.kind === 'reflection' ? 'Reflection' : 'Extracted note'}</h2><span>{formatStatus(note.status || 'draft')}</span></div>{(note.sections || []).map((section: LibraryRecord) => <div class="folio-bilingual-block" dir={section.direction || 'auto'} key={section.section_key}><strong>{section.label || labelize(section.section_key || 'section')}</strong><p>{section.content}</p></div>)}</section>)}
   </div>
+}
+
+function SourceAnnotationPanel({ source, threadId, branchId }: { source: LibraryRecord; threadId?: string; branchId?: string }) {
+  const [annotations, setAnnotations] = useState<LibraryRecord[]>([])
+  const [quote, setQuote] = useState('')
+  const [locator, setLocator] = useState('')
+  const [locatorType, setLocatorType] = useState('web')
+  const [notice, setNotice] = useState('')
+  const [saving, setSaving] = useState(false)
+  const load = () => api<{ annotations: LibraryRecord[] }>(`/annotations?recommendation_id=${encodeURIComponent(String(source.id))}`).then((payload) => setAnnotations(payload.annotations || [])).catch(() => setAnnotations([]))
+  useEffect(() => { void load() }, [source.id])
+  const save = async (event: Event) => {
+    event.preventDefault()
+    if (!quote.trim()) return
+    setSaving(true)
+    try {
+      await api('/annotations', { method: 'POST', body: JSON.stringify({ recommendation_id: source.id, thread_id: threadId, branch_id: branchId, locator_type: locatorType, selector: locator.trim() ? { locator: locator.trim() } : {}, quote: quote.trim(), created_by: 'user' }) })
+      setQuote(''); setLocator(''); setNotice('Passage saved to the evidence ledger. Hermes can now ground a proposal in it.'); await load()
+    } catch (error: any) { setNotice(error?.message || 'The passage could not be saved.') }
+    finally { setSaving(false) }
+  }
+  return <section class="folio-object-section source-annotation-panel" aria-labelledby="source-annotation-title">
+    <div class="folio-section-heading"><div><h2 id="source-annotation-title">Source anchors</h2><p class="folio-record-note">Capture the exact passage Hermes should use as evidence.</p></div><span>{annotations.length} active</span></div>
+    <form class="source-annotation-form" onSubmit={save}>
+      <label>Passage<textarea value={quote} onInput={(event) => setQuote((event.target as HTMLTextAreaElement).value)} placeholder="Paste the exact sentence or excerpt…" required /></label>
+      <div class="source-annotation-fields"><label>Locator type<select value={locatorType} onChange={(event) => setLocatorType((event.target as HTMLSelectElement).value)}><option value="web">Web passage</option><option value="pdf">PDF page or quote</option><option value="video">Video timestamp</option><option value="epub">EPUB location</option><option value="artifact">Companion section</option><option value="text">Plain text</option></select></label><label>Locator<input value={locator} onInput={(event) => setLocator((event.target as HTMLInputElement).value)} placeholder="Page 8, 12:42, CSS selector…" /></label></div>
+      <div class="folio-form-actions"><button type="submit" class="folio-button folio-button-primary" disabled={saving || !quote.trim()}>{saving ? 'Saving…' : 'Save source anchor'}</button>{notice && <output aria-live="polite">{notice}</output>}</div>
+    </form>
+    {annotations.length ? <div class="source-annotation-list">{annotations.slice(0, 8).map((annotation) => <article key={annotation.id}><p>{annotation.quote}</p><small>{labelize(annotation.locator_type || 'source')} · {annotation.selector?.locator || 'Locator not recorded'} · {formatDate(annotation.created_at)}</small><div class="folio-row-actions"><a class="folio-button" href={`#/learn?mode=practice&focus=notes&annotation=${encodeURIComponent(String(annotation.id))}`}>Use in Learn</a></div></article>)}</div> : <p class="folio-record-note">No passage anchors yet. Anchors are evidence, not proof of mastery.</p>}
+  </section>
 }
 
 function ArtifactObject({ item }: { item: LibraryRecord }) {

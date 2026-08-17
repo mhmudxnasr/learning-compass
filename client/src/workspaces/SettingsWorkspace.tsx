@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { api, flushOfflineMutations, formatDate, labelize, listOfflineMutations, resolveOfflineMutation } from '../api'
 import { ErrorState, Empty, Loading } from '../components/States'
+import { HermesActivityPanel } from './HermesActivityPanel'
 import { useData } from '../app/useData'
 import { useRoute } from '../app/router'
 import { THEME_PRESETS, FONT_PRESETS, THEME_VARIANTS, applyTheme, applyFont, applyDisplayPreferences, applyTypography, getSavedTheme, getSavedFontId, getSavedCustomFont, getSavedCustomPalette, getSavedDisplayPreferences, getSavedTypography, getSavedThemePair, saveThemePair, contrastRatio, extractColorsFromText, normalizeColor, normalizeCustomFont, type CustomPalette, type CustomFont, type DisplayPreferences, type TypographyPreferences, type ThemePair, DEFAULT_CUSTOM_PALETTE, DEFAULT_CUSTOM_FONT, DEFAULT_TYPOGRAPHY } from '../theme'
@@ -58,14 +59,14 @@ type SystemPayload = {
 type Capability = { method: string; path: string; description: string }
 
 const settingsModes: Array<{ key: SettingsMode; label: string; description: string; view: SettingsView }> = [
-  { key: 'personal', label: 'Personal', description: 'Profile and learning preferences', view: 'profile' },
-  { key: 'data', label: 'Data', description: 'Exports, ownership, and offline work', view: 'data' },
-  { key: 'system', label: 'System', description: 'Operations, schedules, and safety', view: 'system' },
+  { key: 'personal', label: 'Personal', description: 'Profile and preferences', view: 'profile' },
+  { key: 'data', label: 'Data & recovery', description: 'Backups, offline changes, and storage', view: 'data' },
+  { key: 'system', label: 'System', description: 'Health, Hermes, and advanced operations', view: 'system' },
 ]
 
 const personalFilters: Array<{ key: SettingsFocus; label: string; description: string }> = [
-  { key: 'profile', label: 'Profile', description: 'Priorities and learned patterns' },
-  { key: 'preferences', label: 'Preferences', description: 'Learning and curation defaults' },
+  { key: 'profile', label: 'Learning profile', description: 'What shapes your learning' },
+  { key: 'preferences', label: 'Preferences', description: 'How the studio behaves' },
 ]
 
 const paletteRoles = ['Brand', 'Surface', 'Highlight', 'Accent']
@@ -169,31 +170,33 @@ function jumpToPreference(event: MouseEvent, id: string) {
 
 function SettingsModeSwitcher({ active, focus, onRouteChange }: { active: SettingsMode; focus: SettingsFocus; onRouteChange?: (route: SettingsWorkspaceRoute) => void }) {
   return <>
-    <nav class="workspace-mode-switcher workspace-local-nav settings-local-nav" aria-label="Settings sections">
-      {settingsModes.map((item) => (
-        <a
-          key={item.key}
-          href={routeFor(item.key, item.key === 'personal' ? 'profile' : undefined)}
-          class={active === item.key ? 'active' : ''}
-          aria-current={active === item.key ? 'page' : undefined}
-          onClick={(event) => {
-            if (!onRouteChange) return
-            event.preventDefault()
-            onRouteChange({ view: item.view, mode: item.key, focus: item.key === 'personal' ? 'profile' : undefined })
-          }}
-        >
-          <strong>{item.label}</strong>
-          <small>{item.description}</small>
-        </a>
-      ))}
-    </nav>
-    {active === 'personal' && <nav class="workspace-filter-switcher workspace-local-nav" aria-label="Personal settings filters">
-      {personalFilters.map((item) => <a key={item.key} href={routeFor('personal', item.key)} class={focus === item.key ? 'active' : ''} aria-current={focus === item.key ? 'page' : undefined} onClick={(event) => {
-        if (!onRouteChange) return
-        event.preventDefault()
-        onRouteChange({ view: item.key, mode: 'personal', focus: item.key })
-      }}><strong>{item.label}</strong><small>{item.description}</small></a>)}
-    </nav>}
+    <div class="settings-local-navigation">
+      <nav class="workspace-mode-switcher workspace-local-nav settings-local-nav" aria-label="Settings sections">
+        {settingsModes.map((item) => (
+          <a
+            key={item.key}
+            href={routeFor(item.key, item.key === 'personal' ? 'profile' : undefined)}
+            class={active === item.key ? 'active' : ''}
+            aria-current={active === item.key ? 'page' : undefined}
+            onClick={(event) => {
+              if (!onRouteChange) return
+              event.preventDefault()
+              onRouteChange({ view: item.view, mode: item.key, focus: item.key === 'personal' ? 'profile' : undefined })
+            }}
+          >
+            <strong>{item.label}</strong>
+            <small>{item.description}</small>
+          </a>
+        ))}
+      </nav>
+      {active === 'personal' && <nav class="workspace-filter-switcher workspace-local-nav" aria-label="Personal settings filters">
+        {personalFilters.map((item) => <a key={item.key} href={routeFor('personal', item.key)} class={focus === item.key ? 'active' : ''} aria-current={focus === item.key ? 'page' : undefined} onClick={(event) => {
+          if (!onRouteChange) return
+          event.preventDefault()
+          onRouteChange({ view: item.key, mode: 'personal', focus: item.key })
+        }}><strong>{item.label}</strong><small>{item.description}</small></a>)}
+      </nav>}
+    </div>
   </>
 }
 
@@ -237,8 +240,79 @@ function ReadableValue({ value, compact = false }: { value: unknown; compact?: b
   return <div class="profile-readable-value"><p>{text}</p>{tags.length > 0 && <div class="profile-tag-list">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}</div>
 }
 
+function profileValue(profile: ProfileRecord, ...keys: string[]) {
+  return keys.map((key) => profile[key]).find((value) => value !== undefined && value !== null && value !== '')
+}
+
+function safeProfileValue(value: unknown, structured = false) {
+  if (!structured || typeof value !== 'string') return value
+  try { return JSON.parse(value) } catch { return 'Needs review in the profile editor.' }
+}
+
+function ProfileOverview({ profile }: { profile: ProfileRecord }) {
+  const cards = [
+    { label: 'Learning context', description: 'The context used to tailor examples and formats.', value: profileValue(profile, 'identity_json', 'identity'), structured: true },
+    { label: 'Priority areas', description: 'The subjects that deserve more attention.', value: profileValue(profile, 'mega_priority_json', 'mega_priority'), structured: true },
+    { label: 'Content boundaries', description: 'What to filter out before it reaches your queue.', value: profileValue(profile, 'core_filter'), structured: false },
+    { label: 'Quality standards', description: 'The evidence and verification bar for new material.', value: profileValue(profile, 'quality_rules_json'), structured: true },
+    { label: 'How Hermes works', description: 'The operating style used when the system assists you.', value: profileValue(profile, 'operational_style_json'), structured: true },
+  ]
+  return <section class="profile-overview profile-section" aria-labelledby="profile-overview-heading">
+    <div class="section-head">
+      <div><h2 id="profile-overview-heading">What shapes your learning</h2><p class="section-description">A readable summary of the preferences that influence curation, sequencing, and feedback.</p></div>
+      <span>Editable below</span>
+    </div>
+    <div class="profile-overview-grid">
+      {cards.map((card) => <article class="profile-overview-card" key={card.label}>
+        <div class="profile-overview-card-head"><strong>{card.label}</strong><span>Preference</span></div>
+        <p class="profile-overview-description">{card.description}</p>
+        <ReadableValue value={safeProfileValue(card.value, card.structured)} compact />
+      </article>)}
+    </div>
+  </section>
+}
+
+function assertionTitle(assertion: ProfileRecord) {
+  const value = asValue(assertion.value)
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const record = value as ProfileRecord
+    const readable = record.label || record.name || record.topic || record.title
+    if (readable) return String(readable)
+  }
+  const raw = String(assertion.assertion_key || 'Learned preference').replace(/^User\.Profile\./i, '')
+  return labelize(raw.split('.').pop() || raw)
+}
+
+function ProfileSignals({ assertions }: { assertions: ProfileRecord[] }) {
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState('all')
+  const normalizedQuery = query.trim().toLowerCase()
+  const filtered = assertions.filter((assertion) => {
+    const category = String(assertion.category || 'profile').toLowerCase()
+    const text = `${assertionTitle(assertion)} ${readableText(assertion.value)} ${category}`.toLowerCase()
+    return (filter === 'all' || category === filter) && (!normalizedQuery || text.includes(normalizedQuery))
+  })
+  const categories = [...new Set(assertions.map((assertion) => String(assertion.category || 'profile').toLowerCase()))].sort()
+  return <details class="profile-panel profile-learned-panel">
+    <summary><span><strong>What Learning Compass has learned</strong><small>Evidence-backed signals used to shape future recommendations.</small></span><span>{assertions.length} signals</span></summary>
+    <div class="profile-panel-content">
+      <div class="profile-signal-toolbar">
+        <label>Search learned signals<input aria-label="Search learned signals" value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="Search preferences, topics, or boundaries" /></label>
+        <label>Show<select aria-label="Filter learned signals" value={filter} onChange={(event) => setFilter((event.target as HTMLSelectElement).value)}><option value="all">All signals</option>{categories.map((category) => <option key={category} value={category}>{labelize(category)}</option>)}</select></label>
+      </div>
+      {filtered.length ? <div class="profile-assertion-list">{filtered.slice(0, 24).map((assertion: ProfileRecord) => <article key={assertion.id || assertion.assertion_key}>
+        <div class="profile-assertion-head"><div><span class="meta">{labelize(assertion.category || 'profile')} · {labelize(assertion.source_kind || 'recorded')}</span><strong>{assertionTitle(assertion)}</strong></div><span class={`state state-${assertion.status || 'active'}`}>{labelize(assertion.status || 'active')}</span></div>
+        <ReadableValue value={assertion.value} compact />
+        <small>Confidence {Math.round(Number(assertion.confidence || 0) * 100)}% · version {assertion.version || 1}</small>
+        <details class="profile-signal-details"><summary>Advanced details</summary><p>{labelize(assertion.assertion_key || 'Profile signal')}</p></details>
+      </article>)}</div> : <Empty title="No signals match" body="Try a broader search or reset the filter." />}
+      {filtered.length > 24 && <p class="profile-list-limit">Showing 24 of {filtered.length} matching signals.</p>}
+    </div>
+  </details>
+}
+
 function ProfileFieldList({ profile }: { profile: ProfileRecord }) {
-  return <section class="profile-section profile-fields-section"><div class="section-head"><h2>Profile fields</h2><span>Canonical profile inputs</span></div><div class="profile-fields">{profileFields.map((field) => {
+  return <section class="profile-section profile-fields-section"><div class="section-head"><div><h2>Your learning preferences</h2><p class="section-description">These are the canonical inputs you can review and change.</p></div><span>Profile fields</span></div><div class="profile-fields">{profileFields.map((field) => {
     const value = profile[field.readKey || field.apiKey]
     const parsed = field.structured && typeof value === 'string' ? (() => { try { return { value: JSON.parse(value), valid: true } } catch { return { value: null, valid: false } } })() : { value, valid: true }
     return <article class="profile-field" key={field.key}><div class="profile-field-head"><span><strong>{field.label}</strong><small>{field.description}</small></span></div>{parsed.valid ? <ReadableValue value={parsed.value} /> : <p class="profile-empty">Needs review in the profile editor.</p>}</article>
@@ -268,7 +342,7 @@ function ProfileEditor({ profile, onSaved }: { profile: ProfileRecord; onSaved: 
     try { await api('/brain/profile', { method: 'POST', body: JSON.stringify(payload) }); setStatus('Profile saved.'); onSaved() }
     catch (error: any) { setStatus(error?.message || 'Profile could not be saved.') }
   }
-  return <details class="profile-editor" open={open} onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}><summary>Edit profile fields</summary><p>Structured values are saved as profile fields and rendered as readable text and tags above. Malformed legacy values stay editable without being exposed as raw JSON.</p>{open && <><div class="profile-editor-fields">{profileFields.map((field) => <label key={field.key}>{field.label}<span>{field.description}</span><textarea value={draft[field.key] || ''} onInput={(event) => setDraft((current) => ({ ...current, [field.key]: (event.target as HTMLTextAreaElement).value }))} /></label>)}</div><div class="row-actions"><button class="button secondary" onClick={() => setDraft(initial)}>Reset</button><button class="button primary" onClick={save}>Save profile</button></div>{status && <output class="settings-status">{status}</output>}</>}</details>
+  return <details id="profile-editor" class="profile-editor" open={open} onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}><summary>Edit your learning profile</summary><p>Update the preferences that shape recommendations. Structured values remain readable here, while legacy values stay editable without exposing raw JSON in the normal view.</p>{open && <><div class="profile-editor-fields">{profileFields.map((field) => <label key={field.key}>{field.label}<span>{field.description}</span><textarea value={draft[field.key] || ''} onInput={(event) => setDraft((current) => ({ ...current, [field.key]: (event.target as HTMLTextAreaElement).value }))} /></label>)}</div><div class="row-actions"><button class="button secondary" onClick={() => setDraft(initial)}>Reset</button><button class="button primary" onClick={save}>Save profile</button></div>{status && <output class="settings-status">{status}</output>}</>}</details>
 }
 
 function ProfileView() {
@@ -281,11 +355,12 @@ function ProfileView() {
   const assertions = data.profile_assertions || []
   const context = readableText(person.identity_json || person.identity || '')
   return <div class="settings-page profile-settings-page">
-    <section class="model-header"><div class="model-header-main"><div class="model-identity"><span class="model-avatar" aria-hidden="true">{String(person.name || 'L').slice(0, 1).toUpperCase()}</span><div class="model-identity-copy"><span class="eyebrow">Settings / Profile</span><h1>{person.name || 'Your learning profile'}</h1><p class="model-context">{context === 'Not recorded' ? 'Your evidence-backed learning model will take shape as you capture, consume, and reflect.' : context}</p></div></div><span class="model-synced">Model {data.model_version || 'profile_v2'}</span></div></section>
-    <div class="profile-health-strip"><div><strong>{labelize(health.status || 'unknown')}</strong><span>model health</span></div><div><strong>{health.active || assertions.length || 0}</strong><span>active assertions</span></div><div><strong>{health.hypotheses || 0}</strong><span>hypotheses</span></div><div><strong>{data.infrastructure_stats?.pending_proposals_count || 0}</strong><span>pending changes</span></div></div>
-    <section class="profile-section"><div class="section-head"><h2>Adaptive model</h2><span>{assertions.length} typed signals</span></div>{assertions.length ? <div class="profile-assertion-list">{assertions.slice(0, 24).map((assertion: any) => <article key={assertion.id || assertion.assertion_key}><div class="profile-assertion-head"><div><span class="meta">{labelize(assertion.category || 'profile')} · {labelize(assertion.source_kind || 'recorded')}</span><strong>{labelize(assertion.assertion_key || 'Assertion')}</strong></div><span class={`state state-${assertion.status || 'active'}`}>{labelize(assertion.status || 'active')}</span></div><ReadableValue value={assertion.value} compact /><small>Confidence {Math.round(Number(assertion.confidence || 0) * 100)}% · version {assertion.version || 1}</small></article>)}</div> : <Empty title="No typed assertions yet" body="Your compatibility profile remains available below. New evidence-backed signals will appear here." />}</section>
+    <section class="model-header"><div class="model-header-main"><div class="model-identity"><span class="model-avatar" aria-hidden="true">{String(person.name || 'L').slice(0, 1).toUpperCase()}</span><div class="model-identity-copy"><span class="eyebrow">Settings / Learning profile</span><h1>{person.name || 'Your learning profile'}</h1><p class="model-context">{context === 'Not recorded' ? 'This profile helps Learning Compass choose, filter, and sequence learning material for you.' : context}</p></div></div><div class="model-header-actions"><button type="button" class="button primary" onClick={() => { const editor = document.getElementById('profile-editor'); if (editor instanceof HTMLDetailsElement) { editor.open = true; editor.scrollIntoView({ behavior: 'smooth', block: 'start' }) } }}>Edit profile</button><details class="model-technical"><summary>Model details</summary><span>{data.model_version || 'profile_v2'}</span></details></div></div></section>
+    <div class="profile-health-strip"><div><strong>{labelize(health.status || 'unknown')}</strong><span>profile health</span></div><div><strong>{health.active || assertions.length || 0}</strong><span>active preferences</span></div><div><strong>{health.hypotheses || 0}</strong><span>needs your review</span></div><div><strong>{data.infrastructure_stats?.pending_proposals_count || 0}</strong><span>changes waiting for approval</span></div></div>
+    <ProfileOverview profile={person} />
     <ProfileFieldList profile={person} />
     <ProfileEditor profile={person} onSaved={profile.reload} />
+    {assertions.length ? <ProfileSignals assertions={assertions} /> : <Empty title="No learned signals yet" body="Evidence-backed preferences will appear here as you capture, consume, and reflect." />}
     <div class="profile-record-columns">
       <ProfileRecordList title="Priorities" items={data.priorities || []} empty="No priorities recorded." getTitle={(item) => item.label || item.branch_id || 'Priority'} getMeta={(item) => item.rank ? `Rank ${item.rank}` : ''} />
       <ProfileRecordList title="Mastered knowledge" items={data.mastered || []} empty="No mastered topics recorded." getTitle={(item) => item.label || item.name || item.id || 'Mastered topic'} getMeta={(item) => item.kind || ''} />
@@ -1390,14 +1465,14 @@ function DataView() {
   return (
     <div class="settings-page data-settings-page">
       <section class="settings-intro">
-        <span class="eyebrow">Settings / Data & sync</span>
-        <h1>Your library, your files, your recovery path</h1>
-        <p>D1 is the canonical learning record. R2 holds larger companions. Browser storage only holds recoverable pending mutations.</p>
+        <span class="eyebrow">Settings / Data & recovery</span>
+        <h1>Back up and recover your learning record</h1>
+        <p>Your library is canonical, your larger companions are stored separately, and pending offline changes remain recoverable in this browser.</p>
       </section>
       <OfflineQueue />
       <section>
         <div class="section-head">
-          <h2>Export</h2>
+          <h2>Back up your library</h2>
           <span>Portable copies of your source record</span>
         </div>
         <div class="setting-row">
@@ -1430,7 +1505,7 @@ function DataView() {
         </div>
         <div class="setting-row">
           <div>
-            <strong>Agent API specification</strong>
+            <strong>Advanced API specification</strong>
             <span>Machine-readable inventory for the allow-listed product surface.</span>
           </div>
           <a class="button secondary" href="/agent/openapi.json" target="_blank" rel="noreferrer">
@@ -1440,7 +1515,7 @@ function DataView() {
       </section>
       <section>
         <div class="section-head">
-          <h2>Storage ownership</h2>
+          <h2>Where your data lives</h2>
           <span>{system.data?.timezone || 'Africa/Cairo'}</span>
         </div>
         <div class="system-storage">
@@ -1488,7 +1563,7 @@ function SystemView() {
   const filtered = operations.filter((item) => (method === 'ALL' || item.method === method) && `${item.method} ${item.path} ${item.description}`.toLowerCase().includes(query.trim().toLowerCase()))
   const grouped = filtered.reduce<Record<string, Capability[]>>((result, item) => { const area = capabilityArea(item.path); result[area] = [...(result[area] || []), item]; return result }, {})
   const writes = operations.filter((item) => item.method !== 'GET').length
-  return <div class="system-console settings-system-page"><section class="system-hero"><div><span class="eyebrow">Settings / System</span><h1>Everything the system can do</h1><p>A descriptive control plane for the Learning Compass API, schedules, storage, and safety boundaries. Every operation below is the complete allow-listed inventory.</p></div><div class="system-hero-actions"><a href="/agent/openapi.json" target="_blank" rel="noreferrer">Open API specification ↗</a><button onClick={() => { capabilities.reload(); system.reload() }}>Refresh status</button></div></section><div class="system-summary"><div><strong>{operations.length}</strong><span>API operations</span></div><div><strong>{operations.length - writes}</strong><span>Read operations</span></div><div><strong>{writes}</strong><span>Guarded writes</span></div><div><strong>{system.data?.schedule?.length || 0}</strong><span>Configured schedules</span></div></div><section><div class="section-head"><h2>Runtime and storage</h2><span>{system.data?.status || 'unknown'}</span></div><div class="system-health-grid"><article><i class="healthy" /><span><strong>{system.data?.service || 'Learning Compass Worker'}</strong><small>{system.data?.environment || 'Runtime available'}</small></span></article>{(system.data?.storage || []).map((item) => <article key={item.name}><i class={/connected|managed|active/i.test(item.status) ? 'healthy' : 'warning'} /><span><strong>{item.name}</strong><small>{labelize(item.status)}</small></span></article>)}</div></section><div class="system-two-column"><section><div class="section-head"><h2>Schedules</h2><span>{system.data?.schedule?.length || 0} configured</span></div><div class="schedule-list">{(system.data?.schedule || []).length ? system.data!.schedule!.map((item) => <article key={item.id}><div class="schedule-head"><span class="method-badge method-post">CRON</span><div><strong>{item.cadence}</strong><code>{item.cron} · {item.timezone}</code></div></div><ul>{(item.responsibilities || []).map((responsibility) => <li key={responsibility}>{responsibility}</li>)}</ul><small>Search sync {item.last_search_sync ? formatDate(item.last_search_sync) : 'not recorded'}</small></article>) : <Empty title="No schedules configured" body="Maintenance remains on-demand until a schedule is explicitly configured." />}</div></section><section><div class="section-head"><h2>On demand only</h2><span>{system.data?.on_demand_only?.length || 0} workflows</span></div><div class="on-demand-list">{(system.data?.on_demand_only || []).map((item) => <div key={item}><i /><span>{item}</span></div>)}</div></section></div><section><div class="section-head"><h2>Complete operation inventory</h2><span>{filtered.length} of {operations.length}</span></div><div class="api-catalog-head"><div class="api-filters"><label>Search path or capability<input value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="e.g. profile, export, notes" /></label><label>Method<select value={method} onChange={(event) => setMethod((event.target as HTMLSelectElement).value)}><option value="ALL">All methods</option>{[...new Set(operations.map((item) => item.method))].sort().map((item) => <option key={item} value={item}>{item}</option>)}</select></label></div></div>{filtered.length ? <div class="api-groups">{(Object.entries(grouped) as Array<[string, Capability[]]>).map(([area, items]) => <section key={area}><div class="api-group-title"><h3>{area}</h3><span>{items.length}</span></div><div class="api-operation-list">{items.map((item) => <article key={`${item.method}:${item.path}`}><span class={`method-badge method-${item.method.toLowerCase()}`}>{item.method}</span><code>{item.path}</code><p>{item.description}</p><small>{item.method === 'GET' ? 'Read only' : 'Validated · audit logged'}</small></article>)}</div></section>)}</div> : <Empty title="No operations match" body="Try a broader search or reset the method filter." action={<button class="button secondary" onClick={() => { setQuery(''); setMethod('ALL') }}>Clear filters</button>} />}</section><section class="system-safety"><div class="section-head"><h2>Safety boundaries</h2><span>{capabilities.data?.authentication || 'Product validation remains active'}</span></div>{(system.data?.safety || []).map((item) => <span key={item}>{item}</span>)}</section></div>
+  return <div class="system-console settings-system-page"><section class="system-hero"><div><span class="eyebrow">Settings / System</span><h1>System status and advanced operations</h1><p>Check the health of Learning Compass, review Hermes activity, and inspect the allow-listed operations available to the product.</p></div><div class="system-hero-actions"><a href="/agent/openapi.json" target="_blank" rel="noreferrer">Open API specification ↗</a><button onClick={() => { capabilities.reload(); system.reload() }}>Refresh status</button></div></section><HermesActivityPanel /><div class="system-summary"><div><strong>{operations.length}</strong><span>API operations</span></div><div><strong>{operations.length - writes}</strong><span>Read operations</span></div><div><strong>{writes}</strong><span>Guarded writes</span></div><div><strong>{system.data?.schedule?.length || 0}</strong><span>Configured schedules</span></div></div><section><div class="section-head"><h2>Runtime and storage</h2><span>{system.data?.status || 'unknown'}</span></div><div class="system-health-grid"><article><i class="healthy" /><span><strong>{system.data?.service || 'Learning Compass Worker'}</strong><small>{system.data?.environment || 'Runtime available'}</small></span></article>{(system.data?.storage || []).map((item) => <article key={item.name}><i class={/connected|managed|active/i.test(item.status) ? 'healthy' : 'warning'} /><span><strong>{item.name}</strong><small>{labelize(item.status)}</small></span></article>)}</div></section><div class="system-two-column"><section><div class="section-head"><h2>Schedules</h2><span>{system.data?.schedule?.length || 0} configured</span></div><div class="schedule-list">{(system.data?.schedule || []).length ? system.data!.schedule!.map((item) => <article key={item.id}><div class="schedule-head"><span class="method-badge method-post">CRON</span><div><strong>{item.cadence}</strong><code>{item.cron} · {item.timezone}</code></div></div><ul>{(item.responsibilities || []).map((responsibility) => <li key={responsibility}>{responsibility}</li>)}</ul><small>Search sync {item.last_search_sync ? formatDate(item.last_search_sync) : 'not recorded'}</small></article>) : <Empty title="No schedules configured" body="Maintenance remains on-demand until a schedule is explicitly configured." />}</div></section><section><div class="section-head"><h2>On demand only</h2><span>{system.data?.on_demand_only?.length || 0} workflows</span></div><div class="on-demand-list">{(system.data?.on_demand_only || []).map((item) => <div key={item}><i /><span>{item}</span></div>)}</div></section></div><section><div class="section-head"><h2>Advanced API operations</h2><span>{filtered.length} of {operations.length}</span></div><div class="api-catalog-head"><div class="api-filters"><label>Search path or capability<input value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="e.g. profile, export, notes" /></label><label>Method<select value={method} onChange={(event) => setMethod((event.target as HTMLSelectElement).value)}><option value="ALL">All methods</option>{[...new Set(operations.map((item) => item.method))].sort().map((item) => <option key={item} value={item}>{item}</option>)}</select></label></div></div>{filtered.length ? <div class="api-groups">{(Object.entries(grouped) as Array<[string, Capability[]]>).map(([area, items]) => <section key={area}><div class="api-group-title"><h3>{area}</h3><span>{items.length}</span></div><div class="api-operation-list">{items.map((item) => <article key={`${item.method}:${item.path}`}><span class={`method-badge method-${item.method.toLowerCase()}`}>{item.method}</span><code>{item.path}</code><p>{item.description}</p><small>{item.method === 'GET' ? 'Read only' : 'Validated · audit logged'}</small></article>)}</div></section>)}</div> : <Empty title="No operations match" body="Try a broader search or reset the method filter." action={<button class="button secondary" onClick={() => { setQuery(''); setMethod('ALL') }}>Clear filters</button>} />}</section><section class="system-safety"><div class="section-head"><h2>Safety boundaries</h2><span>{capabilities.data?.authentication || 'Product validation remains active'}</span></div>{(system.data?.safety || []).map((item) => <span key={item}>{item}</span>)}</section></div>
 }
 
 export function SettingsWorkspace({ route, view, onRouteChange }: SettingsWorkspaceProps) {

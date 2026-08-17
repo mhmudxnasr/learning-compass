@@ -321,6 +321,7 @@ await page.goto(`${baseUrl}/#/learn/thread/${hubThread.id}`, { waitUntil: 'netwo
 await page.locator('.folio-thread').waitFor({ state: 'visible' })
 await page.locator('.folio-level-toggle').click()
 if (!(await page.locator('.folio-stage-row').filter({ hasText: 'Level 0' }).count())) throw new Error('Learn Thread did not render the authored stage workspace')
+if (!(await page.getByText('Evidence gate').count()) || !(await page.getByText('Recorded').count())) throw new Error('Learn Thread did not render the stage evidence gate')
 if (!page.url().includes(`#/learn/thread/${hubThread.id}`)) throw new Error('typed Thread route did not preserve identity')
 if (await page.locator('.orbit-bar, .page-head, .subnav, .main-focus').count()) throw new Error('focused Learning Thread rendered retired shell selectors')
 if (!(await page.getByRole('link', { name: 'Back to learning paths' }).count())) throw new Error('focused Learning Thread omitted its compact return action')

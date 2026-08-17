@@ -288,7 +288,7 @@ async function hubNotes(db: D1Database, scope: { thread_id?: string; stage_id?: 
   const sections = await db.prepare(`SELECT note_id,section_key,label,content,direction,position FROM note_sections WHERE note_id IN (${placeholders}) ORDER BY note_id,position`).bind(...notes.map((note: any) => note.id)).all<any>()
   const byNote = new Map<string, any[]>()
   for (const section of sections.results || []) byNote.set(section.note_id, [...(byNote.get(section.note_id) || []), section])
-  return notes.map((note: any) => ({ ...note, sections: byNote.get(note.id) || [] }))
+  return notes.map((note: any) => ({ ...note, provenance: (() => { try { return JSON.parse(note.provenance_json || '[]') } catch { return [] } })(), provenance_json: undefined, sections: byNote.get(note.id) || [] }))
 }
 app.get('/notes', async (c) => {
   const kind = c.req.query('kind')
@@ -299,7 +299,7 @@ app.get('/notes', async (c) => {
   const sections = await c.env.DB.prepare(`SELECT note_id,section_key,label,content,direction,position FROM note_sections WHERE note_id IN (${placeholders}) ORDER BY note_id,position`).bind(...rows.map((note) => note.id)).all<any>()
   const byNote = new Map<string, any[]>()
   for (const section of sections.results || []) byNote.set(section.note_id, [...(byNote.get(section.note_id) || []), section])
-  const output = rows.map((note) => ({ ...note, sections: byNote.get(note.id) || [] }))
+  const output = rows.map((note) => ({ ...note, provenance: (() => { try { return JSON.parse(note.provenance_json || '[]') } catch { return [] } })(), provenance_json: undefined, sections: byNote.get(note.id) || [] }))
   return c.json({ notes: output })
 })
 app.get('/notes/hub', async (c) => {
@@ -323,14 +323,16 @@ app.post('/notes', async (c) => {
     if (!stage) return c.json({ error: 'stage not found' }, 400)
   }
   const noteId = body.id || id('note')
-  const statements = [c.env.DB.prepare(`INSERT INTO notes (id,recommendation_id,title,kind,branch_id,source_url,status,thread_id,stage_id) VALUES (?,?,?,?,?,?,?,?,?)`).bind(noteId, body.recommendation_id || null, body.title.trim(), body.kind || 'note', body.branch_id || null, body.source_url || null, body.status || 'draft', threadId, stageId)]
+  const provenance = Array.isArray(body.provenance) ? body.provenance.slice(0, 20).map((item: any) => ({ annotation_id: String(item.annotation_id || '').slice(0, 120), reason: String(item.reason || '').slice(0, 500), confidence: item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))) })).filter((item: any) => item.annotation_id) : []
+  const statements = [c.env.DB.prepare(`INSERT INTO notes (id,recommendation_id,title,kind,branch_id,source_url,status,thread_id,stage_id,provenance_json) VALUES (?,?,?,?,?,?,?,?,?,?)`).bind(noteId, body.recommendation_id || null, body.title.trim(), body.kind || 'note', body.branch_id || null, body.source_url || null, body.status || 'draft', threadId, stageId, JSON.stringify(provenance))]
   for (const [index, section] of (body.sections || []).entries()) statements.push(c.env.DB.prepare(`INSERT INTO note_sections (id,note_id,section_key,label,content,direction,position) VALUES (?,?,?,?,?,?,?)`).bind(id('section'), noteId, section.section_key, section.label, section.content || '', section.direction || 'auto', index))
   await c.env.DB.batch(statements)
   return c.json({ ok: true, id: noteId }, 201)
 })
 app.put('/notes/:id', async (c) => {
   const body = await c.req.json<any>()
-  const statements = [c.env.DB.prepare(`UPDATE notes SET title=COALESCE(?,title), branch_id=COALESCE(?,branch_id), revision=revision+1, updated_at=datetime('now') WHERE id=?`).bind(body.title || null, body.branch_id || null, c.req.param('id'))]
+  const provenance = Array.isArray(body.provenance) ? body.provenance.slice(0, 20).map((item: any) => ({ annotation_id: String(item.annotation_id || '').slice(0, 120), reason: String(item.reason || '').slice(0, 500), confidence: item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))) })).filter((item: any) => item.annotation_id) : null
+  const statements = [c.env.DB.prepare(`UPDATE notes SET title=COALESCE(?,title), branch_id=COALESCE(?,branch_id), provenance_json=COALESCE(?,provenance_json), revision=revision+1, updated_at=datetime('now') WHERE id=?`).bind(body.title || null, body.branch_id || null, provenance ? JSON.stringify(provenance) : null, c.req.param('id'))]
   for (const section of body.sections || []) statements.push(c.env.DB.prepare(`UPDATE note_sections SET content=?,direction=?,updated_at=datetime('now') WHERE note_id=? AND section_key=?`).bind(section.content || '', section.direction || 'auto', c.req.param('id'), section.section_key))
   await c.env.DB.batch(statements)
   return c.json({ ok: true })

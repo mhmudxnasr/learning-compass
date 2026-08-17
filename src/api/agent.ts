@@ -1,13 +1,13 @@
 import { Hono } from 'hono'
-import { Bindings, safeError, isNonEmptyStr } from '../lib'
-import { createInboxCapture } from '../services/capture'
+import { Bindings, safeError } from '../lib'
 import { buildLearningBalance } from '../services/learning-balance'
 import { compileMemoryContext, isMemoryOwnershipAllowed, isMemoryTaskKind, writeMemoryEvidence } from '../services/memory-context'
+import { loadCaptureQueue } from '../services/capture-queue'
+import { loadHermesBrief } from '../services/agent-briefing'
+import { AGENT_CONTRACT_VERSION, AGENT_PROTOCOL, type AgentMethod, buildAgentOpenApi, buildCapabilityCatalog, resolveCapabilityReadbacks } from '../services/agent-capabilities'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const sqliteTime = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString().slice(0, 19).replace('T', ' ')
-
-type AgentMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 /**
  * The agent API is an intentionally boring adapter over the public product API.
@@ -17,6 +17,8 @@ type AgentMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
  */
 const CAPABILITIES = [
   ['GET', '/agent/context', 'Read the compact taste and learning context.'],
+  ['GET', '/agent/briefing', 'Read the deterministic next-action brief shared with the Home workspace.'],
+  ['GET', '/agent/activity', 'Read recent Hermes receipts, audit events, and operational status.'],
   ['GET', '/agent/system', 'Read the user-visible runtime, storage, schedule, and service inventory.'],
   ['GET', '/dashboard/briefing', 'Read Momentum, active Queue files, weekly progress, and current insight.'],
   ['GET', '/capture', 'Read the unlimited Inbox.'],
@@ -112,6 +114,10 @@ const CAPABILITIES = [
   ['POST', '/learning/core/units', 'Create an anchored Learning Unit.'],
   ['POST', '/learning/core/units/:id/relations', 'Create a typed relationship between Learning Units.'],
   ['POST', '/learning/core/evidence', 'Record retrieval, explanation, transfer, application, decision, or artifact evidence.'],
+  ['GET', '/annotations', 'Read source-anchored passage annotations with durable locators.'],
+  ['POST', '/annotations', 'Create a source-anchored passage annotation in the canonical evidence ledger.'],
+  ['GET', '/annotations/:id', 'Read one source annotation and its linked derivations.'],
+  ['POST', '/annotations/:id/archive', 'Archive an annotation without deleting its evidence history.'],
   ['GET', '/learning/core/consolidation/open', 'Read open cognitive loops.'],
   ['GET', '/learning/core/consolidation/:sourceId', 'Read one source consolidation run and its steps.'],
   ['POST', '/learning/core/consolidation/:id/retry', 'Retry a repair-required consolidation run.'],
@@ -165,6 +171,7 @@ const CAPABILITIES = [
   ['POST', '/ai/enhance', 'Enhance or repair a recommendation using taste context.'],
   ['POST', '/ai/enhance/why', 'Generate or improve recommendation rationale.'],
   ['GET', '/search', 'Search site content.'],
+  ['GET', '/search/evidence', 'Search source-anchored evidence and return durable locators plus linked learning units.'],
   ['GET', '/taste/vector', 'Read taste vectors.'],
   ['GET', '/learning/health', 'Read learning health.'],
   ['GET', '/learning/balance', 'Read attention balance, branch coverage, retention signals, and unmapped sources.'],
@@ -214,37 +221,113 @@ async function logAgentAction(DB: any, c: any, action: string, payload: unknown,
   } catch { /* audit failure must not break the product request */ }
 }
 
-/**
- * GET /agent/context
- * Token-optimized, prompt-ready snapshot for AI agents (Gemini, Claude, Hermes, taste-mapper).
- * Combines Profile, Mega Priorities, Active Queue, Neglected Branches, and Learning Gaps in 1 call.
- */
+async function persistAgentReceipt(DB: any, c: any, receipt: any, statusCode: number, verified: boolean) {
+  try {
+    const agent = c.req.header('x-agent-name') || c.req.header('user-agent') || 'unknown-agent'
+    await DB.prepare(`INSERT INTO agent_receipts
+      (id,request_id,agent_name,intent,target,status_code,verified,receipt_json)
+      VALUES (?,?,?,?,?,?,?,?)`).bind(
+      `receipt_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`,
+      c.req.header('x-request-id') || null,
+      agent.slice(0, 120),
+      String(receipt?.intent || 'unknown').slice(0, 40),
+      String(receipt?.target || '').slice(0, 500),
+      statusCode,
+      verified ? 1 : 0,
+      JSON.stringify(receipt).slice(0, 100000),
+    ).run()
+  } catch { /* receipt persistence must not turn a committed mutation into a failure */ }
+}
+
+app.get('/briefing', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  try {
+    return c.json(await loadHermesBrief(c.env.DB))
+  } catch (error) {
+    return c.json(safeError('Hermes briefing unavailable')(error), 503)
+  }
+})
+
+app.get('/activity', async (c) => {
+  const limit = Math.max(1, Math.min(50, Number(c.req.query('limit') || 20)))
+  const [receipts, logs, jobs, proposals] = await Promise.all([
+    c.env.DB.prepare(`SELECT id,request_id,agent_name,intent,target,status_code,verified,receipt_json,created_at
+      FROM agent_receipts ORDER BY created_at DESC LIMIT ?`).bind(limit).all<any>(),
+    c.env.DB.prepare(`SELECT id,ts,agent_name,action,status FROM agent_logs ORDER BY ts DESC LIMIT ?`).bind(limit).all<any>(),
+    c.env.DB.prepare(`SELECT id,job_type,status,error,attempts,created_at,updated_at FROM agent_jobs
+      WHERE status IN ('pending','running','retry','failed','dead_letter') ORDER BY updated_at DESC LIMIT ?`).bind(limit).all<any>(),
+    c.env.DB.prepare(`SELECT id,change_type AS proposal_type,status,created_at,reviewed_at,applied_at,
+      COALESCE(applied_at,reviewed_at,created_at) AS updated_at FROM feedback_proposals
+      WHERE status IN ('pending','approved','applied','rejected')
+      ORDER BY COALESCE(applied_at,reviewed_at,created_at) DESC LIMIT ?`).bind(limit).all<any>(),
+  ])
+  const parsedReceipts = (receipts.results || []).map((row: any) => {
+    let receipt: any = null
+    try { receipt = JSON.parse(row.receipt_json || '{}') } catch { receipt = { blocker: { message: 'Receipt payload could not be decoded.' } } }
+    return { ...row, verified: Boolean(row.verified), receipt, receipt_json: undefined }
+  })
+  return c.json({
+    as_of: new Date().toISOString(),
+    receipts: parsedReceipts,
+    audit_events: logs.results || [],
+    jobs: jobs.results || [],
+    proposals: proposals.results || [],
+    health: {
+      active_jobs: (jobs.results || []).filter((row: any) => ['pending', 'running', 'retry'].includes(row.status)).length,
+      failed_jobs: (jobs.results || []).filter((row: any) => ['failed', 'dead_letter'].includes(row.status)).length,
+      pending_proposals: (proposals.results || []).filter((row: any) => row.status === 'pending').length,
+    },
+  })
+})
+
+/** Token-efficient canonical state with explicit per-section health. */
 app.get('/context', async (c) => {
   const { DB } = c.env
   c.header('Cache-Control', 'no-store')
-  
-  let profile: any = null
-  let priorities: any = { results: [] }
-  let activeQueue: any = { results: [] }
+  const asOf = new Date().toISOString()
+  const sectionHealth: Record<string, { status: 'ok' | 'degraded'; as_of: string; error?: string }> = {}
+  const load = async <T>(name: string, fallback: T, operation: () => Promise<T>): Promise<T> => {
+    try {
+      const value = await operation()
+      sectionHealth[name] = { status: 'ok', as_of: asOf }
+      return value
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      sectionHealth[name] = { status: 'degraded', as_of: asOf, error: message.slice(0, 300) }
+      return fallback
+    }
+  }
+
+  const profile = await load<any>('profile', null, () => DB.prepare('SELECT identity_json, mega_priority_json, core_filter, reaction_style_json, quality_rules_json, patterns_summary_json FROM profile WHERE id = 1').first<any>())
+  const priorities = await load<any>('priorities', { results: [] }, () => DB.prepare('SELECT rank, branch_id, label, rationale FROM priorities ORDER BY rank ASC LIMIT 10').all())
+  const activeQueue = await load<any[]>('active_queue', [], () => loadCaptureQueue(DB, 50))
+  const brief = await load<any>('brief', null, () => loadHermesBrief(DB))
+  const profileAssertions = await load<any>('profile_assertions', { results: [] }, () => DB.prepare("SELECT assertion_key,category,scope,value_json,weight,confidence,status,source_kind,version,updated_at FROM profile_assertions WHERE status IN ('active','hypothesis') ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,confidence DESC,updated_at DESC LIMIT 100").all())
+  const gaps = await load<any>('learning_gaps', { results: [] }, () => DB.prepare(`
+    SELECT t.id thread_id,t.title thread_title,t.status thread_status,t.guiding_question,
+           r.id requirement_id,r.requirement_key,r.label,r.evidence_type,r.minimum_count,r.minimum_score,r.stage_id,r.status
+    FROM thread_evidence_requirements r
+    JOIN learning_threads t ON t.id=r.thread_id
+    WHERE t.status NOT IN ('verified','abandoned') AND r.status='open'
+    ORDER BY CASE t.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,t.priority DESC,t.updated_at DESC,r.rowid
+    LIMIT 20`).all())
+  const verifiedThreads = await load<any>('verified_threads', { results: [] }, () => DB.prepare(`
+    SELECT id,title,thread_type,guiding_question,definition_of_done,final_synthesis,verified_at,completed_at
+    FROM learning_threads WHERE status='verified' ORDER BY COALESCE(verified_at,completed_at,updated_at) DESC LIMIT 50`).all())
   let neglected: any = { results: [] }
-  let gaps: any = { results: [] }
   let mastered: any = { results: [] }
   let blindSpots: any = { results: [] }
   let blacklist: any = { results: [] }
   let creatorTrust: any = { results: [] }
   let tasteVectors: any = { results: [] }
   let reflections: any = { results: [] }
-  let profileAssertions: any = { results: [] }
   let learningBalance: any = null
 
-  try { profile = await DB.prepare('SELECT identity_json, mega_priority_json, core_filter, reaction_style_json, quality_rules_json, patterns_summary_json FROM profile WHERE id = 1').first<any>() } catch {}
-  try { priorities = await DB.prepare('SELECT rank, branch_id, label, rationale FROM priorities ORDER BY rank ASC LIMIT 10').all() } catch {}
-  try { activeQueue = await DB.prepare("SELECT r.id, r.video_title, r.creator, r.content_type, r.why_this, r.video_url FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 5").all() } catch {}
-  try {
+  neglected = await load<any>('neglected_branches', { results: [] }, async () => {
     // Neglected = no consumed source mapped to the branch (recommendation_meta.branch_id,
     // the canonical linkage written by POST /recommendations/map) and no legacy
     // dedup_key-prefix consumption in the window.
-    neglected = await DB.prepare(`
+    return DB.prepare(`
       SELECT t.id, t.label, t.super_category,
              MAX(COALESCE(dm.last_consumed, dr.last_consumed)) as last_consumed
       FROM tree_nodes t
@@ -267,22 +350,9 @@ app.get('/context', async (c) => {
       ORDER BY last_consumed ASC
       LIMIT 5
     `).all()
-  } catch {}
-  try {
-    gaps = await DB.prepare(`
-      SELECT COALESCE(SUBSTR(dedup_key, 1, INSTR(dedup_key, '-') - 1), 'general') as topic,
-             COUNT(*) as consumed_count,
-             AVG(CASE WHEN user_rating IN ('love','like') THEN 1 ELSE 0 END) as mastery_rate
-      FROM recommendations
-      WHERE status = 'consumed' AND dedup_key IS NOT NULL AND dedup_key != ''
-      GROUP BY topic
-      HAVING mastery_rate < 0.6 OR consumed_count < 2
-      LIMIT 5
-    `).all()
-  } catch {}
-  try { mastered = await DB.prepare('SELECT id, kind, label, author, rating FROM mastered ORDER BY mastered_at DESC').all() } catch {}
-  try {
-    blindSpots = await DB.prepare(`
+  })
+  mastered = await load<any>('mastered', { results: [] }, () => DB.prepare('SELECT id, kind, label, author, rating FROM mastered ORDER BY mastered_at DESC').all())
+  blindSpots = await load<any>('blind_spots', { results: [] }, () => DB.prepare(`
       SELECT n.id, n.label, n.super_category
       FROM tree_nodes n
       LEFT JOIN recommendation_meta m ON m.branch_id = n.id
@@ -291,27 +361,23 @@ app.get('/context', async (c) => {
       GROUP BY n.id
       HAVING COUNT(r.id) = 0
       LIMIT 15
-    `).all()
-  } catch {}
-  try { blacklist = await DB.prepare('SELECT name, work, reason, severity FROM blacklist ORDER BY severity ASC').all() } catch {}
-  try {
-    creatorTrust = await DB.prepare(`
+    `).all())
+  blacklist = await load<any>('blacklist', { results: [] }, () => DB.prepare('SELECT name, work, reason, severity FROM blacklist ORDER BY severity ASC').all())
+  creatorTrust = await load<any>('creator_trust', { results: [] }, () => DB.prepare(`
       SELECT creator, ROUND(AVG(COALESCE(user_score, CASE user_rating WHEN 'love' THEN 10 WHEN 'like' THEN 8 WHEN 'meh' THEN 5 WHEN 'dislike' THEN 2 END)), 2) as avg_score
       FROM recommendations
       WHERE creator IS NOT NULL AND creator != '' AND status = 'consumed'
       GROUP BY creator
       ORDER BY avg_score DESC
       LIMIT 15
-    `).all()
-  } catch {}
-  try { tasteVectors = await DB.prepare('SELECT topic, affinity_score FROM taste_vectors ORDER BY affinity_score DESC LIMIT 15').all() } catch {}
-  try { reflections = await DB.prepare("SELECT reflection FROM learning_sessions WHERE reflection IS NOT NULL AND reflection != '' ORDER BY completed_at DESC LIMIT 5").all() } catch {}
-  try { profileAssertions = await DB.prepare("SELECT assertion_key,category,scope,value_json,weight,confidence,status,source_kind,version,updated_at FROM profile_assertions WHERE status IN ('active','hypothesis') ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,confidence DESC,updated_at DESC LIMIT 100").all() } catch {}
-  try {
+    `).all())
+  tasteVectors = await load<any>('taste_vectors', { results: [] }, () => DB.prepare('SELECT topic, affinity_score FROM taste_vectors ORDER BY affinity_score DESC LIMIT 15').all())
+  reflections = await load<any>('recent_note_anchors', { results: [] }, () => DB.prepare("SELECT reflection FROM learning_sessions WHERE reflection IS NOT NULL AND reflection != '' ORDER BY completed_at DESC LIMIT 5").all())
+  learningBalance = await load<any>('learning_balance', null, async () => {
     const balance = await buildLearningBalance(DB, 90)
     const branches = balance.branches || []
     const compact = (state: string) => branches.filter((branch: any) => branch.state === state).sort((a: any, b: any) => Number(b.attention_share || 0) - Number(a.attention_share || 0)).slice(0, 8)
-    learningBalance = {
+    return {
       window_days: balance.window_days,
       unmapped_count: balance.portfolio?.unmapped_count || 0,
       attention_by_r1: branches.filter((branch: any) => branch.round === 'R1').sort((a: any, b: any) => Number(b.attention_share || 0) - Number(a.attention_share || 0)).slice(0, 12).map((branch: any) => ({ id: branch.id, label: branch.label, attention_share: branch.attention_share, priority_share: branch.priority_share })),
@@ -320,7 +386,7 @@ app.get('/context', async (c) => {
       weakly_consolidated_branches: compact('exposed').map((branch: any) => ({ id: branch.id, label: branch.label, round: branch.round, consumed_count: branch.consumed_count, reasons: branch.reasons })),
       uncovered_branches: compact('uncovered').map((branch: any) => ({ id: branch.id, label: branch.label, round: branch.round, priority_rank: branch.priority_rank })),
     }
-  } catch {}
+  })
 
   let identityParsed = null
   let patternsParsed = null
@@ -333,8 +399,14 @@ app.get('/context', async (c) => {
     .slice(0, 5)
     .map((t: string) => (t.length > 180 ? t.slice(0, 180) + '...' : t))
 
-  return c.json({
-    timestamp: new Date().toISOString(),
+  const requiredUnavailable = ['active_queue', 'learning_gaps', 'learning_balance'].some((name) => sectionHealth[name]?.status === 'degraded')
+  const payload = {
+    timestamp: asOf,
+    context_version: AGENT_CONTRACT_VERSION,
+    health: {
+      status: requiredUnavailable ? 'unavailable' : Object.values(sectionHealth).some((section) => section.status === 'degraded') ? 'degraded' : 'healthy',
+      sections: sectionHealth,
+    },
     curator: 'Mahmood',
     profile: {
       core_filter: profile?.core_filter || null,
@@ -348,17 +420,20 @@ app.get('/context', async (c) => {
       }),
     },
     priorities: priorities?.results || [],
-    active_queue: activeQueue?.results || [],
+    active_queue: activeQueue,
+    brief,
     neglected_branches: neglected?.results || [],
     learning_gaps: gaps?.results || [],
-    mastered: mastered?.results || [],
+    verified_threads: verifiedThreads?.results || [],
+    legacy_mastered: mastered?.results || [],
     blind_spots: blindSpots?.results || [],
     blacklist: blacklist?.results || [],
     creator_trust: creatorTrust?.results || [],
     taste_vectors: tasteVectors?.results || [],
     recent_note_anchors: noteAnchors,
     learning_balance: learningBalance,
-  })
+  }
+  return c.json(payload, requiredUnavailable ? 503 : 200)
 })
 
 app.get('/memory', async (c) => {
@@ -462,31 +537,46 @@ app.post('/alerts/:id/ack', async (c) => {
   return result.meta.changes ? c.json({ ok: true }) : c.json({ error: 'open alert not found' }, 404)
 })
 
-app.get('/capabilities', (c) => c.json({
-  version: '2026-08-09',
-  protocol: 'taste-map-agent-http/1',
-  description: 'Complete allow-listed control surface for the Learning Compass website.',
-  authentication: 'Writes require x-api-token when API_TOKEN is configured.',
-  safety: ['No arbitrary SQL or outbound proxy.', 'Product validation and invariants remain active.', 'Every agent mutation is audit logged.'],
-  capabilities: CAPABILITIES.map(([method, path, description]) => ({ method, path, description })),
-}))
+app.get('/capabilities', (c) => {
+  const filters = {
+    domain: c.req.query('domain'),
+    intent: c.req.query('intent'),
+    method: c.req.query('method'),
+    q: c.req.query('q'),
+  }
+  const capabilities = buildCapabilityCatalog(CAPABILITIES, filters)
+  return c.json({
+    version: AGENT_CONTRACT_VERSION,
+    protocol: AGENT_PROTOCOL,
+    description: 'Structured allow-listed control surface for Learning Compass.',
+    authentication: 'Writes require x-api-token when API_TOKEN is configured.',
+    filters,
+    total: CAPABILITIES.length,
+    returned: capabilities.length,
+    safety: ['No arbitrary SQL or outbound proxy.', 'Product validation and invariants remain active.', 'Every mutation supports idempotency and is audit logged.'],
+    capabilities,
+  })
+})
 
 app.get('/system', async (c) => {
   const DB = c.env.DB
-  const [lastSearchSync, feedCount, sourceCount, noteCount, artifactCount, jobCount] = await Promise.all([
+  const [lastSearchSync, feedCount, sourceCount, noteCount, artifactCount, jobCount, annotationCount, receiptCount] = await Promise.all([
     DB.prepare("SELECT value FROM kv_store WHERE key='fts_last_sync'").first<{ value: string }>(),
     DB.prepare('SELECT COUNT(*) count FROM feed_sources WHERE enabled=1').first<{ count: number }>(),
     DB.prepare("SELECT COUNT(*) count FROM recommendations WHERE deleted_at IS NULL").first<{ count: number }>(),
     DB.prepare('SELECT COUNT(*) count FROM notes').first<{ count: number }>(),
     DB.prepare('SELECT COUNT(*) count FROM artifacts').first<{ count: number }>(),
     DB.prepare("SELECT COUNT(*) count FROM agent_jobs WHERE status IN ('pending','running','retry')").first<{ count: number }>(),
+    DB.prepare('SELECT COUNT(*) count FROM source_annotations WHERE status=\'active\'').first<{ count: number }>(),
+    DB.prepare('SELECT COUNT(*) count FROM agent_receipts').first<{ count: number }>(),
   ])
   return c.json({
     status: 'active',
     service: 'Learning Compass Worker',
     environment: 'Cloudflare edge',
     timezone: 'Africa/Cairo',
-    protocol: 'taste-map-agent-http/1',
+    protocol: AGENT_PROTOCOL,
+    contract_version: AGENT_CONTRACT_VERSION,
     storage: [
       { name: 'D1', purpose: 'Canonical sources, Threads, notes, recall, settings, jobs, and audit history', status: 'connected' },
       { name: 'R2', purpose: 'PDF, HTML, transcript, and generated companion files', status: c.env.ARTIFACTS ? 'connected' : 'unavailable' },
@@ -513,41 +603,125 @@ app.get('/system', async (c) => {
       notes: Number(noteCount?.count || 0),
       artifacts: Number(artifactCount?.count || 0),
       active_jobs: Number(jobCount?.count || 0),
+      active_annotations: Number(annotationCount?.count || 0),
+      agent_receipts: Number(receiptCount?.count || 0),
     },
-    safety: ['No arbitrary SQL', 'No arbitrary outbound proxy', 'Validated mutations only', 'Agent mutations are audit logged'],
+    authentication: c.env.REQUIRE_API_AUTH === 'true' ? 'All API routes require x-api-token when private mode is enabled.' : c.env.API_TOKEN ? 'Writes require x-api-token; private read mode is disabled.' : 'Local/open mode: configure REQUIRE_API_AUTH=true and API_TOKEN for private deployment.',
+    safety: ['No arbitrary SQL', 'No arbitrary outbound proxy', 'Validated mutations only', 'Agent mutations are audit logged', 'Receipts persist canonical before/after verification'],
   })
 })
 
-app.get('/openapi.json', (c) => c.json({
-  openapi: '3.1.0',
-  info: { title: 'Learning Compass Agent API', version: '2026-08-09' },
-  servers: [{ url: new URL(c.req.url).origin }],
-  paths: CAPABILITIES.reduce<Record<string, Record<string, unknown>>>((paths, [method, path, description]) => {
-    const operation = method.toLowerCase()
-    const entry = paths[path] || (paths[path] = {})
-    entry[operation] = { operationId: `${operation}_${path.replace(/[^a-zA-Z0-9]+/g, '_')}`, description, responses: { '200': { description: 'JSON response' } } }
-    return paths
-  }, {}),
-}))
+app.get('/openapi.json', (c) => c.json(buildAgentOpenApi(new URL(c.req.url).origin, CAPABILITIES)))
 
-/** Execute one existing site API operation without exposing an arbitrary proxy. */
+/** Execute one existing site API operation with bounded preflight, idempotency, and verification. */
 app.post('/request', async (c) => {
   const { DB } = c.env
+  type Assertion = { path?: string; field?: string; equals?: unknown }
+  const readField = (value: any, field?: string) => field ? field.split('.').reduce((current, key) => current == null ? undefined : current[key], value) : value
+  const readTarget = async (path: string, token: string | undefined, agentName: string | undefined) => {
+    const normalized = path.startsWith('/') ? path : `/${path}`
+    if (!isAllowedAgentRequest('GET', normalized)) throw new Error(`verification path is not allow-listed: ${normalized}`)
+    const headers = new Headers({ accept: 'application/json' })
+    if (token) headers.set('x-api-token', token)
+    if (agentName) headers.set('x-agent-name', agentName)
+    const response = await fetch(new URL(normalized, c.req.url), { headers })
+    const text = await response.text()
+    let data: any = text
+    try { data = text ? JSON.parse(text) : null } catch {}
+    if (!response.ok) throw new Error(`verification read failed: GET ${normalized} returned ${response.status}`)
+    return { path: normalized, status: response.status, data }
+  }
+  const assertTarget = (snapshot: any, assertion: Assertion | undefined, phase: string) => {
+    if (!assertion || !Object.prototype.hasOwnProperty.call(assertion, 'equals')) return
+    const actual = readField(snapshot?.data, assertion.field)
+    if (JSON.stringify(actual) !== JSON.stringify(assertion.equals)) {
+      const error: any = new Error(`${phase} assertion failed at ${assertion.field || '<root>'}`)
+      error.code = 'assertion_failed'
+      error.actual = actual
+      error.expected = assertion.equals
+      throw error
+    }
+  }
   try {
-    const input = await c.req.json<{ method?: AgentMethod; path?: string; body?: unknown; headers?: Record<string, string> }>()
+    const input = await c.req.json<{
+      method?: AgentMethod
+      path?: string
+      body?: any
+      dry_run?: boolean
+      confirm?: boolean
+      idempotency_key?: string
+      precondition?: Assertion
+      verify?: Assertion
+    }>()
     const method = String(input.method || 'GET').toUpperCase() as AgentMethod
     const rawPath = String(input.path || '')
     const path = rawPath.startsWith('/') ? rawPath : `/${rawPath}`
-    if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || !isAllowedAgentRequest(method, path)) {
+    const patternIndex = CAPABILITY_PATTERNS.findIndex((item) => item.method === method && item.regex.test(path))
+    if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || patternIndex < 0) {
       await logAgentAction(DB, c, `${method} ${path}`, input.body, 'denied')
-      return c.json({ error: 'operation_not_allowed', message: 'Use GET /agent/capabilities for the allow-listed site API.' }, 403)
+      return c.json({ error: 'operation_not_allowed', message: 'Use filtered GET /agent/capabilities for the allow-listed site API.' }, 403)
     }
-    const headers = new Headers({ accept: 'application/json' })
+    const capability = buildCapabilityCatalog([CAPABILITIES[patternIndex]])[0]
+    const capabilityKey = `${capability.method} ${capability.path}`
+    const mutation = method !== 'GET'
+    const idempotencyKey = String(input.idempotency_key || '').trim()
+    if (mutation && !input.dry_run && (!idempotencyKey || idempotencyKey.length > 120)) {
+      return c.json({ error: 'idempotency_key required for agent mutations and must be at most 120 characters' }, 400)
+    }
+    if (mutation && !input.dry_run && capability.explicit_confirmation_required && input.confirm !== true) {
+      return c.json({ error: 'explicit confirmation required', risk: capability.risk, dry_run_available: true }, 409)
+    }
+    const requiredPreconditionPaths = resolveCapabilityReadbacks(capabilityKey, capability.precondition_path, capability.path, path, input.body)
+    if (mutation && capability.risk === 'high' && !input.dry_run) {
+      const hasExpected = input.precondition && typeof input.precondition.field === 'string' && input.precondition.field.length > 0 && Object.prototype.hasOwnProperty.call(input.precondition, 'equals')
+      if (!hasExpected || requiredPreconditionPaths.length !== 1 || input.precondition?.path !== requiredPreconditionPaths[0]) {
+        return c.json({
+          error: 'high-risk mutations require an exact-target read precondition with field and expected value',
+          risk: capability.risk,
+          required_precondition_path: requiredPreconditionPaths[0] || capability.precondition_path,
+        }, 409)
+      }
+    }
+
+    const plannedVerificationPaths = input.verify?.path
+      ? [input.verify.path]
+      : resolveCapabilityReadbacks(capabilityKey, capability.verification_path, capability.path, path, input.body)
+    if (input.dry_run) {
+      return c.json({
+        ok: true,
+        dry_run: true,
+        intent: capability.intent,
+        target: path,
+        impact: {
+          method,
+          domain: capability.domain,
+          risk: capability.risk,
+          reversible: capability.reversible,
+          preconditions: capability.preconditions,
+          precondition_path: requiredPreconditionPaths[0] || capability.precondition_path,
+          verification_paths: plannedVerificationPaths.length ? plannedVerificationPaths : capability.verification_path,
+          required_fields: capability.required_fields,
+        },
+        blocker: null,
+      })
+    }
+
     const token = c.req.header('x-api-token')
-    if (token) headers.set('x-api-token', token)
     const agentName = c.req.header('x-agent-name')
+    let before: any = null
+    if (input.precondition?.path) {
+      before = await readTarget(input.precondition.path, token, agentName)
+      assertTarget(before, input.precondition, 'precondition')
+    } else if (plannedVerificationPaths.length && mutation) {
+      const snapshots = await Promise.all(plannedVerificationPaths.map((verificationPath) => readTarget(verificationPath, token, agentName)))
+      before = snapshots.length === 1 ? snapshots[0] : snapshots
+    }
+
+    const headers = new Headers({ accept: 'application/json' })
+    if (token) headers.set('x-api-token', token)
     if (agentName) headers.set('x-agent-name', agentName)
-    if (method !== 'GET' && method !== 'DELETE') {
+    if (idempotencyKey) headers.set('x-client-mutation-id', idempotencyKey)
+    if (mutation && method !== 'DELETE') {
       headers.set('content-type', 'application/json')
       headers.set('x-agent-request', 'true')
     }
@@ -557,12 +731,53 @@ app.post('/request', async (c) => {
       body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(input.body ?? {}),
     })
     const text = await response.text()
-    let payload: unknown = text
-    try { payload = text ? JSON.parse(text) : null } catch { /* preserve non-JSON responses */ }
-    await logAgentAction(DB, c, `${method} ${path}`, input.body, String(response.status))
-    return c.json({ ok: response.ok, status: response.status, data: payload }, response.status as any)
-  } catch (err) {
-    await logAgentAction(DB, c, 'agent_request', null, 'error')
+    let payload: any = text
+    try { payload = text ? JSON.parse(text) : null } catch {}
+    await logAgentAction(DB, c, `${method} ${path}`, { body: input.body, idempotency_key: idempotencyKey || null }, String(response.status))
+
+    let after: any = null
+    let verificationBlocker: any = null
+    const verificationPaths = input.verify?.path
+      ? [input.verify.path]
+      : resolveCapabilityReadbacks(capabilityKey, capability.verification_path, capability.path, path, input.body, payload)
+    if (response.ok) {
+      if (capability.verification_path && !verificationPaths.length) {
+        verificationBlocker = { code: 'verification_unresolved', message: 'Mutation committed but the declared readback target could not be resolved.', mutation_committed: true }
+      } else if (verificationPaths.length) {
+        try {
+          const snapshots = await Promise.all(verificationPaths.map((verificationPath) => readTarget(verificationPath, token, agentName)))
+          after = snapshots.length === 1 ? snapshots[0] : snapshots
+          if (input.verify) assertTarget(snapshots[0], input.verify, 'verification')
+        } catch (verificationError: any) {
+          verificationBlocker = {
+            code: verificationError?.code || 'verification_failed',
+            message: verificationError?.message || 'Post-mutation verification failed.',
+            mutation_committed: true,
+            ...(verificationError?.expected !== undefined ? { expected: verificationError.expected, actual: verificationError.actual } : {}),
+          }
+        }
+      }
+    }
+    const verificationEvidence = Array.isArray(after) ? after : after ? [after] : []
+    const receipt = {
+      intent: capability.intent,
+      target: path,
+      before,
+      mutation_or_job: { method, status: response.status, mutation_committed: response.ok, idempotency_key: idempotencyKey || null, data: payload },
+      after,
+      evidence: [
+        { kind: 'allow_list', capability: capabilityKey },
+        ...(idempotencyKey ? [{ kind: 'idempotency', key: idempotencyKey }] : []),
+        ...verificationEvidence.map((snapshot: any) => ({ kind: 'verification_read', path: snapshot.path, status: snapshot.status })),
+      ],
+      blocker: response.ok ? verificationBlocker : payload,
+    }
+    const verified = response.ok && !verificationBlocker
+    await persistAgentReceipt(DB, c, receipt, response.status, verified)
+    return c.json({ ok: response.ok, verified, status: response.status, data: payload, receipt }, response.status as any)
+  } catch (err: any) {
+    await logAgentAction(DB, c, 'agent_request', null, err?.code || 'error')
+    if (err?.code === 'assertion_failed') return c.json({ error: err.code, message: err.message, expected: err.expected, actual: err.actual }, 409)
     return c.json(safeError('Agent request failed')(err), 400)
   }
 })
@@ -573,71 +788,43 @@ app.post('/request', async (c) => {
  */
 app.get('/tools', (c) => {
   return c.json({
+    version: AGENT_CONTRACT_VERSION,
+    protocol: AGENT_PROTOCOL,
     tools: [
       {
-        name: 'get_agent_context',
-        description: 'Fetch Mahmood taste profile, top priorities, active recommendations, and neglected learning branches.',
-        parameters: { type: 'object', properties: {} }
-      },
-      {
-        name: 'push_recommendation',
-        description: 'Push a candidate video, paper, or article to Mahmood queue with justification.',
-        parameters: {
-          type: 'object',
-          properties: {
-            url: { type: 'string', description: 'URL of the content' },
-            title: { type: 'string', description: 'Title of the content' },
-            creator: { type: 'string', description: 'Author or creator name' },
-            content_type: { type: 'string', enum: ['video', 'paper', 'article', 'book'] },
-            why_this: { type: 'string', description: 'Why this content fits Mahmood taste and priorities' }
-          },
-          required: ['url', 'title', 'why_this']
-        }
-      },
-      {
-        name: 'validate_content_fit',
-        description: 'Check if a topic or URL matches Mahmood core filter rules and anti-patterns.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string' },
-            topic: { type: 'string' },
-            creator: { type: 'string' }
-          },
-          required: ['title']
-        }
-      },
-      {
-        name: 'log_learning_session',
-        description: 'Log topics studied today into the daily learning journal.',
-        parameters: {
-          type: 'object',
-          properties: {
-            topics: { type: 'string', description: 'Comma separated list of topics studied' },
-            date: { type: 'string', description: 'YYYY-MM-DD format (optional)' }
-          },
-          required: ['topics']
-        }
-      }
-      ,{
         name: 'list_capabilities',
-        description: 'List every allow-listed website operation available to this agent, including reads, creates, edits, deletes, processing, analytics, jobs, and undo.',
-        parameters: { type: 'object', properties: {} }
+        description: 'Search the structured allow-listed Learning Compass operations by domain, intent, method, or text.',
+        parameters: {
+          type: 'object',
+          properties: {
+            domain: { type: 'string' },
+            intent: { type: 'string', enum: ['read', 'create', 'update', 'delete', 'undo', 'verify', 'process'] },
+            method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
+            q: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
       },
       {
         name: 'site_request',
-        description: 'Execute one allow-listed Learning Compass website API operation. Use list_capabilities first when unsure. Product validation, queue limits, SRS approval rules, and audit logging remain active.',
+        description: 'Dry-run or execute one allow-listed operation with mandatory mutation idempotency, optional optimistic precondition, explicit high-risk confirmation, verification reread, and a canonical receipt.',
         parameters: {
           type: 'object',
           properties: {
             method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
-            path: { type: 'string', description: 'Absolute site API path from /agent/capabilities.' },
-            body: { type: 'object', description: 'JSON body required by the selected operation.' }
+            path: { type: 'string', description: 'Concrete absolute path returned by list_capabilities.' },
+            body: { type: 'object' },
+            dry_run: { type: 'boolean' },
+            confirm: { type: 'boolean' },
+            idempotency_key: { type: 'string', maxLength: 120 },
+            precondition: { type: 'object', properties: { path: { type: 'string' }, field: { type: 'string' }, equals: {} }, required: ['path'] },
+            verify: { type: 'object', properties: { path: { type: 'string' }, field: { type: 'string' }, equals: {} }, required: ['path'] },
           },
-          required: ['method', 'path']
-        }
-      }
-    ]
+          required: ['method', 'path'],
+          additionalProperties: false,
+        },
+      },
+    ],
   })
 })
 
@@ -646,20 +833,15 @@ app.get('/tools', (c) => {
  * Unified execution handler for LLM tool invocations.
  */
 app.post('/tool-call', async (c) => {
-  const { DB } = c.env
   try {
     const { name, arguments: args } = await c.req.json<{ name: string; arguments: any }>()
     if (!name) return c.json({ error: 'tool name required' }, 400)
 
-    if (name === 'get_agent_context') {
-      const headers: Record<string, string> = {}
-      const token = c.req.header('x-api-token')
-      if (token) headers['x-api-token'] = token
-      const res = await fetch(new URL('/agent/context', c.req.url).toString(), { headers })
-      return c.json(await res.json())
+    if (name === 'list_capabilities') {
+      const filters = { domain: args?.domain, intent: args?.intent, method: args?.method, q: args?.q }
+      const capabilities = buildCapabilityCatalog(CAPABILITIES, filters)
+      return c.json({ version: AGENT_CONTRACT_VERSION, total: CAPABILITIES.length, returned: capabilities.length, capabilities })
     }
-
-    if (name === 'list_capabilities') return c.json({ capabilities: CAPABILITIES.map(([method, path, description]) => ({ method, path, description })) })
 
     if (name === 'site_request') {
       const response = await fetch(new URL('/agent/request', c.req.url), {
@@ -670,69 +852,9 @@ app.post('/tool-call', async (c) => {
       return c.json(await response.json(), response.status as any)
     }
 
-    if (name === 'push_recommendation') {
-      const { url, title, creator, content_type, why_this } = args || {}
-      if (!url || !title || !why_this) return c.json({ error: 'missing required fields: url, title, why_this' }, 400)
-
-      const capture = await createInboxCapture(DB, { source: url, title })
-      await DB.prepare(`UPDATE recommendations SET creator=COALESCE(?,creator),content_type=COALESCE(?,content_type),why_this=?,updated_at=datetime('now') WHERE id=?`).bind(creator || null, content_type || null, why_this, capture.id).run()
-      return c.json({ ok: true, recommendation_id: capture.id, status: capture.duplicate ? 'already in Inbox' : 'captured to Inbox' })
-    }
-
-    if (name === 'validate_content_fit') {
-      const { title, creator } = args || {}
-      const blacklist = await DB.prepare('SELECT name, reason FROM blacklist').all<any>()
-      const matches = (blacklist.results || []).filter((b: any) => 
-        (title && title.toLowerCase().includes(b.name.toLowerCase())) ||
-        (creator && creator.toLowerCase().includes(b.name.toLowerCase()))
-      )
-      
-      if (matches.length > 0) {
-        return c.json({ fit: false, reason: `Matches blacklisted term: ${matches[0].name} (${matches[0].reason || 'no reason'})` })
-      }
-      return c.json({ fit: true, reason: 'Passed blacklist filters and aligns with active profile.' })
-    }
-
-    if (name === 'log_learning_session') {
-      const { topics, date } = args || {}
-      if (!topics) return c.json({ error: 'topics required' }, 400)
-      const logDate = date || new Date().toISOString().split('T')[0]
-      await DB.prepare(`
-        INSERT INTO learning_log (date, count, topics) VALUES (?, 1, ?)
-        ON CONFLICT(date) DO UPDATE SET count = count + 1, topics = learning_log.topics || ', ' || ?
-      `).bind(logDate, topics, topics).run()
-
-      return c.json({ ok: true, date: logDate, logged_topics: topics })
-    }
-
     return c.json({ error: `Unknown tool: ${name}` }, 404)
   } catch (err) {
     return c.json(safeError('Tool call failed')(err), 500)
-  }
-})
-
-/**
- * POST /agent/validate-fit
- * Quick endpoint for AI filters before queuing new items.
- */
-app.post('/validate-fit', async (c) => {
-  const { DB } = c.env
-  try {
-    const { title, creator, url } = await c.req.json<{ title?: string; creator?: string; url?: string }>()
-    if (!title && !url) return c.json({ error: 'title or url required' }, 400)
-
-    const blacklist = await DB.prepare('SELECT name, reason FROM blacklist').all<any>()
-    const searchStr = `${title || ''} ${creator || ''} ${url || ''}`.toLowerCase()
-    
-    for (const item of (blacklist.results || [])) {
-      if (searchStr.includes(item.name.toLowerCase())) {
-        return c.json({ fit: false, reason: `Matches blacklist: ${item.name} (${item.reason || 'restricted'})` })
-      }
-    }
-
-    return c.json({ fit: true, reason: 'Passes core quality filters' })
-  } catch (err) {
-    return c.json(safeError('Validation failed')(err), 500)
   }
 })
 

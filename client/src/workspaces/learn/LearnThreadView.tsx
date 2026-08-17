@@ -5,11 +5,13 @@ import { Icon } from '../../components/Icon'
 import { useData } from '../../app/useData'
 import { artifactHref, formatDate, percent, roleLabel, statusLabel } from './helpers'
 import { PathResponse, PathSource, PathStage, ThreadLesson, ThreadProject } from './types'
+import { ThreadEvidenceForm } from './ThreadEvidenceForm'
 
 export function LearnThreadView({ threadId }: { threadId: string }) {
   const path = useData<PathResponse>(`/learning/core/threads/${encodeURIComponent(threadId)}/path`)
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null)
   const [lessonId, setLessonId] = useState<string | null>(null)
+  const [evidenceItemId, setEvidenceItemId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   if (path.loading && !path.data) return <Loading label="Loading course" />
   if (path.error && !path.data) return <ErrorState message={path.error} retry={path.reload} />
@@ -27,9 +29,30 @@ export function LearnThreadView({ threadId }: { threadId: string }) {
     catch (error: unknown) { setMessage(error instanceof Error ? error.message : 'Could not save the change.') }
   }
 
-  const selectStage = (stage: PathStage) => { setSelectedStageId(stage.id); setLessonId(null) }
+  const selectStage = (stage: PathStage) => { setSelectedStageId(stage.id); setLessonId(null); setEvidenceItemId(null) }
+  const startStage = async (stage: PathStage) => {
+    try {
+      await api(`/learning/core/threads/${encodeURIComponent(threadId)}/stages/${encodeURIComponent(stage.id)}/start`, { method: 'POST' })
+      setSelectedStageId(stage.id)
+      setMessage(`Level ${stage.position} started. Choose the next proof action.`)
+      path.reload()
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : 'This level could not be started.')
+    }
+  }
+  const verifyStage = async (stage: PathStage) => {
+    try {
+      await api(`/learning/core/threads/${encodeURIComponent(threadId)}/stages/${encodeURIComponent(stage.id)}/verify`, { method: 'POST' })
+      setMessage(`Level ${stage.position} verified. The next level is now available.`)
+      path.reload()
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : 'This level is not ready to verify.')
+    }
+  }
   const continueLearning = () => {
     if (!activeStage) return
+    if (activeStage.next_action?.kind === 'start') { void startStage(activeStage); return }
+    if (activeStage.next_action?.kind === 'verify') { void verifyStage(activeStage); return }
     const next = activeStage.lessons.find((lesson) => lesson.status !== 'completed') || activeStage.lessons[0]
     if (next) { setLessonId(next.id); update(`/learning/core/threads/${encodeURIComponent(threadId)}/lessons/${encodeURIComponent(next.id)}`, { status: 'in_progress' }, 'Lesson started.') }
   }
@@ -47,22 +70,28 @@ export function LearnThreadView({ threadId }: { threadId: string }) {
 
     <div class="course-layout">
       <aside class="course-map" aria-label="Course path">
-        <p class="folio-object-kicker">Course path</p>
-        {stages.map((stage) => (
-          <button
-            type="button"
-            class={`folio-level-toggle folio-stage-row ${stage.id === activeStage?.id ? 'is-current' : ''}`}
-            onClick={() => selectStage(stage)}
-            key={stage.id}
-          >
-            <span>{stage.position === 0 ? '00' : String(stage.position).padStart(2, '0')}</span>
-            <span>
-              <strong>Level {stage.position} — {stage.title.replace(/^Level \d+\s*[—-]\s*/, '')}</strong>
-              <small>{stage.progress.completed}/{stage.progress.total} lessons</small>
-            </span>
-            <i>{stage.progress.total && stage.progress.completed === stage.progress.total ? <Icon name="check" size={14} /> : stage.id === activeStage?.id ? '●' : '○'}</i>
-          </button>
-        ))}
+        <div class="course-map-heading">
+          <p class="folio-object-kicker">Course path</p>
+          <span>{stages.filter((stage) => stage.status === 'verified').length}/{stages.length} levels verified</span>
+        </div>
+        <div class="course-stage-list">
+          {stages.map((stage) => (
+            <button
+              type="button"
+              class={`folio-level-toggle folio-stage-row ${stage.id === activeStage?.id ? 'is-current' : ''}`}
+              onClick={() => selectStage(stage)}
+              key={stage.id}
+              aria-current={stage.id === activeStage?.id ? 'step' : undefined}
+            >
+              <span>{stage.position === 0 ? '00' : String(stage.position).padStart(2, '0')}</span>
+              <span>
+                <strong>Level {stage.position} · {stage.title.replace(/^Level \d+\s*[—-]\s*/, '')}</strong>
+                <small>{statusLabel(stage.status)} · {stage.progress.completed}/{stage.progress.total}</small>
+              </span>
+              <i>{stage.progress.total && stage.progress.completed === stage.progress.total ? <Icon name="check" size={14} /> : stage.id === activeStage?.id ? '●' : '○'}</i>
+            </button>
+          ))}
+        </div>
         <ProjectCard project={finalProject} threadId={threadId} onChanged={path.reload} />
       </aside>
       <main class="course-main">
@@ -80,6 +109,11 @@ export function LearnThreadView({ threadId }: { threadId: string }) {
             stage={activeStage}
             threadId={threadId}
             onLesson={(lesson) => setLessonId(lesson.id)}
+            evidenceItemId={evidenceItemId}
+            onEvidence={(itemId) => { setLessonId(null); setEvidenceItemId(itemId) }}
+            onStart={() => startStage(activeStage)}
+            onVerify={() => verifyStage(activeStage)}
+            onEvidenceSaved={() => { setEvidenceItemId(null); path.reload() }}
             onChanged={path.reload}
           />
         ) : (
@@ -90,38 +124,49 @@ export function LearnThreadView({ threadId }: { threadId: string }) {
   </section>
 }
 
-function StageView({ stage, threadId, onLesson, onChanged }: { stage: PathStage; threadId: string; onLesson: (lesson: ThreadLesson) => void; onChanged: () => void }) {
+function StageView({ stage, threadId, onLesson, evidenceItemId, onEvidence, onStart, onVerify, onEvidenceSaved, onChanged }: { stage: PathStage; threadId: string; onLesson: (lesson: ThreadLesson) => void; evidenceItemId: string | null; onEvidence: (itemId: string) => void; onStart: () => void; onVerify: () => void; onEvidenceSaved: () => void; onChanged: () => void }) {
+  const requiredItems = stage.items.filter((item) => (item.required === true || Number(item.required) === 1) && !['source_role', 'companion'].includes(item.item_type))
+  const openItems = requiredItems.filter((item) => item.status === 'open')
+  const evidenceItem = requiredItems.find((item) => item.id === evidenceItemId)
   return <>
     <header class="course-stage-header">
-      <p class="folio-object-kicker">Level {stage.position}</p>
+      <div class="course-stage-heading-line"><p class="folio-object-kicker">Level {stage.position}</p><span class={`course-stage-status status-${stage.status}`}>{statusLabel(stage.status)}</span></div>
       <h2>{stage.title.replace(/^Level \d+\s*[—-]\s*/, '')}</h2>
       <p>{stage.objective || stage.description || 'Build the next layer of understanding.'}</p>
-      <span>{stage.progress.completed} / {stage.progress.total} lessons</span>
+      <div class="course-stage-meta"><span>{stage.progress.completed} / {stage.progress.total} lessons</span><span>{requiredItems.length - openItems.length} / {requiredItems.length || 0} proof actions</span></div>
     </header>
-    <section class="course-lessons">
-      <div class="folio-section-head">
-        <div>
-          <p class="folio-object-kicker">Lessons</p>
-          <h3>Learn in sequence</h3>
-        </div>
-      </div>
-      {stage.lessons.map((lesson) => (
-        <button
-          type="button"
-          class={`course-lesson ${lesson.status === 'completed' ? 'is-complete' : ''}`}
-          onClick={() => onLesson(lesson)}
-          key={lesson.id}
-        >
-          <span class="course-lesson-number">
-            {lesson.status === 'completed' ? <Icon name="check" size={14} /> : String(lesson.position + 1).padStart(2, '0')}
-          </span>
-          <strong class="course-lesson-title">{lesson.title}</strong>
-          <small class="course-lesson-source-count">
-            {lesson.sources?.length ? `${lesson.sources.length} ${lesson.sources.length === 1 ? 'source' : 'sources'} · Study material available` : 'No source selected yet'}
-          </small>
-        </button>
-      ))}
+    <section class={`course-next-action next-${stage.status}`} aria-labelledby="course-next-action-title">
+      <div><p class="folio-object-kicker">Next action</p><h3 id="course-next-action-title">{stage.next_action?.label || (stage.status === 'available' ? 'Start this level' : stage.status === 'ready_to_verify' ? 'Verify this level' : stage.status === 'locked' ? 'Review the prerequisite' : openItems[0]?.title || 'Continue the lesson sequence')}</h3><p>{stage.status === 'locked' ? 'Complete and verify the previous level before this work opens.' : stage.status === 'ready_to_verify' ? 'Your required proof is recorded. Verification unlocks the next level.' : openItems[0] ? 'This is the first missing proof needed to move forward.' : 'Take the smallest useful step, then return here to see what changed.'}</p></div>
+      {stage.status === 'available' && <button class="button primary folio-primary" type="button" onClick={onStart}>Start level</button>}
+      {stage.status === 'ready_to_verify' && <button class="button primary folio-primary" type="button" onClick={onVerify}>Verify level</button>}
+      {stage.status === 'evidence_pending' && openItems[0] && <button class="button primary folio-primary" type="button" onClick={() => onEvidence(openItems[0].id)}>Record proof</button>}
+      {stage.status === 'locked' && <span class="course-next-action-lock">Locked</span>}
     </section>
+    {requiredItems.length > 0 && <section class="course-proof" aria-labelledby="course-proof-title">
+      <div class="folio-section-head"><div><p class="folio-object-kicker">Evidence gate</p><h3 id="course-proof-title">Proof for this level</h3></div><span class="folio-measure">{requiredItems.length - openItems.length}/{requiredItems.length}</span></div>
+      <p class="course-proof-intro">Learning builds understanding; proof shows you can use it.</p>
+      {openItems[0] && <div class="course-proof-priority"><span class="course-proof-state" aria-hidden="true">○</span><div><strong>First missing proof</strong><span>{openItems[0].title}</span></div><button class="button secondary" type="button" onClick={() => onEvidence(openItems[0].id)}>Record proof</button></div>}
+      <details class="course-proof-details">
+        <summary>View all {requiredItems.length} proof actions</summary>
+        <div class="course-proof-list">
+          {requiredItems.map((item) => item.id === evidenceItemId && evidenceItem ? <ThreadEvidenceForm key={item.id} threadId={threadId} stageId={stage.id} item={item} onSaved={onEvidenceSaved} onCancel={() => onEvidence('')} /> : <div class={`course-proof-row is-${item.status}`} key={item.id}>
+            <span class="course-proof-state" aria-hidden="true">{item.status === 'satisfied' || item.status === 'waived' ? '✓' : '○'}</span><div><strong>{item.title}</strong>{item.description && <small>{item.description}</small>}</div><span class="course-proof-type">{item.status === 'satisfied' ? 'Recorded' : item.status === 'waived' ? 'Waived' : 'Open'}</span>{item.status === 'open' && <button class="button secondary" type="button" onClick={() => onEvidence(item.id)}>Record proof</button>}
+          </div>)}
+        </div>
+      </details>
+    </section>}
+    <details class="course-section course-lessons" open>
+      <summary><span><span class="folio-object-kicker">Understand</span><strong>Learn in sequence</strong></span><span>{stage.progress.completed}/{stage.progress.total} complete</span></summary>
+      <div class="course-section-body">
+        {stage.lessons.map((lesson) => (
+          <button type="button" class={`course-lesson ${lesson.status === 'completed' ? 'is-complete' : ''}`} onClick={() => onLesson(lesson)} key={lesson.id}>
+            <span class="course-lesson-number">{lesson.status === 'completed' ? <Icon name="check" size={14} /> : String(lesson.position + 1).padStart(2, '0')}</span>
+            <strong class="course-lesson-title">{lesson.title}</strong>
+            <small class="course-lesson-source-count">{lesson.sources?.length ? `${lesson.sources.length} ${lesson.sources.length === 1 ? 'source' : 'sources'} · Study material available` : 'No source selected yet'}</small>
+          </button>
+        ))}
+      </div>
+    </details>
     <ProjectCard project={stage.projects[0]} threadId={threadId} onChanged={onChanged} />
   </>
 }
@@ -372,4 +417,3 @@ function SourceSection({ sources }: { sources: PathSource[] }) {
     </section>
   )
 }
-

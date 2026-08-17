@@ -3,7 +3,7 @@ import { api } from '../api'
 import { uploadArtifact } from '../app/upload'
 import { Icon } from '../components/Icon'
 
-export function CaptureDialog({ open, onClose, onCaptured }: { open: boolean; onClose: () => void; onCaptured: () => void }) {
+export function CaptureDialog({ open, onClose, onCaptured, initialSource = '' }: { open: boolean; onClose: () => void; onCaptured: () => void; initialSource?: string }) {
   const [source, setSource] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [status, setStatus] = useState('')
@@ -24,6 +24,7 @@ export function CaptureDialog({ open, onClose, onCaptured }: { open: boolean; on
 
   useEffect(() => {
     if (!open) return
+    if (initialSource && !source) setSource(initialSource)
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       event.preventDefault()
@@ -32,7 +33,7 @@ export function CaptureDialog({ open, onClose, onCaptured }: { open: boolean; on
     }
     document.addEventListener('keydown', closeOnEscape, true)
     return () => document.removeEventListener('keydown', closeOnEscape, true)
-  }, [open, onClose])
+  }, [open, onClose, initialSource, source])
 
   const trapFocus = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {

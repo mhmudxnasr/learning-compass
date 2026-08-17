@@ -4,6 +4,7 @@ dist/
 .wrangler/
 .npm/
 .playwright-cli/
+__pycache__/
 
 # OS
 .DS_Store

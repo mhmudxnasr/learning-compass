@@ -27,7 +27,7 @@ const decodeXml = (value: string) => value
 const tag = (block: string, names: string[]) => {
   for (const name of names) {
     const qualified = name.includes(':') ? name.replace(':', '\\:') : `(?:[\\w.-]+:)?${name}`
-    const match = block.match(new RegExp(`<${qualified}\\b[^>]*>([\\s\\S]*?)<\\/${qualified}\\s*>`, 'i'))
+    const match = block.match(new RegExp(`<${qualified}\\b(?![^>]*\\/\\s*>)[^>]*>([\\s\\S]*?)<\\/${qualified}\\s*>`, 'i'))
     if (match) return decodeXml(match[1]).trim()
   }
   return ''

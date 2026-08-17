@@ -5,6 +5,7 @@ import { createInboxCapture } from '../services/capture'
 import { addFeed, syncAllFeeds, syncFeed } from '../services/rss'
 import { recordRecommendationSignal } from '../services/intelligence-v2'
 import { displayRound } from '../services/branch-rounds'
+import { loadCaptureQueue } from '../services/capture-queue'
 
 import { activateWaitingRun } from './discovery'
 
@@ -43,36 +44,7 @@ app.get('/', async (c) => {
 })
 
 app.get('/queue', async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.priority_rank,m.progress_percent,m.estimated_minutes,m.tags_json,m.started_at,m.last_opened_at,
-    COALESCE(n.label, r.branch) branch_label,
-    COALESCE(n.status, 'love') branch_status,
-    COALESCE(n.round_label, r.round) round_label,
-    o.predicted_score,o.predicted_confidence,o.predicted_components_json,(SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND t.status NOT IN ('verified','abandoned') ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 1) thread_id,(SELECT n.id FROM notes n WHERE n.recommendation_id=r.id ORDER BY n.updated_at DESC LIMIT 1) note_id,(SELECT n.title FROM notes n WHERE n.recommendation_id=r.id ORDER BY n.updated_at DESC LIMIT 1) note_title,(SELECT COUNT(*) FROM srs_cards sc WHERE sc.recommendation_id=r.id) recall_count,(SELECT COUNT(*) FROM srs_cards sc WHERE sc.recommendation_id=r.id AND sc.due_at IS NOT NULL AND sc.due_at<=date('now')) due_count,(SELECT a.id FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=r.id AND (a.media_type LIKE '%html%' OR a.filename LIKE '%.html') ORDER BY a.created_at DESC LIMIT 1) html_artifact_id,(SELECT a.id FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=r.id AND (a.media_type LIKE '%pdf%' OR a.filename LIKE '%.pdf') ORDER BY a.created_at DESC LIMIT 1) pdf_artifact_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id LEFT JOIN recommendation_outcomes o ON o.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all()
-  // Surface Compass's persisted prediction on each row so the queue can show
-  // why a source was chosen (score, confidence, feature breakdown) — the data
-  // already lives in recommendation_outcomes from the pick.
-  const items = (rows.results || []).map((row: any) => {
-    let breakdown: any = null
-    try { breakdown = row.predicted_components_json ? JSON.parse(row.predicted_components_json) : null } catch {}
-    const branchLabel = row.branch_label || row.branch
-    const branchId = row.branch_id || branchLabel
-    const roundLabel = row.round_label || row.round
-    const branchStatus = String(row.branch_status || '').trim().toLowerCase()
-    const round = displayRound({ round_label: roundLabel, id: branchId }, {
-      consumed: 0, notes: row.note_id ? 1 : 0, cards: Number(row.recall_count || 0), due: Number(row.due_count || 0), recallStrength: null,
-    })
-    return {
-      ...row,
-      branch_label: branchLabel,
-      round_label: roundLabel,
-      branch: branchLabel ? { id: branchId, label: branchLabel, round, status: branchStatus || 'love' } : null,
-      note: row.note_id ? { id: row.note_id, title: row.note_title || 'Field note' } : null,
-      recall: { count: Number(row.recall_count || 0), due: Number(row.due_count || 0) },
-      companions: { html: row.html_artifact_id ? { id: row.html_artifact_id } : null, pdf: row.pdf_artifact_id ? { id: row.pdf_artifact_id } : null },
-      branch_preflight: branchLabel ? { branch_id: branchId, branch_label: branchLabel, status: branchStatus || 'love', conflict: branchStatus === 'pruned' } : { status: 'unmapped', conflict: false },
-      compass: row.predicted_score != null ? { score: Number(row.predicted_score), confidence: Number(row.predicted_confidence ?? 0), breakdown } : null
-    }
-  })
+  const items = await loadCaptureQueue(c.env.DB)
   return c.json({ items, count: items.length, cap: 5 })
 })
 
@@ -315,9 +287,9 @@ app.get('/:id/record', async (c) => {
     COALESCE(n.round_label, r.round) round_label
     FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(recommendationId).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
-  const [sessions, notes, sections, artifacts, drafts, cards, outcome, memories, proposals, jobs, threads, units, anchors, relations, consolidation, evidence, disposition] = await Promise.all([
+  const [sessions, notes, sections, artifacts, drafts, cards, outcome, memories, proposals, jobs, threads, units, anchors, annotations, relations, consolidation, evidence, disposition] = await Promise.all([
     c.env.DB.prepare(`SELECT id,status,intent,reflection,thread_id,target_kind,target_artifact_id,started_at,returned_at,completed_at,duration_seconds FROM learning_sessions WHERE recommendation_id=? ORDER BY started_at DESC`).bind(recommendationId).all<any>(),
-    c.env.DB.prepare(`SELECT n.id,n.recommendation_id,n.title,n.kind,n.status,n.revision,n.source_url,n.source_artifact_id,n.updated_at
+    c.env.DB.prepare(`SELECT n.id,n.recommendation_id,n.title,n.kind,n.status,n.revision,n.source_url,n.source_artifact_id,n.provenance_json,n.updated_at
       FROM notes n WHERE n.recommendation_id=? ORDER BY n.updated_at DESC`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT s.note_id,s.section_key,s.label,s.content,s.direction,s.position FROM note_sections s JOIN notes n ON n.id=s.note_id WHERE n.recommendation_id=? ORDER BY s.note_id,s.position`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.r2_key,a.metadata_json,a.created_at,r.notebook_url
@@ -325,7 +297,7 @@ app.get('/:id/record', async (c) => {
       WHERE json_extract(a.metadata_json,'$.recommendation_id')=?
          OR a.id=json_extract((SELECT source_metadata_json FROM recommendation_meta WHERE recommendation_id=?),'$.artifact_id')
       ORDER BY a.created_at DESC`).bind(recommendationId,recommendationId).all<any>(),
-    c.env.DB.prepare(`SELECT id,question,answer,topic,status,unit_id,thread_id,created_at FROM srs_drafts WHERE recommendation_id=? ORDER BY created_at DESC`).bind(recommendationId).all<any>(),
+    c.env.DB.prepare(`SELECT id,question,answer,topic,status,unit_id,thread_id,provenance_json,created_at FROM srs_drafts WHERE recommendation_id=? ORDER BY created_at DESC`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT id,question,answer,topic,due_at,repetitions,interval_days,ease_factor,unit_id,thread_id,scheduler_version FROM srs_cards WHERE recommendation_id=? ORDER BY due_at`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT * FROM recommendation_outcomes WHERE recommendation_id=?`).bind(recommendationId).first<any>(),
     c.env.DB.prepare(`SELECT id,memory_key,memory_kind,value_json,confidence,source,status,evidence_json,updated_at FROM hermes_memory WHERE evidence_json LIKE ? ORDER BY updated_at DESC`).bind(`%${recommendationId}%`).all<any>(),
@@ -334,6 +306,7 @@ app.get('/:id/record', async (c) => {
     c.env.DB.prepare(`SELECT t.id,t.title,t.thread_type,t.guiding_question,t.definition_of_done,t.status,ts.role,ts.expected_contribution FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=? AND ts.status!='removed' ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT * FROM learning_units WHERE recommendation_id=? ORDER BY updated_at DESC`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT a.* FROM unit_anchors a JOIN learning_units u ON u.id=a.unit_id WHERE u.recommendation_id=? ORDER BY a.created_at`).bind(recommendationId).all<any>(),
+    c.env.DB.prepare(`SELECT * FROM source_annotations WHERE recommendation_id=? AND status='active' ORDER BY created_at DESC LIMIT 200`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT ur.* FROM unit_relations ur JOIN learning_units u ON u.id=ur.source_unit_id WHERE u.recommendation_id=? ORDER BY ur.created_at`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT * FROM consolidation_runs WHERE recommendation_id=? ORDER BY requested_at DESC LIMIT 1`).bind(recommendationId).first<any>(),
     c.env.DB.prepare(`SELECT e.* FROM learning_evidence e LEFT JOIN learning_units u ON u.id=e.unit_id WHERE u.recommendation_id=? OR e.thread_id IN (SELECT thread_id FROM thread_sources WHERE recommendation_id=?) ORDER BY e.occurred_at DESC LIMIT 100`).bind(recommendationId,recommendationId).all<any>(),
@@ -341,13 +314,15 @@ app.get('/:id/record', async (c) => {
   ])
   const noteSections = new Map<string, any[]>()
   for (const section of sections.results || []) noteSections.set(section.note_id, [...(noteSections.get(section.note_id) || []), section])
-  const noteRows = (notes.results || []).map((note: any) => ({ ...note, sections: noteSections.get(note.id) || [] }))
+  const parseList = (value: any) => { try { return JSON.parse(value || '[]') } catch { return [] } }
+  const noteRows = (notes.results || []).map((note: any) => ({ ...note, provenance: parseList(note.provenance_json), provenance_json: undefined, sections: noteSections.get(note.id) || [] }))
   const parseJson = (value: string | null) => { try { return value ? JSON.parse(value) : null } catch { return null } }
   const memoryInfluences = (memories.results || []).map((row: any) => { let evidence: any[] = []; try { evidence = JSON.parse(row.evidence_json || '[]') } catch {}; return { ...row, value: (() => { try { return JSON.parse(row.value_json || 'null') } catch { return null } })(), evidence: evidence.filter((item) => item.recommendation_id === recommendationId), value_json: undefined, evidence_json: undefined } })
   const anchorsByUnit = new Map<string, any[]>()
   for (const anchor of anchors.results || []) anchorsByUnit.set(anchor.unit_id, [...(anchorsByUnit.get(anchor.unit_id) || []), anchor])
   const relationsByUnit = new Map<string, any[]>()
   for (const relation of relations.results || []) relationsByUnit.set(relation.source_unit_id, [...(relationsByUnit.get(relation.source_unit_id) || []), relation])
+  const annotationRows = (annotations.results || []).map((annotation: any) => ({ ...annotation, selector: parseJson(annotation.selector_json) || {}, selector_json: undefined }))
   const unitRows = (units.results || []).map((unit: any) => ({ ...unit, anchors: anchorsByUnit.get(unit.id) || [], relations: relationsByUnit.get(unit.id) || [] }))
   const consolidationSteps = consolidation ? await c.env.DB.prepare(`SELECT * FROM consolidation_steps WHERE run_id=? ORDER BY position`).bind(consolidation.id).all<any>() : { results: [] }
   const cardRows = (cards.results || []).map((card: any) => ({ ...card }))
@@ -364,7 +339,7 @@ app.get('/:id/record', async (c) => {
   const round = displayRound({ round_label: roundLabel, id: branchId }, { consumed: item.status === 'consumed' ? 1 : 0, notes: noteCount, cards: cardCount, due: dueCount, recallStrength: null })
   const branchInfo = branchLabel ? { id: branchId, label: branchLabel, round: roundLabel || round, status: String(item.branch_status || '').trim().toLowerCase() || 'love' } : null
   const companions = { html: htmlArtifact ? { id: htmlArtifact.id, filename: htmlArtifact.filename, size_bytes: htmlArtifact.size_bytes } : null, pdf: pdfArtifact ? { id: pdfArtifact.id, filename: pdfArtifact.filename, size_bytes: pdfArtifact.size_bytes } : null }
-  return c.json({ item: { ...item, branch: branchInfo, round: roundLabel || round, branch_label: branchLabel, branch_status: item.branch_status || 'love', round_label: roundLabel }, sessions: sessions.results || [], threads: threads.results || [], learning_units: unitRows, learning_evidence: evidence.results || [], disposition: disposition || null, consolidation: consolidation ? { ...consolidation, steps: consolidationSteps.results || [] } : null, notes: noteRows, artifacts: artifactsRows, companions, srs: { drafts: drafts.results || [], cards: cardRows, recall_summary: { count: cardCount, due: dueCount } }, outcome: outcome || null, memory_influences: memoryInfluences, proposals: (proposals.results || []).map((proposal: any) => ({ ...proposal, current: parseJson(proposal.current_json), proposed: parseJson(proposal.proposed_json), current_json: undefined, proposed_json: undefined })), jobs: (jobs.results || []).map((job: any) => ({ ...job, result: parseJson(job.result_json), result_json: undefined })) })
+  return c.json({ item: { ...item, branch: branchInfo, round: roundLabel || round, branch_label: branchLabel, branch_status: item.branch_status || 'love', round_label: roundLabel }, sessions: sessions.results || [], threads: threads.results || [], annotations: annotationRows, learning_units: unitRows, learning_evidence: evidence.results || [], disposition: disposition || null, consolidation: consolidation ? { ...consolidation, steps: consolidationSteps.results || [] } : null, notes: noteRows, artifacts: artifactsRows, companions, srs: { drafts: (drafts.results || []).map((draft: any) => ({ ...draft, provenance: parseList(draft.provenance_json), provenance_json: undefined })), cards: cardRows, recall_summary: { count: cardCount, due: dueCount } }, outcome: outcome || null, memory_influences: memoryInfluences, proposals: (proposals.results || []).map((proposal: any) => ({ ...proposal, current: parseJson(proposal.current_json), proposed: parseJson(proposal.proposed_json), current_json: undefined, proposed_json: undefined })), jobs: (jobs.results || []).map((job: any) => ({ ...job, result: parseJson(job.result_json), result_json: undefined })) })
 })
 
 export default app

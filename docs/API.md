@@ -25,6 +25,8 @@ Hermes ownership, endpoint permissions, side-effect tiers, routing policy, and s
 - `GET /analytics/hermes/weekly` — return the last-seven-day clean quality, creator, format, abandonment, and taste-drift report. `POST /analytics/hermes/evaluate` requires `{ "conversation_id": "..." }`, creates only reviewable proposals, and records a no-change/proposal receipt; no cron invokes it.
 - `POST /analytics/hermes/backfill` — legacy derived-record compatibility backfill. Defaults to dry-run; applying it requires `{ "dry_run": false, "conversation_id": "..." }` and records a receipt. Historical recommendation/profile correction uses `/analytics/hermes/repair`.
 - `GET /capture/:id/record` — canonical source record linking the source, exact feedback and note sections, session history, proposals, artifacts, recall, memory influence, and measured outcome. The response now also carries the item's `branch` (`{id,label,round,status}`), derived `round` from the branch-round progression model, `companions` (`{html,pdf}` with id/filename/size), and `srs.recall_summary` (`{count,due}`). Processing metadata remains available to agents but is not exposed as a user-facing destination.
+- `GET /annotations?recommendation_id=...` and `POST /annotations` — source-native evidence ledger. An annotation stores a quote, web/PDF/video/EPUB/artifact locator, context window, language, optional source checksum, and optional Thread/branch ownership; it can be archived without deleting history. `GET /annotations/:id` includes linked Learning Units, notes, and SRS provenance.
+- `GET /search/evidence?q=...` — bounded quote/context retrieval that returns durable annotation locators and linked Learning Units. This is the evidence-first retrieval seam for Hermes; broad `/search` remains a navigation search.
 - `GET /feedback/context` — canonical evidence bundle containing every archived reaction, structured feedback, current profile, and knowledge-map nodes. Taste Mapper reads this before proposing enhancements.
 
 ## Capture and learning
@@ -119,15 +121,18 @@ Hermes ownership, endpoint permissions, side-effect tiers, routing policy, and s
 - `POST /notifications/telegram` — enable or disable Telegram reminders for a chat ID.
 - `POST /notifications/test` — send a test and persist delivered, queued, or failed delivery evidence.
 
-## Agent control protocol
+## Agent control protocol v2
 
-- `GET /agent/capabilities` — complete machine-readable allow-list of site operations.
-- `GET /agent/system` — user-visible runtime inventory: storage ownership, the configured six-hour maintenance schedule and responsibilities, on-demand-only workflows, current counts, and safety boundaries.
-- `GET /agent/openapi.json` — compact OpenAPI description for HTTP/tool clients.
-- `POST /agent/request` — execute one allow-listed site operation with `{method,path,body}`.
-- `GET /agent/tools` and `POST /agent/tool-call` — function-calling declarations and execution.
+- Contract version: `2026-08-17`; protocol: `learning-compass-agent-http/2`.
+- `GET /agent/capabilities` — structured allow-list with `domain`, `intent`, risk, reversibility, preconditions, idempotency/dry-run support, request/response schemas, and canonical verification route. Filter with `domain`, `intent`, `method`, or `q`.
+- `GET /agent/system` — user-visible runtime inventory: storage ownership, the configured six-hour maintenance schedule and responsibilities, on-demand-only workflows, current counts, safety boundaries, and active agent contract version.
+- `GET /agent/context` — canonical Queue projection plus open Thread evidence requirements, verified Threads, compatibility-only legacy mastered exclusions, branch balance, profile/taste context, and explicit per-section health. Required Queue/Thread-evidence/branch failures return degraded state with HTTP 503 instead of plausible empty data. Ratings never imply mastery.
+- `GET /agent/openapi.json` — OpenAPI 3.1 generated from the same capability registry, with path parameters, JSON bodies, shared receipt/assertion/error schemas, and operation safety extensions.
+- `POST /agent/request` — dry-run or execute one allow-listed operation with `{method,path,body?,dry_run?,confirm?,idempotency_key?,precondition?,verify?}`. Mutations require `idempotency_key`; high-risk operations additionally require explicit confirmation and an exact-target read precondition with `field` and `equals`. Declared readbacks support batch targets. A failed post-commit readback returns the original successful mutation status with `verified:false`, `mutation_committed:true`, and an explicit verification blocker rather than falsely reporting that the write failed. Successful verification returns the canonical `intent → target → before → mutation_or_job → after → evidence → blocker` receipt.
+- `GET /agent/tools` and `POST /agent/tool-call` expose only `list_capabilities` and `site_request`. Legacy direct-write/filter/log tools were removed; product workflows must use canonical routes.
+- `GET /agent/briefing` and `GET /agent/activity` expose the same deterministic next action and receipt/audit projection used by the Home cockpit. `agent_receipts` persist the verification result after agent mutations so the activity panel can distinguish committed-but-unverified work from verified work.
 
-Agent mutations reuse product validation, require `x-api-token` when configured, and audit to `agent_logs`. Arbitrary SQL, arbitrary paths, and outbound proxying are not exposed.
+Agent mutations reuse product validation and atomically reserve `sync_mutations` keys with method/path/body fingerprints before execution, require `x-api-token` when configured, and audit to `agent_logs`. Concurrent same-key requests cannot both mutate; mismatched reuse returns 409. Arbitrary SQL, arbitrary paths, and outbound proxying are not exposed. Run `npm run verify:agent-contract` to enforce source/contract/tool/version alignment.
 
 `GET /brain/profile` includes the compatibility profile plus typed `profile_assertions`, reversible `profile_revisions`, and `profile_health`. `GET /brain/profile/intelligence` returns only that typed model. `PUT /brain/profile/assertions/:key` creates or replaces any assertion with optimistic `target_version`; `POST /brain/profile/revisions/:id/revert` undoes a revision. `POST /brain/profile` remains the editable compatibility API and mirrors supplied fields into explicit typed assertions.
 

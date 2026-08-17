@@ -9,10 +9,13 @@ export type Bindings = {
   AI?: any
   COMPASS_VECTORS?: any
   API_TOKEN?: string
+  REQUIRE_API_AUTH?: string
   GOOGLE_API_KEY?: string
   GEMINI_API_KEY?: string
   OPENCODE_ZEN_API_KEY?: string
   TELEGRAM_BOT_TOKEN?: string
+  TELEGRAM_WEBHOOK_SECRET?: string
+  TELEGRAM_ALLOWED_CHAT_ID?: string
   VAPID_PUBLIC_KEY?: string
   VAPID_PRIVATE_KEY?: string
 }

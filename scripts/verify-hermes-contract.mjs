@@ -19,7 +19,7 @@ const missing = required.filter(([file]) => !existsSync(join(root, file))).map((
 if (missing.length) throw new Error(`Missing Hermes contract files: ${missing.join(', ')}`)
 
 const migrationNames = readdirSync(join(root, 'migrations')).filter((name) => /^\d+_.*\.sql$/.test(name)).sort()
-const expectedMigrations = ['0000_brain.sql', '0001_production_rebuild.sql', '0002_rss_feeds.sql', '0003_feedback_review.sql', '0004_discovery_engine.sql', '0005_recommendation_notebook_url.sql', '0006_hermes_upgrade.sql', '0007_sync_notifications.sql', '0008_compass_cascade.sql', '0009_proposal_dedup.sql', '0010_compass_queue_fill.sql', '0011_compass_adaptive_learning.sql', '0012_context_brief.sql', '0013_book_visual_chapters.sql', '0014_canonical_activity_ledger.sql', '0015_outcome_learning_integrity.sql', '0016_learning_integrity.sql', '0017_consolidation_workflows.sql', '0018_learning_threads.sql', '0019_learning_units.sql', '0020_mastery_evidence.sql', '0021_learning_outcomes_v2.sql', '0022_fsrs_and_thread_backfill.sql', '0023_intelligence_v2.sql', '0024_memory_context.sql', '0025_compass_contextual_reranking.sql', '0026_semantic_retrieval.sql', '0027_feedback_observability.sql', '0027_recommendation_quality_enhancements.sql', '0028_compass_thompson_pessimistic_prior.sql', '0029_learning_hub.sql', '0030_hub_notes_files.sql', '0031_thread_courses.sql', '0032_lesson_sources.sql', '0033_lesson_orientation.sql', '0034_srs_lineage_and_tags.sql', '0035_recommendation_branch_and_round.sql', '0036_profile_automation_manual.sql']
+const expectedMigrations = ['0000_brain.sql', '0001_production_rebuild.sql', '0002_rss_feeds.sql', '0003_feedback_review.sql', '0004_discovery_engine.sql', '0005_recommendation_notebook_url.sql', '0006_hermes_upgrade.sql', '0007_sync_notifications.sql', '0008_compass_cascade.sql', '0009_proposal_dedup.sql', '0010_compass_queue_fill.sql', '0011_compass_adaptive_learning.sql', '0012_context_brief.sql', '0013_book_visual_chapters.sql', '0014_canonical_activity_ledger.sql', '0015_outcome_learning_integrity.sql', '0016_learning_integrity.sql', '0017_consolidation_workflows.sql', '0018_learning_threads.sql', '0019_learning_units.sql', '0020_mastery_evidence.sql', '0021_learning_outcomes_v2.sql', '0022_fsrs_and_thread_backfill.sql', '0023_intelligence_v2.sql', '0024_memory_context.sql', '0025_compass_contextual_reranking.sql', '0026_semantic_retrieval.sql', '0027_feedback_observability.sql', '0027_recommendation_quality_enhancements.sql', '0028_compass_thompson_pessimistic_prior.sql', '0029_learning_hub.sql', '0030_hub_notes_files.sql', '0031_thread_courses.sql', '0032_lesson_sources.sql', '0033_lesson_orientation.sql', '0034_srs_lineage_and_tags.sql', '0035_recommendation_branch_and_round.sql', '0036_profile_automation_manual.sql', '0037_atomic_mutation_reservations.sql', '0038_hermes_brief_annotations_receipts.sql', '0039_telegram_webhook_dedup.sql']
 if (migrationNames.length !== expectedMigrations.length || expectedMigrations.some((name, index) => migrationNames[index] !== name)) throw new Error(`Migration order drift: expected ${expectedMigrations.join(', ')}, found ${migrationNames.join(', ')}`)
 
 const checks = [
@@ -37,6 +37,7 @@ const checks = [
   ['src/api/agent.ts', "['POST', '/agent/jobs/:id/replay'", 'job replay capability'],
   ['src/api/agent.ts', "['POST', '/agent/memory'", 'guarded memory capability'],
   ['src/api/agent.ts', "app.get('/memory/context'", 'bounded memory context compiler'],
+  ['src/api/discovery.ts', 'agent_contract_version: AGENT_CONTRACT_VERSION', 'discovery drift check exposes active agent contract'],
   ['client/src/app/router.ts', "export type RootKey = 'home' | 'library' | 'learn' | 'map' | 'settings'", 'five-root route registry'],
   ['client/src/workspaces/SettingsWorkspace.tsx', "const system = useData<SystemPayload>('/agent/system')", 'Settings system control surface'],
   ['docs/API.md', '/analytics/hermes', 'Hermes API documentation'],
@@ -44,6 +45,9 @@ const checks = [
   ['.hermes.md', 'learning-compass-operating-system', 'procedural Hermes router contract'],
   ['src/api/agent.ts', "['POST', '/learning/core/threads'", 'Learning Thread agent capability'],
   ['.hermes.md', 'output_contract=learning_units_v1', 'anchored Learning Unit output contract'],
+  ['src/api/agent.ts', "['GET', '/agent/briefing'", 'Hermes briefing capability'],
+  ['src/api/search.ts', "app.get('/evidence'", 'evidence retrieval endpoint'],
+  ['docs/recovery.md', 'Recovery and portability', 'portable recovery contract'],
 ]
 const failed = checks.filter(([file, needle]) => !read(file).includes(needle)).map(([, , label]) => label)
 if (failed.length) throw new Error(`Hermes contract drift: ${failed.join(', ')}`)
@@ -51,6 +55,23 @@ if (read('src/index.ts').includes('createHermesEvaluatorProposals')) throw new E
 
 const contract = JSON.parse(read('docs/hermes-contract.json'))
 if (contract.version !== 5) throw new Error('Canonical Hermes contract version drift')
+const agentControlSource = read('src/services/agent-capabilities.ts')
+const agentApiSource = read('src/api/agent.ts')
+const agentVersion = agentControlSource.match(/AGENT_CONTRACT_VERSION = '([^']+)'/)?.[1]
+const agentProtocol = agentControlSource.match(/AGENT_PROTOCOL = '([^']+)'/)?.[1]
+if (!agentVersion || agentVersion !== contract.agent_control?.contract_version) throw new Error(`Agent contract version drift: source=${agentVersion}, contract=${contract.agent_control?.contract_version}`)
+if (!agentProtocol || agentProtocol !== contract.agent_control?.protocol) throw new Error(`Agent protocol drift: source=${agentProtocol}, contract=${contract.agent_control?.protocol}`)
+if (!agentControlSource.includes("paths['/agent/request']")) throw new Error('Agent OpenAPI control-route drift')
+if (!read('src/index.ts').includes('INSERT OR IGNORE INTO sync_mutation_locks')) throw new Error('Atomic mutation reservation drift')
+for (const obsolete of ["name: 'push_recommendation'", "name: 'validate_content_fit'", "name: 'log_learning_session'", "name: 'get_agent_context'", "app.post('/validate-fit'"]) {
+  if (agentApiSource.includes(obsolete)) throw new Error(`Obsolete agent tool remains: ${obsolete}`)
+}
+for (const tool of contract.agent_control?.tools || []) {
+  if (!agentApiSource.includes(`name: '${tool}'`) || !agentApiSource.includes(`name === '${tool}'`)) throw new Error(`Agent tool declaration/handler drift: ${tool}`)
+}
+for (const invariant of ['idempotency_key required for agent mutations', 'exact-target read precondition', 'resolveCapabilityReadbacks', 'buildAgentOpenApi']) {
+  if (!agentApiSource.includes(invariant) && !agentControlSource.includes(invariant)) throw new Error(`Agent control invariant missing: ${invariant}`)
+}
 const requiredPolicy = [
   ['workflow', 'conversation-driven'],
   ['background_self_improvement', false],
@@ -73,20 +94,29 @@ for (const trigger of ['specialist evolution handoff', 'observed skill failure',
 if (contract.self_evolution_owner !== 'learning-compass-self-evolution') throw new Error('Canonical self-evolution owner drift')
 const activeSkills = contract.skill_graph?.active || []
 const retiredSkills = contract.skill_graph?.retired || []
-if (activeSkills.length !== 16 || new Set(activeSkills.map((skill) => skill.name)).size !== activeSkills.length) {
+if (activeSkills.length !== 22 || new Set(activeSkills.map((skill) => skill.name)).size !== activeSkills.length) {
   throw new Error('Canonical Hermes active skill graph is incomplete or duplicated')
 }
-for (const name of ['learning-compass-operating-system', 'learning-compass-self-evolution', 'learning-compass-site-operator', 'recommendations-worker-ops', 'taste-mapper', 'taste-rec', 'learning-notes-extractor', 'lite-visual', 'visual-mind', 'notebooklm', 'rss-feed', 'agent-cli-delegation', 'youtube-playlist-verification', 'progressive-learning-curriculum', 'learning-compass-source-ingestion', 'learning-hub-companion-authoring']) {
+for (const name of ['learning-compass-operating-system', 'learning-compass-self-evolution', 'learning-compass-site-operator', 'recommendations-worker-ops', 'taste-mapper', 'taste-rec', 'learning-notes-extractor', 'lite-visual', 'visual-mind', 'notebooklm', 'rss-feed', 'agent-cli-delegation', 'youtube-playlist-verification', 'progressive-learning-curriculum', 'learning-compass-source-ingestion', 'learning-hub-companion-authoring', 'compass-recommendation-workflows', 'hermes-configuration-operations', 'learning-compass-feedback-corrections', 'learning-compass-foundation-curation', 'learning-compass-job-backlog-operations', 'learning-compass-bridge']) {
   if (!activeSkills.some((skill) => skill.name === name && skill.path && skill.role)) throw new Error(`Canonical active skill missing: ${name}`)
 }
-for (const name of ['taste-enhancer', 'compass-queue-fill', 'learning-compass-curator-policy', 'master-editorial-synthesis']) {
+for (const name of ['taste-enhancer', 'compass-queue-fill', 'learning-compass-curator-policy', 'master-editorial-synthesis', 'learning-thread-curation']) {
   if (!retiredSkills.includes(name)) throw new Error(`Canonical retired skill missing: ${name}`)
 }
 const localSkillsRoot = join(homedir(), '.hermes', 'skills')
 if (existsSync(localSkillsRoot)) {
+  const configPath = join(homedir(), '.hermes', 'config.yaml')
+  const configText = existsSync(configPath) ? readFileSync(configPath, 'utf8') : ''
+  const disabledBlock = configText.match(/^skills:\n((?:[ \t]+.*\n?)*)/m)?.[1] || ''
+  const disabledSkills = new Set([...disabledBlock.matchAll(/^\s+-\s+([^#\s]+)\s*$/gm)].map((match) => match[1]))
+  const disabledInline = disabledBlock.match(/disabled:\s*['"]?(\[[^\n]+\])['"]?/)?.[1]
+  if (disabledInline) {
+    try { for (const name of JSON.parse(disabledInline)) disabledSkills.add(String(name)) } catch {}
+  }
   for (const skill of activeSkills) {
     const file = join(localSkillsRoot, skill.path, 'SKILL.md')
     if (!existsSync(file)) throw new Error(`Active Hermes skill is not installed: ${skill.name}`)
+    if (disabledSkills.has(skill.name)) throw new Error(`Canonical active Hermes skill is disabled: ${skill.name}`)
     const body = readFileSync(file, 'utf8')
     if (!body.includes(`name: ${skill.name}`)) throw new Error(`Hermes skill name/path drift: ${skill.name}`)
     if (!body.includes('## Evolution handoff')) throw new Error(`Hermes skill lacks evolution handoff: ${skill.name}`)
@@ -97,17 +127,14 @@ if (existsSync(localSkillsRoot)) {
     }
   }
   for (const name of retiredSkills) {
-    const stillActive = activeSkills.some((skill) => skill.name === name)
-      || readdirSync(localSkillsRoot, { withFileTypes: true }).some((entry) => entry.isDirectory() && entry.name === name)
+    const installed = readdirSync(localSkillsRoot, { withFileTypes: true }).some((entry) => entry.isDirectory() && entry.name === name)
       || existsSync(join(localSkillsRoot, 'workflow', name, 'SKILL.md'))
       || existsSync(join(localSkillsRoot, 'personal', name, 'SKILL.md'))
       || existsSync(join(localSkillsRoot, 'productivity', name, 'SKILL.md'))
+    const stillActive = activeSkills.some((skill) => skill.name === name)
+      || (installed && !disabledSkills.has(name))
     if (stillActive) throw new Error(`Retired Hermes skill remains active: ${name}`)
   }
-  const configPath = join(homedir(), '.hermes', 'config.yaml')
-  const configText = existsSync(configPath) ? readFileSync(configPath, 'utf8') : ''
-  const disabledBlock = configText.match(/^skills:\n((?:[ \t]+.*\n?)*)/m)?.[1] || ''
-  const disabledSkills = new Set([...disabledBlock.matchAll(/^\s+-\s+([^#\s]+)\s*$/gm)].map((match) => match[1]))
   const walkSkillFiles = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const file = join(dir, entry.name)
     return entry.isDirectory() ? walkSkillFiles(file) : [file]

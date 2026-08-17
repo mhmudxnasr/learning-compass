@@ -1,5 +1,25 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-08-17 (Settings control-center redesign)
+
+The Settings workspace now leads with a readable learning-profile summary instead of the internal profile model: an explicit Edit profile action, health/status language oriented around user decisions, summary cards for context/priorities/boundaries/quality/workflow, and searchable learned signals behind progressive disclosure. Technical model identifiers remain available under Model details, malformed legacy JSON stays out of the normal view, and Data/System copy now distinguishes backup/recovery and advanced operations from everyday controls. Existing routes, API contracts, and operational inventory behavior remain compatible. This redesign is deployed at `https://recommendations-worker.mhmudnasr30.workers.dev` as Worker version `51469e14-fdd8-4ea8-896e-b98bac23d1c1`.
+
+Verified locally with `npm test` (105 unit tests plus typecheck), `npm run build`, `npm run test:e2e`, `npm run verify:hermes`, and `git diff --check`; live `/health` returned HTTP 200 after deployment.
+
+## Current truth — 2026-08-17 (Hermes cockpit, evidence ledger, recovery, and capture interoperability)
+
+The Hermes enhancement wave is implemented locally. Home and `/agent/briefing` now share a deterministic next-action projection across due recall, open Thread proof, consolidation repair, Queue, drafts, and Inbox. `/agent/activity` and the System surface show persisted agent receipts, audit events, jobs, proposals, and runtime health. Migration `0038` adds source-native annotations with web/PDF/video/EPUB/artifact locators, language, context, checksums, and links from Learning Units, notes, and recall drafts; `/search/evidence` returns those locators and downstream derivations for grounded retrieval. Semantic indexing now carries language metadata and includes active annotations.
+
+Private mode is available through `REQUIRE_API_AUTH=true` plus `API_TOKEN`; Telegram webhooks require a secret header, can restrict an allowed chat, and deduplicate `update_id` through migration `0039`. A least-privilege Manifest V3 extension opens the existing global capture dialog for page URLs and selected passages, preserving the Inbox invariant. `npm run export:recovery` creates a checksummed D1 export and manifest; `npm run verify:recovery` checks the payload before storage or restore, while R2 binary backup remains a separate verified operator step.
+
+Verified locally with 104 unit tests plus typecheck, production build, E2E, migration rehearsal, Hermes contract verification, MCP handshake, recovery export/checksum verification, and `git diff --check`. Remote migrations `0038` and `0039` applied successfully. The Worker is deployed at `https://recommendations-worker.mhmudnasr30.workers.dev` as version `f7a10602-1a62-48f0-8727-716cb171fc84`; live smoke checks returned HTTP 200 for `/health`, `/agent/briefing`, `/agent/activity`, `/agent/capabilities?q=briefing`, and `/search/evidence?q=learning`.
+
+## Current truth — 2026-08-17 (agent control protocol v2)
+
+The Learning Compass operator now uses contract `2026-08-17` / `learning-compass-agent-http/2`. `/agent/context` reuses the complete canonical Queue projection (up to the route's 50-item bound), derives learning gaps only from open Thread evidence requirements, distinguishes verified Threads from compatibility-only legacy mastered exclusions, reports per-section freshness/errors, and returns HTTP 503 when required Queue/evidence/branch components are unavailable. `/agent/capabilities` is structured and filterable; `/agent/openapi.json` is generated from the same registry and includes the guarded `/agent/request` control route. Function calling exposes only `list_capabilities` and `site_request`. Agent mutations provide dry-run impact, exact-target asserted preconditions for high-risk actions, atomic method/path/body-fingerprinted idempotency reservations (migration `0037`), batch-aware canonical readbacks, and explicit committed-but-unverified receipts when post-write verification fails. Contract drift is enforced by `npm run verify:agent-contract` across source, routes, tools, schemas, migrations, documentation, and active Hermes skills.
+
+Verified in an isolated release worktree: agent tests 8/8, complete unit suite 103/103, typecheck, E2E, clean and idempotent migration rehearsal, production build, contract verification, and `git diff --check` pass. Remote migrations `0036` and `0037` applied successfully. Production version `63769064-0bec-45e1-9c7b-3e5d95167a6e` passed live health, context, capability, OpenAPI, tool inventory, dry-run, dashboard, Queue, Notes, Recall, and job smoke checks; rollback version is `fad550a7-ba31-4bb1-867a-cc6ab08891f0`.
+
 ## Current truth — 2026-08-15 (book chapter metadata)
 
 Books can now register chapter metadata without uploading files. `POST /recommendations/books/:id/chapters` creates or updates book-scoped chapter rows only; it reports `artifacts_created: 0`. When a chapter PDF is explicitly uploaded with `scope=book`, it is shown only in the owning Books chapter row and excluded from the general Files library.
@@ -23,7 +43,7 @@ The product is now **branch-centric**: branches (with evidence-based R1/R2/R3 pr
 - **Enriched contracts**: `GET /capture/queue` items now carry `branch` (`id/label/round/status`), `note`, `recall` (`count/due`), and `companions` (`html/pdf` artifact ids); `GET /capture/:id/record` adds `branch`, derived `round`, `companions`, and `srs.recall_summary`; `GET /recommendations/list` rows add `branch_label`, `round_label`, `branch_status`.
 - **UI**: Queue and All-sources views render branch/round badges, note links, recall status, and companion buttons; the Branch Deck gained a Linked Items Ledger panel (sources, notes, recall cards, drafts, artifacts with dossier jumps); the unified source dossier gained Branch, Reading Companions, Active Recall, and Feedback & Evidence sections; the global inspector shows Branch and Round facts.
 - **Settings consistency fix**: migration 0023 seeded `profile_automation` as `automatic`, silently overriding the new `manual` default on fresh databases; the seed now stores `manual` and new migration `0036` aligns existing databases. E2E updated for the manual-review contract (proposals hold for approval, `decision_source: 'user'` on approve).
-- **Hermes contract v5**: adopted `learning-compass-source-ingestion` and `learning-hub-companion-authoring` as active skills, retired the renamed `learning-thread-curation` (disabled in `~/.hermes/config.yaml`), fixed the `progressive-learning-curriculum` frontmatter, added route ownership for the new ledger/queue/record reads, and completed the migration inventory through `0036`. `npm run verify:hermes` passes (previously blocked on 0031–0033 inventory drift).
+- **Hermes contract v5**: adopted `learning-compass-source-ingestion` and `learning-hub-companion-authoring` as active skills, retired the renamed `learning-thread-curation` (disabled in `~/.hermes/config.yaml`), fixed the `progressive-learning-curriculum` frontmatter, added route ownership for the new ledger/queue/record reads, and completed the migration inventory through `0037`. `npm run verify:hermes` passes (previously blocked on 0031–0033 inventory drift).
 
 Verified: `npm test` 93/93, typecheck, production build, and live health smoke check pass. Full E2E remains blocked by the typed-source inspector assertion noted in the task result. Gallery Queue deployed to Worker version `e6c2e1f2-5221-4417-950d-5c71a3c8433a`.
 
@@ -51,3 +71,10 @@ The 2026-08-14 Lite Visual repair was replayed against the complete 82.5-minute 
 ## Post-deploy follow-up
 
 Keep the recoverable pre-reset snapshot through the rollback window. VAPID secrets are configured; a real subscribed-device notification delivery test remains a separate explicit operational check because it sends an external notification.
+## Learning workflow improvement — 2026-08-17
+
+The Learning workspace now connects the existing evidence model to the primary path screen. A learner can see the selected level's evidence gate, start an available level, understand why a locked level cannot open, record proof inline against a required action, and verify a level once its required proof is complete. The existing lesson flow remains intact; this closes the gap where lessons could be marked complete without a visible route to evidence or progression.
+
+The selected level is now presented as a learn-first workbench: one dominant next action, compact stage navigation, a prioritized first missing proof, and collapsible proof/lesson inventories reduce the flat course-detail page without changing the API or mastery semantics. Responsive styles preserve the same priority order on mobile.
+
+Verified: `npm test` (103/103 unit tests plus typecheck), `npm run build`, `npm run test:e2e`, and `git diff --check` pass.

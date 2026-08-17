@@ -441,11 +441,17 @@ app.post('/units', async (c) => {
     const id = clean(body.id, 120) || makeId('unit')
     const recommendationId = clean(body.recommendation_id, 120) || null
     const semanticKey = clean(body.semantic_key, 240) || null
+    const annotationIds = [...new Set(anchors.map((anchor: any) => clean(anchor.annotation_id, 120)).filter(Boolean))]
+    if (annotationIds.length) {
+      const rows = await c.env.DB.prepare(`SELECT id,recommendation_id FROM source_annotations WHERE id IN (${annotationIds.map(() => '?').join(',')}) AND status='active'`).bind(...annotationIds).all<any>()
+      const found = rows.results || []
+      if (found.length !== annotationIds.length || found.some((row: any) => recommendationId && row.recommendation_id !== recommendationId)) return c.json({ error: 'annotation does not belong to the source or is unavailable' }, 409)
+    }
     const statements: D1PreparedStatement[] = [c.env.DB.prepare(`INSERT INTO learning_units (id,unit_type,statement,user_synthesis,stance,confidence,recommendation_id,source_artifact_id,source_revision_checksum,created_by,status,semantic_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id, type, statement, clean(body.user_synthesis, 12000) || null, ['accept','question','reject','uncertain'].includes(body.stance) ? body.stance : 'uncertain', Math.max(0, Math.min(1, Number(body.confidence ?? .5))), recommendationId, clean(body.source_artifact_id, 120) || null, clean(body.source_revision_checksum, 160) || null, body.created_by === 'extractor' ? 'extractor' : 'user', body.status === 'accepted' ? 'accepted' : 'draft', semanticKey)]
     for (const anchor of anchors) {
       if (!recommendationId || !clean(anchor.locator, 1000)) return c.json({ error: 'each anchor requires recommendation_id and locator' }, 400)
       const anchorType = ['page','timestamp','section','quote','url_fragment','user_observation'].includes(anchor.anchor_type) ? anchor.anchor_type : 'section'
-      statements.push(c.env.DB.prepare(`INSERT INTO unit_anchors (id,unit_id,recommendation_id,artifact_id,anchor_type,locator,excerpt,checksum) VALUES (?,?,?,?,?,?,?,?)`).bind(makeId('anchor'), id, recommendationId, clean(anchor.artifact_id, 120) || null, anchorType, clean(anchor.locator, 1000), clean(anchor.excerpt, 4000) || null, clean(anchor.checksum, 160) || null))
+      statements.push(c.env.DB.prepare(`INSERT INTO unit_anchors (id,unit_id,recommendation_id,artifact_id,annotation_id,anchor_type,locator,excerpt,checksum) VALUES (?,?,?,?,?,?,?,?,?)`).bind(makeId('anchor'), id, recommendationId, clean(anchor.artifact_id, 120) || null, clean(anchor.annotation_id, 120) || null, anchorType, clean(anchor.locator, 1000), clean(anchor.excerpt, 4000) || null, clean(anchor.checksum, 160) || null))
     }
     if (body.thread_id) statements.push(c.env.DB.prepare(`INSERT INTO thread_units (thread_id,unit_id,role,importance,position) VALUES (?,?,?,?,?)`).bind(body.thread_id, id, ['core','supporting','counterevidence','application'].includes(body.role) ? body.role : 'supporting', Math.max(0, Math.min(1, Number(body.importance ?? .5))), Number(body.position || 0)))
     statements.push(c.env.DB.prepare(`INSERT INTO learning_unit_revisions (unit_id,actor_type,next_json,reason) VALUES (?,?,?,?)`).bind(id, body.created_by === 'extractor' ? 'agent' : 'user', JSON.stringify({ type, statement, user_synthesis: body.user_synthesis || null }), 'created'))

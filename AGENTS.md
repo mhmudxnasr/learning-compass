@@ -67,6 +67,11 @@ Active Hermes files:
 - `~/.hermes/skills/learning-thread-curation/SKILL.md` → retired (renamed); active name is `~/.hermes/skills/learning/progressive-learning-curriculum/SKILL.md`
 - `~/.hermes/skills/workflow/learning-compass-source-ingestion/SKILL.md`
 - `~/.hermes/skills/learning/learning-hub-companion-authoring/SKILL.md`
+- `~/.hermes/skills/learning/compass-recommendation-workflows/SKILL.md`
+- `~/.hermes/skills/workflow/hermes-configuration-operations/SKILL.md`
+- `~/.hermes/skills/workflow/learning-compass-feedback-corrections/SKILL.md`
+- `~/.hermes/skills/workflow/learning-compass-foundation-curation/SKILL.md`
+- `~/.hermes/skills/workflow/learning-compass-job-backlog-operations/SKILL.md`
 - `~/.hermes/memories/MEMORY.md` and `USER.md` only for durable facts
 
 Do not update archived Taste Mapper bundles, Gemini/Antigravity skill copies, or unrelated agent systems.

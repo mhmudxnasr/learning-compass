@@ -78,6 +78,7 @@ function workspace(route: Route, onCapture: () => void, onInspect: (selection: I
 
 export function App() {
   const route = useRoute()
+  const capturePayload = route.query.get('capture') || ''
   const [captureOpen, setCaptureOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [selection, setSelection] = useState<InspectorSelection | null>(null)
@@ -105,6 +106,10 @@ export function App() {
   }, [captureOpen, searchOpen, selection, route.root, route.objectId, route.view, route.mode, route.focus])
 
   useEffect(() => {
+    if (capturePayload) setCaptureOpen(true)
+  }, [capturePayload])
+
+  useEffect(() => {
     const onOnline = () => { setOnline(true); void flushOfflineMutations() }
     const onOffline = () => setOnline(false)
     addEventListener('online', onOnline)
@@ -129,6 +134,10 @@ export function App() {
     }
   }
   const refreshWorkspace = () => setRefreshKey((value) => value + 1)
+  const closeCapture = () => {
+    setCaptureOpen(false)
+    if (capturePayload) navigate(routeHref('library', 'triage', 'inbox'))
+  }
 
   return <AppErrorBoundary>
     <StudioShell
@@ -140,7 +149,7 @@ export function App() {
         {workspace(route, () => setCaptureOpen(true), setSelection)}
       </div>
     </StudioShell>
-    <CaptureDialog open={captureOpen} onClose={() => setCaptureOpen(false)} onCaptured={refreshWorkspace}/>
+    <CaptureDialog open={captureOpen} initialSource={capturePayload} onClose={closeCapture} onCaptured={refreshWorkspace}/>
     <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)}/>
   </AppErrorBoundary>
 }

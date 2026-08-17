@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Learning Compass Capture",
+  "version": "1.0.0",
+  "description": "Send the current page or selected passage to Learning Compass Inbox.",
+  "permissions": ["activeTab", "contextMenus", "storage"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "Capture to Learning Compass" },
+  "options_page": "options.html"
+}

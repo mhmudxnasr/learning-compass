@@ -21,7 +21,7 @@ export async function embedTexts(env: Pick<Bindings, 'AI'>, values: unknown[]): 
   } catch { return null }
 }
 
-export async function indexSemanticDocuments(env: Pick<Bindings, 'AI' | 'COMPASS_VECTORS' | 'DB'>, documents: Array<{ id: string; kind: 'recommendation' | 'thread' | 'note' | 'unit'; sourceId: string; text: unknown }>) {
+export async function indexSemanticDocuments(env: Pick<Bindings, 'AI' | 'COMPASS_VECTORS' | 'DB'>, documents: Array<{ id: string; kind: 'recommendation' | 'thread' | 'note' | 'unit' | 'annotation'; sourceId: string; text: unknown; language?: string }>) {
   if (!env.AI || !env.COMPASS_VECTORS) return { enabled: false, indexed: 0, skipped: documents.length, reason: 'semantic_bindings_unavailable' }
   const prepared = await Promise.all(documents.map(async (document) => ({ ...document, text: normalizedText(document.text), hash: await hashText(normalizedText(document.text)) })))
   const changed: typeof prepared = []
@@ -35,7 +35,7 @@ export async function indexSemanticDocuments(env: Pick<Bindings, 'AI' | 'COMPASS
   const vectors = await embedTexts(env, changed.map((document) => document.text))
   if (!vectors) return { enabled: true, indexed: 0, skipped: prepared.length, reason: 'embedding_unavailable' }
   try {
-    await env.COMPASS_VECTORS.upsert(changed.map((document, index) => ({ id: document.id, values: vectors[index], namespace: 'learning-compass', metadata: { kind: document.kind, source_id: document.sourceId } })))
+    await env.COMPASS_VECTORS.upsert(changed.map((document, index) => ({ id: document.id, values: vectors[index], namespace: 'learning-compass', metadata: { kind: document.kind, source_id: document.sourceId, language: document.language || 'und' } })))
     await env.DB.batch(changed.map((document) => env.DB.prepare(`INSERT INTO semantic_documents(id,document_kind,source_id,content_hash,model,status,error,indexed_at,updated_at)
       VALUES (?,?,?,?,?,'indexed',NULL,datetime('now'),datetime('now'))
       ON CONFLICT(document_kind,source_id) DO UPDATE SET id=excluded.id,content_hash=excluded.content_hash,model=excluded.model,status='indexed',error=NULL,indexed_at=datetime('now'),updated_at=datetime('now')`).bind(document.id, document.kind, document.sourceId, document.hash, SEMANTIC_MODEL)))

@@ -18,7 +18,7 @@ The browser is the **Botanical Folio / Evidence Ledger**: one green-and-cream ev
 - `#/library` — Queue, Inbox, All sources, Files, Books, Collections, Archive
 - `#/learn` — Paths, Notes, Recall
 - `#/map` — Atlas, Branches, Balance
-- `#/settings` — Profile, Preferences, Data & sync, System
+- `#/settings` — Learning profile, Preferences, Data & recovery, System
 
 The five roots plus their grouped modes and focus filters are the complete global navigation contract. Sources, Learning Threads, Notes, Units, Recall Cards, branches, and artifacts use typed object routes inside their owning root so selection identity is preserved. Search opens the exact object result. Legacy hashes canonicalize to the nearest purposeful view without silently discarding an ID; an unknown hash renders a recovery state.
 

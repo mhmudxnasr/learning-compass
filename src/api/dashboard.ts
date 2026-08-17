@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
+import { loadHermesBrief } from '../services/agent-briefing'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -42,6 +43,7 @@ app.get('/briefing', async (c) => {
     const threadRequirements = activeThread ? await DB.prepare(`SELECT * FROM thread_evidence_requirements WHERE thread_id=? ORDER BY rowid`).bind(activeThread.id).all<any>() : { results: [] as any[] }
     const openConsolidations = await DB.prepare(`SELECT cr.id,cr.recommendation_id,cr.state,cr.failure_reason,r.video_title FROM consolidation_runs cr JOIN recommendations r ON r.id=cr.recommendation_id WHERE cr.state NOT IN ('closed','waived') ORDER BY cr.requested_at LIMIT 10`).all<any>()
     const verifiedOutcomes = await DB.prepare(`SELECT COUNT(*) count FROM learning_threads WHERE status='verified' AND verified_at>=datetime('now','-30 days')`).first<any>()
+    const hermesBrief = await loadHermesBrief(DB)
     let artifacts: any[] = []
     if (activeItems.length) {
       const placeholders = activeItems.map(() => '?').join(',')
@@ -92,15 +94,7 @@ app.get('/briefing', async (c) => {
         ? { title: 'Your map just moved', body: latestSignal.summary, evidence: 'Latest approved signal', target: 'map.atlas' }
         : { title: 'Your pattern is still forming', body: 'Complete and rate two sources to reveal your strongest learning format.', evidence: 'Needs two rated completions', target: 'curate.queue' }
 
-    const nextAction = Number(due?.count || 0) > 0
-      ? { kind: 'review', label: 'Review due recall', reason: `${due.count} recall ${Number(due.count) === 1 ? 'card is' : 'cards are'} due today.`, target: 'learn.recall' }
-      : activeItems.length
-        ? { kind: 'continue', label: 'Continue your queue', reason: `${activeItems[0].video_title} is ${activeItems[0].learning_state === 'in_progress' ? 'in progress' : 'ready to start'}.`, target: 'curate.queue', recommendation_id: activeItems[0].id }
-        : Number(drafts?.count || 0) > 0
-          ? { kind: 'approve_recall', label: 'Approve recall drafts', reason: `${drafts.count} drafted recall ${Number(drafts.count) === 1 ? 'card is' : 'cards are'} waiting for approval.`, target: 'learn.recall' }
-          : Number(inbox?.count || 0) > 0
-            ? { kind: 'curate', label: 'Curate your inbox', reason: `${inbox.count} captured ${Number(inbox.count) === 1 ? 'source needs' : 'sources need'} a decision.`, target: 'curate.inbox' }
-            : { kind: 'capture', label: 'Capture your next source', reason: 'Your queue and inbox are clear.', target: 'curate.inbox' }
+    const nextAction = hermesBrief.next_action
 
     return c.json({
       active_items: activeItems,
@@ -119,6 +113,7 @@ app.get('/briefing', async (c) => {
       // Compatibility fields for existing API consumers.
       next_action: nextAction.kind,
       next_action_detail: nextAction,
+      hermes_brief: hermesBrief,
       next_item: activeItems[0] || null,
       queue_count: activeItems.length,
       recent: recent.results || [],

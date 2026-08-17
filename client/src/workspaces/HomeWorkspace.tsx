@@ -52,6 +52,8 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
     || items[0]
   const thread = briefing.active_thread
   const dueReviews = Number(briefing.due_reviews || 0)
+  const hermesBrief = briefing.hermes_brief || { next_action: briefing.next_action_detail, blockers: {}, counts: {} }
+  const nextAction = hermesBrief.next_action || briefing.next_action_detail
   const files = activeSource ? (briefing.artifacts || []).filter((file: LibraryRecord) => String(file.recommendation_id) === String(activeSource.id)) : []
   const htmlFile = files.find((f: LibraryRecord) => String(f.role || '').toLowerCase() === 'html' || /html/i.test(String(f.media_type || f.filename || '')))
   const pdfFile = files.find((f: LibraryRecord) => String(f.role || '').toLowerCase() === 'pdf' || /pdf/i.test(String(f.media_type || f.filename || '')))
@@ -76,6 +78,20 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
         Quick capture
       </button>
     </header>
+
+    {nextAction && <section class="folio-hermes-brief" aria-labelledby="hermes-brief-title">
+      <div class="folio-hermes-brief-copy">
+        <p class="folio-kicker">Hermes brief</p>
+        <h2 id="hermes-brief-title">{nextAction.label}</h2>
+        <p>{nextAction.reason}</p>
+        {hermesBrief.blockers && (Number(hermesBrief.blockers.pending_proposals || 0) > 0 || Number(hermesBrief.blockers.active_jobs || 0) > 0) && <small class="folio-hermes-brief-meta">
+          {Number(hermesBrief.blockers.pending_proposals || 0) > 0 ? `${hermesBrief.blockers.pending_proposals} proposal${Number(hermesBrief.blockers.pending_proposals) === 1 ? '' : 's'} waiting` : ''}
+          {Number(hermesBrief.blockers.pending_proposals || 0) > 0 && Number(hermesBrief.blockers.active_jobs || 0) > 0 ? ' · ' : ''}
+          {Number(hermesBrief.blockers.active_jobs || 0) > 0 ? `${hermesBrief.blockers.active_jobs} active job${Number(hermesBrief.blockers.active_jobs) === 1 ? '' : 's'}` : ''}
+        </small>}
+      </div>
+      <a class="folio-button folio-button-primary" href={nextAction.href || routeHref('home', 'today')}>Open next action</a>
+    </section>}
 
     <section class="folio-home-focus" aria-labelledby="home-focus-title">
       <div class="folio-home-focus-copy">

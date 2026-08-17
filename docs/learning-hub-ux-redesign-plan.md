@@ -1,6 +1,8 @@
 # Learning Hub UX redesign plan
 
-Status: proposed for confirmation; no implementation started.
+Status: in progress; the first learner-facing slice is implemented in the main Learning workspace.
+
+Implemented slice (2026-08-17): the selected stage now exposes a learn-first hierarchy with one dominant next action, compact stage navigation, prioritized missing proof, inline proof capture, available/locked/ready-to-verify states, and start/verify actions. This preserves the existing API and data model while making the learning-to-proof transition visible on desktop and mobile. Remaining redesign work includes explicit learn/edit mode, richer grouped stage anatomy, prior-knowledge confirmation, and deliberate mobile sequencing.
 
 ## Design brief
 

@@ -30,6 +30,7 @@ import { deliverScheduledReminders } from './api/notifications'
 import compassApi from './api/compass'
 import analyticsApi from './api/analytics'
 import learningCoreApi from './api/learning-core'
+import annotationsApi from './api/annotations'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -134,36 +135,71 @@ app.use('/*', async (c, next) => {
 
 app.use('/*', async (c, next) => {
   const method = c.req.method.toUpperCase()
-  if (method === 'GET' || method === 'OPTIONS' || method === 'HEAD') return next()
-  const token = c.req.header('x-api-token') || c.req.query('token')
+  if (method === 'OPTIONS' || method === 'HEAD') return next()
+  const path = new URL(c.req.url).pathname
+  const staticPath = path === '/' || path === '/ui' || path === '/health' || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path === '/favicon.ico' || path === '/api/telegram' || path.startsWith('/assets/')
+  if (staticPath) return next()
+  const token = c.req.header('x-api-token') || (!c.env.REQUIRE_API_AUTH ? c.req.query('token') : undefined)
   const expected = c.env.API_TOKEN
-  if (expected && token !== expected) {
+  const privateMode = c.env.REQUIRE_API_AUTH === 'true'
+  if (privateMode && !expected) return c.json({ error: 'private_mode_misconfigured' }, 503)
+  if ((privateMode || (method !== 'GET' && method !== 'HEAD')) && expected && token !== expected) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
   return next()
 })
 
-// Browser/offline writes carry a stable mutation id. Cache successful responses so a
-// reconnect or timeout retry cannot create duplicate captures, sessions, or notes.
+// Browser/offline writes carry a stable mutation id. Atomically reserve each key
+// before executing so concurrent retries cannot both mutate. Successful responses
+// are replayed only when method, path, and request body fingerprints match.
 app.use('/*', async (c, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) return next()
   const mutationId = c.req.header('x-client-mutation-id')?.trim()
   if (!mutationId || mutationId.length > 120 || !c.env.DB) return next()
   const endpoint = new URL(c.req.url).pathname
-  const existing = await c.env.DB.prepare('SELECT method,endpoint,status_code,response_json FROM sync_mutations WHERE mutation_id=?').bind(mutationId).first<any>()
-  if (existing) {
-    if (existing.method !== c.req.method || existing.endpoint !== endpoint) return c.json({ error: 'mutation_id_reused_for_different_operation' }, 409)
+  const bodyText = await c.req.raw.clone().text()
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${c.req.method}\n${endpoint}\n${bodyText}`))
+  const requestHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+
+  const replay = async () => {
+    const existing = await c.env.DB.prepare('SELECT method,endpoint,request_hash,status_code,response_json FROM sync_mutations WHERE mutation_id=?').bind(mutationId).first<any>()
+    if (!existing) return null
+    if (existing.method !== c.req.method || existing.endpoint !== endpoint || (existing.request_hash && existing.request_hash !== requestHash)) {
+      return c.json({ error: 'mutation_id_reused_for_different_operation' }, 409)
+    }
     try { return c.json(JSON.parse(existing.response_json), existing.status_code as any) } catch { return c.json({ error: 'cached mutation response unavailable' }, 409) }
   }
+
+  const cached = await replay()
+  if (cached) return cached
+  await c.env.DB.prepare("DELETE FROM sync_mutation_locks WHERE expires_at<=datetime('now')").run()
+  const reservation = await c.env.DB.prepare("INSERT OR IGNORE INTO sync_mutation_locks (mutation_id,method,endpoint,request_hash,expires_at) VALUES (?,?,?,?,datetime('now','+2 minutes'))")
+    .bind(mutationId, c.req.method, endpoint, requestHash).run()
+  if (!reservation.meta.changes) {
+    const completed = await replay()
+    if (completed) return completed
+    const lock = await c.env.DB.prepare('SELECT method,endpoint,request_hash FROM sync_mutation_locks WHERE mutation_id=?').bind(mutationId).first<any>()
+    if (lock && (lock.method !== c.req.method || lock.endpoint !== endpoint || lock.request_hash !== requestHash)) {
+      return c.json({ error: 'mutation_id_reused_for_different_operation' }, 409)
+    }
+    return c.json({ error: 'mutation_in_progress', retryable: true }, 409)
+  }
+
   await next()
-  if (c.res.status < 200 || c.res.status >= 300) return
+  if (c.res.status < 200 || c.res.status >= 300) {
+    await c.env.DB.prepare('DELETE FROM sync_mutation_locks WHERE mutation_id=? AND request_hash=?').bind(mutationId, requestHash).run()
+    return
+  }
   try {
     const body = await c.res.clone().text()
-    if (body.length <= 64000) {
-      await c.env.DB.prepare('INSERT OR IGNORE INTO sync_mutations (mutation_id,method,endpoint,status_code,response_json) VALUES (?,?,?,?,?)')
-        .bind(mutationId, c.req.method, endpoint, c.res.status, body || '{}').run()
-    }
-  } catch { /* response caching must never break the product request */ }
+    await c.env.DB.prepare('INSERT INTO sync_mutations (mutation_id,method,endpoint,request_hash,status_code,response_json) VALUES (?,?,?,?,?,?)')
+      .bind(mutationId, c.req.method, endpoint, requestHash, c.res.status, body || '{}').run()
+    await c.env.DB.prepare('DELETE FROM sync_mutation_locks WHERE mutation_id=? AND request_hash=?').bind(mutationId, requestHash).run()
+  } catch {
+    // The write may already be committed. Keep the reservation long enough to
+    // prevent a blind retry from repeating it while storage recovers.
+    await c.env.DB.prepare("UPDATE sync_mutation_locks SET expires_at=datetime('now','+1 day') WHERE mutation_id=? AND request_hash=?").bind(mutationId, requestHash).run().catch(() => undefined)
+  }
 })
 
 app.use('/*', (c, next) => {
@@ -178,6 +214,7 @@ app.route('/brain', brainApi)
 app.route('/html', vaultApi)
 app.route('/learning', learningApi)
 app.route('/learning/core', learningCoreApi)
+app.route('/annotations', annotationsApi)
 app.route('/stats', statsApi)
 app.route('/search', searchApi)
 app.route('/ai', enhanceApi)
@@ -288,14 +325,25 @@ app.get('/api/yt/:id', async (c) => {
 // Telegram bot webhook
 app.post('/api/telegram', async (c) => {
   const { DB } = c.env
-  const { TELEGRAM_BOT_TOKEN } = c.env
-  if (!TELEGRAM_BOT_TOKEN) return c.json({ ok: false }, 403)
+  const { TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_ALLOWED_CHAT_ID } = c.env
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_WEBHOOK_SECRET) return c.json({ ok: false, error: 'webhook_not_configured' }, 403)
+  const suppliedSecret = c.req.header('x-telegram-bot-api-secret-token') || ''
+  if (suppliedSecret.length !== TELEGRAM_WEBHOOK_SECRET.length) return c.json({ ok: false, error: 'invalid_webhook_secret' }, 401)
+  let secretMismatch = 0
+  for (let index = 0; index < TELEGRAM_WEBHOOK_SECRET.length; index += 1) secretMismatch |= suppliedSecret.charCodeAt(index) ^ TELEGRAM_WEBHOOK_SECRET.charCodeAt(index)
+  if (secretMismatch !== 0) return c.json({ ok: false, error: 'invalid_webhook_secret' }, 401)
   let body: any
   try { body = await c.req.json() } catch { return c.json({ ok: false }, 400) }
   const msg = body?.message
   if (!msg?.text) return c.json({ ok: true })
-  const text = msg.text.trim()
   const chatId = msg.chat.id
+  if (TELEGRAM_ALLOWED_CHAT_ID && String(chatId) !== String(TELEGRAM_ALLOWED_CHAT_ID)) return c.json({ ok: false, error: 'chat_not_allowed' }, 403)
+  const updateId = Number(body?.update_id)
+  if (Number.isInteger(updateId)) {
+    const inserted = await DB.prepare('INSERT OR IGNORE INTO telegram_updates (update_id) VALUES (?)').bind(updateId).run()
+    if (!inserted.meta?.changes) return c.json({ ok: true, duplicate: true })
+  }
+  const text = msg.text.trim()
 
   const urlMatch = text.match(/https?:\/\/[^\s]+/)
   if (urlMatch) {
@@ -336,6 +384,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
     // 1. Clean expired undo rows
     await DB.prepare("DELETE FROM undo_queue WHERE expires_at < datetime('now')").run()
+    await DB.prepare("DELETE FROM telegram_updates WHERE received_at < datetime('now','-30 days')").run()
 
     // 2. FTS5 sync: only rebuild if anything changed since last build
     const lastSync = await DB.prepare("SELECT value FROM kv_store WHERE key = 'fts_last_sync'").first<any>()
@@ -375,19 +424,22 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
       UNION ALL SELECT updated_at FROM notes WHERE updated_at>?
       UNION ALL SELECT updated_at FROM profile_assertions WHERE updated_at>?
       UNION ALL SELECT updated_at FROM hermes_memory WHERE updated_at>?
-    )`).bind(lastSyncTs, lastSyncTs, lastSyncTs, lastSyncTs).first<{ c: number }>()
+      UNION ALL SELECT updated_at FROM source_annotations WHERE updated_at>?
+    )`).bind(lastSyncTs, lastSyncTs, lastSyncTs, lastSyncTs, lastSyncTs).first<{ c: number }>()
     if ((changedKnowledge?.c || 0) > 0 || dirty) {
-      await DB.prepare("DELETE FROM search_idx WHERE source IN ('unit','note','assertion','memory')").run()
-      const [units, notes, assertions, memories] = await Promise.all([
+      await DB.prepare("DELETE FROM search_idx WHERE source IN ('unit','note','assertion','memory','annotation')").run()
+      const [units, notes, assertions, memories, annotations] = await Promise.all([
         DB.prepare('SELECT id,statement,user_synthesis FROM learning_units').all<any>(),
         DB.prepare(`SELECT n.id,n.title,GROUP_CONCAT(s.content,' ') content FROM notes n LEFT JOIN note_sections s ON s.note_id=n.id GROUP BY n.id`).all<any>(),
         DB.prepare("SELECT assertion_key,value_json FROM profile_assertions WHERE status='active'").all<any>(),
         DB.prepare("SELECT id,memory_key,value_json FROM hermes_memory WHERE status IN ('active','approved')").all<any>(),
+        DB.prepare("SELECT id,recommendation_id,quote,context_before,context_after,language FROM source_annotations WHERE status='active'").all<any>(),
       ])
       for (const unit of units.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('unit',?,?)").bind(unit.id, [unit.statement, unit.user_synthesis].filter(Boolean).join(' ')).run()
       for (const note of notes.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('note',?,?)").bind(note.id, [note.title, note.content].filter(Boolean).join(' ')).run()
       for (const assertion of assertions.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('assertion',?,?)").bind(assertion.assertion_key, `${assertion.assertion_key} ${assertion.value_json || ''}`).run()
       for (const memory of memories.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('memory',?,?)").bind(memory.id, `${memory.memory_key} ${memory.value_json || ''}`).run()
+      for (const annotation of annotations.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('annotation',?,?)").bind(annotation.id, [annotation.quote, annotation.context_before, annotation.context_after, annotation.language].filter(Boolean).join(' ')).run()
     }
 
     // Update sync timestamp

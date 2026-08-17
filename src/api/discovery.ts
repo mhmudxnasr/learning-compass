@@ -3,6 +3,7 @@ import { safeError, type Bindings } from '../lib'
 import { createInboxCapture } from '../services/capture'
 import { adaptAndNormalizeWeights, computeDialecticDivergenceScore } from '../domain'
 import { canonicalCreatorKey, canonicalFormat } from '../intelligence-v2'
+import { AGENT_CONTRACT_VERSION, AGENT_PROTOCOL } from '../services/agent-capabilities'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -959,6 +960,8 @@ app.get('/drift-check', async (c) => {
     return c.json({
       live_api_capabilities: 'allow-listed-agent-surface',
       expected_contract_version: '2.0.0',
+      agent_contract_version: AGENT_CONTRACT_VERSION,
+      agent_protocol: AGENT_PROTOCOL,
       skill: {
         exists: skillExists,
         path: SKILL_PATH,

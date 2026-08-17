@@ -446,17 +446,19 @@ app.post('/semantic/index', async (c) => {
     const body = await c.req.json<any>().catch(() => ({}))
     const requestedLimit = Number(body.limit || 100)
     const limit = Math.max(1, Math.min(250, Number.isFinite(requestedLimit) ? requestedLimit : 100))
-    const [recommendations, threads, units, notes] = await Promise.all([
+    const [recommendations, threads, units, notes, annotations] = await Promise.all([
       c.env.DB.prepare(`SELECT id,video_url,video_title,creator,content_type,why_this,context_brief FROM recommendations ORDER BY updated_at DESC LIMIT ?`).bind(limit).all<any>(),
       c.env.DB.prepare(`SELECT id,title,guiding_question,why_now,definition_of_done,final_synthesis FROM learning_threads ORDER BY updated_at DESC LIMIT ?`).bind(limit).all<any>(),
       c.env.DB.prepare(`SELECT id,statement,user_synthesis,unit_type FROM learning_units WHERE status NOT IN ('deleted','quarantined') ORDER BY updated_at DESC LIMIT ?`).bind(limit).all<any>(),
       c.env.DB.prepare(`SELECT id,title,kind FROM notes ORDER BY updated_at DESC LIMIT ?`).bind(limit).all<any>(),
+      c.env.DB.prepare(`SELECT id,quote,context_before,context_after,language FROM source_annotations WHERE status='active' ORDER BY updated_at DESC LIMIT ?`).bind(limit).all<any>(),
     ])
     const documents = [
       ...(recommendations.results || []).map((row: any) => ({ id: `rec:${row.id}`, kind: 'recommendation' as const, sourceId: row.id, text: [row.video_title, row.creator, row.content_type, row.why_this, row.context_brief, row.video_url].filter(Boolean).join('\n') })),
       ...(threads.results || []).map((row: any) => ({ id: `thread:${row.id}`, kind: 'thread' as const, sourceId: row.id, text: [row.title, row.guiding_question, row.why_now, row.definition_of_done, row.final_synthesis].filter(Boolean).join('\n') })),
       ...(units.results || []).map((row: any) => ({ id: `unit:${row.id}`, kind: 'unit' as const, sourceId: row.id, text: [row.unit_type, row.statement, row.user_synthesis].filter(Boolean).join('\n') })),
       ...(notes.results || []).map((row: any) => ({ id: `note:${row.id}`, kind: 'note' as const, sourceId: row.id, text: [row.kind, row.title].filter(Boolean).join('\n') })),
+      ...(annotations.results || []).map((row: any) => ({ id: `annotation:${row.id}`, kind: 'annotation' as const, sourceId: row.id, language: row.language || 'und', text: [row.quote, row.context_before, row.context_after].filter(Boolean).join('\n') })),
     ]
     return c.json({ ok: true, documents_considered: documents.length, ...(await indexSemanticDocuments(c.env, documents)) })
   } catch (err) { return c.json(safeError('Failed to index Compass semantic documents')(err), 500) }

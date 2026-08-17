@@ -35,7 +35,7 @@ The shipped client is the **Botanical Folio / Evidence Ledger**: a green-and-cre
 | Library | Triage (Queue, Inbox), Catalog (All sources, Books, Collections, Archive), Assets (Files) |
 | Learn | Paths, Practice (Notes, Recall) |
 | Map | Atlas, Review (Branches, Balance) |
-| Settings | Personal (Profile, Preferences), Data & sync, System |
+| Settings | Personal (Learning profile, Preferences), Data & recovery, System |
 
 Desktop uses a persistent root rail, main canvas, and optional contextual inspector; there is no permanent context pane. Mobile uses a five-item bottom dock with primary modes in an equal-width visible grid and subordinate filters as compact wrapping controls; selected-object inspection becomes a sheet or pushed detail view. Typed object routes preserve Source, Thread, Note, Unit, Recall Card, Branch, Node, Collection, Book, and Artifact identity. Legacy hashes canonicalize to purposeful routes and unknown hashes render recovery.
 
@@ -47,14 +47,16 @@ Desktop uses a persistent root rail, main canvas, and optional contextual inspec
 - `client/` contains the Vite + Preact + TypeScript application.
 - `schema.sql` is the base schema; `migrations/` are ordered, idempotent production migrations.
 - D1 is canonical for product records, learning state, graph data, receipts, and profile assertions. R2 stores large artifacts and linked reading companions. Obsidian is archive/export only.
-- API mutations retain stable client IDs, offline outbox/retry/discard behavior, conflict visibility, and successful-response receipts. REST compatibility remains intact.
+- API mutations retain stable client IDs, offline outbox/retry/discard behavior, conflict visibility, and successful-response receipts. REST compatibility remains intact. Source annotations preserve quote/context, durable locators, language, checksums, and downstream provenance; `/search/evidence` returns that evidence ledger for Hermes instead of asking an agent to cite free-form summaries.
 - Heavy graph code stays lazy-loaded. The base client target is at or below 150 KB gzip excluding lazy graph/vendor chunks.
 
 ## Hermes and reading companions
 
 Lite Visual creates one linked HTML+PDF R2 pair for normal sources and one pair per book chapter, always in Arabic and always as two renderings of one canonical content body. The companion is designed to replace consuming the original while preserving every important argument and supporting detail. Complete-source checksum-backed mining, at least 90% semantic coverage, cached evidence, an optional zero-asset Visual Mind decision, deterministic content/render validation, real contact-sheet inspection, automatic post-pass publication, and canonical source-record verification are mandatory. Raw transcripts remain separate evidence and never count as companion prose. No subjective QA score is stored and Notes Extractor never starts automatically.
 
-Hermes remains the procedural Learning Compass operating system. Its active workflow owns recommendation research, source-grounded candidate submission, feedback handling, typed profile learning, memory provenance, NotebookLM, Lite Visual, Visual Mind, RSS feeds, site operations, and self-evolution. It uses idempotent leases and recovery receipts but has no scheduled autonomous poller. Internal prompt payloads, job controls, and secrets do not render in normal product surfaces.
+Hermes remains the procedural Learning Compass operating system. Agent control protocol v2 (`2026-08-17`) exposes one structured capability registry that drives filtered discovery and OpenAPI, canonical Queue/Thread-evidence context with component health, and only two generic tools (`list_capabilities`, `site_request`). The Home cockpit and `GET /agent/briefing` share one deterministic next-action projection; `GET /agent/activity` exposes verified receipts, jobs, and pending proposals. Agent mutations use atomic request-fingerprinted idempotency reservations; high-risk changes require confirmation plus an exact-target field/value precondition; declared single or batch readbacks produce canonical before/after receipts, and post-commit verification failure is reported without pretending the write failed. The existing dependency-free MCP bridge consumes these read models and the new evidence search surface. Its active workflow owns recommendation research, source-grounded candidate submission, feedback handling, typed profile learning, memory provenance, NotebookLM, Lite Visual, Visual Mind, RSS feeds, site operations, and self-evolution. It uses idempotent leases and recovery receipts but has no scheduled autonomous poller. Internal prompt payloads, job controls, and secrets do not render in normal product surfaces.
+
+Capture interoperability includes a least-privilege Manifest V3 browser extension that opens the normal global capture dialog with a page URL or selected passage; it never stores API credentials and every capture still lands in Inbox. Private deployments can enable `REQUIRE_API_AUTH=true` so reads and writes require `x-api-token`; Telegram intake is separately protected by its webhook secret, optional allowed chat ID, and durable `update_id` deduplication. Recovery is explicit and portable: checksummed D1 exports are generated by `scripts/export-recovery.mjs`, verified by `scripts/verify-recovery.mjs`, and R2 binaries must be copied and checked separately as documented in `docs/recovery.md`.
 
 ## Local verification and release truth
 

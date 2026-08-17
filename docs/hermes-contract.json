@@ -3,6 +3,13 @@
   "name": "learning-compass-hermes",
   "router": "learning-compass-operating-system",
   "self_evolution_owner": "learning-compass-self-evolution",
+  "agent_control": {
+    "contract_version": "2026-08-17",
+    "protocol": "learning-compass-agent-http/2",
+    "context": "canonical Queue plus Thread evidence gaps with explicit component health",
+    "tools": ["list_capabilities", "site_request"],
+    "mutations": "dry-run plus required idempotency, high-risk confirmation/precondition, canonical readback, and receipt"
+  },
   "skill_graph": {
     "active": [
       {"name": "learning-compass-operating-system", "path": "workflow/learning-compass-operating-system", "role": "router"},
@@ -20,9 +27,15 @@
       {"name": "youtube-playlist-verification", "path": "workflow/youtube-playlist-verification", "role": "youtube_source_verification"},
       {"name": "progressive-learning-curriculum", "path": "learning/progressive-learning-curriculum", "role": "curriculum_design"},
       {"name": "learning-compass-source-ingestion", "path": "workflow/learning-compass-source-ingestion", "role": "capture_triage"},
-      {"name": "learning-hub-companion-authoring", "path": "learning/learning-hub-companion-authoring", "role": "hub_companions"}
+      {"name": "learning-hub-companion-authoring", "path": "learning/learning-hub-companion-authoring", "role": "hub_companions"},
+      {"name": "compass-recommendation-workflows", "path": "learning/compass-recommendation-workflows", "role": "multi_item_recommendations"},
+      {"name": "hermes-configuration-operations", "path": "workflow/hermes-configuration-operations", "role": "hermes_configuration"},
+      {"name": "learning-compass-feedback-corrections", "path": "workflow/learning-compass-feedback-corrections", "role": "feedback_state_repair"},
+      {"name": "learning-compass-foundation-curation", "path": "workflow/learning-compass-foundation-curation", "role": "foundation_branch_curation"},
+      {"name": "learning-compass-job-backlog-operations", "path": "workflow/learning-compass-job-backlog-operations", "role": "job_backlog_operations"}
+      ,{"name": "learning-compass-bridge", "path": "workflow/learning-compass-bridge", "role": "mcp_interoperability"}
     ],
-    "retired": ["taste-enhancer", "compass-queue-fill", "learning-compass-curator-policy", "master-editorial-synthesis"]
+    "retired": ["taste-enhancer", "compass-queue-fill", "learning-compass-curator-policy", "master-editorial-synthesis", "learning-thread-curation"]
   },
   "canonical_sources": {
     "structured_state": "D1",
@@ -88,6 +101,8 @@
     "GET /agent/capabilities": {"owner": "learning-compass-site-operator", "permission": "read"},
     "GET /agent/system": {"owner": "learning-compass-site-operator", "permission": "read"},
     "GET /agent/context": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "GET /agent/briefing": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "GET /agent/activity": {"owner": "learning-compass-site-operator", "permission": "read"},
     "GET /agent/memory/context": {"owner": "learning-compass-site-operator", "permission": "read"},
     "POST /feedback/record": {"owner": "learning-compass-operating-system", "permission": "explicit_feedback"},
     "GET /learning/core/hub": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_hub_read"},
@@ -113,6 +128,11 @@
     "GET /brain/branches/:id/items": {"owner": "learning-compass-site-operator", "permission": "read"},
     "GET /capture/queue": {"owner": "learning-compass-site-operator", "permission": "read"},
     "GET /capture/:id/record": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "GET /annotations": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "POST /annotations": {"owner": "learning-compass-site-operator", "permission": "explicit_source_annotation"},
+    "GET /annotations/:id": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "POST /annotations/:id/archive": {"owner": "learning-compass-site-operator", "permission": "reversible_evidence_archive"},
+    "GET /search/evidence": {"owner": "learning-compass-site-operator", "permission": "read"},
     "POST /brain/branch-explanations": {"owner": "learning-compass-site-operator", "permission": "explicit_branch_metadata_update"},
     "POST /capture/:id/branch-map": {"owner": "learning-compass-site-operator", "permission": "high_confidence_queue_branch_mapping"},
     "POST /brain/branch-swipe": {"owner": "learning-compass-site-operator", "permission": "explicit_branch_decision"},
