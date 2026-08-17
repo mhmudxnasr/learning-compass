@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-08-17 (branch-verified Hermes recommendations)
+
+Hermes Compass recommendations now enforce the branch contract at candidate submission. Every candidate must name an existing, supported, non-pruned `tree_nodes` branch; missing, unknown, invalid-type, or pruned branches are rejected before scoring. A confident winner stores that exact verified `branch_id` on `recommendation_meta` and `recommendation_outcomes`, and the Queue reads the same branch identity. This closes the gap where the API documentation required a branch but the route could previously accept an unlinked candidate. The fix is deployed at `https://recommendations-worker.mhmudnasr30.workers.dev` as Worker version `51d16175-0f2a-4e10-b5ba-81833063db83`.
+
+Verified with 106 unit tests plus typecheck, production build, Compass feedback integration, full E2E, `npm run verify:hermes`, `git diff --check`, and live `/health` HTTP 200.
+
 ## Current truth — 2026-08-17 (profile taste affinity labels)
 
 The Settings profile no longer exposes internal branch IDs in **Taste affinities**. `GET /brain/profile` keeps each vector's internal `topic` key for scoring but resolves a readable `label` from `tree_nodes` (or the priority label as a fallback); the profile list uses that label and shows an affinity score instead of repeating the storage key. The fix is deployed at `https://recommendations-worker.mhmudnasr30.workers.dev` as Worker version `32139a90-d5db-4070-b827-0b8d88a93718`.

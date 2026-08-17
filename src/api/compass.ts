@@ -472,6 +472,7 @@ function validateCandidates(body: any): { candidates: any[]; error?: string } {
   if (candidates.length < 3 || candidates.length > 24) return { error: 'adaptive search accepts 3 to 24 candidates', candidates }
   for (const item of candidates) {
     if (!item || typeof item !== 'object') return { error: 'every candidate must be an object', candidates }
+    if (typeof item.branch_id !== 'string' || !item.branch_id.trim()) return { error: 'candidate_branch_required', candidates }
     if (!optionalText(item.summary, 1800)) return { error: 'candidate summary must be a non-empty string of at most 1800 characters', candidates }
     if (!optionalTextList(item.concepts, 2, 8, 160)) return { error: 'candidate concepts must contain 2 to 8 concise strings', candidates }
     if (!optionalText(item.mechanism, 500) || !optionalTextList(item.mechanisms, 1, 8, 240)) return { error: 'candidate mechanism fields must be concise strings', candidates }
@@ -481,6 +482,19 @@ function validateCandidates(body: any): { candidates: any[]; error?: string } {
   const initialLanes = new Set(candidates.slice(0, 3).map((item: any, index: number) => normalizeCompassLane(item?.lane, index)))
   if (hasExplicitLanes && initialLanes.size !== 3) return { error: 'the first three candidates must cover fit, bridge, and challenge lanes', candidates }
   return { candidates }
+}
+
+async function validateCandidateBranches(DB: D1Database, candidates: any[]) {
+  const branchIds = [...new Set(candidates.map((candidate) => candidate.branch_id.trim()))]
+  const rows = await DB.prepare(`SELECT id,type,status FROM tree_nodes WHERE id IN (${branchIds.map(() => '?').join(',')})`).bind(...branchIds).all<any>()
+  const byId = new Map((rows.results || []).map((row: any) => [String(row.id), row]))
+  const missing = branchIds.filter((id) => !byId.has(id))
+  if (missing.length) return { error: 'candidate_branch_not_found', branch_ids: missing }
+  const unsupported = branchIds.filter((id) => !['root', 'category', 'branch', 'leaf'].includes(String(byId.get(id)?.type || '')))
+  if (unsupported.length) return { error: 'candidate_branch_invalid_type', branch_ids: unsupported }
+  const pruned = branchIds.filter((id) => String(byId.get(id)?.status || '').toLowerCase() === 'pruned')
+  if (pruned.length) return { error: 'candidate_branch_pruned', branch_ids: pruned }
+  return { ok: true }
 }
 
 const decisionReadModel = (decision: ReturnType<typeof candidateDecision>) => ({
@@ -510,6 +524,8 @@ async function createCompassPickV2(c: any, body: any) {
   if (!STRATEGIES.has(legacyStrategy)) return c.json({ error: 'strategy must be fit, bridge, or challenge' }, 400)
   const thread = await resolveThread(c.env.DB, body.thread_id)
   if (!thread) return c.json({ error: 'learning_thread_required' }, 409)
+  const branchValidation = await validateCandidateBranches(c.env.DB, validated.candidates)
+  if (branchValidation.error) return c.json(branchValidation, branchValidation.error === 'candidate_branch_pruned' ? 409 : 422)
   await currentPick(c.env.DB)
   const queuedCount = await activeQueueCount(c.env.DB)
   if (queuedCount >= QUEUE_CAP) return c.json({ error: 'queue_full', active_count: queuedCount, cap: QUEUE_CAP }, 409)

@@ -39,6 +39,7 @@ try {
   const query = async (command) => run(['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--command', command])
 
   await query(`
+    INSERT INTO tree_nodes (id,type,label,status,parent_id) VALUES ('compass-branch','branch','Compass test branch','love','root');
     INSERT INTO recommendations (id,video_title,creator,content_type,video_url,status,dedup_key) VALUES ('rec_decline','Declined source','Creator A','article','https://example.org/declined','active','declined-source');
     INSERT INTO recommendation_meta (recommendation_id,learning_state) VALUES ('rec_decline','queued');
     INSERT INTO learning_sessions (id,recommendation_id,status,intent) VALUES ('session_decline','rec_decline','active','Compass Pick');
@@ -106,6 +107,12 @@ try {
   const contextBrief = 'What it is: a primary-source research note.\n• Covers the method, evidence, and practical implication.\n• Expect a focused technical overview.'
   const compassThread = await request('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Evaluate the Compass mechanism', thread_type: 'understand', guiding_question: 'Which source best explains the mechanism?', definition_of_done: 'Explain the mechanism with anchored evidence.', activate: true }) })
   assert.equal(compassThread.status, 201)
+  const missingBranch = await request('/compass/picks', {
+    method: 'POST',
+    body: JSON.stringify({ intent: 'deepen_thread', thread_id: compassThread.body.id, candidates: [{}, {}, {}] }),
+  })
+  assert.equal(missingBranch.status, 400)
+  assert.equal(missingBranch.body.error, 'candidate_branch_required')
   const submitted = await request('/compass/picks', {
     method: 'POST',
     body: JSON.stringify({
@@ -114,9 +121,9 @@ try {
       strategy: 'fit',
       thread_id: compassThread.body.id,
       candidates: [
-        { canonical_url: 'https://example.com/?context-brief=winner', title: 'Context brief primary research', creator: 'Research Lab', format: 'article', source_class: 'research', evidence: [{ claim: 'The original research explains its method, evidence, limitations, and practical implication.', source_url: 'https://example.com/?context-brief=winner' }], editorial_review: { verdict: 'recommend', why_worth_time: 'It directly explains the mechanism with evidence and limitations.', unique_value: 'It connects the mechanism to a practical learning decision.', depth: 'substantive' }, context_brief: contextBrief },
-        { canonical_url: 'https://example.com/?context-brief=alternate-one', title: 'Context brief alternate one', creator: 'Writer One', format: 'article', source_class: 'blog', evidence: [{ claim: 'This source provides a second explanation of the mechanism and its limits.', source_url: 'https://example.com/?context-brief=alternate-one' }], editorial_review: { verdict: 'recommend', why_worth_time: 'It offers a useful second explanation of the mechanism.', unique_value: 'It provides a contrasting practical example for comparison.', depth: 'substantive' } },
-        { canonical_url: 'https://example.com/?context-brief=alternate-two', title: 'Context brief alternate two', creator: 'Writer Two', format: 'article', source_class: 'blog', evidence: [{ claim: 'This source presents a distinct account of the mechanism and supporting evidence.', source_url: 'https://example.com/?context-brief=alternate-two' }], editorial_review: { verdict: 'recommend', why_worth_time: 'It presents a distinct account worth comparing.', unique_value: 'It adds another evidence-backed angle to the thread.', depth: 'substantive' } },
+        { canonical_url: 'https://example.com/?context-brief=winner', title: 'Context brief primary research', creator: 'Research Lab', format: 'article', source_class: 'research', branch_id: 'compass-branch', evidence: [{ claim: 'The original research explains its method, evidence, limitations, and practical implication.', source_url: 'https://example.com/?context-brief=winner' }], editorial_review: { verdict: 'recommend', why_worth_time: 'It directly explains the mechanism with evidence and limitations.', unique_value: 'It connects the mechanism to a practical learning decision.', depth: 'substantive' }, context_brief: contextBrief },
+        { canonical_url: 'https://example.com/?context-brief=alternate-one', title: 'Context brief alternate one', creator: 'Writer One', format: 'article', source_class: 'blog', branch_id: 'compass-branch', evidence: [{ claim: 'This source provides a second explanation of the mechanism and its limits.', source_url: 'https://example.com/?context-brief=alternate-one' }], editorial_review: { verdict: 'recommend', why_worth_time: 'It offers a useful second explanation of the mechanism.', unique_value: 'It provides a contrasting practical example for comparison.', depth: 'substantive' } },
+        { canonical_url: 'https://example.com/?context-brief=alternate-two', title: 'Context brief alternate two', creator: 'Writer Two', format: 'article', source_class: 'blog', branch_id: 'compass-branch', evidence: [{ claim: 'This source presents a distinct account of the mechanism and supporting evidence.', source_url: 'https://example.com/?context-brief=alternate-two' }], editorial_review: { verdict: 'recommend', why_worth_time: 'It presents a distinct account worth comparing.', unique_value: 'It adds another evidence-backed angle to the thread.', depth: 'substantive' } },
       ],
     }),
   })
@@ -128,12 +135,14 @@ try {
   const startedSubmitted = await request(`/compass/pick/${submittedPick.body.pick.id}/start`, { method: 'POST' })
   assert.equal(startedSubmitted.status, 200)
   const submittedQueue = await request('/capture/queue')
-  assert.equal(submittedQueue.body.items.find((item) => item.id === startedSubmitted.body.recommendation_id).context_brief, contextBrief)
+  const submittedQueueItem = submittedQueue.body.items.find((item) => item.id === startedSubmitted.body.recommendation_id)
+  assert.equal(submittedQueueItem.context_brief, contextBrief)
+  assert.equal(submittedQueueItem.branch.id, 'compass-branch')
   await request(`/compass/pick/${submittedPick.body.pick.id}/feedback`, { method: 'POST', body: JSON.stringify({ outcome: 'declined', reason_tags: ['wrong_topic'] }) })
 
   await query(`
     INSERT INTO compass_picks (id,request_id,strategy,status,candidate_count,confidence,stop_reason,rationale_json) VALUES ('pick_weak','request_weak','fit','abstained',3,0.61,'winner_below_score_threshold','{"why_this":"A promising but lightly evidenced source.","context_brief":"What it is: a compact source review.\\n• Covers the core argument and supporting evidence.\\n• Expect a cautious, practical overview.","score":0.63,"abstention_reason":"winner_below_score_threshold","source_check":{"status":"verified"}}');
-    INSERT INTO compass_candidates (id,pick_id,canonical_url,title,creator,format,source_class,context_brief,features_json,evidence_json,score,uncertainty,is_verified,is_winner) VALUES ('candidate_weak','pick_weak','https://example.net/weak','Reviewable weak source','Creator C','article','essay','What it is: a compact source review.\n• Covers the core argument and supporting evidence.\n• Expect a cautious, practical overview.','{"_valid_url":true,"_has_identity":true,"_source_check":"verified"}','{}',0.63,0.3,1,1);
+    INSERT INTO compass_candidates (id,pick_id,canonical_url,title,creator,format,source_class,context_brief,features_json,evidence_json,score,uncertainty,is_verified,is_winner,branch_id) VALUES ('candidate_weak','pick_weak','https://example.net/weak','Reviewable weak source','Creator C','article','essay','What it is: a compact source review.\n• Covers the core argument and supporting evidence.\n• Expect a cautious, practical overview.','{"_valid_url":true,"_has_identity":true,"_source_check":"verified"}','{}',0.63,0.3,1,1,'compass-branch');
   `)
   const weak = await request('/compass/pick')
   assert.equal(weak.status, 200, JSON.stringify(weak.body))
