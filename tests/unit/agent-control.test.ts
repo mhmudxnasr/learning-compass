@@ -42,7 +42,7 @@ const agentRequest = (body: unknown) => agentApp.request('https://example.test/r
 
 test('agent capability catalog is structured, filterable, and safety-aware', () => {
   const catalog = buildCapabilityCatalog(sample)
-  assert.equal(AGENT_CONTRACT_VERSION, '2026-08-17')
+  assert.equal(AGENT_CONTRACT_VERSION, '2026-08-18')
   assert.equal(AGENT_PROTOCOL, 'learning-compass-agent-http/2')
   assert.equal(catalog.length, sample.length)
   assert.deepEqual(buildCapabilityCatalog(sample, { domain: 'capture', intent: 'update' }).map((item) => item.path), ['/capture/:id/triage'])

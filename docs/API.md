@@ -126,7 +126,7 @@ Hermes ownership, endpoint permissions, side-effect tiers, routing policy, and s
 
 ## Agent control protocol v2
 
-- Contract version: `2026-08-17`; protocol: `learning-compass-agent-http/2`.
+- Contract version: `2026-08-18`; protocol: `learning-compass-agent-http/2`.
 - `GET /agent/capabilities` — structured allow-list with `domain`, `intent`, risk, reversibility, preconditions, idempotency/dry-run support, request/response schemas, and canonical verification route. Filter with `domain`, `intent`, `method`, or `q`.
 - `GET /agent/system` — user-visible runtime inventory: storage ownership, the configured six-hour maintenance schedule and responsibilities, on-demand-only workflows, current counts, safety boundaries, and active agent contract version.
 - `GET /agent/context` — canonical Queue projection plus open Thread evidence requirements, verified Threads, compatibility-only legacy mastered exclusions, branch balance, profile/taste context, and explicit per-section health. Required Queue/Thread-evidence/branch failures return degraded state with HTTP 503 instead of plausible empty data. Ratings never imply mastery.

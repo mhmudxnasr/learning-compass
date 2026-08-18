@@ -134,10 +134,7 @@ const coverageSimilarity = (leftValue: unknown, rightValue: unknown) => {
   return clamp(jaccard * .45 + contained * .55, 0)
 }
 
-const coverageCandidateText = (item: any) => [
-  item?.title, item?.source_class, item?.topic, item?.branch_id, item?.branch,
-  ...textList(item?.topics), ...textList(item?.concepts), ...textList(item?.mechanisms), item?.mechanism, item?.summary,
-].filter(Boolean).join(' ')
+const coverageCandidateText = (item: any) => [candidateContextText(item), item?.branch, item?.mechanism].filter(Boolean).join(' ')
 
 export function matchThreadCoverage(item: any, anchors: ThreadCoverageAnchor[] = []): ThreadCoverageMatch | null {
   const candidate = coverageCandidateText(item)
@@ -147,7 +144,10 @@ export function matchThreadCoverage(item: any, anchors: ThreadCoverageAnchor[] =
     const phrase = exactEntityMatch(candidate, anchor.label)
     const topicScore = coverageSimilarity(candidate, anchor.label)
     const contextScore = coverageSimilarity(candidate, anchor.text)
-    const matched = phrase || topicScore >= .72 || (contextScore >= .78 && topicScore >= .34)
+    // A curriculum item can describe covered material more precisely than its
+    // short display label. Strong full-context overlap is sufficient on its
+    // own; the high threshold keeps generic shared words from matching.
+    const matched = phrase || topicScore >= .72 || contextScore >= .78
     if (!matched) continue
     const score = phrase ? 1 : Math.max(topicScore, contextScore)
     const matchKind: ThreadCoverageMatch['matchKind'] = phrase ? 'phrase' : topicScore >= .72 ? 'topic' : 'context'

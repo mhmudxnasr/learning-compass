@@ -404,9 +404,17 @@ export function focusLabel(route: Route) {
 export function useRoute() {
   const [route, setRoute] = useState<Route>(() => parseRoute())
   useEffect(() => {
-    const update = () => setRoute(parseRoute())
+    const update = () => {
+      const next = parseRoute()
+      const current = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash
+      if (next.root === 'learn' && (next.objectType === 'lesson' || next.objectType === 'level') && current !== next.canonical) {
+        history.replaceState(null, '', `${location.pathname}${location.search}#${next.canonical}`)
+      }
+      setRoute(next)
+    }
     addEventListener('hashchange', update)
     if (!location.hash) location.hash = '#/home'
+    else update()
     return () => removeEventListener('hashchange', update)
   }, [])
   return route

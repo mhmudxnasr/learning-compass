@@ -28,6 +28,8 @@ On desktop the studio is a persistent root rail plus a working canvas and option
 
 - Queue owns explicit start, resume, return, and completion. Opening a source or companion is passive; an explicit session may target either the original source or a verified canonical companion.
 - Completion records a separate `retain`, `apply`, `reference`, or `drop` disposition. Retain/apply creates anchored extraction and editable recall work regardless of enjoyment score.
+- Threads and Levels each own separate notes, files, recall drafts, and approved cards. A Thread view may aggregate its Levels for navigation, but ownership remains explicit and writes target exactly one Thread or Level.
+- Recommendations exclude material already covered anywhere in any non-abandoned Thread's complete curriculum, including Level objectives, lesson orientation, and work-item descriptions; matching is contextual and not limited to exact topic labels.
 - Notes are structured, editable, searchable, and support per-block English/Egyptian-Arabic direction. Handwritten PDF annotations count as personal reflection while printed source text remains source material.
 - Ratings of 7–10 create editable SRS drafts. Approval is required before cards enter Review; approved cards use the versioned FSRS implementation and failed reviews never advance mastery.
 - Feedback distinguishes neutral Not now, explicit Bad fit with a reason, rating, disposition, and later learning evidence. Feedback processing never requests another recommendation automatically.

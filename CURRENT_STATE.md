@@ -1,5 +1,15 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-08-18 (Thread-scoped learning materials and curriculum coverage)
+
+Learning Threads and their Levels now have exact, separate ownership for notes, files, recall drafts, and approved cards. Migration `0041_level_recall_scope.sql` adds Level ownership to recall rows and backfills Note-derived ancestry; Thread path reads aggregate direct Thread material and per-Level material with explicit owner metadata. The Learn Thread surface creates and renders materials in the selected scope, while its Thread ledger indexes Level-owned material without flattening it. Scoped Note/File/Recall APIs reject dual, missing, or mismatched ownership, and compact Level routes canonicalize while preserving both parent Thread and Level identity.
+
+Compass now loads structured coverage anchors from every non-abandoned Thread, Level, lesson, and work item. Candidate titles, topics, concepts, mechanisms, summaries, expected contributions, and source-grounded evidence are checked against that complete curriculum. Strong contextual overlap is a hard exclusion even without an exact label match, and a stored winner is revalidated immediately before Start.
+
+The project and active Hermes operating-system, Thread-authoring, and recommendation procedures now carry the same exact-ownership and whole-curriculum exclusion rules. Agent control contract metadata is synchronized at `2026-08-18`.
+
+Verified locally with `npm test` (119 unit tests plus TypeScript), `npm run build` (base app 76.18 KB gzip), `npm run test:e2e`, `npm run verify:migrations`, `npm run verify:hermes`, `npm run test:compass-bridge`, and `git diff --check`. The E2E run exercised direct Thread and Level notes/files/cards, aggregate ownership boundaries, complete Compass coverage context, typed Level canonicalization, five roots, 19 internal mode states, legacy recovery, and the mobile shell. This change has not been deployed from this task.
+
 ## Current truth — 2026-08-18 (thread surface simplification)
 
 Learning Thread tabs no longer show the top header or right-side command card: back navigation, status, title, guiding question, current-level, focus, progress, Continue, Edit Thread, and finish-line elements are removed. Stage-level learning content remains available.

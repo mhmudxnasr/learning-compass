@@ -4,7 +4,7 @@
   "router": "learning-compass-operating-system",
   "self_evolution_owner": "learning-compass-self-evolution",
   "agent_control": {
-    "contract_version": "2026-08-17",
+    "contract_version": "2026-08-18",
     "protocol": "learning-compass-agent-http/2",
     "context": "canonical Queue plus Thread evidence gaps with explicit component health",
     "tools": ["list_capabilities", "site_request"],
