@@ -300,6 +300,13 @@ app.get('/notes', async (c) => {
 app.get('/notes/hub', async (c) => {
   const threadId = c.req.query('thread_id') || ''
   const stageId = c.req.query('stage_id') || ''
+  if (threadId && stageId) return c.json({ error: 'Choose either a Thread or a Level scope.' }, 400)
+  try {
+    if (threadId) await resolveLearningScope(c.env.DB, { kind: 'thread', id: threadId })
+    if (stageId) await resolveLearningScope(c.env.DB, { kind: 'level', id: stageId })
+  } catch (error: any) {
+    return c.json({ error: error?.code || 'invalid_scope', message: error?.message || 'Invalid learning scope.' }, 400)
+  }
   const notes = await hubNotes(c.env.DB, { thread_id: threadId || undefined, stage_id: stageId || undefined })
   return c.json({ notes })
 })

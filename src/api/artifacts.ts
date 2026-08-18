@@ -79,6 +79,13 @@ app.get('/', async (c) => {
 app.get('/hub', async (c) => {
   const threadId = c.req.query('thread_id') || ''
   const stageId = c.req.query('stage_id') || ''
+  if (threadId && stageId) return c.json({ error: 'Choose either a Thread or a Level scope.' }, 400)
+  try {
+    if (threadId) await resolveLearningScope(c.env.DB, { kind: 'thread', id: threadId })
+    if (stageId) await resolveLearningScope(c.env.DB, { kind: 'level', id: stageId })
+  } catch (error: any) {
+    return c.json({ error: error?.code || 'invalid_scope', message: error?.message || 'Invalid learning scope.' }, 400)
+  }
   const rows = threadId
     ? await c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,thread_id,stage_id,created_at FROM artifacts WHERE thread_id=? ORDER BY created_at DESC LIMIT 200`).bind(threadId).all<any>()
     : stageId

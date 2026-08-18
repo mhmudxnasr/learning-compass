@@ -73,6 +73,16 @@ test('Thread coverage does not block a source that only shares a broad word', ()
   assert.equal(matchThreadCoverage({ title: 'Designing reliable software systems', topic: 'software architecture' }, anchors), null)
 })
 
+test('Thread coverage checks curriculum concepts and summaries, not only labels', () => {
+  const anchors = [{ threadId: 'thread_build', threadTitle: 'Build better decisions', scopeKind: 'item' as const, scopeId: 'item_1', label: 'Decision exercise', text: 'Run a premortem and use base rates before committing to a project.' }]
+  const match = matchThreadCoverage({
+    title: 'A practical guide to base rates',
+    summary: 'Use a premortem and base rates before committing to a project.',
+  }, anchors)
+  assert.equal(match?.threadId, 'thread_build')
+  assert.equal(match?.scopeKind, 'item')
+})
+
 test('Compass canonicalizes tracking and YouTube URL variants', () => {
   assert.equal(canonicalizeUrl('https://youtu.be/abc123?utm_source=x'), 'https://www.youtube.com/watch?v=abc123')
   assert.equal(canonicalizeUrl('https://Example.com/read/?utm_campaign=x#part'), 'https://example.com/read')
