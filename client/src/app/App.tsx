@@ -82,7 +82,7 @@ export function App() {
   const [captureOpen, setCaptureOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [selection, setSelection] = useState<InspectorSelection | null>(null)
-  const [, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
@@ -144,6 +144,9 @@ export function App() {
       route={route}
       inspector={activeSelection ? <Inspector selection={activeSelection} onClose={closeSelection}/> : undefined}
       onInspectorClose={activeSelection ? closeSelection : undefined}
+      onCapture={() => { setCaptureOpen(true); setSearchOpen(false) }}
+      onSearch={() => { setSearchOpen(true); setCaptureOpen(false) }}
+      online={online}
     >
       <div key={`${route.canonical}:${refreshKey}`}>
         {workspace(route, () => setCaptureOpen(true), setSelection)}

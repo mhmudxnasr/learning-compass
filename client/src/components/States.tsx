@@ -7,5 +7,5 @@ export function Empty({ title, body, action }: { title: string; body: string; ac
 }
 
 export function ErrorState({ message, retry }: { message: string; retry?: () => void }) {
-  return <div class="state-block state-error" role="alert"><span class="state-rule"/><h2>This view could not load</h2><p>{message}</p>{retry && <button class="button secondary" onClick={retry}>Try again</button>}</div>
+  return <div class="state-block state-error" role="alert"><span class="state-rule"/><h2>This view could not load</h2><p>{message}</p>{retry && <button type="button" class="button secondary" onClick={retry}>Try again</button>}</div>
 }

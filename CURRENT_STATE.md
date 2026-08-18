@@ -1,5 +1,55 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-08-18 (thread surface simplification)
+
+Learning Thread tabs no longer show the top header or right-side command card: back navigation, status, title, guiding question, current-level, focus, progress, Continue, Edit Thread, and finish-line elements are removed. Stage-level learning content remains available.
+
+The level map is now dismissed from the default Thread view, and the active level content expands across the page as the primary surface.
+
+The active level view now omits the Next action card and Evidence gate entirely; the lesson sequence is the remaining primary content surface.
+
+The remaining action-count labels were removed, and the active level canvas is constrained to a readable 980px desktop width instead of expanding edge to edge.
+
+The excessive blank gap above the lesson sequence was removed by collapsing the stage-header and lesson-section spacing.
+
+The decorative divider beneath “Learn in sequence” was removed so the lesson grid starts without an extra line.
+
+The Level project card was replaced with a selectable Levels section below the lessons. Selecting a level updates the active content above.
+
+The Levels section is collapsed by default and expands as a native accessible disclosure when needed.
+
+Lessons now have canonical nested routes under their parent Thread: `#/learn/thread/:threadId/lesson/:lessonId`. Lesson cards, previous/next controls, and the lesson back link preserve that route identity.
+
+Lesson routes now use the shorter canonical form `#/learn/t/:threadId/l/:lessonId`; the verbose `/learn/thread/.../lesson/...` form remains readable and canonicalizes to the compact route.
+
+Lesson UX now hides the global Learn switcher, uses “Back to level,” removes the obsolete Edit instruction, removes duplicate empty-state separators, and gives the reading surface a more useful width.
+
+Nested lesson pages no longer render the parent Levels disclosure; lesson navigation stays focused on the lesson itself, while Levels remains on the parent Thread view.
+
+The parent Thread now opens Levels by default, remains collapsible, and shows each level’s lesson count so the existing curriculum is immediately discoverable.
+
+Lesson footer controls now use consistent inline-flex button geometry, no inherited link underlines, stable icon alignment, and responsive full-width behavior on mobile.
+
+## Current truth — 2026-08-18 (Preferences workspace redesign)
+
+Settings → Preferences is now a deliberate workspace instead of one continuous same-priority control dump. It leads with the active visual system and four complete workspace styles, keeps native density/corner/text-size choices and learning behavior visible, progressively discloses theme, font, detailed typography, custom-system, and Map tuning, and pairs the desktop controls with a sticky non-interactive studio preview. Mobile uses readable choice targets, a compact two-column theme gallery where space allows, and corrected sticky section jumps that do not hide destination headings. The active-workspace summary reports a named preset only while its typography and display values still match; fine-tuning correctly changes it to Custom tuning.
+
+The behavior contract remains real and global: E2E changes and reloads density, corner geometry, text size, reduced motion, and a dark theme through the Worker settings API, then verifies the corresponding computed application behavior. Advanced groups use native disclosures, primary comfort choices use native radios, the preview exposes no fake actions, and every existing theme/font/custom/typography/learning/Atlas capability remains available.
+
+Verified with `npm test` (114 unit tests plus TypeScript), `npm run build`, `npm run test:e2e`, `npm run verify:hermes`, `npm run verify:migrations`, `npm run test:compass-bridge`, and `git diff --check`, plus real-browser inspection at 1440px, 900px, 390px, and narrow mobile behavior. Production deployment completed as Worker version `d1c97c60-0b9c-4826-a1d3-e3c87a0fb466`; the live route serves `/assets/index-GVxlMmkV.js` and `/assets/index-uhD0e6uM.css`, has no browser warnings/errors or horizontal overflow, and exposes the expected five roots, four workspace styles, three comfort groups, four closed advanced disclosures, 188 System operations, and one schedule. All required release endpoints and the Hermes repair dry-run returned HTTP 200; service-worker cache v8 is live.
+
+## Current truth — 2026-08-18 (frontend systems and settings remediation)
+
+The frontend settings contract now changes the complete product rather than only its preview: theme/custom palette, typography, density, corner geometry, and reduced motion flow through shared semantic tokens, persist across reloads, and preserve contrasting action ink. Server-saved custom palettes take precedence over stale local custom-theme state. The global desktop rail now exposes Search, Capture to Inbox, and sync state; tablet/mobile use separate Search and Capture utilities above an exact five-root dock. The default capture service and every visible capture entry point now honor the unlimited Inbox invariant, while Queue remains an explicit triage commitment.
+
+Learning Threads again expose the evidence gate and exact proof target alongside the newer authoring surface, with a dominant current action, level progress, required-proof state, direct evidence recording, and a real final-project surface. Settings controls use native pressed/toggle semantics, full-row toggle targets, unique IDs, labeled color inputs, visible focus, and global motion behavior. Empty-state sizing and redundant mobile capture actions were tightened after desktop, phone, and tablet inspection.
+
+Verified locally with `npm test` (112 unit tests plus TypeScript), `npm run build`, `npm run test:e2e`, `npm run verify:hermes`, clean/idempotent migration rehearsal, Compass bridge verification, `git diff --check`, and real-browser desktop/phone/tablet inspection. The base application bundle is 76.70 KB gzip; Atlas remains a lazy graph chunk. Production deployment completed on 2026-08-18 as Worker version `7305cead-f45d-4017-942b-29e311a33814`. All release-checklist read endpoints returned HTTP 200, the live frontend served the new fingerprinted assets and service-worker cache v8, and live desktop/mobile/Settings System checks confirmed five-root navigation, 44px touch actions, zero overflow or browser errors, all 188 allow-listed operations, and the configured six-hour schedule.
+
+## Current truth — 2026-08-17 (Compass bridge mutation repair)
+
+The Learning Compass MCP bridge now sends guarded mutations directly to `/agent/request` instead of routing them through the same-Worker `/agent/tool-call` proxy, which returned a generic HTTP 500 during feedback recording. Canonical reads remain direct GETs; mutation idempotency, dry-run, risk gates, and verification are unchanged. A regression test now asserts that `compass_feedback` targets `/agent/request`, and a live production feedback dry-run returned `ok:true` with no blocker.
+
 ## Current truth — 2026-08-17 (branch-verified Hermes recommendations)
 
 Hermes Compass recommendations now enforce the branch contract at candidate submission. Every candidate must name an existing, supported, non-pruned `tree_nodes` branch; missing, unknown, invalid-type, or pruned branches are rejected before scoring. A confident winner stores that exact verified `branch_id` on `recommendation_meta` and `recommendation_outcomes`, and the Queue reads the same branch identity. This closes the gap where the API documentation required a branch but the route could previously accept an unlinked candidate. The fix is deployed at `https://recommendations-worker.mhmudnasr30.workers.dev` as Worker version `51d16175-0f2a-4e10-b5ba-81833063db83`.
@@ -65,14 +115,14 @@ The frontend replacement is implemented, wired as the active entry, verified, an
 
 - `client/src/main.tsx` imports `client/src/app/entry.tsx`; the old monolithic frontend is no longer the runtime entry.
 - The shipped visual contract is **Botanical Folio / Evidence Ledger**: green and cream planes, a persistent desktop root rail with command bar (⌘K search, capture), grouped workspace modes, a working canvas, dynamic theme engine (20 presets + custom palettes and typography), and an optional inspector.
-- Navigation has five root destinations and 11 grouped modes with subordinate focus filters: Home/Today; Library/Triage (Queue, Feeds), Catalog (All, Books, Collections, Archive), Assets (Files); Learn/Paths, Practice; Map/Atlas, Review; Settings/Personal, Data & sync, System.
+- Navigation has five root destinations and 11 grouped modes with subordinate focus filters: Home/Today; Library/Triage (Queue, Inbox), Catalog (All sources, Books, Collections, Archive), Assets (Files); Learn/Threads, Practice; Map/Atlas, Review; Settings/Personal, Data & recovery, System.
 - Desktop uses rail + canvas + optional inspector; there is no permanent context pane. Mobile and tablet use a five-item bottom dock with primary modes in an equal-width visible grid and subordinate filters as compact wrapping controls; object inspection becomes a sheet or pushed detail view.
 - Legacy hashes, typed object identity, global Capture/Search, route recovery, offline mutation flushing, D1/R2 ownership, and the learning behavior contract remain preserved.
 - The retired `app.tsx`, `destinations.ts`, `styles.css`, and `experience-polish.css` are removed. Old `mockups/` and `output/` materials were moved outside the repository; the recoverable pre-reset snapshot remains available through the rollback window.
 
 ## Behavior invariants
 
-Ordinary captures enter Queue directly. RSS/Atom refreshes stay in the Feed stream and Inbox for deliberate triage; they never create a Queue commitment automatically. Queue normally caps queued/in-progress sources at five and requires an explicit override to exceed the cap. Consumption happens at the real source or a verified canonical reading companion through an explicit learning session. Notes remain structured, editable, searchable, and bilingual by block. Ratings of 7–10 create editable SRS drafts and approval is required before Review. Feedback processing never requests another recommendation automatically. Lite Visual now mines complete source evidence, writes one full Arabic canonical body, renders linked HTML/PDF from it, accepts zero visuals, rejects hidden transcript padding and repeated/generic UI, inspects every responsive/page render, and publishes automatically only after the hard gate passes; it does not start an automatic Notes Extractor chain.
+Every ordinary capture enters the unlimited Inbox for deliberate triage. RSS/Atom refreshes stay in the Feed stream and Inbox; they never create a Queue commitment automatically. Queue normally caps queued/in-progress sources at five and requires an explicit override to exceed the cap. Consumption happens at the real source or a verified canonical reading companion through an explicit learning session. Notes remain structured, editable, searchable, and bilingual by block. Ratings of 7–10 create editable SRS drafts and approval is required before Review. Feedback processing never requests another recommendation automatically. Lite Visual now mines complete source evidence, writes one full Arabic canonical body, renders linked HTML/PDF from it, accepts zero visuals, rejects hidden transcript padding and repeated/generic UI, inspects every responsive/page render, and publishes automatically only after the hard gate passes; it does not start an automatic Notes Extractor chain.
 
 ## Verification observed
 
@@ -90,3 +140,19 @@ The Learning workspace now connects the existing evidence model to the primary p
 The selected level is now presented as a learn-first workbench: one dominant next action, compact stage navigation, a prioritized first missing proof, and collapsible proof/lesson inventories reduce the flat course-detail page without changing the API or mastery semantics. Responsive styles preserve the same priority order on mobile.
 
 Verified: `npm test` (103/103 unit tests plus typecheck), `npm run build`, `npm run test:e2e`, and `git diff --check` pass.
+
+## Learning Threads remediation — 2026-08-17
+
+Learning Thread proof submission now carries its exact work-item target in one atomic evidence request; direct stage status PATCH is lifecycle-protected; typed Learn Unit/Card routes resolve exact objects instead of falling back to the Threads list; and the additive 0040 migration establishes explicit progression/evidence target columns and requirement associations. The visible Learn surface now consistently presents Threads, with an explicit Edit Thread entry point for existing authoring controls.
+
+Verification now passes as part of the 2026-08-18 frontend gate: all 112 unit tests, including the transcript adapter, pass with TypeScript, production build, full E2E, and `git diff --check`.
+
+Hermes Thread control is now expanded through the capability registry: project updates and exact SRS card/review operations are discoverable, Thread mutations advertise typed schemas and canonical Thread-path readbacks, evidence/verification/recall actions are high-risk guarded operations, and routine Hermes capabilities exclude permanent Thread deletion. Active Hermes procedures now use Thread terminology and require user-supplied evidence. Deployed 2026-08-17 as Worker version `8b9ba6e4-950f-4224-856c-8ddfbea54fab`; live `/health` returned HTTP 200 and the live learning-core capability catalog contained 32 operations with project patch exposed and Thread deletion excluded.
+
+## Hermes Thread authoring skill - 2026-08-18
+
+`learning-thread-authoring` is now canonical at `~/.hermes/skills/learning/learning-thread-authoring/SKILL.md`. It owns Thread, level/stage, lesson, project, source, progression, and evidence authoring, delegates curriculum design to `progressive-learning-curriculum`, and delegates guarded mutations to `learning-compass-site-operator`. The project OpenCode skill is a thin discovery adapter to this Hermes source.
+
+## Hermes skill graph repair - 2026-08-18
+
+The 24 active Learning Compass skills now have non-overlapping trigger descriptions and synchronized ownership. Visual output is palette-free without stored style locks; specialists hand improvement evidence to self-evolution instead of editing themselves; AGY requires explicit current-request authorization and cannot publish; Lite Visual never auto-chains extraction; source notes default to English with source-original Arabic quotations; recommendation serving mode and exploration are Worker-owned live values; source Queue placement requires canonical branch mapping; JSON mutations use guarded `/agent/request`; and stale Discovery, migration, Notes, and product terminology was removed. `verify:hermes` now rejects recurrence of the audited stale contracts.

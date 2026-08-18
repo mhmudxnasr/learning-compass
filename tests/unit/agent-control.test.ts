@@ -70,9 +70,21 @@ test('agent OpenAPI is generated from the same catalog with control schemas and 
 })
 
 test('verification readbacks resolve evidence, feedback, and batch targets exactly', () => {
-  assert.deepEqual(resolveCapabilityReadbacks('POST /learning/core/evidence', '/learning/core/threads/:thread_id', '/learning/core/evidence', '/learning/core/evidence', { thread_id: 'thread 1' }, { id: 'evidence-1' }), ['/learning/core/threads/thread%201'])
+  assert.deepEqual(resolveCapabilityReadbacks('POST /learning/core/evidence', '/learning/core/threads/:thread_id/path', '/learning/core/evidence', '/learning/core/evidence', { thread_id: 'thread 1' }, { id: 'evidence-1' }), ['/learning/core/threads/thread%201/path'])
+  assert.deepEqual(resolveCapabilityReadbacks('POST /learning/srs/review', '/learning/srs/cards/:id', '/learning/srs/review', '/learning/srs/review', { card_id: 'card 1' }, {}), ['/learning/srs/cards/card%201'])
   assert.deepEqual(resolveCapabilityReadbacks('POST /feedback/record', '/capture/:id/record', '/feedback/record', '/feedback/record', {}, { source: { id: 'rec-1' } }), ['/capture/rec-1/record'])
   assert.deepEqual(resolveCapabilityReadbacks('POST /recommendations/map', '/capture/:id/record', '/recommendations/map', '/recommendations/map', { ids: ['rec-1', 'rec-2'] }, {}), ['/capture/rec-1/record', '/capture/rec-2/record'])
+})
+
+test('feedback extraction follows disposition and source notes stay source-shaped', () => {
+  const product = readFileSync(new URL('../../src/api/product.ts', import.meta.url), 'utf8')
+  const jobs = readFileSync(new URL('../../src/api/jobs.ts', import.meta.url), 'utf8')
+  assert.match(product, /complete && \(disposition === 'retain' \|\| disposition === 'apply'\) \? id\('job'\) : null/)
+  assert.match(product, /knowledgeRequested \|\| body\.auto_enqueue === true/)
+  assert.doesNotMatch(product, /rating\.score >= 8/)
+  assert.doesNotMatch(product, /settings\.srs_drafts\.auto_extract/)
+  assert.match(jobs, /one or more complete source-shaped sections/)
+  assert.doesNotMatch(jobs, /complete bilingual English and Egyptian Arabic sections/)
 })
 
 test('agent context and tools enforce canonical v2 semantics', () => {
@@ -123,6 +135,8 @@ test('evidence mutation verifies the Thread, and failed post-commit readback rem
       method: 'POST',
       path: '/learning/core/evidence',
       idempotency_key: 'evidence-1',
+      confirm: true,
+      precondition: { path: '/learning/core/threads/thread-1/path', field: 'thread.id', equals: 'thread-1' },
       body: { thread_id: 'thread-1', evidence_type: 'application', result: 'pass' },
     })
     assert.equal(response.status, 201)

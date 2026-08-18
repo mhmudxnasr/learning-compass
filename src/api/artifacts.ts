@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { mergeArtifactMultipartMetadata, normalizeQualityAssurance, validateArtifactIntegrity } from '../artifact-metadata'
 import { Bindings, escapeHtml, safeError } from '../lib'
+import { resolveLearningScope } from '../services/learning-scope'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const artifactCsp = "default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'none'; img-src data: https:; font-src data: https:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline'"
@@ -115,14 +116,10 @@ app.post('/', async (c) => {
     }
     const threadId = String(metadata.thread_id || '').trim().slice(0, 120) || null
     const stageId = String(metadata.stage_id || '').trim().slice(0, 120) || null
-    if (threadId && stageId) return c.json({ error: 'file cannot belong to both a path and a stage' }, 400)
-    if (threadId) {
-      const thread = await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=?`).bind(threadId).first()
-      if (!thread) return c.json({ error: 'thread not found' }, 400)
-    }
-    if (stageId) {
-      const stage = await c.env.DB.prepare(`SELECT id FROM learning_path_stages WHERE id=?`).bind(stageId).first()
-      if (!stage) return c.json({ error: 'stage not found' }, 400)
+    if (threadId && stageId) return c.json({ error: 'file cannot belong to both a Thread and a Level' }, 400)
+    if (threadId || stageId) {
+      try { await resolveLearningScope(c.env.DB, threadId ? { kind: 'thread', id: threadId } : { kind: 'level', id: stageId! }) }
+      catch (error: any) { return c.json({ error: error?.code || 'invalid_scope', message: error?.message || 'Invalid learning scope.' }, 400) }
     }
     const pairId = String(metadata.pair_id || '')
     const role = String(metadata.role || '').toLowerCase()

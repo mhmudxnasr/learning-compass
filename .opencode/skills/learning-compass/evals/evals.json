@@ -1,0 +1,23 @@
+{
+  "skill_name": "learning-compass",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Show me what is currently in my recommendation worker queue.",
+      "expected_output": "Reads the live canonical Queue endpoint and does not substitute Inbox or recommendation history.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Add this article to Learning Compass Inbox, but do not queue it: https://example.com/article",
+      "expected_output": "Uses capability discovery, guarded capture mutation, exact record readback, and does not queue the source.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Create a lesson in my systems thinking Thread about feedback delays.",
+      "expected_output": "Routes to learning-thread-authoring and checks the live capability surface instead of inventing a lesson-create route.",
+      "files": []
+    }
+  ]
+}

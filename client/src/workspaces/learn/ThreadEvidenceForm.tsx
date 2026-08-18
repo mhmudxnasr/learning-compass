@@ -37,11 +37,8 @@ export function ThreadEvidenceForm({ threadId, stageId, item, onSaved, onCancel 
           response: response.trim(),
           prompt: item.title,
           score: Number(score),
+          item_id: item.id,
         }),
-      })
-      await api(`/learning/core/threads/${encodeURIComponent(threadId)}/stages/${encodeURIComponent(stageId)}/items/${encodeURIComponent(item.id)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: 'satisfied' }),
       })
       onSaved()
     } catch (error: unknown) {

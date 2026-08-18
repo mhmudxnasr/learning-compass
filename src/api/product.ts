@@ -6,6 +6,7 @@ import { activateWaitingRun } from './discovery'
 import { loadFeedbackContext } from '../services/feedback-context'
 import { createConsolidationRun, normalizeDisposition, recordLearningEvent } from '../services/learning-core'
 import { applyFeedbackProposal, revertFeedbackProposal, syncRecommendationFeedbackSignals } from '../services/intelligence-v2'
+import { resolveLearningScope } from '../services/learning-scope'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const id = (prefix: string) => `${prefix}_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
@@ -100,8 +101,7 @@ app.post('/feedback/record', async (c) => {
   const reflectionNoteId = reflectionNote?.id || `reflection_${recommendation.id}`
   const revision = Number(reflectionNote?.revision || 0) + 1
   const feedbackJobId = id('job')
-  const settings = await loadSettings(c.env.DB)
-  const extractionJobId = complete && rating.score !== null && rating.score >= 8 && (disposition === 'retain' || disposition === 'apply') && settings.srs_drafts.auto_extract ? id('job') : null
+  const extractionJobId = complete && (disposition === 'retain' || disposition === 'apply') ? id('job') : null
   const statements: D1PreparedStatement[] = []
   if (!session) statements.push(c.env.DB.prepare(`INSERT INTO learning_sessions (id,recommendation_id,intent,status,returned_at,completed_at,reflection,thread_id) VALUES (?,?,? ,?,datetime('now'),CASE WHEN ? THEN datetime('now') ELSE NULL END,?,?)`).bind(sessionId, recommendation.id, 'Feedback recorded through Hermes', complete ? 'completed' : 'returned', complete ? 1 : 0, feedback, body.thread_id || null))
   else statements.push(c.env.DB.prepare(`UPDATE learning_sessions SET reflection=?,returned_at=datetime('now'),status=?,completed_at=CASE WHEN ? THEN COALESCE(completed_at,datetime('now')) ELSE completed_at END WHERE id=?`).bind(feedback, complete ? 'completed' : 'returned', complete ? 1 : 0, sessionId))
@@ -194,16 +194,12 @@ app.post('/sessions/:id/return', async (c) => {
   let feedbackJobId: string | null = null
   let extractionJobId: string | null = null
   if (complete) {
-    const isFeedItem = session.recommendation_id ? await c.env.DB.prepare(`SELECT 1 FROM feed_entries WHERE recommendation_id=?`).bind(session.recommendation_id).first() : null
-    const settings = await loadSettings(c.env.DB)
     const knowledgeRequested = disposition === 'retain' || disposition === 'apply'
-    const allowJobs = knowledgeRequested || (!isFeedItem && (body.auto_enqueue === true || settings.srs_drafts.auto_extract === true))
-    if (allowJobs) {
-      feedbackJobId = id('job')
-      statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'process_feedback',?,?,?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(feedbackJobId, JSON.stringify({ recommendation_id: session.recommendation_id, session_id: session.id, note_id: reflectionNoteId, reflection, rating: rating.score, disposition, ...structured, review_required: true, feedback_context_endpoint: '/feedback/context', feedback_context_scope: 'all_archived_feedback_profile_and_nodes' }), `session-feedback:${session.id}`, session.recommendation_id, 'explicit_user_action'))
-      if (knowledgeRequested && (body.auto_enqueue === true || settings.srs_drafts.auto_extract === true)) {
-        extractionJobId = id('job')
-        statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'extract_notes',?,?,?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(extractionJobId, JSON.stringify({
+    feedbackJobId = id('job')
+    statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'process_feedback',?,?,?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(feedbackJobId, JSON.stringify({ recommendation_id: session.recommendation_id, session_id: session.id, note_id: reflectionNoteId, reflection, rating: rating.score, disposition, ...structured, review_required: true, feedback_context_endpoint: '/feedback/context', feedback_context_scope: 'all_archived_feedback_profile_and_nodes' }), `session-feedback:${session.id}`, session.recommendation_id, 'explicit_user_action'))
+    if (knowledgeRequested || body.auto_enqueue === true) {
+      extractionJobId = id('job')
+      statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'extract_notes',?,?,?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(extractionJobId, JSON.stringify({
           recommendation_id: session.recommendation_id,
           session_id: session.id,
           thread_id: session.thread_id || null,
@@ -214,8 +210,7 @@ app.post('/sessions/:id/return', async (c) => {
           source_url: session.video_url || null,
           handwritten_annotations_are_reflection: true,
           output_contract: 'learning_units_v1',
-        }), `session-extract:${session.id}`, session.recommendation_id, 'explicit_user_action'))
-      }
+      }), `session-extract:${session.id}`, session.recommendation_id, 'explicit_user_action'))
     }
   } else if (reflection && reflectionNoteId) {
     const revision = Number((await c.env.DB.prepare(`SELECT revision FROM notes WHERE id=?`).bind(reflectionNoteId).first<{ revision: number }>())?.revision || 0) + (reflectionNoteCreated ? 0 : 1)
@@ -313,14 +308,10 @@ app.post('/notes', async (c) => {
   if (!body.title?.trim()) return c.json({ error: 'title required' }, 400)
   const threadId = String(body.thread_id || '').trim().slice(0, 120) || null
   const stageId = String(body.stage_id || '').trim().slice(0, 120) || null
-  if (threadId && stageId) return c.json({ error: 'note cannot belong to both a path and a stage' }, 400)
-  if (threadId) {
-    const thread = await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=?`).bind(threadId).first()
-    if (!thread) return c.json({ error: 'thread not found' }, 400)
-  }
-  if (stageId) {
-    const stage = await c.env.DB.prepare(`SELECT id FROM learning_path_stages WHERE id=?`).bind(stageId).first()
-    if (!stage) return c.json({ error: 'stage not found' }, 400)
+  if (threadId && stageId) return c.json({ error: 'note cannot belong to both a Thread and a Level' }, 400)
+  if (threadId || stageId) {
+    try { await resolveLearningScope(c.env.DB, threadId ? { kind: 'thread', id: threadId } : { kind: 'level', id: stageId! }) }
+    catch (error: any) { return c.json({ error: error?.code || 'invalid_scope', message: error?.message || 'Invalid learning scope.' }, 400) }
   }
   const noteId = body.id || id('note')
   const provenance = Array.isArray(body.provenance) ? body.provenance.slice(0, 20).map((item: any) => ({ annotation_id: String(item.annotation_id || '').slice(0, 120), reason: String(item.reason || '').slice(0, 500), confidence: item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))) })).filter((item: any) => item.annotation_id) : []
@@ -351,7 +342,7 @@ app.post('/notes/:id/process', async (c) => {
   if (note.kind !== 'reflection') {
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE notes SET status='processing',updated_at=datetime('now') WHERE id=?`).bind(note.id),
-      c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'extract_notes',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(id('job'), JSON.stringify({ note_id: note.id, recommendation_id: note.recommendation_id, source_url: note.source_url || recommendation?.video_url || null, rating: Number(recommendation?.user_score || 0), reprocess_note_id: note.id, full_bilingual: true }), `extract-reprocess:${note.id}:${note.revision}`),
+      c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'extract_notes',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(id('job'), JSON.stringify({ note_id: note.id, recommendation_id: note.recommendation_id, source_url: note.source_url || recommendation?.video_url || null, rating: Number(recommendation?.user_score || 0), reprocess_note_id: note.id, output_contract: 'learning_units_v1', note_language: 'en', preserve_source_language_quotes: true }), `extract-reprocess:${note.id}:${note.revision}`),
     ])
     return c.json({ ok: true, status: 'processing', kind: 'source' }, 202)
   }
@@ -363,7 +354,11 @@ app.post('/notes/:id/process', async (c) => {
 })
 
 app.get('/srs/drafts', async (c) => {
-  const rows = await c.env.DB.prepare(`
+  const threadId = String(c.req.query('thread_id') || '').trim()
+  const stageId = String(c.req.query('stage_id') || '').trim()
+  if (threadId && stageId) return c.json({ error: 'Choose either a Thread or a Level scope.' }, 400)
+  const where = threadId ? 'WHERE d.thread_id=? AND d.stage_id IS NULL' : stageId ? 'WHERE d.stage_id=?' : ''
+  const statement = c.env.DB.prepare(`
     SELECT d.*,
       COALESCE(
         (SELECT title FROM notes WHERE id = d.note_id LIMIT 1),
@@ -378,13 +373,19 @@ app.get('/srs/drafts', async (c) => {
         'General'
       ) as branch
     FROM srs_drafts d
+    ${where}
     ORDER BY d.created_at DESC
     LIMIT 200
-  `).all()
+  `)
+  const rows = await (threadId || stageId ? statement.bind(threadId || stageId) : statement).all()
   return c.json({ drafts: rows.results || [] })
 })
 app.get('/learning/srs/cards', async (c) => {
-  const rows = await c.env.DB.prepare(`
+  const threadId = String(c.req.query('thread_id') || '').trim()
+  const stageId = String(c.req.query('stage_id') || '').trim()
+  if (threadId && stageId) return c.json({ error: 'Choose either a Thread or a Level scope.' }, 400)
+  const where = threadId ? 'WHERE c.thread_id=? AND c.stage_id IS NULL' : stageId ? 'WHERE c.stage_id=?' : ''
+  const statement = c.env.DB.prepare(`
     SELECT c.*,
       COALESCE(
         (SELECT title FROM notes WHERE id = c.note_id LIMIT 1),
@@ -400,9 +401,11 @@ app.get('/learning/srs/cards', async (c) => {
       ) as branch,
       COALESCE(c.note_id, (SELECT id FROM notes WHERE recommendation_id = c.recommendation_id AND c.recommendation_id IS NOT NULL LIMIT 1)) as note_id
     FROM srs_cards c
+    ${where}
     ORDER BY c.due_at ASC, c.topic, c.question
     LIMIT 500
-  `).all()
+  `)
+  const rows = await (threadId || stageId ? statement.bind(threadId || stageId) : statement).all()
   return c.json({ cards: rows.results || [] })
 })
 app.delete('/learning/srs/cards/:id', async (c) => {
@@ -419,7 +422,7 @@ app.post('/srs/drafts/:id/approve', async (c) => {
   if (!draft) return c.json({ error: 'not found' }, 404)
   const approved = await c.env.DB.prepare(`UPDATE srs_drafts SET status='approved',updated_at=datetime('now') WHERE id=? AND status='draft'`).bind(draft.id).run()
   if (!approved.meta.changes) return c.json({ error: 'draft already processed' }, 409)
-  await c.env.DB.prepare(`INSERT INTO srs_cards (id,recommendation_id,note_id,question,answer,topic,branch,due_at,unit_id,thread_id,scheduler_version) VALUES (?,?,?,?,?,?,?,date('now'),?,?,'fsrs-6-ts-fsrs-5.4.1')`).bind(id('card'), draft.recommendation_id, draft.note_id || null, draft.question, draft.answer, draft.topic, draft.branch || null, draft.unit_id || null, draft.thread_id || null).run()
+  await c.env.DB.prepare(`INSERT INTO srs_cards (id,recommendation_id,note_id,question,answer,topic,branch,due_at,unit_id,thread_id,stage_id,scheduler_version) VALUES (?,?,?,?,?,?,?,date('now'),?,?,?,'fsrs-6-ts-fsrs-5.4.1')`).bind(id('card'), draft.recommendation_id, draft.note_id || null, draft.question, draft.answer, draft.topic, draft.branch || null, draft.unit_id || null, draft.thread_id || null, draft.stage_id || null).run()
   return c.json({ ok: true })
 })
 app.post('/srs/drafts/:id/reject', async (c) => {

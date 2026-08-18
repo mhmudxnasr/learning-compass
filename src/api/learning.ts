@@ -5,8 +5,27 @@ import { generateRecallCardsWithGemini } from '../services/gemini-recall'
 import { loadSettings } from '../services/settings'
 import { buildLearningBalance } from '../services/learning-balance'
 import { recordLearningEvent } from '../services/learning-core'
+import { LearningScopeError, resolveLearningScope, type ResolvedLearningScope } from '../services/learning-scope'
 
 const app = new Hono<{ Bindings: Bindings }>()
+
+async function resolveRecallScope(DB: D1Database, input: { thread_id?: unknown; stage_id?: unknown; note_id?: unknown }): Promise<ResolvedLearningScope | null> {
+  const threadId = String(input.thread_id || '').trim().slice(0, 120)
+  const levelId = String(input.stage_id || '').trim().slice(0, 120)
+  if (threadId && levelId) throw new LearningScopeError('invalid_scope', 'Choose either a Thread or a Level recall owner.')
+  const requested = threadId ? await resolveLearningScope(DB, { kind: 'thread', id: threadId }) : levelId ? await resolveLearningScope(DB, { kind: 'level', id: levelId }) : null
+  const noteId = String(input.note_id || '').trim().slice(0, 120)
+  if (!noteId) return requested
+  const note = await DB.prepare(`SELECT thread_id,stage_id FROM notes WHERE id=?`).bind(noteId).first<any>()
+  if (!note) throw new LearningScopeError('scope_not_found', 'Recall Note not found.')
+  const noteScope = note.stage_id
+    ? await resolveLearningScope(DB, { kind: 'level', id: note.stage_id })
+    : note.thread_id ? await resolveLearningScope(DB, { kind: 'thread', id: note.thread_id }) : null
+  if (requested && noteScope && (requested.threadId !== noteScope.threadId || requested.levelId !== noteScope.levelId)) {
+    throw new LearningScopeError('scope_integrity_error', 'Recall scope must match the Note owner.')
+  }
+  return requested || noteScope
+}
 
 app.get('/heatmap', async (c) => {
   const { DB } = c.env
@@ -113,6 +132,15 @@ app.post('/delete', async (c) => {
 
 // ---- Active Recall & Spaced Repetition (SRS) Endpoints ----
 
+// GET /learning/srs/cards/:id — Read one card without restricting it to due cards.
+app.get('/srs/cards/:id', async (c) => {
+  const card = await c.env.DB.prepare(`SELECT c.*,
+    COALESCE((SELECT title FROM notes WHERE id=c.note_id LIMIT 1),(SELECT video_title FROM recommendations WHERE id=c.recommendation_id LIMIT 1),'Direct Card') AS source_title
+    FROM srs_cards c WHERE c.id=?`).bind(c.req.param('id')).first<any>()
+  if (!card) return c.json({ error: 'card not found' }, 404)
+  return c.json({ card })
+})
+
 // GET /learning/srs/due — Fetch cards due for active recall today
 app.get('/srs/due', async (c) => {
   const { DB } = c.env
@@ -171,9 +199,9 @@ app.post('/srs/review', async (c) => {
       evidenceId = `evidence_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
       const result = grade >= 3 ? 'pass' : 'fail'
       const delayDays = card.last_reviewed_at ? Math.max(0, (Date.now() - new Date(card.last_reviewed_at).getTime()) / 86_400_000) : null
-      await DB.prepare(`INSERT INTO learning_evidence (id,thread_id,unit_id,evidence_type,result,score,evaluator,delay_days,context_json) VALUES (?,?,?,'free_recall',?,?,'user',?,?)`).bind(evidenceId, card.thread_id || null, card.unit_id || null, result, grade / 5, delayDays, JSON.stringify({ card_id, grade })).run()
+      await DB.prepare(`INSERT INTO learning_evidence (id,thread_id,unit_id,stage_id,evidence_type,result,score,evaluator,delay_days,context_json) VALUES (?,?,?,?,'free_recall',?,?,'user',?,?)`).bind(evidenceId, card.thread_id || null, card.unit_id || null, card.stage_id || null, result, grade / 5, delayDays, JSON.stringify({ card_id, grade, stage_id: card.stage_id || null })).run()
       if (result === 'pass' && card.thread_id) {
-        await DB.prepare(`UPDATE thread_evidence_requirements SET status='satisfied',satisfied_by_evidence_id=?,updated_at=datetime('now') WHERE thread_id=? AND evidence_type='free_recall' AND status='open' AND (minimum_score IS NULL OR ? >= minimum_score) AND (SELECT COUNT(*) FROM learning_evidence WHERE thread_id=? AND evidence_type='free_recall' AND result IN ('pass','recorded')) >= minimum_count`).bind(evidenceId, card.thread_id, grade / 5, card.thread_id).run()
+        await DB.prepare(`UPDATE thread_evidence_requirements SET status='satisfied',satisfied_by_evidence_id=?,updated_at=datetime('now') WHERE thread_id=? AND evidence_type='free_recall' AND status='open' AND (stage_id IS NULL OR stage_id=?) AND (minimum_score IS NULL OR ? >= minimum_score) AND (SELECT COUNT(*) FROM learning_evidence e WHERE e.thread_id=? AND e.evidence_type='free_recall' AND e.result IN ('pass','recorded') AND (thread_evidence_requirements.stage_id IS NULL OR e.stage_id=thread_evidence_requirements.stage_id)) >= minimum_count`).bind(evidenceId, card.thread_id, card.stage_id || null, grade / 5, card.thread_id).run()
       }
       if (result === 'pass' && card.unit_id) {
         await DB.prepare(`INSERT INTO unit_mastery_state (unit_id,stage,due_at,last_retrieved_at,delayed_retrievals) VALUES (?,'retrieved',?,datetime('now'),1) ON CONFLICT(unit_id) DO UPDATE SET stage=CASE WHEN unit_mastery_state.stage IN ('exposed','encoded') THEN 'retrieved' ELSE unit_mastery_state.stage END,due_at=excluded.due_at,last_retrieved_at=datetime('now'),delayed_retrievals=unit_mastery_state.delayed_retrievals+1,updated_at=datetime('now')`).bind(card.unit_id, next.dueAt).run()
@@ -191,17 +219,19 @@ app.post('/srs/review', async (c) => {
 app.post('/srs/create', async (c) => {
   const { DB } = c.env
   try {
-    const { recommendation_id, note_id, question, answer, topic, branch } = await c.req.json<{ recommendation_id?: string; note_id?: string; question: string; answer: string; topic?: string; branch?: string }>()
+    const { recommendation_id, note_id, thread_id, stage_id, question, answer, topic, branch } = await c.req.json<{ recommendation_id?: string; note_id?: string; thread_id?: string; stage_id?: string; question: string; answer: string; topic?: string; branch?: string }>()
     if (!question || !answer) return c.json({ error: 'question and answer required' }, 400)
+    const scope = await resolveRecallScope(DB, { thread_id, stage_id, note_id })
 
     const id = `card_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     await DB.prepare(`
-      INSERT INTO srs_cards (id, recommendation_id, note_id, question, answer, topic, branch, ease_factor, interval_days, repetitions, due_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 2.5, 1, 0, date('now'))
-    `).bind(id, recommendation_id || null, note_id || null, question, answer, topic || 'general', branch || null).run()
+      INSERT INTO srs_cards (id, recommendation_id, note_id, thread_id, stage_id, question, answer, topic, branch, ease_factor, interval_days, repetitions, due_at, scheduler_version)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 2.5, 1, 0, date('now'), ?)
+    `).bind(id, recommendation_id || null, note_id || null, scope?.threadId || null, scope?.levelId || null, question, answer, topic || 'general', branch || null, FSRS_SCHEDULER_VERSION).run()
 
-    return c.json({ ok: true, card_id: id })
+    return c.json({ ok: true, card_id: id, thread_id: scope?.threadId || null, stage_id: scope?.levelId || null })
   } catch (err) {
+    if (err instanceof LearningScopeError) return c.json({ error: err.code, message: err.message }, err.code === 'scope_not_found' ? 404 : 409)
     return c.json(safeError('Card creation failed')(err), 500)
   }
 })
@@ -215,14 +245,17 @@ app.post('/srs/generate', async (c) => {
   }
 
   try {
-    const { note_id, recommendation_id, content, topic, branch, auto_approve } = await c.req.json<{
+    const { note_id, recommendation_id, thread_id, stage_id, content, topic, branch, auto_approve } = await c.req.json<{
       note_id?: string
       recommendation_id?: string
+      thread_id?: string
+      stage_id?: string
       content?: string
       topic?: string
       branch?: string
       auto_approve?: boolean
     }>()
+    const scope = await resolveRecallScope(DB, { thread_id, stage_id, note_id })
 
     let textToAnalyze = (content || '').trim()
     let resolvedTopic = topic || 'general'
@@ -275,21 +308,22 @@ app.post('/srs/generate', async (c) => {
       if (auto_approve) {
         const cardId = `card_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
         await DB.prepare(`
-          INSERT INTO srs_cards (id, recommendation_id, note_id, question, answer, topic, branch, due_at, scheduler_version)
-          VALUES (?, ?, ?, ?, ?, ?, ?, date('now'), 'fsrs-6-ts-fsrs-5.4.1')
-        `).bind(cardId, resolvedRecId, note_id || null, card.question, card.answer, cardTopic, cardBranch).run()
-        createdDrafts.push({ id: cardId, question: card.question, answer: card.answer, topic: cardTopic, branch: cardBranch, source_title: resolvedNoteTitle || resolvedTopic, status: 'approved' })
+          INSERT INTO srs_cards (id, recommendation_id, note_id, thread_id, stage_id, question, answer, topic, branch, due_at, scheduler_version)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'), ?)
+        `).bind(cardId, resolvedRecId, note_id || null, scope?.threadId || null, scope?.levelId || null, card.question, card.answer, cardTopic, cardBranch, FSRS_SCHEDULER_VERSION).run()
+        createdDrafts.push({ id: cardId, question: card.question, answer: card.answer, topic: cardTopic, branch: cardBranch, source_title: resolvedNoteTitle || resolvedTopic, status: 'approved', thread_id: scope?.threadId || null, stage_id: scope?.levelId || null })
       } else {
         await DB.prepare(`
-          INSERT INTO srs_drafts (id, recommendation_id, note_id, question, answer, topic, branch, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'draft')
-        `).bind(draftId, resolvedRecId, note_id || null, card.question, card.answer, cardTopic, cardBranch).run()
-        createdDrafts.push({ id: draftId, question: card.question, answer: card.answer, topic: cardTopic, branch: cardBranch, source_title: resolvedNoteTitle || resolvedTopic, status: 'draft' })
+          INSERT INTO srs_drafts (id, recommendation_id, note_id, thread_id, stage_id, question, answer, topic, branch, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+        `).bind(draftId, resolvedRecId, note_id || null, scope?.threadId || null, scope?.levelId || null, card.question, card.answer, cardTopic, cardBranch).run()
+        createdDrafts.push({ id: draftId, question: card.question, answer: card.answer, topic: cardTopic, branch: cardBranch, source_title: resolvedNoteTitle || resolvedTopic, status: 'draft', thread_id: scope?.threadId || null, stage_id: scope?.levelId || null })
       }
     }
 
     return c.json({ ok: true, drafts: createdDrafts, count: createdDrafts.length })
   } catch (err: unknown) {
+    if (err instanceof LearningScopeError) return c.json({ error: err.code, message: err.message }, err.code === 'scope_not_found' ? 404 : 409)
     const msg = err instanceof Error ? err.message : 'Recall generation failed'
     return c.json({ error: msg }, 500)
   }

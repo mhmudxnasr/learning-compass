@@ -16,13 +16,13 @@ The browser is the **Botanical Folio / Evidence Ledger**: one green-and-cream ev
 
 - `#/home` — Home / Today
 - `#/library` — Queue, Inbox, All sources, Files, Books, Collections, Archive
-- `#/learn` — Paths, Notes, Recall
+- `#/learn` — Threads, Notes, Recall
 - `#/map` — Atlas, Branches, Balance
 - `#/settings` — Learning profile, Preferences, Data & recovery, System
 
 The five roots plus their grouped modes and focus filters are the complete global navigation contract. Sources, Learning Threads, Notes, Units, Recall Cards, branches, and artifacts use typed object routes inside their owning root so selection identity is preserved. Search opens the exact object result. Legacy hashes canonicalize to the nearest purposeful view without silently discarding an ID; an unknown hash renders a recovery state.
 
-On desktop the studio is a persistent root rail plus a working canvas and optional object inspector. There is no permanent context pane. On mobile and tablet the rail becomes a five-item bottom dock, with primary modes in an equal-width visible grid and subordinate filters as compact wrapping controls; the inspector becomes a full-height sheet or pushed detail view.
+On desktop the studio is a persistent root rail plus a working canvas and optional object inspector. Search, Capture to Inbox, and sync state live in that rail without becoming destinations. There is no permanent context pane. On mobile and tablet the rail becomes a five-item bottom dock with separate global Search and Capture utilities, primary modes in an equal-width visible grid, and subordinate filters as compact wrapping controls; the inspector becomes a full-height sheet or pushed detail view.
 
 ## Product behavior
 
@@ -33,6 +33,7 @@ On desktop the studio is a persistent root rail plus a working canvas and option
 - Feedback distinguishes neutral Not now, explicit Bad fit with a reason, rating, disposition, and later learning evidence. Feedback processing never requests another recommendation automatically.
 - Recommendations are Thread-first and source-grounded. Compass can use fit, bridge, and challenge lanes; shadow serving remains gated by evidence quality. Mastered and consumed items, Mahmood’s explicit exclusions, and the five-item Queue contract are always enforced.
 - Invisible AI may enrich, rank, classify, and explain, but it never rewrites user-authored reflection. Hermes changes to typed profile knowledge are auditable, confidence-aware, reversible, and never scheduled as autonomous curation.
+- Preferences begin with complete workspace styles and plain-language comfort controls, while theme, font, detailed typography, custom-system, and Map tuning use progressive disclosure. Theme, typography, density, corner, and reduced-motion preferences alter the whole studio, preserve usable contrast and focus, and persist across reloads. A server-saved custom palette is authoritative when custom appearance is active.
 
 ## Reading companions and ownership
 

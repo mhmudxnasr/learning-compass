@@ -4,7 +4,7 @@
 - `npm run verify:hermes`
 - `npm run test:e2e`
 - `npm run build`
-- Rehearse `schema.sql` and every numbered migration through `0039` on a clean D1 database.
+- Rehearse `schema.sql` and every numbered migration discovered in `migrations/` on a clean D1 database.
 - Verify loop-ordered navigation, weekly closure/counterevidence, Queue Thread backfill, universal target-aware sessions, source dispositions, consolidation closure, anchored Units, evidence gates, source-centric Notes, FSRS recall, Atlas, and Inbox/RSS refresh.
 - Verify Insights → Hermes clean cohorts, profile health, improvement receipts, shadow gates, guarded memory, automatic profile application/undo, snapshot repair dry-run, and the 20-global/8-lane recalibration gates.
 - Verify `learning-compass-self-evolution` is the sole improvement owner, every active skill exposes an evolution handoff, retired skills are absent, and improvement receipts can close as applied/deployed, failed/resumable, or evidence-backed no-change.

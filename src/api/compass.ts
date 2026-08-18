@@ -1,13 +1,14 @@
 import { Hono } from 'hono'
 import { safeError, normalizeRating, type Bindings } from '../lib'
 import { createInboxCapture } from '../services/capture'
-import { candidateSetDiversity, canonicalizeUrl, decisionConfidence, DEFAULT_FEATURE_WEIGHTS, LEGACY_FEATURE_WEIGHTS, deriveCandidateFeatures, expectedLearningValue, frontierScore, laneExplorationBonus, pairwiseDominance, semanticSimilarity, serverScore, urlOf, type CompassContext, type SourceCheck } from '../compass-scoring'
+import { candidateSetDiversity, canonicalizeUrl, decisionConfidence, DEFAULT_FEATURE_WEIGHTS, LEGACY_FEATURE_WEIGHTS, deriveCandidateFeatures, expectedLearningValue, frontierScore, laneExplorationBonus, matchThreadCoverage, pairwiseDominance, semanticSimilarity, serverScore, urlOf, type CompassContext, type SourceCheck, type ThreadCoverageMatch } from '../compass-scoring'
 import { buildLearningBalance } from '../services/learning-balance'
 import { canonicalTasteIdentity } from './taste'
 import { computeDecayedAffinity } from '../domain'
 import { INTELLIGENCE_ENGINE_VERSION, LEARNING_OBJECTIVE_VERSION, canonicalCreatorKey, canonicalFormat, classifyRecommendationFeedback, normalizeCompassLane, structuredEvidenceStatus, type CompassLane } from '../intelligence-v2'
 import { recordRecommendationSignal, refreshRecommendationOutcome } from '../services/intelligence-v2'
 import { indexSemanticDocuments, semanticSourceMatches } from '../services/semantic-retrieval'
+import { loadThreadCoverageAnchors } from '../services/thread-coverage'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const STRATEGIES = new Set(['fit', 'bridge', 'challenge'])
@@ -65,7 +66,7 @@ const checkSource = async (item: any): Promise<SourceCheck> => {
 }
 
 export const loadCompassContext = async (DB: D1Database, thread: any = null): Promise<CompassContext> => {
-  const [history, mastered, blacklist, trust, vectors, priorities, formats, recent, weights, balance, assertions, laneEvidence, branchNodes, explored] = await Promise.all([
+  const [history, mastered, blacklist, trust, vectors, priorities, formats, recent, weights, balance, assertions, laneEvidence, branchNodes, explored, threadCoverage] = await Promise.all([
     DB.prepare(`SELECT video_url,video_title,creator,status FROM recommendations WHERE status IN ('consumed','active','rejected') LIMIT 2000`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT label,author FROM mastered`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT name,work FROM blacklist`).all<any>().catch(() => ({ results: [] })),
@@ -82,6 +83,7 @@ export const loadCompassContext = async (DB: D1Database, thread: any = null): Pr
     // branches are hard exclusions, love branches raise topic affinity.
     DB.prepare(`SELECT id,label,status FROM tree_nodes WHERE type='branch' AND status IN ('love','pruned','held')`).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT id,is_pruned FROM branch_exploration WHERE is_pruned=1`).all<any>().catch(() => ({ results: [] })),
+    loadThreadCoverageAnchors(DB),
   ])
   const assertionRows = assertions.results || []
   const assertionValues = assertionRows.map((row: any) => { try { return { ...row, parsed: JSON.parse(row.value_json) } } catch { return { ...row, parsed: row.value_json } } })
@@ -144,6 +146,7 @@ export const loadCompassContext = async (DB: D1Database, thread: any = null): Pr
     profileAssertions: assertionValues.map((row: any) => ({ ...row, value: row.parsed })),
     thread,
     laneEvidence: new Map((laneEvidence.results || []).map((row: any) => [String(row.strategy), Number(row.count || 0)])),
+    threadCoverage,
   }
 }
 
@@ -211,7 +214,9 @@ function candidateDecision(scored: ScoredCandidate[], engine: 'v1' | 'v2', force
   // not the greedy score floor, so they serve as long as they are reachable and
   // carry structured evidence (the real quality floor).
   const confident = Boolean(!weak && verified && (forcedWinner ? true : winner.score >= SERVING_SCORE_THRESHOLD && confidence >= SERVING_CONFIDENCE_THRESHOLD))
-  const abstentionReason = !eligible.length ? 'all_candidates_ineligible'
+  const allCovered = !eligible.length && scored.some((entry) => entry.features._exclusion_reason === 'covered_by_learning_thread')
+  const abstentionReason = allCovered ? 'covered_by_learning_thread'
+    : !eligible.length ? 'all_candidates_ineligible'
     : eligible.length < 2 && !forcedWinner ? 'not_enough_eligible_candidates'
       : !verified ? engine === 'v2' && evidenceStatus !== 'structured' ? 'structured_evidence_required' : 'winner_not_verifiable'
         : !forcedWinner && Number(winner?.score || 0) < SERVING_SCORE_THRESHOLD ? 'winner_below_score_threshold'
@@ -362,6 +367,14 @@ async function learnFromOutcome(DB: D1Database, pick: any, score: number | null,
   return { reward, theta: Math.round(theta * 1000) / 1000, posterior_mean: Math.round(posteriorMean * 1000) / 1000, before, after }
 }
 
+async function storedPickCoverageConflict(DB: D1Database, pickId: string): Promise<ThreadCoverageMatch | null> {
+  const winner = await DB.prepare(`SELECT canonical_url,title,creator,format,source_class,context_brief,evidence_json,lane,branch_id FROM compass_candidates WHERE pick_id=? AND is_winner=1 LIMIT 1`).bind(pickId).first<any>()
+  if (!winner) return null
+  const stored = parseJsonObject(winner.evidence_json)
+  const candidateContext = stored.candidate_context && typeof stored.candidate_context === 'object' ? stored.candidate_context : {}
+  return matchThreadCoverage({ ...candidateContext, ...winner }, await loadThreadCoverageAnchors(DB))
+}
+
 async function currentPick(DB: D1Database) {
   // Repair completion through shared feedback/session routes before reading
   // or reading active Compass picks.
@@ -372,17 +385,24 @@ async function currentPick(DB: D1Database) {
       SELECT id FROM recommendations WHERE status IN ('consumed','rejected')
     )
   `).run()
-  return DB.prepare(`
-    SELECT p.*, COALESCE(r.video_title,w.title) AS video_title, COALESCE(r.creator,w.creator) AS creator,
-      COALESCE(r.content_type,w.format,w.source_class) AS content_type, COALESCE(r.video_url,w.canonical_url) AS video_url,
-      COALESCE(r.why_this,CASE WHEN json_valid(p.rationale_json) THEN json_extract(p.rationale_json,'$.why_this') END) AS why_this,
-      COALESCE(r.context_brief,CASE WHEN json_valid(p.rationale_json) THEN json_extract(p.rationale_json,'$.context_brief') END) AS context_brief
-    FROM compass_picks p
-    LEFT JOIN recommendations r ON r.id=p.recommendation_id
-    LEFT JOIN compass_candidates w ON w.pick_id=p.id AND w.is_winner=1
-    WHERE p.status IN ('ready','started','abstained') AND (r.id IS NULL OR r.status NOT IN ('consumed','rejected'))
-    ORDER BY p.created_at DESC LIMIT 1
-  `).first<any>()
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const pick = await DB.prepare(`
+      SELECT p.*, COALESCE(r.video_title,w.title) AS video_title, COALESCE(r.creator,w.creator) AS creator,
+        COALESCE(r.content_type,w.format,w.source_class) AS content_type, COALESCE(r.video_url,w.canonical_url) AS video_url,
+        COALESCE(r.why_this,CASE WHEN json_valid(p.rationale_json) THEN json_extract(p.rationale_json,'$.why_this') END) AS why_this,
+        COALESCE(r.context_brief,CASE WHEN json_valid(p.rationale_json) THEN json_extract(p.rationale_json,'$.context_brief') END) AS context_brief
+      FROM compass_picks p
+      LEFT JOIN recommendations r ON r.id=p.recommendation_id
+      LEFT JOIN compass_candidates w ON w.pick_id=p.id AND w.is_winner=1
+      WHERE p.status IN ('ready','started','abstained') AND (r.id IS NULL OR r.status NOT IN ('consumed','rejected'))
+      ORDER BY p.created_at DESC LIMIT 1
+    `).first<any>()
+    if (!pick || pick.status === 'started') return pick
+    const conflict = await storedPickCoverageConflict(DB, pick.id)
+    if (!conflict) return pick
+    await DB.prepare(`UPDATE compass_picks SET status='replaced',stop_reason='covered_by_learning_thread',resolved_at=datetime('now'),updated_at=datetime('now') WHERE id=? AND status IN ('ready','abstained')`).bind(pick.id).run()
+  }
+  return null
 }
 
 async function activeQueueCount(DB: D1Database) {
@@ -399,7 +419,8 @@ app.get('/pick', async (c) => {
     const candidates = await c.env.DB.prepare(`SELECT id,title,creator,format,source_class,lane,branch_id,format_key,creator_key,expected_learning_value,decision_score,score,uncertainty,evidence_status,contextual_alignment,candidate_set_diversity,is_verified,is_winner FROM compass_candidates WHERE pick_id=? ORDER BY decision_score DESC,score DESC`).bind(pick.id).all<any>().catch(() =>
       c.env.DB.prepare(`SELECT id,title,creator,format,source_class,is_verified,is_winner,score,uncertainty FROM compass_candidates WHERE pick_id=? ORDER BY score DESC`).bind(pick.id).all<any>()
     )
-    return c.json({ pick: { ...pick, rationale: parseJsonObject(pick.rationale_json), shadow: parseJsonObject(pick.shadow_json), candidates: candidates.results || [] } })
+    const shadow = parseJsonObject(pick.shadow_json)
+    return c.json({ pick: { ...pick, rationale: parseJsonObject(pick.rationale_json), shadow, engine_mode: shadow.mode || pick.engine_mode || null, candidates: candidates.results || [] } })
   } catch (err) { return c.json(safeError('Failed to read Compass Pick')(err), 500) }
 })
 
@@ -426,6 +447,10 @@ app.get('/context', async (c) => {
         key: assertion.assertion_key, category: assertion.category, value: assertion.value, weight: assertion.weight ?? null, confidence: assertion.confidence,
       })),
       exclusions: context.blockedEntities.slice(0, 100),
+      thread_coverage: (context.threadCoverage || []).map((entry) => ({
+        thread_id: entry.threadId, thread_title: entry.threadTitle, scope_kind: entry.scopeKind, scope_id: entry.scopeId, label: entry.label,
+      })),
+      coverage_policy: { version: 'thread-coverage-v1', complete: true, rule: 'Candidates matching any non-abandoned Thread, Level, lesson, or required item are excluded before scoring and rechecked before Start.' },
       recent_formats: context.recentFormats,
       learning_balance: [...(context.branchSignals || [])].map(([branch, signal]) => ({ branch, ...signal })),
       known_sources: context.knownSources.slice(0, 100).map((source) => ({ url: source.url, title: source.title, creator: source.creator, status: source.status })),
@@ -435,6 +460,7 @@ app.get('/context', async (c) => {
         optional_context: ['summary', 'concepts', 'mechanism', 'mechanisms', 'expected_evidence_type', 'evidence_types', 'duration_minutes', 'paywalled'],
         evidence_rule: 'Every evidence claim needs its direct source_url; an anchor is strongly preferred.',
         editorial_review_rule: 'verdict=recommend, substantive why_worth_time and unique_value, depth=substantive|deep.',
+        coverage_rule: 'Supply precise topic/concept/mechanism fields and exclude anything present in thread_coverage. The Worker hard-enforces this rule.',
       },
       retrieval_receipt: { context_version: 'compass_research_v1', generated_at: new Date().toISOString(), source_count: context.knownSources.length },
     })
@@ -511,6 +537,8 @@ const decisionReadModel = (decision: ReturnType<typeof candidateDecision>) => ({
   strong: decision.confident,
   evidence_status: decision.winner?.features?._evidence_status || 'missing',
   source_status: decision.winner?.sourceCheck?.status || 'unknown',
+  exclusion_reason: decision.winner?.features?._exclusion_reason || null,
+  coverage_match: decision.winner?.features?._coverage_match || null,
   abstention_reason: decision.confident ? null : decision.abstentionReason,
 })
 
@@ -674,6 +702,11 @@ app.post('/pick/:id/start', async (c) => {
     if (queuedCount >= QUEUE_CAP) return c.json({ error: 'queue capacity reached', active_count: queuedCount, cap: QUEUE_CAP }, 409)
     const thread = await resolveThread(c.env.DB, pick.thread_id)
     if (!thread) return c.json({ error: 'learning_thread_required' }, 409)
+    const coverageConflict = await storedPickCoverageConflict(c.env.DB, pick.id)
+    if (coverageConflict) {
+      await c.env.DB.prepare(`UPDATE compass_picks SET status='replaced',stop_reason='covered_by_learning_thread',resolved_at=datetime('now'),updated_at=datetime('now') WHERE id=?`).bind(pick.id).run()
+      return c.json({ error: 'covered_by_learning_thread', message: `This topic is already owned by ${coverageConflict.threadTitle}.`, match: coverageConflict }, 409)
+    }
     let recommendationId = pick.recommendation_id as string | null
     if (!recommendationId) {
       const winner = await c.env.DB.prepare(`SELECT * FROM compass_candidates WHERE pick_id=? AND is_winner=1`).bind(pick.id).first<any>()

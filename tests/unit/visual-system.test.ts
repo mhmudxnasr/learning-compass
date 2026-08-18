@@ -17,7 +17,7 @@ test('custom visual-system JSON reaches the global startup and heading seams', (
   assert.match(settings, /applyTypography\(nextTypography\)/)
   assert.match(settings, /const pasted = pasteCodes\.trim\(\)/)
   assert.match(settings, /applyThemeJson\(JSON\.parse\(pasted\)\)/)
-  assert.match(settings, /Apply Colors or JSON/)
+  assert.match(settings, /Apply colors or JSON/)
 })
 
 test('global entry hydrates saved visual settings before route-specific workspaces', () => {

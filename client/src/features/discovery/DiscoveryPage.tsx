@@ -262,11 +262,11 @@ export default function DiscoveryPage() {
             {showGuide ? 'Hide How It Works' : 'How Discovery Works'}
           </button>
           {gate?.can_start_discovery ? (
-            <button class="primary-action" onClick={startDiscovery} disabled={submitting}>
+            <button type="button" class="primary-action" onClick={startDiscovery} disabled={submitting}>
               {submitting ? 'Starting…' : 'Start New Discovery Wave'}
             </button>
           ) : (
-            <button class="primary-action" disabled>
+            <button type="button" class="primary-action" disabled>
               Gate Blocked
             </button>
           )}
@@ -312,7 +312,7 @@ export default function DiscoveryPage() {
                 <i class="job-pulse-dot" data-state={activeRun.lifecycle} />
                 {activeRun.lifecycle.replace(/_/g, ' ')}
               </span>
-              <button class="danger-button" onClick={() => cancelRun(activeRun.id)} disabled={submitting}>
+              <button type="button" class="danger-button" onClick={() => cancelRun(activeRun.id)} disabled={submitting}>
                 {submitting ? 'Cancelling…' : 'Cancel Run'}
               </button>
             </div>
@@ -369,7 +369,7 @@ export default function DiscoveryPage() {
 
                 {(activeRun.lifecycle === 'selected' || activeRun.lifecycle === 'waiting_for_capacity') && (
                   <div class="row-actions">
-                    <button class="primary-action" onClick={() => activateRun(activeRun.id)} disabled={submitting}>
+                    <button type="button" class="primary-action" onClick={() => activateRun(activeRun.id)} disabled={submitting}>
                       {submitting ? 'Activating…' : 'Accept & Start Session'}
                     </button>
                   </div>
@@ -420,7 +420,7 @@ export default function DiscoveryPage() {
                   class="note-editor"
                 />
                 <div class="row-actions">
-                  <button class="primary-action" onClick={() => submitInterview(activeRun.id)} disabled={submitting || !feedbackText.trim()}>
+                  <button type="button" class="primary-action" onClick={() => submitInterview(activeRun.id)} disabled={submitting || !feedbackText.trim()}>
                     {submitting ? 'Submitting…' : 'Submit Answer'}
                   </button>
                 </div>
@@ -431,7 +431,7 @@ export default function DiscoveryPage() {
                 <div class="interview-question interview-complete">
                   <span>Interview Complete: Ready to resolve discovery run</span>
                   <div class="row-actions">
-                    <button class="primary-action success-action" onClick={() => resolveDiscovery(activeRun.id)} disabled={submitting}>
+                    <button type="button" class="primary-action success-action" onClick={() => resolveDiscovery(activeRun.id)} disabled={submitting}>
                       {submitting ? 'Resolving…' : 'Resolve Discovery & Apply Learning Receipt'}
                     </button>
                   </div>
@@ -496,7 +496,7 @@ export default function DiscoveryPage() {
                       {b.pruning_reason && <span class="danger-action">{b.pruning_reason}</span>}
                     </div>
                     <div class="row-actions">
-                      <button class="button secondary" onClick={() => reopenBranch(b.id)} disabled={submitting}>
+                      <button type="button" class="button secondary" onClick={() => reopenBranch(b.id)} disabled={submitting}>
                         Reopen
                       </button>
                     </div>

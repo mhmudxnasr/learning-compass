@@ -121,6 +121,15 @@ const rootHrefs = await page.locator('.root-rail nav[aria-label="Five workspaces
 if (rootHrefs.length !== roots.length || roots.some((root) => !rootHrefs.includes(`#/${root}`))) throw new Error(`root rail does not expose exactly the five stable roots: ${rootHrefs.join(', ')}`)
 if (await page.locator('.root-rail nav[aria-label="Five workspaces"] a').count() !== roots.length) throw new Error('root rail must contain exactly five global destinations')
 if (await page.locator('.root-rail + .context-pane, .context-pane').count()) throw new Error('desktop shell rendered a permanent context pane')
+const desktopRail = page.locator('.root-rail')
+if (await desktopRail.getByRole('button', { name: 'Search', exact: true }).count() !== 1 || await desktopRail.getByRole('button', { name: 'Capture to Inbox', exact: true }).count() !== 1) throw new Error('desktop rail is missing global Search or Capture')
+await desktopRail.getByRole('button', { name: 'Search', exact: true }).click()
+await page.locator('.search-dialog').waitFor({ state: 'visible' })
+await page.keyboard.press('Escape')
+await desktopRail.getByRole('button', { name: 'Capture to Inbox', exact: true }).click()
+await page.locator('.capture-dialog').waitFor({ state: 'visible' })
+if (!(await page.locator('.capture-dialog').innerText()).includes('unlimited Inbox')) throw new Error('global Capture does not explain the Inbox contract')
+await page.getByRole('button', { name: 'Close capture' }).click()
 
 for (const route of rootRoutes) {
   await page.goto(`${baseUrl}/${route.href}`, { waitUntil: 'networkidle' })
@@ -182,17 +191,104 @@ for (const route of modeRoutes) {
   if (count !== modeRoutes.length) throw new Error(`expected ${modeRoutes.length} internal mode states, checked ${count}`)
 
   await page.goto(`${baseUrl}/#/settings?focus=preferences`, { waitUntil: 'networkidle' })
-  for (const section of ['visual-presets-heading', 'theme-section', 'font-section', 'type-controls', 'interface-tokens']) {
+  for (const section of ['visual-presets-heading', 'interface-tokens', 'theme-section', 'font-section', 'type-controls', 'learning-preferences', 'atlas-preferences']) {
     await page.locator(`.settings-jump-nav a[href="#${section}"]`).click()
     await page.waitForTimeout(80)
     const jumpState = await page.evaluate((id) => {
       const canvas = document.querySelector('.workspace-canvas')
       const target = document.getElementById(id)
-      return { hash: location.hash, heading: document.querySelector('h1')?.textContent, scrollTop: canvas?.scrollTop || 0, targetTop: target?.getBoundingClientRect().top || 0 }
+      const jumpNav = document.querySelector('.settings-jump-nav')
+      return { hash: location.hash, heading: document.querySelector('h1')?.textContent, scrollTop: canvas?.scrollTop || 0, targetTop: target?.getBoundingClientRect().top || 0, navBottom: jumpNav?.getBoundingClientRect().bottom || 0 }
     }, section)
-    if (jumpState.hash !== '#/settings?focus=preferences' || jumpState.heading !== 'Make the learning loop fit you') throw new Error(`preference jump escaped settings route for ${section}: ${JSON.stringify(jumpState)}`)
-    if (section !== 'visual-presets-heading' && jumpState.targetTop < -20) throw new Error(`preference jump did not reach ${section}: ${JSON.stringify(jumpState)}`)
+    if (jumpState.hash !== '#/settings?focus=preferences' || jumpState.heading !== 'Preferences') throw new Error(`preference jump escaped settings route for ${section}: ${JSON.stringify(jumpState)}`)
+    if (section !== 'visual-presets-heading' && jumpState.targetTop < jumpState.navBottom - 12) throw new Error(`preference jump hid ${section} behind the sticky section navigator: ${JSON.stringify(jumpState)}`)
   }
+  const duplicateSettingIds = await page.evaluate(() => {
+    const ids = [...document.querySelectorAll('[id]')].map((element) => element.id)
+    return [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))]
+  })
+  if (duplicateSettingIds.length) throw new Error(`Settings contains duplicate IDs: ${duplicateSettingIds.join(', ')}`)
+  const preferenceDisclosures = page.locator('.preferences-main > details.preference-disclosure')
+  if (await preferenceDisclosures.count() !== 4) throw new Error('Preferences must progressively disclose theme, font, typography, and Map tuning')
+  for (let index = 0; index < await preferenceDisclosures.count(); index++) {
+    if (await preferenceDisclosures.nth(index).getAttribute('open') !== null) throw new Error('advanced preference disclosures must start closed')
+  }
+  if (await page.locator('.theme-preview-frame').getByRole('button').count()) throw new Error('appearance preview must not expose fake actions')
+  if (await page.locator('.preferences-preview-rail').count() !== 1) throw new Error('Preferences must keep one contextual appearance preview')
+  const saveRadio = async (group, option) => {
+    const radio = page.getByRole('group', { name: new RegExp(`^${group}`) }).getByRole('radio', { name: new RegExp(`^${option}`) })
+    await Promise.all([
+      page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok()),
+      radio.check(),
+    ])
+  }
+  const renderedPreferences = () => page.evaluate(() => {
+    const root = document.documentElement
+    const canvas = document.querySelector('.workspace-canvas')
+    const row = document.querySelector('.setting-row')
+    const intro = document.querySelector('.settings-intro p')
+    const sampleButton = document.querySelector('.visual-preset-card')
+    return {
+      density: root.dataset.density,
+      radius: root.dataset.radius,
+      fontSizePreference: root.dataset.fontSize,
+      reducedMotion: root.dataset.reducedMotion,
+      canvasPaddingTop: canvas ? parseFloat(getComputedStyle(canvas).paddingTop) : 0,
+      rowRadius: row ? parseFloat(getComputedStyle(row).borderRadius) : 0,
+      introFontSize: intro ? parseFloat(getComputedStyle(intro).fontSize) : 0,
+      transitionDuration: sampleButton ? parseFloat(getComputedStyle(sampleButton).transitionDuration) : 1,
+      theme: root.dataset.theme,
+      colorMode: root.dataset.colorMode,
+      cypress: getComputedStyle(root).getPropertyValue('--studio-cypress').trim(),
+      actionInk: getComputedStyle(root).getPropertyValue('--studio-action-ink').trim(),
+    }
+  })
+  await saveRadio('Density', 'Compact')
+  const compactPreference = await renderedPreferences()
+  await saveRadio('Density', 'Comfortable')
+  const comfortablePreference = await renderedPreferences()
+  if (compactPreference.density !== 'compact' || comfortablePreference.density !== 'comfortable' || comfortablePreference.canvasPaddingTop <= compactPreference.canvasPaddingTop) throw new Error(`density does not materially change the studio: ${JSON.stringify({ compactPreference, comfortablePreference })}`)
+  await saveRadio('Corners', 'Sharp')
+  const sharpPreference = await renderedPreferences()
+  await saveRadio('Corners', 'Round')
+  const roundPreference = await renderedPreferences()
+  if (sharpPreference.radius !== 'sharp' || roundPreference.radius !== 'round' || roundPreference.rowRadius <= sharpPreference.rowRadius) throw new Error(`radius does not materially change controls: ${JSON.stringify({ sharpPreference, roundPreference })}`)
+  await saveRadio('Text size', 'Small')
+  const smallPreference = await renderedPreferences()
+  await saveRadio('Text size', 'Large')
+  const largePreference = await renderedPreferences()
+  if (smallPreference.fontSizePreference !== 'small' || largePreference.fontSizePreference !== 'large' || largePreference.introFontSize <= smallPreference.introFontSize) throw new Error(`font size does not materially change the interface: ${JSON.stringify({ smallPreference, largePreference })}`)
+  const reducedMotionToggle = page.getByLabel('Reduce motion', { exact: false })
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok()),
+    reducedMotionToggle.check(),
+  ])
+  const reducedPreference = await renderedPreferences()
+  if (reducedPreference.reducedMotion !== 'true' || reducedPreference.transitionDuration > 0.001) throw new Error(`reduced motion is metadata-only: ${JSON.stringify(reducedPreference)}`)
+  await page.locator('#theme-section > summary').click()
+  const midnightTheme = page.locator('.theme-preset-card').filter({ hasText: 'Midnight Observatory' })
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok()),
+    midnightTheme.click(),
+  ])
+  const midnightPreference = await renderedPreferences()
+  if (midnightPreference.theme !== 'midnight' || midnightPreference.colorMode !== 'dark' || !midnightPreference.cypress || !midnightPreference.actionInk) throw new Error(`theme does not replace the global visual system: ${JSON.stringify(midnightPreference)}`)
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'midnight' && document.documentElement.dataset.fontSize === 'large')
+  const persistedPreference = await renderedPreferences()
+  if (persistedPreference.reducedMotion !== 'true' || persistedPreference.radius !== 'round' || persistedPreference.density !== 'comfortable') throw new Error(`display preferences did not survive reload: ${JSON.stringify(persistedPreference)}`)
+  await page.locator('#theme-section > summary').click()
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok()),
+    page.locator('.theme-preset-card').filter({ hasText: 'Botanical Folio' }).click(),
+  ])
+  await saveRadio('Density', 'Balanced')
+  await saveRadio('Corners', 'Soft')
+  await saveRadio('Text size', 'Medium')
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok()),
+    page.getByLabel('Reduce motion', { exact: false }).uncheck(),
+  ])
 
   await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
 const desktopScreenshot = await page.screenshot({ path: join(persistDir, 'home-desktop.png') })
@@ -308,25 +404,39 @@ hubUpload.append('metadata', JSON.stringify({ thread_id: hubThread.id }))
 const hubUploadResponse = await fetch(`${baseUrl}/artifacts`, { method: 'POST', body: hubUpload })
 const hubUploadBody = await hubUploadResponse.json()
 if (!hubUploadResponse.ok) throw new Error(`hub file upload failed: ${JSON.stringify(hubUploadBody)}`)
+const hubStageUpload = new FormData()
+hubStageUpload.append('file', new Blob(['hub file for the level'], { type: 'text/plain' }), 'hub-level.txt')
+hubStageUpload.append('metadata', JSON.stringify({ stage_id: hubStage.id }))
+const hubStageUploadResponse = await fetch(`${baseUrl}/artifacts`, { method: 'POST', body: hubStageUpload })
+const hubStageUploadBody = await hubStageUploadResponse.json()
+if (!hubStageUploadResponse.ok) throw new Error(`hub Level file upload failed: ${JSON.stringify(hubStageUploadBody)}`)
+const hubThreadCard = await requestJson('/learning/srs/create', { method: 'POST', body: JSON.stringify({ thread_id: hubThread.id, question: 'What is the Thread question?', answer: 'How systems create behavior over time.' }) })
+const hubStageCard = await requestJson('/learning/srs/create', { method: 'POST', body: JSON.stringify({ stage_id: hubStage.id, question: 'What comes before the theory?', answer: 'Build the map.' }) })
 const hubFiles = await requestJson(`/artifacts/hub?thread_id=${hubThread.id}`)
 if (!hubFiles.files.some((file) => file.id === hubUploadBody.id && file.filename === 'hub-path.txt')) throw new Error('hub files read model omitted the uploaded file')
 const globalArtifacts = await requestJson('/artifacts')
 if (globalArtifacts.artifacts.some((file) => file.id === hubUploadBody.id)) throw new Error('global files list leaked a hub-owned file')
 const hubPathLoaded = await requestJson(`/learning/core/threads/${hubThread.id}/path`)
-if (!hubPathLoaded.notes.some((note) => note.id === hubNote.id) || !hubPathLoaded.files.some((file) => file.id === hubUploadBody.id)) throw new Error('path read model omitted path-level notes or files')
-if (!hubPathLoaded.stages[0].notes.some((note) => note.id === hubStageNote.id)) throw new Error('path read model omitted stage-level notes')
+if (!hubPathLoaded.notes.some((note) => note.id === hubNote.id) || !hubPathLoaded.files.some((file) => file.id === hubUploadBody.id) || !hubPathLoaded.cards.some((card) => card.id === hubThreadCard.card_id)) throw new Error('path read model omitted Thread-owned notes, files, or cards')
+if (hubPathLoaded.notes.some((note) => note.id === hubStageNote.id) || hubPathLoaded.cards.some((card) => card.id === hubStageCard.card_id)) throw new Error('Thread direct material leaked a Level-owned record')
+if (!hubPathLoaded.stages[0].notes.some((note) => note.id === hubStageNote.id) || !hubPathLoaded.stages[0].files.some((file) => file.id === hubStageUploadBody.id) || !hubPathLoaded.stages[0].cards.some((card) => card.id === hubStageCard.card_id)) throw new Error('path read model omitted Level-owned notes, files, or cards')
+if (hubPathLoaded.stages[0].notes.some((note) => note.id === hubNote.id) || hubPathLoaded.stages[0].cards.some((card) => card.id === hubThreadCard.card_id)) throw new Error('Level material leaked a Thread-owned record')
+const compassContextWithThread = await requestJson('/compass/context')
+if (!compassContextWithThread.thread_coverage?.some((anchor) => anchor.thread_id === hubThread.id && anchor.label === 'Systems Thinking') || compassContextWithThread.coverage_policy?.complete !== true) throw new Error('Compass context omitted complete learning Thread coverage')
 await requestJson(`/learning/core/threads/${hubThread.id}/stages/${hubStage.id}/verify`, { method: 'POST' })
 await page.goto(`${baseUrl}/#/learn`, { waitUntil: 'networkidle' })
 await page.locator('.folio-paths').waitFor({ state: 'visible' })
-if (!(await page.getByRole('link', { name: 'Open learning path Systems Thinking' }).count())) throw new Error('Learn Paths did not render the authored path')
+if (!(await page.getByRole('link', { name: 'Open learning Thread Systems Thinking' }).count())) throw new Error('Learn Paths did not render the authored path')
 await page.goto(`${baseUrl}/#/learn/thread/${hubThread.id}`, { waitUntil: 'networkidle' })
 await page.locator('.folio-thread').waitFor({ state: 'visible' })
-await page.locator('.folio-level-toggle').click()
-if (!(await page.locator('.folio-stage-row').filter({ hasText: 'Level 0' }).count())) throw new Error('Learn Thread did not render the authored stage workspace')
-if (!(await page.getByText('Evidence gate').count()) || !(await page.getByText('Recorded').count())) throw new Error('Learn Thread did not render the stage evidence gate')
+if (!(await page.getByText('Direct Thread material').count()) || !(await page.getByRole('link', { name: 'Path-level reflection' }).count()) || !(await page.getByRole('link', { name: 'What is the Thread question?' }).count())) throw new Error(`Learn Thread did not render direct Thread material: ${await page.locator('.folio-thread').innerText()}`)
+if (!(await page.getByText('Thread material index').count()) || !(await page.getByText('1 notes · 1 files · 1 cards · 0 drafts').count())) throw new Error('Learn Thread did not aggregate its Level material index')
 if (!page.url().includes(`#/learn/thread/${hubThread.id}`)) throw new Error('typed Thread route did not preserve identity')
 if (await page.locator('.orbit-bar, .page-head, .subnav, .main-focus').count()) throw new Error('focused Learning Thread rendered retired shell selectors')
-if (!(await page.getByRole('link', { name: 'Back to learning paths' }).count())) throw new Error('focused Learning Thread omitted its compact return action')
+await page.goto(`${baseUrl}/#/learn/thread/${hubThread.id}/level/${hubStage.id}`, { waitUntil: 'networkidle' })
+await page.getByText('Level workspace').waitFor({ state: 'visible', timeout: 15000 })
+if (!(await page.getByRole('link', { name: 'Stage-level checkpoint' }).count()) || !(await page.getByRole('link', { name: 'hub-level.txt' }).count()) || !(await page.getByRole('link', { name: 'What comes before the theory?' }).count())) throw new Error(`Level route did not render its owned materials: ${await page.locator('.folio-thread').innerText()}`)
+if (!page.url().includes(`#/learn/t/${hubThread.id}/v/${hubStage.id}`)) throw new Error('typed Level route did not canonicalize while preserving Thread and Level identity')
 const [capabilities, systemInventory] = await Promise.all([
   requestJson('/agent/capabilities'),
   requestJson('/agent/system'),
@@ -396,6 +506,9 @@ if (artifacts.artifacts.length === 0) {
 }
 
 const captured = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hermes-e2e', title: 'Hermes automation test' }) })
+const [capturedInbox, queueBeforeTriage] = await Promise.all([requestJson('/capture'), requestJson('/capture/queue')])
+if (!capturedInbox.items.some((item) => item.id === captured.id)) throw new Error('new capture did not enter Inbox')
+if (queueBeforeTriage.items.some((item) => item.id === captured.id)) throw new Error('new capture bypassed Inbox and entered Queue')
 const preRecord = await requestJson(`/capture/${captured.id}/record`)
 if (!preRecord.item) throw new Error('source record API did not return the captured source')
 const thread = await requestJson('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Test a decision with evidence', thread_type: 'decide', guiding_question: 'Should this mechanism be used?', definition_of_done: 'Record a source-backed decision and synthesis.', activate: true }) })
@@ -490,10 +603,18 @@ const atomicRecord = await requestJson(`/capture/${atomicFeedback.source.id}/rec
 if (!atomicRecord.notes.some((note) => note.kind === 'reflection' && note.sections.some((section) => section.content === 'Preserve these exact words.'))) throw new Error('atomic feedback did not preserve exact words')
 const atomicStructuredFeedback = JSON.parse(atomicRecord.item.source_metadata_json || '{}').learning_feedback
 if (atomicStructuredFeedback?.score !== 8 || atomicStructuredFeedback?.effort !== 'deep' || atomicStructuredFeedback?.length_minutes !== 45 || atomicStructuredFeedback?.expected !== 'A useful mechanism.' || !atomicStructuredFeedback?.reason_tags?.includes('revisit')) throw new Error('structured feedback was not preserved on the source record')
+await page.setViewportSize({ width: 900, height: 1200 })
+await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
+if (!(await page.locator('.mobile-dock').isVisible()) || !(await page.locator('.mobile-utilities').isVisible())) throw new Error('tablet shell did not replace the desktop rail with dock and utilities')
+if (await page.locator('.root-rail').isVisible()) throw new Error('desktop root rail remains visible at tablet width')
+const tabletOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+if (tabletOverflow > 2) throw new Error(`tablet Home horizontal overflow ${tabletOverflow}px`)
 await page.setViewportSize({ width: 390, height: 844 })
 await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
 if (!(await page.locator('.mobile-dock').isVisible())) throw new Error('mobile primary navigation is not visible')
 if (await page.locator('.root-rail').isVisible()) throw new Error('desktop root rail remains visible on mobile')
+if (!(await page.locator('.mobile-utilities').isVisible()) || await page.locator('.mobile-utilities button').count() !== 2) throw new Error('mobile shell is missing compact Search and Capture tools')
+if (await page.locator('.folio-home-header > .folio-button').isVisible()) throw new Error('mobile Home repeats the global Capture action')
 if (await page.locator('.context-pane, .context-scrim, .navigation-sheet').count()) throw new Error('mobile shell rendered a redundant navigation sheet or context pane')
 const mobileRootHrefs = await page.locator('.mobile-dock a').evaluateAll((links) => [...new Set(links.map((link) => link.getAttribute('href')))])
 if (mobileRootHrefs.length !== roots.length || roots.some((root) => !mobileRootHrefs.includes(`#/${root}`))) throw new Error('mobile dock does not expose the five stable roots')

@@ -17,7 +17,7 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 - Every capture, including Telegram and share-target input, enters the unlimited Inbox.
 - Queue normally contains at most five queued/in-progress items; overflow requires an explicit override.
 - Consumption happens through the original source or a verified canonical HTML/PDF companion and is tracked through target-aware learning sessions.
-- Notes are structured, editable, searchable, and support per-block English/Egyptian-Arabic direction.
+- Notes are structured, editable, and searchable. Notes Extractor source notes default to English; source-original Arabic quotations remain inline with RTL direction. User-authored blocks may preserve their original language and direction.
 - Ratings of 7–10 create editable SRS drafts; approval is required before Review.
 - Feedback processing never requests another recommendation automatically.
 - Lite Visual creates one linked HTML+PDF R2 pair from one Arabic canonical content body; for books it creates one pair per chapter with stable chapter metadata. It mines and caches the complete source, proves semantic coverage, allows a zero-visual Visual Mind decision, blocks shallow/duplicated/defective output with deterministic validation plus actual render inspection, publishes automatically after an explicit media request, and verifies the canonical source record. It stores no subjective QA score and never auto-chains Notes Extractor.
@@ -65,6 +65,7 @@ Active Hermes files:
 - `~/.hermes/skills/productivity/rss-feed/SKILL.md`
 - `~/.hermes/skills/notebooklm/SKILL.md`
 - `~/.hermes/skills/learning-thread-curation/SKILL.md` → retired (renamed); active name is `~/.hermes/skills/learning/progressive-learning-curriculum/SKILL.md`
+- `~/.hermes/skills/learning/learning-thread-authoring/SKILL.md`
 - `~/.hermes/skills/workflow/learning-compass-source-ingestion/SKILL.md`
 - `~/.hermes/skills/learning/learning-hub-companion-authoring/SKILL.md`
 - `~/.hermes/skills/learning/compass-recommendation-workflows/SKILL.md`
