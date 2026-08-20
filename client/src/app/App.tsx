@@ -10,6 +10,7 @@ import { LibraryWorkspace } from '../workspaces/LibraryWorkspace'
 import { MapWorkspace, type MapObjectType, type MapWorkspaceRoute } from '../workspaces/MapWorkspace'
 import { SettingsWorkspace, type SettingsWorkspaceRoute } from '../workspaces/SettingsWorkspace'
 import type { LibrarySelection } from '../workspaces/library/types'
+import { AndroidInstallBanner } from './android'
 import { Inspector, type InspectorSelection, type MapSelection } from './inspector'
 import { objectHref, routeHref, useRoute, type Route } from './router'
 
@@ -79,10 +80,11 @@ function workspace(route: Route, onCapture: () => void, onInspect: (selection: I
 export function App() {
   const route = useRoute()
   const capturePayload = route.query.get('capture') || ''
+  const captureAction = route.query.get('action') === 'capture'
   const [captureOpen, setCaptureOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [selection, setSelection] = useState<InspectorSelection | null>(null)
-  const [, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
@@ -106,8 +108,8 @@ export function App() {
   }, [captureOpen, searchOpen, selection, route.root, route.objectId, route.view, route.mode, route.focus])
 
   useEffect(() => {
-    if (capturePayload) setCaptureOpen(true)
-  }, [capturePayload])
+    if (capturePayload || captureAction) setCaptureOpen(true)
+  }, [capturePayload, captureAction])
 
   useEffect(() => {
     const onOnline = () => { setOnline(true); void flushOfflineMutations() }
@@ -136,7 +138,7 @@ export function App() {
   const refreshWorkspace = () => setRefreshKey((value) => value + 1)
   const closeCapture = () => {
     setCaptureOpen(false)
-    if (capturePayload) navigate(routeHref('library', 'triage', 'inbox'))
+    if (capturePayload || captureAction) navigate(routeHref('library', 'triage', 'inbox'))
   }
 
   return <AppErrorBoundary>
@@ -144,7 +146,11 @@ export function App() {
       route={route}
       inspector={activeSelection ? <Inspector selection={activeSelection} onClose={closeSelection}/> : undefined}
       onInspectorClose={activeSelection ? closeSelection : undefined}
+      onCapture={() => { setCaptureOpen(true); setSearchOpen(false) }}
+      onSearch={() => { setSearchOpen(true); setCaptureOpen(false) }}
+      online={online}
     >
+      <AndroidInstallBanner />
       <div key={`${route.canonical}:${refreshKey}`}>
         {workspace(route, () => setCaptureOpen(true), setSelection)}
       </div>

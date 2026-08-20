@@ -1,4 +1,4 @@
-export const AGENT_CONTRACT_VERSION = '2026-08-17'
+export const AGENT_CONTRACT_VERSION = '2026-08-18'
 export const AGENT_PROTOCOL = 'learning-compass-agent-http/2'
 
 export type AgentMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -31,8 +31,15 @@ const BODY_SCHEMAS: Record<string, JsonSchema> = {
   'POST /capture/:id/triage': objectSchema({ action: { type: 'string', enum: ['queue', 'exclude'] }, override_queue_cap: { type: 'boolean' } }, ['action']),
   'POST /sessions/start': objectSchema({ recommendation_id: { type: 'string' }, thread_id: { type: 'string' }, target_kind: { type: 'string' }, target_artifact_id: { type: 'string' } }, ['recommendation_id', 'thread_id', 'target_kind']),
   'POST /feedback/record': objectSchema({ recommendation_id: { type: 'string' }, source: { type: 'string' }, feedback: { type: 'string' }, rating: { type: 'number', minimum: 0, maximum: 10 }, disposition: { type: 'string', enum: ['retain', 'apply', 'reference', 'drop'] }, complete: { type: 'boolean' } }, ['feedback']),
+  'POST /notes': objectSchema({ title: { type: 'string', minLength: 1 }, recommendation_id: { type: 'string' }, thread_id: { type: 'string' }, stage_id: { type: 'string' }, kind: { type: 'string' }, status: { type: 'string' }, sections: { type: 'array', items: { type: 'object' } } }, ['title']),
   'POST /recommendations/map': objectSchema({ ids: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 50 }, branch_id: { type: 'string', minLength: 1 } }, ['ids', 'branch_id']),
-  'POST /learning/core/evidence': objectSchema({ thread_id: { type: 'string' }, unit_id: { type: 'string' }, stage_id: { type: 'string' }, evidence_type: { type: 'string' }, result: { type: 'string' }, response: { type: 'string' }, proof_ref: { type: 'string' } }, ['evidence_type', 'result']),
+  'POST /learning/core/threads/:id/stages/:stageId/lessons': objectSchema({ position: { type: 'integer', minimum: 0 }, title: { type: 'string', minLength: 1 }, description: { type: 'string' }, objective: { type: 'string' }, content: { type: 'string' }, estimated_minutes: { type: 'integer', minimum: 1, maximum: 600 }, legacy_item_id: { type: 'string' }, why_learn: { type: 'string' }, why_now: { type: 'string' }, takeaway: { type: 'string' } }, ['title']),
+  'POST /learning/core/threads/:id/lessons/:lessonId/sources': objectSchema({ recommendation_id: { type: 'string', minLength: 1 }, role: { type: 'string', enum: ['primary', 'case', 'challenge', 'reference', 'optional'] }, position: { type: 'integer', minimum: 0 }, branch_id: { type: 'string', minLength: 1 } }, ['recommendation_id', 'role', 'branch_id']),
+  'POST /learning/core/evidence': objectSchema({ thread_id: { type: 'string' }, unit_id: { type: 'string' }, stage_id: { type: 'string' }, item_id: { type: 'string' }, requirement_id: { type: 'string' }, evidence_type: { type: 'string', enum: ['free_recall', 'explanation', 'transfer', 'application', 'decision', 'artifact'] }, result: { type: 'string', enum: ['pass', 'partial', 'fail', 'recorded'] }, score: { type: 'number', minimum: 0, maximum: 1 }, response: { type: 'string' }, prompt: { type: 'string' }, proof_ref: { type: 'string' } }, ['evidence_type', 'result']),
+  'POST /learning/srs/review': objectSchema({ card_id: { type: 'string', minLength: 1 }, grade: { type: 'integer', minimum: 0, maximum: 5 } }, ['card_id', 'grade']),
+  'POST /learning/srs/create': objectSchema({ thread_id: { type: 'string' }, stage_id: { type: 'string' }, note_id: { type: 'string' }, recommendation_id: { type: 'string' }, question: { type: 'string', minLength: 1 }, answer: { type: 'string', minLength: 1 }, topic: { type: 'string' }, branch: { type: 'string' } }, ['question', 'answer']),
+  'PATCH /learning/core/threads/:id/projects/:projectId': objectSchema({ status: { type: 'string', enum: ['not_started', 'in_progress', 'completed', 'deferred'] } }, ['status']),
+  'PATCH /learning/core/threads/:id/stages/:stageId': objectSchema({ position: { type: 'integer', minimum: 0 }, title: { type: 'string' }, objective: { type: 'string' }, description: { type: 'string' }, stage_type: { type: 'string', enum: ['orientation', 'curriculum', 'application', 'advanced'] }, output_description: { type: 'string' } }),
   'POST /agent/request': objectSchema({
     method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
     path: { type: 'string', pattern: '^/' },
@@ -62,7 +69,23 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /learning/core/threads': '/learning/core/threads/:id',
   'PATCH /learning/core/threads/:id': '/learning/core/threads/:id',
   'POST /learning/core/threads/:id/status': '/learning/core/threads/:id',
-  'POST /learning/core/evidence': '/learning/core/threads/:thread_id',
+  'POST /learning/core/evidence': '/learning/core/threads/:thread_id/path',
+  'POST /learning/core/threads/:id/stages/:stageId/start': '/learning/core/threads/:id/path',
+  'POST /learning/core/threads/:id/stages': '/learning/core/threads/:id/path',
+  'PATCH /learning/core/threads/:id/stages/:stageId': '/learning/core/threads/:id/path',
+  'POST /learning/core/threads/:id/stages/:stageId/items': '/learning/core/threads/:id/path',
+  'PATCH /learning/core/threads/:id/stages/:stageId/items/:itemId': '/learning/core/threads/:id/path',
+  'POST /learning/core/threads/:id/stages/:stageId/verify': '/learning/core/threads/:id/path',
+  'POST /learning/core/threads/:id/stages/:stageId/sources': '/learning/core/threads/:id/path',
+  'POST /learning/core/threads/:id/stages/:stageId/lessons': '/learning/core/threads/:id/path',
+  'PATCH /learning/core/threads/:id/lessons/:lessonId': '/learning/core/threads/:id/path',
+  'POST /learning/core/threads/:id/lessons/:lessonId/sources': '/learning/core/threads/:id/path',
+  'PATCH /learning/core/threads/:id/projects/:projectId': '/learning/core/threads/:id/path',
+  'POST /learning/core/threads/:id/sources': '/learning/core/threads/:id/path',
+  'DELETE /learning/core/threads/:id/sources/:sourceId': '/learning/core/threads/:id/path',
+  'POST /learning/core/threads/:id/verify': '/learning/core/threads/:id/path',
+  'POST /learning/srs/review': '/learning/srs/cards/:card_id',
+  'POST /learning/srs/create': '/learning/srs/cards/:card_id',
   'PUT /settings/:key': '/settings',
   'PUT /dashboard/layout': '/dashboard/layout',
 }
@@ -72,12 +95,19 @@ const PRECONDITION_OVERRIDES: Record<string, string[]> = {
   'DELETE /recommendations/:id/permanent': ['Target must be archived/non-active.', 'Explicit irreversible confirmation is required.'],
   'DELETE /learning/core/threads/:id': ['Read the exact Thread and require explicit destructive intent.'],
   'POST /compass/pick/:id/start': ['The pick must be ready and Queue must be below the cap.'],
-  'POST /learning/core/threads/:id/verify': ['Final synthesis and every evidence requirement must be complete.'],
+  'POST /learning/core/threads/:id/verify': ['Final synthesis and every evidence requirement must be complete.', 'Confirm the exact Thread path is still ready to verify.'],
+  'POST /learning/core/threads/:id/stages/:stageId/verify': ['The exact stage must be ready_to_verify.', 'Confirm the current Thread path before advancing it.'],
+  'POST /learning/core/evidence': ['Evidence must be supplied or explicitly confirmed by the learner.', 'Confirm the exact Thread/item/requirement target before recording proof.'],
+  'POST /learning/srs/review': ['The learner must supply or confirm the recall grade.', 'Confirm the exact card state before recording the review.'],
 }
 
 const PRECONDITION_PATH_OVERRIDES: Record<string, string> = {
   'DELETE /recommendations/:id/permanent': '/capture/:id/record',
   'DELETE /learning/core/threads/:id': '/learning/core/threads/:id',
+  'POST /learning/core/threads/:id/verify': '/learning/core/threads/:id/path',
+  'POST /learning/core/threads/:id/stages/:stageId/verify': '/learning/core/threads/:id/path',
+  'POST /learning/core/evidence': '/learning/core/threads/:id/path',
+  'POST /learning/srs/review': '/learning/srs/cards/:id',
   'POST /analytics/hermes/engine/activate': '/analytics/hermes/engine',
   'POST /analytics/hermes/recalibrate': '/analytics/hermes/engine',
   'POST /analytics/hermes/repair': '/analytics/hermes/repair',
@@ -90,6 +120,9 @@ const VERIFICATION_ID_SOURCES: Record<string, string[]> = {
   'POST /recommendations/map': ['body.ids', 'body.id', 'response.sources.*.id'],
   'POST /recommendations/action': ['body.ids', 'body.id', 'response.ids'],
   'POST /learning/core/threads': ['response.id'],
+  'POST /learning/core/evidence': ['body.thread_id'],
+  'POST /learning/srs/review': ['body.card_id'],
+  'POST /learning/srs/create': ['response.card_id'],
 }
 
 const valuesAt = (value: any, pointer: string): string[] => {
@@ -148,6 +181,7 @@ const deriveIntent = (method: AgentMethod, path: string) => {
 const deriveRisk = (method: AgentMethod, path: string) => {
   if (method === 'GET') return 'low'
   if (/permanent|\/learning\/core\/threads\/:id$|engine\/activate|recalibrate|repair|notifications\/test/.test(path)) return 'high'
+  if (path === '/learning/core/evidence' || path === '/learning/srs/review' || /\/verify$/.test(path) || /\/stages\/[^/]+\/start$/.test(path)) return 'high'
   return 'medium'
 }
 

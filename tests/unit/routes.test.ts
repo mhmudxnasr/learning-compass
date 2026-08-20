@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { modes, objectHref, parseRoute, roots, routeHref, views } from '../../client/src/app/router.ts'
-import { calibratedConfidence, canonicalizeUrl, compassPickIsUnresolved, deriveCandidateFeatures, pairwiseDominance, semanticSimilarity, serverScore } from '../../src/compass-scoring.ts'
+import { calibratedConfidence, canonicalizeUrl, compassPickIsUnresolved, deriveCandidateFeatures, matchThreadCoverage, pairwiseDominance, semanticSimilarity, serverScore } from '../../src/compass-scoring.ts'
 test('Compass ignores started picks whose recommendation is already completed or rejected', () => {
   assert.equal(compassPickIsUnresolved('started', 'consumed'), false)
   assert.equal(compassPickIsUnresolved('started', 'rejected'), false)
@@ -48,6 +48,29 @@ test('Compass hard-excludes consumed or blocked candidates', () => {
     recentFormats: [],
   })
   assert.equal(features._hard_excluded, true)
+})
+
+test('Compass hard-excludes topics already owned by any learning Thread', () => {
+  const anchors = [
+    { threadId: 'thread_systems', threadTitle: 'Systems Thinking', scopeKind: 'thread' as const, scopeId: 'thread_systems', label: 'Systems Thinking', text: 'Systems Thinking feedback loops stocks flows and leverage points' },
+    { threadId: 'thread_systems', threadTitle: 'Systems Thinking', scopeKind: 'level' as const, scopeId: 'level_feedback', label: 'Feedback Loops', text: 'Understand reinforcing and balancing feedback loops' },
+  ]
+  const match = matchThreadCoverage({ title: 'Thinking in Systems: feedback loops in practice', topic: 'systems thinking' }, anchors)
+  assert.equal(match?.threadId, 'thread_systems')
+  const features = deriveCandidateFeatures({
+    canonical_url: 'https://example.com/thinking-in-systems', title: 'Thinking in Systems', format: 'lecture',
+    topic: 'systems thinking', evidence: 'A detailed source-grounded lecture about feedback loops and leverage points.',
+  }, {
+    knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [], threadCoverage: anchors,
+  })
+  assert.equal(features._hard_excluded, true)
+  assert.equal(features._exclusion_reason, 'covered_by_learning_thread')
+  assert.equal(features._coverage_match?.threadTitle, 'Systems Thinking')
+})
+
+test('Thread coverage does not block a source that only shares a broad word', () => {
+  const anchors = [{ threadId: 'thread_systems', threadTitle: 'Systems Thinking', scopeKind: 'thread' as const, scopeId: 'thread_systems', label: 'Systems Thinking', text: 'Systems Thinking feedback loops stocks flows and leverage points' }]
+  assert.equal(matchThreadCoverage({ title: 'Designing reliable software systems', topic: 'software architecture' }, anchors), null)
 })
 
 test('Compass canonicalizes tracking and YouTube URL variants', () => {
@@ -128,7 +151,7 @@ test('the router exposes five roots and eleven grouped modes with focus state', 
   assert.equal(declaredModes.length, 11)
   assert.equal(new Set(declaredModes.map((mode) => `${mode.root}/${mode.key}`)).size, 11)
   assert.ok(declaredModes.every((mode) => mode.label.trim() && mode.description.trim()))
-  assert.equal(views.library.length, 8)
+  assert.equal(views.library.length, 9)
   assert.equal(views.learn.length, 3)
   for (const root of roots) {
     assert.equal(routeHref(root.key), `#/${root.key}`)
@@ -140,6 +163,7 @@ test('the router exposes five roots and eleven grouped modes with focus state', 
     }
   }
   assert.equal(routeHref('library', 'books'), '#/library?mode=catalog&focus=books')
+  assert.equal(routeHref('library', 'journal'), '#/library?mode=catalog&focus=journal')
   assert.equal(routeHref('learn', 'notes'), '#/learn?mode=practice&focus=notes')
   assert.equal(routeHref('map', 'branches'), '#/map?mode=review&focus=branches')
   assert.equal(routeHref('settings', 'profile'), '#/settings?focus=profile')
@@ -155,6 +179,12 @@ test('root modes parse from query state while typed object links keep their iden
   assert.equal(books.canonical, '/library?mode=catalog&focus=books')
   assert.equal(books.objectId, undefined)
 
+  const journal = parseRoute('#/library/hardcover')
+  assert.equal(journal.mode, 'catalog')
+  assert.equal(journal.focus, 'journal')
+  assert.equal(journal.view, 'journal')
+  assert.equal(journal.canonical, '/library?mode=catalog&focus=journal')
+
   const oldQueue = parseRoute('#/curate/queue')
   assert.equal(oldQueue.canonical, '/library?mode=triage&focus=queue')
   assert.equal(oldQueue.mode, 'triage')
@@ -166,6 +196,22 @@ test('root modes parse from query state while typed object links keep their iden
   assert.equal(oldThread.canonical, '/learn/thread/path%201')
   assert.equal(oldThread.objectType, 'thread')
   assert.equal(oldThread.objectId, 'path 1')
+
+  const lesson = parseRoute('#/learn/thread/thread%201/lesson/lesson%202')
+  assert.equal(lesson.objectType, 'lesson')
+  assert.equal(lesson.objectId, 'lesson 2')
+  assert.equal(lesson.parentObjectId, 'thread 1')
+  assert.equal(lesson.canonical, '/learn/t/thread%201/l/lesson%202')
+  const compactLesson = parseRoute('#/learn/t/thread%201/l/lesson%202')
+  assert.equal(compactLesson.canonical, '/learn/t/thread%201/l/lesson%202')
+
+  const level = parseRoute('#/learn/thread/thread%201/level/level%202')
+  assert.equal(level.objectType, 'level')
+  assert.equal(level.objectId, 'level 2')
+  assert.equal(level.parentObjectId, 'thread 1')
+  assert.equal(level.canonical, '/learn/t/thread%201/v/level%202')
+  const compactLevel = parseRoute('#/learn/t/thread%201/v/level%202')
+  assert.equal(compactLevel.canonical, '/learn/t/thread%201/v/level%202')
 
   const oldMapObject = parseRoute('#/map/branches/branch/branch%201')
   assert.equal(oldMapObject.canonical, '/map/branch/branch%201?mode=review&focus=branches')

@@ -190,7 +190,7 @@ function BalanceInspector({
           <span class="eyebrow">{branch.round || 'Map'} branch</span>
           <h2>{branch.label}</h2>
         </div>
-        <button class="icon-button" onClick={onClose} aria-label="Close branch inspector">×</button>
+        <button type="button" class="icon-button" onClick={onClose} aria-label="Close branch inspector">×</button>
       </div>
       <p class="map-inspector-summary">This branch is receiving <strong>{branch.attention_share.toFixed(1)}%</strong> of completed-source attention in the selected window.</p>
       <div class="map-inspector-metrics" aria-label="Branch balance metrics">
@@ -210,8 +210,8 @@ function BalanceInspector({
         {branch.reasons.length ? <ul>{branch.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul> : <p>No attention warning is recorded for this branch.</p>}
       </section>
       <div class="map-inspector-actions">
-        <button class="button secondary" onClick={() => navigateTo({ view: 'atlas', mode: 'atlas', objectType: 'node', objectId: branch.id }, onRouteChange)}>Open in Atlas</button>
-        <button class="button secondary" onClick={onClose}>Keep browsing</button>
+        <button type="button" class="button secondary" onClick={() => navigateTo({ view: 'atlas', mode: 'atlas', objectType: 'node', objectId: branch.id }, onRouteChange)}>Open in Atlas</button>
+        <button type="button" class="button secondary" onClick={onClose}>Keep browsing</button>
       </div>
     </aside>
   )

@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { buildNoteReaderDocument, directionForText, parseNoteBlocks } from '../../client/src/workspaces/learn/noteReader.ts'
+
+test('note reader removes Obsidian front matter and promotes the embedded source link', () => {
+  const document = buildNoteReaderDocument({
+    id: 'note_1',
+    title: 'Skinner on Behaviorism',
+    sections: [{
+      section_key: 'body',
+      label: 'Notes',
+      direction: 'auto',
+      content: `---
+type: notes tags: people/Skinner status/completed
+subject/Behavioral-Psychology ---
+
+YT-Vid (https://www.youtube.com/watch?v=example)
+
+يعرض هذا الفيديو مقابلة تعليمية مع سكينر.
+
+1. **تحديد السلوك** يبدأ من أثر البيئة.
+2. التعزيز الإيجابي يشكل السلوك.`,
+    }],
+  })
+
+  assert.equal(document.contentSourceUrl, 'https://www.youtube.com/watch?v=example')
+  assert.equal(document.sections.length, 1)
+  assert.equal(document.sections[0].direction, 'rtl')
+  assert.ok(document.sections[0].blocks.every((block) => !JSON.stringify(block).includes('status/completed')))
+  const list = document.sections[0].blocks.find((block) => block.kind === 'list')
+  assert.deepEqual(list?.kind === 'list' ? list.items : [], [
+    '**تحديد السلوك** يبدأ من أثر البيئة.',
+    'التعزيز الإيجابي يشكل السلوك.',
+  ])
+  assert.equal(list?.kind === 'list' ? list.start : undefined, 1)
+})
+
+test('reader preserves Markdown structure and chooses direction per block', () => {
+  const blocks = parseNoteBlocks('## Key idea\n\nEnglish context.\n\n> خلاصة عربية مهمة', 'auto')
+  assert.deepEqual(blocks.map((block) => block.kind), ['heading', 'paragraph', 'quote'])
+  assert.equal(blocks[0].direction, 'ltr')
+  assert.equal(blocks[2].direction, 'rtl')
+  assert.equal(directionForText('السلوك البشري (Behaviorism)'), 'rtl')
+})

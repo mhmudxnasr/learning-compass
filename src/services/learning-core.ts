@@ -8,7 +8,7 @@ export function normalizeDisposition(value: unknown, legacyScore?: number | null
   return Number(legacyScore || 0) >= 7 ? 'retain' : 'undecided'
 }
 
-export async function recordLearningEvent(DB: D1Database, input: {
+type LearningEventInput = {
   eventType: string
   actorType: 'user' | 'system' | 'agent'
   evidenceWeight?: number
@@ -25,8 +25,10 @@ export async function recordLearningEvent(DB: D1Database, input: {
   explicit?: boolean
   origin?: string
   payload?: unknown
-}) {
-  await DB.prepare(`INSERT OR IGNORE INTO learning_events
+}
+
+export function buildLearningEventStatement(DB: D1Database, input: LearningEventInput) {
+  return DB.prepare(`INSERT OR IGNORE INTO learning_events
     (id,idempotency_key,event_type,actor_type,evidence_weight,thread_id,recommendation_id,unit_id,session_id,evidence_id,pick_id,reason_code,signal_scope,signal_value,is_explicit,origin,payload_json,schema_version)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,2)`).bind(
       makeId('event'), input.idempotencyKey, input.eventType, input.actorType,
@@ -35,7 +37,11 @@ export async function recordLearningEvent(DB: D1Database, input: {
       input.evidenceId || null, input.pickId || null, input.reasonCode || null,
       input.signalScope || 'none', input.signalValue == null ? null : Number(input.signalValue),
       input.explicit ? 1 : 0, input.origin || 'learning_core', JSON.stringify(input.payload || {}),
-    ).run()
+    )
+}
+
+export async function recordLearningEvent(DB: D1Database, input: LearningEventInput) {
+  await buildLearningEventStatement(DB, input).run()
 }
 
 export async function createConsolidationRun(DB: D1Database, input: {

@@ -42,7 +42,7 @@ const agentRequest = (body: unknown) => agentApp.request('https://example.test/r
 
 test('agent capability catalog is structured, filterable, and safety-aware', () => {
   const catalog = buildCapabilityCatalog(sample)
-  assert.equal(AGENT_CONTRACT_VERSION, '2026-08-17')
+  assert.equal(AGENT_CONTRACT_VERSION, '2026-08-18')
   assert.equal(AGENT_PROTOCOL, 'learning-compass-agent-http/2')
   assert.equal(catalog.length, sample.length)
   assert.deepEqual(buildCapabilityCatalog(sample, { domain: 'capture', intent: 'update' }).map((item) => item.path), ['/capture/:id/triage'])
@@ -70,9 +70,37 @@ test('agent OpenAPI is generated from the same catalog with control schemas and 
 })
 
 test('verification readbacks resolve evidence, feedback, and batch targets exactly', () => {
-  assert.deepEqual(resolveCapabilityReadbacks('POST /learning/core/evidence', '/learning/core/threads/:thread_id', '/learning/core/evidence', '/learning/core/evidence', { thread_id: 'thread 1' }, { id: 'evidence-1' }), ['/learning/core/threads/thread%201'])
+  assert.deepEqual(resolveCapabilityReadbacks('POST /learning/core/evidence', '/learning/core/threads/:thread_id/path', '/learning/core/evidence', '/learning/core/evidence', { thread_id: 'thread 1' }, { id: 'evidence-1' }), ['/learning/core/threads/thread%201/path'])
+  assert.deepEqual(resolveCapabilityReadbacks('POST /learning/srs/review', '/learning/srs/cards/:id', '/learning/srs/review', '/learning/srs/review', { card_id: 'card 1' }, {}), ['/learning/srs/cards/card%201'])
   assert.deepEqual(resolveCapabilityReadbacks('POST /feedback/record', '/capture/:id/record', '/feedback/record', '/feedback/record', {}, { source: { id: 'rec-1' } }), ['/capture/rec-1/record'])
   assert.deepEqual(resolveCapabilityReadbacks('POST /recommendations/map', '/capture/:id/record', '/recommendations/map', '/recommendations/map', { ids: ['rec-1', 'rec-2'] }, {}), ['/capture/rec-1/record', '/capture/rec-2/record'])
+})
+
+test('lesson source attachment requires a visible role and verified branch without polluting Inbox', () => {
+  const learningCore = readFileSync(new URL('../../src/api/learning-core.ts', import.meta.url), 'utf8')
+  const capabilities = readFileSync(new URL('../../src/services/agent-capabilities.ts', import.meta.url), 'utf8')
+  assert.match(learningCore, /valid non-pruned branch_id required/)
+  assert.match(learningCore, /learning_state='inbox' THEN 'attached'/)
+  assert.match(learningCore, /branch_id=excluded\.branch_id/)
+  assert.match(learningCore, /DELETE FROM thread_lesson_sources WHERE lesson_id=\? AND role=\? AND recommendation_id<>\?/)
+  assert.match(capabilities, /'POST \/learning\/core\/threads\/:id\/lessons\/:lessonId\/sources'/)
+  assert.match(capabilities, /\['recommendation_id', 'role', 'branch_id'\]/)
+})
+
+test('guarded agent mutations can call same-zone Worker routes in production', () => {
+  const wrangler = readFileSync(new URL('../../wrangler.toml', import.meta.url), 'utf8')
+  assert.match(wrangler, /global_fetch_strictly_public/)
+})
+
+test('feedback extraction follows disposition and source notes stay source-shaped', () => {
+  const product = readFileSync(new URL('../../src/api/product.ts', import.meta.url), 'utf8')
+  const jobs = readFileSync(new URL('../../src/api/jobs.ts', import.meta.url), 'utf8')
+  assert.match(product, /complete && \(disposition === 'retain' \|\| disposition === 'apply'\) \? id\('job'\) : null/)
+  assert.match(product, /knowledgeRequested \|\| body\.auto_enqueue === true/)
+  assert.doesNotMatch(product, /rating\.score >= 8/)
+  assert.doesNotMatch(product, /settings\.srs_drafts\.auto_extract/)
+  assert.match(jobs, /one or more complete source-shaped sections/)
+  assert.doesNotMatch(jobs, /complete bilingual English and Egyptian Arabic sections/)
 })
 
 test('agent context and tools enforce canonical v2 semantics', () => {
@@ -123,6 +151,8 @@ test('evidence mutation verifies the Thread, and failed post-commit readback rem
       method: 'POST',
       path: '/learning/core/evidence',
       idempotency_key: 'evidence-1',
+      confirm: true,
+      precondition: { path: '/learning/core/threads/thread-1/path', field: 'thread.id', equals: 'thread-1' },
       body: { thread_id: 'thread-1', evidence_type: 'application', result: 'pass' },
     })
     assert.equal(response.status, 201)

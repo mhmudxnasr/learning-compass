@@ -21,6 +21,8 @@ capture → curate → consume externally → reflect → extract notes
 
 Feedback never requests another recommendation automatically. Finishing one item should close the loop, not create an endless feed.
 
+Library → Reading journal provides a server-side KOReader bridge through Hardcover. An explicit sync mirrors books, quotes, and notes without exposing the token to the browser; choosing a valid Compass branch imports one book and its evidence into canonical D1 records.
+
 ## System shape
 
 ```text
@@ -50,6 +52,7 @@ The browser uses hash routes, so the Worker serves one application shell. The Wo
 | Pending offline mutations | IndexedDB until synchronized |
 | UI preferences and resumable client state | Local storage |
 | Extracted-note archive copies | Obsidian |
+| KOReader/Hardcover books and reading-journal mirror | Hardcover externally; mirrored in D1 until branch-gated import |
 | Product and API code | This repository |
 
 Obsidian is an export target, not a second writable database. It must never overwrite D1.
@@ -131,14 +134,23 @@ npm run dev:worker
 
 Open `http://127.0.0.1:8787`.
 
+### Install on Android
+
+Open the production site in Chrome on Android and choose **Install app**, either from the in-product install card or Chrome's menu. The installed app launches in its own window, accepts shared links through Android's share sheet, exposes Capture/Queue/Recall launcher shortcuts, keeps the application shell available offline, respects display cutouts and system safe areas, and continues queued writes after connectivity returns.
+
+HTML reading companions are cached automatically after their first successful online open. Reopening the same companion works offline without an extra control; unopened companions and PDFs still require a connection.
+
+The web app is the canonical Android experience. A Play Store package should use a Trusted Web Activity over this same PWA plus verified Digital Asset Links; do not fork the product into a separate WebView client.
+
 ### Local secrets
 
-Writes can be protected with `API_TOKEN`. Optional enrichment and delivery integrations use `GOOGLE_API_KEY` and `TELEGRAM_BOT_TOKEN`. Hermes owns live web research; the Worker receives and validates its source-grounded candidates. Put local values in `.dev.vars`, which is ignored by Git:
+Writes can be protected with `API_TOKEN`. Optional enrichment and delivery integrations use `GOOGLE_API_KEY`, `TELEGRAM_BOT_TOKEN`, and the server-only `HARDCOVER_API_TOKEN`. Hermes owns live web research; the Worker receives and validates its source-grounded candidates. Put local values in `.dev.vars`, which is ignored by Git:
 
 ```dotenv
 API_TOKEN="replace-with-a-local-secret"
 GOOGLE_API_KEY=""
 TELEGRAM_BOT_TOKEN=""
+HARDCOVER_API_TOKEN=""
 ```
 
 Never commit `.dev.vars`, `.env`, private keys, or API tokens.
@@ -283,7 +295,7 @@ Add offline mutation recovery, large-data tests, bilingual direction handling, r
 - Feedback processing does not request a new recommendation.
 - Completed sources can be explicitly attached to existing knowledge-map nodes; ambiguous matches stay unresolved instead of creating speculative branches.
 - An abstained Compass Pick with a verified or restricted reachable source can be explicitly added to the Queue anyway; the override bypasses only the automatic threshold, and the five-item Queue cap still applies.
-- One Lite Visual source creates one linked Arabic HTML/PDF pair from one complete canonical body and counts as one taste signal. Zero visuals is valid; stored palettes, generic mockups/widgets, transcript padding, and repeated decorative elements are forbidden.
+- One Lite Visual source creates one linked Arabic HTML/PDF reading-companion pair from one complete canonical body and counts as one taste signal. Text preserves the full explanation; visuals are selected where seeing improves understanding. Source-specific accessible color is encouraged, while prose dumps, image-only atlases, reusable themes, generic mockups/widgets, transcript padding, and repeated decorative elements are forbidden.
 - D1 remains canonical; R2 stores large artifacts; Obsidian remains an archive export.
 - Every registered destination resolves to a purposeful view.
 

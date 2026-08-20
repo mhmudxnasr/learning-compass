@@ -1,4 +1,6 @@
 import { formatDate as apiFormatDate, labelize } from '../../api'
+export { hasLessonStudyMaterial, lessonReadiness } from './lessonState'
+export type { LessonReadiness } from './lessonState'
 
 export { labelize }
 
@@ -65,8 +67,20 @@ export function threadHref(id: string) {
   return `#/learn/thread/${encodeURIComponent(id)}`
 }
 
+export function lessonHref(threadId: string, lessonId: string) {
+  return `#/learn/t/${encodeURIComponent(threadId)}/l/${encodeURIComponent(lessonId)}`
+}
+
+export function levelHref(threadId: string, levelId: string) {
+  return `#/learn/t/${encodeURIComponent(threadId)}/v/${encodeURIComponent(levelId)}`
+}
+
 export function noteHref(id: string) {
   return `#/learn/note/${encodeURIComponent(id)}`
+}
+
+export function cardHref(id: string) {
+  return `#/learn/card/${encodeURIComponent(id)}`
 }
 
 export function artifactHref(id: string) {

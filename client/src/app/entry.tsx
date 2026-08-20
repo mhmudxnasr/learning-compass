@@ -1,5 +1,6 @@
 import { render } from 'preact'
 import { App } from './App'
+import { initAndroidExperience } from './android'
 import { hydrateThemeFromServer, initTheme } from '../theme'
 import '../studio.css'
 
@@ -23,6 +24,7 @@ addEventListener('error', (event: ErrorEvent) => recoverFromStaleImport(event.me
 addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => recoverFromStaleImport(String(event.reason?.message || event.reason || '')))
 
 initTheme()
+initAndroidExperience()
 void hydrateThemeFromServer()
 
 render(<App />, document.getElementById('app')!)

@@ -546,16 +546,16 @@ function AtlasInspector({ node, model, pinned, onClose, onSelect, onExpand, onTo
   const children = model.children.get(node.id) || []
   const evidence = model.edges.filter((edge) => edge.relation_type !== 'hierarchy' && (edge.source_id === node.id || edge.target_id === node.id))
   return <aside class="atlas-panel" aria-label={`${nodeTitle(node)} details`}>
-    <div class="atlas-panel-head"><span>{nodeRound(node) || node.type || 'node'}</span><div><button onClick={onTogglePin} aria-label={pinned ? 'Unpin inspector' : 'Pin inspector'} class={pinned ? 'is-pinned' : ''}>{svgIcon('M12 17v5M7 3h10l-2 5 3 3H6l3-3-2-5Z')}</button><button onClick={onClose} aria-label="Close inspector">×</button></div></div>
+    <div class="atlas-panel-head"><span>{nodeRound(node) || node.type || 'node'}</span><div><button type="button" onClick={onTogglePin} aria-label={pinned ? 'Unpin inspector' : 'Pin inspector'} class={pinned ? 'is-pinned' : ''}>{svgIcon('M12 17v5M7 3h10l-2 5 3 3H6l3-3-2-5Z')}</button><button type="button" onClick={onClose} aria-label="Close inspector">×</button></div></div>
     <h2>{nodeTitle(node)}</h2>
     <p>{clusterFor(model, node.id)}</p>
     <div class="atlas-panel-stats"><span>{children.length}<small>children</small></span><span>{related.length}<small>links</small></span><span>{evidence.length}<small>evidence</small></span></div>
-    {children.length > 0 && <button class="atlas-expand" onClick={onExpand}>Expand next level <span>{children.length}</span></button>}
-    <section><div class="atlas-section-head"><h3>Connected branches</h3><span>{related.length}</span></div>{related.length ? <div class="atlas-related">{related.slice(0, 12).map((item) => <button onClick={() => onSelect(item.id)}><i /><span>{nodeRound(item) || item.type}</span><strong>{nodeTitle(item)}</strong></button>)}</div> : <p>No recorded connections.</p>}</section>
+    {children.length > 0 && <button type="button" class="atlas-expand" onClick={onExpand}>Expand next level <span>{children.length}</span></button>}
+    <section><div class="atlas-section-head"><h3>Connected branches</h3><span>{related.length}</span></div>{related.length ? <div class="atlas-related">{related.slice(0, 12).map((item) => <button type="button" key={item.id} onClick={() => onSelect(item.id)}><i /><span>{nodeRound(item) || item.type}</span><strong>{nodeTitle(item)}</strong></button>)}</div> : <p>No recorded connections.</p>}</section>
     <section><div class="atlas-section-head"><h3>Connection evidence</h3><span>{evidence.length}</span></div>{evidence.length ? <div class="atlas-evidence">{evidence.slice(0, 6).map((edge) => {
       const otherId = edge.source_id === node.id ? edge.target_id : edge.source_id
       const other = model.byId.get(otherId)
-      return <button onClick={() => onSelect(otherId)}><strong>{other ? nodeTitle(other) : 'Linked node'}</strong><span>{Math.round(Number(edge.confidence || 0) * 100)}% confidence</span></button>
+      return <button type="button" key={`${edge.source_id}:${edge.target_id}:${edge.relation_type}`} onClick={() => onSelect(otherId)}><strong>{other ? nodeTitle(other) : 'Linked node'}</strong><span>{Math.round(Number(edge.confidence || 0) * 100)}% confidence</span></button>
     })}</div> : <p>No explicit evidence links yet.</p>}</section>
   </aside>
 }
@@ -638,7 +638,7 @@ export default function AtlasPage() {
     const surface = compStyle.getPropertyValue('--studio-canvas').trim() || '#ffffff'
     const line = compStyle.getPropertyValue('--studio-seam').trim() || '#e2ddd2'
     const accent = compStyle.getPropertyValue('--studio-cypress').trim() || '#204936'
-    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.dataset.reducedMotion === 'true'
     const motionEnabled = atlas.animate && !reducedMotion
     const ns = atlas.node_size
     const lt = atlas.link_thickness
@@ -1207,7 +1207,7 @@ export default function AtlasPage() {
     return () => document.removeEventListener('fullscreenchange', onFsChange)
   }, [])
 
-  if (error) return <div class="error-state"><strong>Couldn’t load the Atlas.</strong><span>{error}</span><button onClick={() => location.reload()}>Retry</button></div>
+  if (error) return <div class="error-state"><strong>Couldn’t load the Atlas.</strong><span>{error}</span><button type="button" onClick={() => location.reload()}>Retry</button></div>
   if (!raw) return <div class="atlas-loading"><div /><span>Mapping knowledge clusters…</span></div>
   if (!model.nodes.length) return <div class="empty-state atlas-empty-state"><h1 class="visually-hidden">Atlas</h1><span class="empty-rule" /><h2>The Atlas has no mapped nodes</h2><p>Processed notes and branch changes will form your first constellation.</p></div>
 
@@ -1256,11 +1256,11 @@ export default function AtlasPage() {
                       onInput={(event) => setQuery((event.target as HTMLInputElement).value)}
                       placeholder="Search the map…"
                     />
-                    {query && <button onClick={() => setQuery('')} aria-label="Clear search">×</button>}
+                    {query && <button type="button" onClick={() => setQuery('')} aria-label="Clear search">×</button>}
                     {searchResults.length > 0 && (
                       <div class="atlas-search-results">
                         {searchResults.map((node) => (
-                          <button key={node.id} onClick={() => { focusNode(node.id); setShowControls(false) }}>
+                          <button type="button" key={node.id} onClick={() => { focusNode(node.id); setShowControls(false) }}>
                             <span>{nodeRound(node) || node.type}</span>
                             <strong>{nodeTitle(node)}</strong>
                             <small>{clusterFor(model, node.id)}</small>
@@ -1464,10 +1464,10 @@ export default function AtlasPage() {
 
           {/* Zoom and Fit Controls */}
           <div class="atlas-zoom-controls" aria-label="Map zoom controls">
-            <button onClick={() => viewport('in')} aria-label="Zoom in" title="Zoom in">+</button>
-            <button onClick={() => viewport('out')} aria-label="Zoom out" title="Zoom out">−</button>
-            <button onClick={() => viewport('fit')} aria-label="Fit graph to screen" title="Fit to view">{svgIcon('M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5')}</button>
-            <button class="atlas-fullscreen-btn" onClick={toggleFullscreen} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+            <button type="button" onClick={() => viewport('in')} aria-label="Zoom in" title="Zoom in">+</button>
+            <button type="button" onClick={() => viewport('out')} aria-label="Zoom out" title="Zoom out">−</button>
+            <button type="button" onClick={() => viewport('fit')} aria-label="Fit graph to screen" title="Fit to view">{svgIcon('M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5')}</button>
+            <button type="button" class="atlas-fullscreen-btn" onClick={toggleFullscreen} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
               {isFullscreen
                 ? svgIcon('M4 14h6v6M14 10h6V4M20 14h-6v6M10 4H4v6')
                 : svgIcon('M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7')

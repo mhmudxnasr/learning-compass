@@ -15,14 +15,16 @@ Every capture—including URL, text, PDF, HTML, video, Telegram, share-target, R
 The browser is the **Botanical Folio / Evidence Ledger**: one green-and-cream evidence studio with five stable root destinations, 11 grouped modes, and subordinate focus filters. The global route roots are:
 
 - `#/home` — Home / Today
-- `#/library` — Queue, Inbox, All sources, Files, Books, Collections, Archive
-- `#/learn` — Paths, Notes, Recall
+- `#/library` — Queue, Inbox, All sources, Files, Books, Reading journal, Collections, Archive
+- `#/learn` — Threads, Notes, Recall
 - `#/map` — Atlas, Branches, Balance
 - `#/settings` — Learning profile, Preferences, Data & recovery, System
 
 The five roots plus their grouped modes and focus filters are the complete global navigation contract. Sources, Learning Threads, Notes, Units, Recall Cards, branches, and artifacts use typed object routes inside their owning root so selection identity is preserved. Search opens the exact object result. Legacy hashes canonicalize to the nearest purposeful view without silently discarding an ID; an unknown hash renders a recovery state.
 
-On desktop the studio is a persistent root rail plus a working canvas and optional object inspector. There is no permanent context pane. On mobile and tablet the rail becomes a five-item bottom dock, with primary modes in an equal-width visible grid and subordinate filters as compact wrapping controls; the inspector becomes a full-height sheet or pushed detail view.
+On desktop the studio is a persistent root rail plus a working canvas and optional object inspector. Search, Capture to Inbox, and sync state live in that rail without becoming destinations. There is no permanent context pane. On mobile and tablet the rail becomes a five-item bottom dock with separate global Search and Capture utilities, primary modes in an equal-width visible grid, and subordinate filters as compact wrapping controls; the inspector becomes a full-height sheet or pushed detail view.
+
+On Android this same mobile client is installable as the canonical app: standalone window, launcher icon, Capture/Queue/Recall shortcuts, share-to-Inbox, push, safe-area layout, and an offline application shell. Installation is an explicit, dismissible user choice. A future Play Store build wraps the same origin as a verified Trusted Web Activity rather than duplicating the product in a generic WebView.
 
 ## Product behavior
 
@@ -32,11 +34,15 @@ On desktop the studio is a persistent root rail plus a working canvas and option
 - Ratings of 7–10 create editable SRS drafts. Approval is required before cards enter Review; approved cards use the versioned FSRS implementation and failed reviews never advance mastery.
 - Feedback distinguishes neutral Not now, explicit Bad fit with a reason, rating, disposition, and later learning evidence. Feedback processing never requests another recommendation automatically.
 - Recommendations are Thread-first and source-grounded. Compass can use fit, bridge, and challenge lanes; shadow serving remains gated by evidence quality. Mastered and consumed items, Mahmood’s explicit exclusions, and the five-item Queue contract are always enforced.
+- Thread levels report Study and Proof separately: completing lessons does not imply that the level evidence contract is satisfied. Every required proof action remains visible and recordable from the level finish line.
+- Lesson readiness is explicit. A lesson is Ready, In progress, Completed, or Needs material; authored lesson content or a verified linked source is required before the interface enables completion. Lesson context (`why_learn`, `why_now`, and `takeaway`) is part of the reading surface, while notes, files, and recall remain owned by the parent Level.
+- Library → Reading journal securely syncs KOReader-originated books, highlights, and notes already sent to Hardcover. It defaults to books with at least one journal entry; All books restores the full synced library. The journal screen is read-only apart from explicit synchronization.
 - Invisible AI may enrich, rank, classify, and explain, but it never rewrites user-authored reflection. Hermes changes to typed profile knowledge are auditable, confidence-aware, reversible, and never scheduled as autonomous curation.
+- Preferences begin with complete workspace styles and plain-language comfort controls, while theme, font, detailed typography, custom-system, and Map tuning use progressive disclosure. Theme, typography, density, corner, and reduced-motion preferences alter the whole studio, preserve usable contrast and focus, and persist across reloads. A server-saved custom palette is authoritative when custom appearance is active.
 
 ## Reading companions and ownership
 
-Lite Visual creates one Arabic canonical reading body and renders it as a linked HTML/PDF pair; books receive one pair per chapter with stable chapter metadata. Complete cached mining, semantic coverage, optional zero-asset Visual Mind, hard content/render validation, actual page inspection, automatic post-pass publication, and canonical record verification are required. Raw transcripts remain separate evidence and never inflate the reading body. No subjective QA score is stored and Notes Extractor is never chained automatically.
+Lite Visual creates one Arabic canonical reading companion and renders it as a linked HTML/PDF pair; books receive one pair per chapter with stable metadata. It combines complete source-faithful explanation with purposeful visuals where concepts become easier to see, using a source-specific narrative arc, editorial art direction, and accessible color strategy. Plain prose dumps, image-only atlases, repeated card templates, and decorative visuals fail the contract. Complete cached mining, semantic coverage, deterministic responsive/PDF validation, automatic post-pass publication, and canonical record verification are required. Raw transcripts remain separate evidence; no subjective QA score or vision-model inspection is used, and Notes Extractor never starts automatically.
 
 Real source URLs remain recommendations; owned PDFs, HTML, transcripts, and generated companions remain artifacts. Inside an explicit source-learning or companion request, Hermes chooses the smallest non-redundant media set and starting medium. This never runs as background generation.
 

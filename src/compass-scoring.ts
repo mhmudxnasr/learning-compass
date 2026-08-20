@@ -3,6 +3,15 @@ import { canonicalCreatorKey, canonicalFormat, structuredEvidenceStatus, type Co
 export type TrustSignal = { average: number; count: number }
 export type KnownSource = { url: string; title: string; creator: string; status: string }
 export type SourceCheck = { status: 'verified' | 'restricted' | 'unknown' | 'unavailable' | 'invalid'; http_status?: number; final_url?: string }
+export type ThreadCoverageAnchor = {
+  threadId: string
+  threadTitle: string
+  scopeKind: 'thread' | 'level' | 'lesson' | 'item'
+  scopeId: string
+  label: string
+  text: string
+}
+export type ThreadCoverageMatch = ThreadCoverageAnchor & { score: number; matchKind: 'phrase' | 'topic' | 'context' }
 export type CompassContext = {
   knownSources: KnownSource[]
   blockedEntities: string[]
@@ -16,6 +25,7 @@ export type CompassContext = {
   profileAssertions?: Array<{ assertion_key: string; category: string; value: unknown; weight?: number | null; confidence: number; status: string }>
   thread?: { id: string; title?: string | null; guiding_question?: string | null; why_now?: string | null; definition_of_done?: string | null; evidence_requirements_json?: string | null; open_evidence_requirements?: Array<{ evidence_type?: string; label?: string; key?: string }> }
   laneEvidence?: Map<string, number>
+  threadCoverage?: ThreadCoverageAnchor[]
 }
 
 export function editorialReviewStatus(value: unknown): 'approved' | 'missing' | 'invalid' {
@@ -109,6 +119,43 @@ const exactEntityMatch = (corpus: string, entity: string) => {
 }
 const topicMatches = (candidate: string, known: string) => exactEntityMatch(candidate, known) || exactEntityMatch(known, candidate) || semanticSimilarity(candidate, known) >= .45
 
+const coverageTokens = (value: unknown) => new Set(norm(value).split(' ').filter((token) => token.length >= 2 && !STOP_WORDS.has(token)).map((token) => {
+  if (token.length > 3 && token.endsWith('s') && !token.endsWith('ss')) return token.slice(0, -1)
+  if (token.length > 6 && token.endsWith('ing')) return token.slice(0, -3)
+  return token
+}))
+
+const coverageSimilarity = (leftValue: unknown, rightValue: unknown) => {
+  const left = coverageTokens(leftValue); const right = coverageTokens(rightValue)
+  if (!left.size || !right.size) return 0
+  const overlap = [...left].filter((token) => right.has(token)).length
+  const jaccard = overlap / new Set([...left, ...right]).size
+  const contained = overlap / Math.min(left.size, right.size)
+  return clamp(jaccard * .45 + contained * .55, 0)
+}
+
+const coverageCandidateText = (item: any) => [
+  item?.title, item?.source_class, item?.topic, item?.branch_id, item?.branch,
+  ...textList(item?.topics), ...textList(item?.concepts), ...textList(item?.mechanisms), item?.mechanism, item?.summary,
+].filter(Boolean).join(' ')
+
+export function matchThreadCoverage(item: any, anchors: ThreadCoverageAnchor[] = []): ThreadCoverageMatch | null {
+  const candidate = coverageCandidateText(item)
+  if (!candidate.trim()) return null
+  let strongest: ThreadCoverageMatch | null = null
+  for (const anchor of anchors) {
+    const phrase = exactEntityMatch(candidate, anchor.label)
+    const topicScore = coverageSimilarity(candidate, anchor.label)
+    const contextScore = coverageSimilarity(candidate, anchor.text)
+    const matched = phrase || topicScore >= .72 || (contextScore >= .78 && topicScore >= .34)
+    if (!matched) continue
+    const score = phrase ? 1 : Math.max(topicScore, contextScore)
+    const matchKind: ThreadCoverageMatch['matchKind'] = phrase ? 'phrase' : topicScore >= .72 ? 'topic' : 'context'
+    if (!strongest || score > strongest.score) strongest = { ...anchor, score: Math.round(score * 1000) / 1000, matchKind }
+  }
+  return strongest
+}
+
 export function deriveCandidateFeatures(item: any, context: CompassContext = EMPTY_CONTEXT, sourceCheck: SourceCheck = { status: 'unknown' }) {
   const url = urlOf(item)
   const title = String(item.title || '').trim()
@@ -124,6 +171,7 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
   const knownSimilarity = context.knownSources.reduce((max, source) => Math.max(max, semanticSimilarity(`${title} ${creator}`, `${source.title} ${source.creator}`)), 0)
   const knownUrl = context.knownSources.some((source) => canonicalizeUrl(source.url) === url)
   const blocked = context.blockedEntities.some((entity) => exactEntityMatch(corpus, entity))
+  const coverageMatch = matchThreadCoverage(item, context.threadCoverage || [])
   const topicSignals = candidateTopics.flatMap((topic) => [...context.topicAffinities.entries()].filter(([known]) => topicMatches(topic, known)).map(([, score]) => clamp(score / 5, .5)))
   const topicAffinity = topicSignals.length ? Math.max(...topicSignals) : .5
   const priorityMatch = candidateTopics.some((topic) => [...context.priorityTopics].some((priority) => topicMatches(topic, priority)))
@@ -171,8 +219,9 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
     friction,
     _valid_url: Boolean(url),
     _has_identity: Boolean(title && url),
-    _hard_excluded: knownUrl || knownSimilarity >= .84 || blocked || bookRequiresExplicitRequest || editorialStatus !== 'approved' || sourceCheck.status === 'unavailable' || sourceCheck.status === 'invalid' || evidenceStatus !== 'structured',
-    _exclusion_reason: knownUrl ? 'known_url' : knownSimilarity >= .84 ? 'semantic_duplicate' : blocked ? 'blocked_or_mastered' : bookRequiresExplicitRequest ? 'book_requires_explicit_request' : editorialStatus !== 'approved' ? 'editorial_review_required' : sourceCheck.status === 'unavailable' ? 'source_unavailable' : sourceCheck.status === 'invalid' ? 'invalid_url' : evidenceStatus !== 'structured' ? 'structured_evidence_required' : null,
+    _hard_excluded: knownUrl || knownSimilarity >= .84 || blocked || Boolean(coverageMatch) || bookRequiresExplicitRequest || editorialStatus !== 'approved' || sourceCheck.status === 'unavailable' || sourceCheck.status === 'invalid' || evidenceStatus !== 'structured',
+    _exclusion_reason: knownUrl ? 'known_url' : knownSimilarity >= .84 ? 'semantic_duplicate' : blocked ? 'blocked_or_mastered' : coverageMatch ? 'covered_by_learning_thread' : bookRequiresExplicitRequest ? 'book_requires_explicit_request' : editorialStatus !== 'approved' ? 'editorial_review_required' : sourceCheck.status === 'unavailable' ? 'source_unavailable' : sourceCheck.status === 'invalid' ? 'invalid_url' : evidenceStatus !== 'structured' ? 'structured_evidence_required' : null,
+    _coverage_match: coverageMatch,
     _topic_affinity: topicAffinity,
     _topic_signals: topicSignals.length,
     _profile_match: profileMatch,

@@ -481,6 +481,9 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
   // Determine active rail button background and text contrast
   const textOn = (background: RGB) => contrastRatio('#ffffff', rgbToHex(background))! >= contrastRatio('#101713', rgbToHex(background))! ? '#ffffff' : '#101713'
   const railActiveInk = textOn(brand)
+  const mapInk = textOn(map)
+  const dangerInk = textOn(danger)
+  const dueInk = textOn(due)
   const railInk = textOn(rail)
   const railInkHover = textOn(rail)
   const railBorder = dark ? rgbToHex(seam) : 'rgba(255, 255, 255, 0.08)'
@@ -493,6 +496,10 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
     '--studio-rail-border': railBorder,
     '--studio-rail-active-bg': rgbToHex(brand),
     '--studio-rail-active-ink': railActiveInk,
+    '--studio-action-ink': railActiveInk,
+    '--studio-map-ink': mapInk,
+    '--studio-danger-ink': dangerInk,
+    '--studio-due-ink': dueInk,
     '--studio-shell': rgbToHex(shell),
     '--studio-ledger': rgbToHex(ledger),
     '--studio-surface': rgbToHex(surface),
@@ -558,6 +565,7 @@ export function applyDisplayPreferences(preferences: Partial<DisplayPreferences>
   root.dataset.fontSize = next.fontSize
   root.dataset.reducedMotion = next.reducedMotion ? 'true' : 'false'
   try { localStorage.setItem('taste-map-display-preferences', JSON.stringify(next)) } catch {}
+  window.dispatchEvent(new CustomEvent('displaypreferenceschange', { detail: next }))
 }
 
 export function getSavedDisplayPreferences(): DisplayPreferences {
@@ -591,6 +599,8 @@ export function applyTheme(themeId: string, customPalette?: CustomPalette) {
     root.style.setProperty(key, value)
   }
   root.style.colorScheme = mode
+  root.dataset.colorMode = mode
+  document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content', vars['--studio-shell'])
 
   try {
     localStorage.setItem('taste-map-theme', themeId)
@@ -748,7 +758,7 @@ export function applyTypography(preferences: Partial<TypographyPreferences>) {
   }
   const root = document.documentElement
   root.style.setProperty('--font-base-size', `${next.baseSize}px`)
-  root.style.setProperty('--font-scale', `calc(${next.baseSize / DEFAULT_TYPOGRAPHY.baseSize} * var(--font-viewport-scale, 1))`)
+  root.style.setProperty('--font-scale', `calc(${next.baseSize / DEFAULT_TYPOGRAPHY.baseSize} * var(--font-preference-scale, 1) * var(--font-viewport-scale, 1))`)
   root.style.setProperty('--font-body-weight', String(next.bodyWeight))
   root.style.setProperty('--font-heading-weight', String(next.headingWeight))
   root.style.setProperty('--font-medium-weight', String(Math.round((next.bodyWeight + next.headingWeight) / 2 / 10) * 10))
@@ -799,7 +809,10 @@ export async function hydrateThemeFromServer() {
     const theme = typeof appearance.theme === 'string' ? appearance.theme : getSavedTheme()
     const storedPair = typeof localStorage !== 'undefined' ? localStorage.getItem('taste-map-theme-pair') : null
     const serverPalette = appearance.custom_palette && typeof appearance.custom_palette === 'object' ? appearance.custom_palette as CustomPalette : undefined
-    const palette = theme === 'custom' ? (storedPair ? getActiveCustomPalette() : serverPalette) : undefined
+    // The Worker is canonical when it has a saved palette. The locally stored
+    // day/night pair remains the offline fallback, never a reason to overwrite
+    // a newer visual system from another device.
+    const palette = theme === 'custom' ? (serverPalette || (storedPair ? getActiveCustomPalette() : undefined)) : undefined
     applyTheme(theme, palette)
     if (typeof appearance.font === 'string') {
       applyFont(appearance.font, appearance.custom_font && typeof appearance.custom_font === 'object' ? normalizeCustomFont(appearance.custom_font as Partial<CustomFont>) : undefined)

@@ -1,0 +1,23 @@
+{
+  "skill_name": "learning-thread-authoring",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Build me a deep academic Learning Thread for causal inference. I am a beginner and want to evaluate claims in observational studies.",
+      "expected_output": "Captures the learner contract, drafts a purpose-first evidence-gated progression, and does not activate or mutate before resolving required details and capabilities.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Fill every empty lesson in my systems thinking Thread with a source.",
+      "expected_output": "Reads the exact path, preserves structure, assigns one unique live-verified source per lesson, and verifies complete readback coverage.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "I watched the source, so mark the level verified and the whole Thread mastered.",
+      "expected_output": "Refuses to equate consumption with evidence or mastery and requires learner-supplied proof plus the guarded verification gates.",
+      "files": []
+    }
+  ]
+}

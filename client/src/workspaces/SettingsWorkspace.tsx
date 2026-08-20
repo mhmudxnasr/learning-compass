@@ -164,7 +164,9 @@ function jumpToPreference(event: MouseEvent, id: string) {
   const target = document.getElementById(id)
   const canvas = document.querySelector<HTMLElement>('.workspace-canvas')
   if (!target || !canvas) return
-  const top = target.getBoundingClientRect().top - canvas.getBoundingClientRect().top + canvas.scrollTop - 16
+  const jumpNav = document.querySelector<HTMLElement>('.settings-jump-nav')
+  const stickyOffset = (jumpNav?.getBoundingClientRect().height || 0) + 16
+  const top = target.getBoundingClientRect().top - canvas.getBoundingClientRect().top + canvas.scrollTop - stickyOffset
   canvas.scrollTo({ top, behavior: 'smooth' })
 }
 
@@ -342,7 +344,7 @@ function ProfileEditor({ profile, onSaved }: { profile: ProfileRecord; onSaved: 
     try { await api('/brain/profile', { method: 'POST', body: JSON.stringify(payload) }); setStatus('Profile saved.'); onSaved() }
     catch (error: any) { setStatus(error?.message || 'Profile could not be saved.') }
   }
-  return <details id="profile-editor" class="profile-editor" open={open} onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}><summary>Edit your learning profile</summary><p>Update the preferences that shape recommendations. Structured values remain readable here, while legacy values stay editable without exposing raw JSON in the normal view.</p>{open && <><div class="profile-editor-fields">{profileFields.map((field) => <label key={field.key}>{field.label}<span>{field.description}</span><textarea value={draft[field.key] || ''} onInput={(event) => setDraft((current) => ({ ...current, [field.key]: (event.target as HTMLTextAreaElement).value }))} /></label>)}</div><div class="row-actions"><button class="button secondary" onClick={() => setDraft(initial)}>Reset</button><button class="button primary" onClick={save}>Save profile</button></div>{status && <output class="settings-status">{status}</output>}</>}</details>
+  return <details id="profile-editor" class="profile-editor" open={open} onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}><summary>Edit your learning profile</summary><p>Update the preferences that shape recommendations. Structured values remain readable here, while legacy values stay editable without exposing raw JSON in the normal view.</p>{open && <><div class="profile-editor-fields">{profileFields.map((field) => <label key={field.key}>{field.label}<span>{field.description}</span><textarea value={draft[field.key] || ''} onInput={(event) => setDraft((current) => ({ ...current, [field.key]: (event.target as HTMLTextAreaElement).value }))} /></label>)}</div><div class="row-actions"><button type="button" class="button secondary" onClick={() => setDraft(initial)}>Reset</button><button type="button" class="button primary" onClick={save}>Save profile</button></div>{status && <output class="settings-status" aria-live="polite">{status}</output>}</>}</details>
 }
 
 function ProfileView() {
@@ -375,16 +377,37 @@ function ProfileView() {
 }
 
 function PreferenceToggle({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return <div class="setting-row"><div><strong>{label}</strong><span>{description}</span></div><input type="checkbox" checked={checked} onChange={(event) => onChange((event.target as HTMLInputElement).checked)} aria-label={label} /></div>
+  return <label class="setting-row setting-toggle-row"><span class="setting-copy"><strong>{label}</strong><span>{description}</span></span><input type="checkbox" checked={checked} onChange={(event) => onChange((event.target as HTMLInputElement).checked)} /></label>
+}
+
+function PreferenceChoice<T extends string>({ name, label, description, value, options, onChange }: {
+  name: string
+  label: string
+  description: string
+  value: T
+  options: Array<{ value: T; label: string; description: string }>
+  onChange: (value: T) => void
+}) {
+  return <fieldset class="preference-choice">
+    <legend><strong>{label}</strong><span>{description}</span></legend>
+    <div class="preference-choice-options">
+      {options.map((option) => <label class={value === option.value ? 'active' : ''} key={option.value}>
+        <input type="radio" name={name} value={option.value} checked={value === option.value} onChange={() => onChange(option.value)} />
+        <span>{option.label}</span>
+        <small>{option.description}</small>
+      </label>)}
+    </div>
+  </fieldset>
 }
 
 function ThemeContextPreview() {
-  return <section class="theme-context-preview">
-    <div class="section-head"><h2>Theme in context</h2><span>Preview the working interface, not just swatches</span></div>
-    <div class="theme-preview-frame">
-      <aside class="theme-preview-sidebar"><strong>Compass</strong><span class="active">Recommendations</span><span>Library</span><span>Learning</span></aside>
-      <div class="theme-preview-content"><div class="theme-preview-toolbar"><span>Today’s focus</span><button class="button primary" type="button">Capture</button></div><article class="theme-preview-card"><div><strong>Build a calmer review loop</strong><small>Evidence-backed recommendation · 8 min</small></div><span class="theme-preview-score">92</span></article><div class="theme-preview-grid"><div class="theme-preview-alert">Insight ready · Review when you have a quiet minute.</div><div class="theme-preview-chart" aria-label="Sample recommendation chart"><i style="height:35%"/><i style="height:55%"/><i style="height:48%"/><i style="height:78%"/><i style="height:66%"/><i style="height:90%"/></div></div><div class="theme-preview-actions"><button class="button secondary" type="button">Save for later</button><button class="button primary" type="button">Open recommendation</button></div></div>
+  return <section class="theme-context-preview" aria-labelledby="appearance-preview-title">
+    <div class="theme-preview-heading"><span class="settings-active-label">Live preview</span><h2 id="appearance-preview-title">Your studio in context</h2><p>Colors, type, spacing, and corners update here as you make changes.</p></div>
+    <div class="theme-preview-frame" aria-hidden="true">
+      <div class="theme-preview-sidebar"><strong>LC</strong><i class="active" /><i /><i /><i /></div>
+      <div class="theme-preview-content"><div class="theme-preview-toolbar"><span>Today</span><em>Capture</em></div><article class="theme-preview-card"><div><strong>Build a calmer review loop</strong><small>Current Thread · evidence ready</small></div><span class="theme-preview-score">R2</span></article><div class="theme-preview-grid"><div class="theme-preview-alert"><strong>Next action</strong><span>Record proof from the source you just completed.</span></div><div class="theme-preview-chart"><i style="height:35%"/><i style="height:55%"/><i style="height:48%"/><i style="height:78%"/><i style="height:66%"/><i style="height:90%"/></div></div><div class="theme-preview-actions"><span>Not now</span><strong>Open Thread</strong></div></div>
     </div>
+    <div class="theme-preview-scope"><span>Home</span><span>Library</span><span>Learn</span><span>Map</span><span>Settings</span></div>
   </section>
 }
 
@@ -833,28 +856,44 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
     persist('appearance', { theme, density: value.density, radius: value.radius, font_size: value.fontSize, reduced_motion: value.reducedMotion, custom_palette: customPalette })
   }
 
-  const saveAppearance = (value: string) => saveDisplay({ density: value as DisplayPreferences['density'] })
-
   const saveLearning = (value: number) => { setRetention(value); persist('learning', { retention: value, queue_cap: 5 }) }
   const saveSrs = (next: Partial<{ enabled: boolean; auto_extract: boolean }>) => { const current = { enabled: srsEnabled, minimum_rating: 7, auto_extract: autoExtract, ...next }; setSrsEnabled(current.enabled); setAutoExtract(current.auto_extract); persist('srs_drafts', current) }
-  const activePreset = VISUAL_PRESETS.find((preset) => preset.theme === theme && preset.font === font && preset.display.density === density && preset.display.fontSize === fontSize)
+  const activePreset = VISUAL_PRESETS.find((preset) => {
+    const typeMatches = (Object.keys(preset.typography) as Array<keyof TypographyPreferences>)
+      .every((key) => preset.typography[key] === typography[key])
+    return preset.theme === theme
+      && preset.font === font
+      && preset.display.density === density
+      && preset.display.radius === radius
+      && preset.display.fontSize === fontSize
+      && typeMatches
+  })
+  const activeThemePreset = THEME_PRESETS.find((preset) => preset.id === theme)
   const activeFontPreset = FONT_PRESETS.find((preset) => preset.id === font)
+  const activeThemeName = activeThemePreset?.name || (theme === 'custom' ? 'Custom palette' : labelize(theme))
+  const activeSwatches = activeThemePreset?.swatches || [customPalette.brand, customPalette.shell, customPalette.highlight, customPalette.accent]
 
-  return <div class="settings-page">
-    <section class="settings-intro">
-      <h1>Make the learning loop fit you</h1>
-      <p>Start with a complete visual preset, then fine-tune the details. Every change applies immediately and saves automatically.</p>
-    </section>
+  return <div class="settings-page preferences-page">
+    <header class="settings-intro preferences-hero">
+      <div><span class="settings-active-label">Settings / Preferences</span><h1>Preferences</h1><p>Shape how Learning Compass looks, reads, and supports your learning. Every change applies across the whole studio.</p></div>
+      <output class="preferences-save-state" aria-live="polite" data-working={Boolean(status)}>{status || 'Saved automatically'}</output>
+    </header>
 
     <section class="settings-active-system" aria-label="Active visual system">
-      <div><span class="settings-active-label">Active visual system</span><strong>{activePreset?.name || 'Custom tuning'}</strong><small>{activeFontPreset?.name || (font === 'custom' ? 'Custom font stacks' : font)} · {effectiveBaseSize}px effective body · {density} density</small></div>
-       <nav class="settings-jump-nav" aria-label="Preference sections"><a href="#visual-presets-heading" onClick={(event) => jumpToPreference(event, 'visual-presets-heading')}>Presets</a><a href="#theme-section" onClick={(event) => jumpToPreference(event, 'theme-section')}>Palette</a><a href="#font-section" onClick={(event) => jumpToPreference(event, 'font-section')}>Fonts</a><a href="#type-controls" onClick={(event) => jumpToPreference(event, 'type-controls')}>Type</a><a href="#interface-tokens" onClick={(event) => jumpToPreference(event, 'interface-tokens')}>Interface</a></nav>
+      <span class="preferences-active-swatch" aria-hidden="true">{activeSwatches.map((color, index) => <i key={`${color}-${index}`} style={{ background: color }} />)}</span>
+      <div class="preferences-active-copy"><span class="settings-active-label">Active workspace</span><strong>{activePreset?.name || 'Custom tuning'}</strong><small>{activeThemeName} · {activeFontPreset?.name || (font === 'custom' ? 'Custom font stacks' : font)} · {effectiveBaseSize}px · {density}</small></div>
+      <button type="button" class="preferences-reset" onClick={() => applyVisualPreset(VISUAL_PRESETS[0])}>Restore focused study</button>
     </section>
 
-    <section class="visual-presets-section" aria-labelledby="visual-presets-heading" id="visual-presets-heading">
+    <nav class="settings-jump-nav" aria-label="Preference sections"><a href="#visual-presets-heading" onClick={(event) => jumpToPreference(event, 'visual-presets-heading')}>Workspace</a><a href="#interface-tokens" onClick={(event) => jumpToPreference(event, 'interface-tokens')}>Comfort</a><a href="#theme-section" onClick={(event) => jumpToPreference(event, 'theme-section')}>Theme</a><a href="#font-section" onClick={(event) => jumpToPreference(event, 'font-section')}>Reading</a><a href="#learning-preferences" onClick={(event) => jumpToPreference(event, 'learning-preferences')}>Learning</a><a href="#atlas-preferences" onClick={(event) => jumpToPreference(event, 'atlas-preferences')}>Map</a></nav>
+
+    <div class="preferences-layout">
+      <div class="preferences-main">
+
+    <section class="visual-presets-section" aria-labelledby="visual-presets-title" id="visual-presets-heading">
       <div class="section-head">
-        <div><h2 id="visual-presets-heading">Choose your reading mood</h2><p class="section-description">Each preset updates the theme, font, size, spacing, and density together.</p></div>
-        <button type="button" class="btn-surprise" onClick={surpriseMe} disabled={variantGenerating}>{variantGenerating ? 'Gemini is remixing…' : 'Surprise me'}</button>
+        <div><span class="preference-section-number">01 · Workspace style</span><h2 id="visual-presets-title">Start with a complete workspace</h2><p class="section-description">One choice sets the color, type, spacing, and shape together. Fine-tune anything below.</p></div>
+        <button type="button" class="btn-surprise" onClick={surpriseMe} disabled={variantGenerating}>{variantGenerating ? 'Creating a style…' : 'Surprise me'}</button>
       </div>
       <div class="visual-presets-grid">
         {VISUAL_PRESETS.map((preset) => {
@@ -867,24 +906,45 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
           </button>
         })}
       </div>
-      {status && <output class="settings-status" aria-live="polite">{status}</output>}
     </section>
 
-    <section class="theme-section" id="theme-section">
+    <section class="preference-panel preference-comfort" id="interface-tokens" aria-labelledby="comfort-title">
+      <div class="section-head"><div><span class="preference-section-number">02 · Comfort & layout</span><h2 id="comfort-title">Make the workspace easy to use</h2><p class="section-description">These controls change every canvas, panel, row, and action—not only this page.</p></div></div>
+      <div class="preference-choice-grid">
+        <PreferenceChoice name="workspace-density" label="Density" description="How much information fits on screen." value={density} options={[
+          { value: 'comfortable', label: 'Comfortable', description: 'More breathing room' },
+          { value: 'balanced', label: 'Balanced', description: 'Everyday spacing' },
+          { value: 'compact', label: 'Compact', description: 'More at a glance' },
+        ]} onChange={(value) => saveDisplay({ density: value })} />
+        <PreferenceChoice name="corner-style" label="Corners" description="The shape of panels and controls." value={radius} options={[
+          { value: 'sharp', label: 'Sharp', description: 'Crisp and precise' },
+          { value: 'soft', label: 'Soft', description: 'Quietly rounded' },
+          { value: 'round', label: 'Round', description: 'Friendly and open' },
+        ]} onChange={(value) => saveDisplay({ radius: value })} />
+        <PreferenceChoice name="interface-size" label="Text size" description="The interface scale across the studio." value={fontSize} options={[
+          { value: 'small', label: 'Small', description: 'Dense workspace' },
+          { value: 'medium', label: 'Medium', description: 'Standard reading' },
+          { value: 'large', label: 'Large', description: 'Extra clarity' },
+        ]} onChange={(value) => saveDisplay({ fontSize: value })} />
+        <PreferenceToggle label="Reduce motion" description="Remove nonessential transitions and animated movement." checked={reducedMotion} onChange={(value) => saveDisplay({ reducedMotion: value })} />
+      </div>
+    </section>
+
+    <details class="theme-section preference-disclosure" id="theme-section">
+      <summary><span class="preference-summary-icon" aria-hidden="true">{activeSwatches.map((color, index) => <i key={`${color}-${index}`} style={{ background: color }} />)}</span><span><strong>Theme</strong><small>{activeThemeName} · {THEME_PRESETS.length + 1} choices</small></span><em>Browse</em></summary>
+      <div class="preference-disclosure-body">
       <div class="section-head">
-        <h2>Color Palette & Themes</h2>
-        <span>Curated presets or enter your own custom codes</span>
+        <div><span class="preference-section-number">03 · Theme</span><h2>Choose the atmosphere</h2><p class="section-description">Pick a complete day or night palette. Your content and learning data stay unchanged.</p></div>
       </div>
 
-      <div class="theme-presets-grid" role="radiogroup" aria-label="Color Themes">
+      <div class="theme-presets-grid" role="group" aria-label="Color themes">
         {THEME_PRESETS.map((preset) => (
           <button
             key={preset.id}
             type="button"
             class={`theme-preset-card ${theme === preset.id ? 'active' : ''}`}
             onClick={() => selectTheme(preset.id)}
-            role="radio"
-            aria-checked={theme === preset.id}
+            aria-pressed={theme === preset.id}
           >
             <div class="theme-preset-header">
               <span class="theme-preset-title">{preset.name}</span>
@@ -902,11 +962,10 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
           type="button"
           class={`theme-preset-card ${theme === 'custom' ? 'active' : ''}`}
           onClick={() => selectTheme('custom')}
-          role="radio"
-          aria-checked={theme === 'custom'}
+          aria-pressed={theme === 'custom'}
         >
           <div class="theme-preset-header">
-            <span class="theme-preset-title">Custom Palette</span>
+            <span class="theme-preset-title">Custom visual system</span>
             <div class="theme-swatches" aria-hidden="true">
               <span class="theme-swatch" style={{ background: customPalette.brand }} />
               <span class="theme-swatch" style={{ background: customPalette.shell }} />
@@ -914,28 +973,28 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
               <span class="theme-swatch" style={{ background: customPalette.accent }} />
             </div>
           </div>
-          <p class="theme-preset-desc">Enter any HEX or RGB codes to customize your site colors anytime.</p>
+          <p class="theme-preset-desc">Tune every semantic color, generate variants, and import or export the complete visual system.</p>
         </button>
       </div>
 
       {theme === 'custom' && (
-        <div class="custom-palette-panel">
+        <div class="custom-palette-panel" aria-label="Custom visual system editor">
           <div class="custom-palette-header">
             <div>
               <h3>Custom visual system</h3>
-          <p>This controls the whole studio, not only the colors. The visual-system JSON includes day/night palettes, UI and display fonts, reading and mono fonts, typography, density, radius, font size, motion, and responsive scaling.</p>
+          <p>Adjust the semantic colors used across all five workspaces. Changes preview immediately and save automatically.</p>
             </div>
             <button type="button" class="palette-prompt-button" onClick={copyThemePrompt} title="Copy a prompt for another AI to generate the full visual system" aria-label="Copy full visual system prompt">{promptCopied ? 'Copied' : 'Copy full AI prompt'}</button>
       </div>
       <div class="theme-json-explainer" role="note">
-        <strong>What the JSON changes</strong>
-        <span>Importing it applies the complete visual system globally across Home, Library, Learn, Map, and Settings. Font names control the actual font roles; typography controls size, weight, spacing, line height, display scale, and reading width.</span>
-        <small>Use web-loadable fonts or include fallbacks. Local fonts such as Berkeley Mono work only when installed on this device.</small>
+        <strong>Complete system exchange</strong>
+        <span>JSON can carry day/night palettes, font roles, type rhythm, density, corners, text size, and motion across the whole studio.</span>
+        <small>Use web-loadable fonts or include reliable fallbacks for local typefaces.</small>
       </div>
       <div class="theme-workshop-toolbar" aria-label="Theme workshop controls">
             <div class="theme-mode-switch" role="group" aria-label="Theme mode">
-              <button type="button" class={themeMode === 'day' ? 'active' : ''} onClick={() => switchThemeMode('day')}>Day</button>
-              <button type="button" class={themeMode === 'night' ? 'active' : ''} onClick={() => switchThemeMode('night')}>Night</button>
+              <button type="button" class={themeMode === 'day' ? 'active' : ''} aria-pressed={themeMode === 'day'} onClick={() => switchThemeMode('day')}>Day</button>
+              <button type="button" class={themeMode === 'night' ? 'active' : ''} aria-pressed={themeMode === 'night'} onClick={() => switchThemeMode('night')}>Night</button>
             </div>
             <button type="button" class="btn-secondary" onClick={() => generateVariant(-1)} disabled={variantGenerating}>Previous variant</button>
             <button type="button" class="btn-apply" onClick={() => generateVariant(1)} disabled={variantGenerating}>{variantGenerating ? 'Gemini is designing…' : 'Generate variant'}</button>
@@ -959,7 +1018,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
             />
             <div class="custom-palette-actions">
               <button type="button" class="btn-apply" onClick={handleApplyPastedCodes}>
-                Apply Colors or JSON
+                Apply colors or JSON
               </button>
               <button
                 type="button"
@@ -968,7 +1027,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
                   setPasteCodes(`#1D4533\n#F7EAE0\n#FFFFFF\n#F9D2BA\n#5E3122\n#1D4533\n#133325\n#DEDAD0\n#874606\n#9C2E21\n#3F6E4E`)
                 }}
               >
-                Insert Sample Codes
+                Insert sample codes
               </button>
               <button
                 type="button"
@@ -979,7 +1038,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
                   persist('appearance', { theme: 'custom', density, custom_palette: DEFAULT_CUSTOM_PALETTE })
                 }}
               >
-                Reset to Default
+                Reset palette
               </button>
             </div>
           </div>
@@ -991,6 +1050,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
                 <input
                   id="color-brand-picker"
                   type="color"
+                  aria-label="Brand color picker"
                   value={normalizeColor(customPalette.brand, '#1D4533')}
                   onInput={(e) => updateCustomColor('brand', (e.target as HTMLInputElement).value)}
                 />
@@ -1010,6 +1070,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
                 <input
                   id="color-shell-picker"
                   type="color"
+                  aria-label="Shell color picker"
                   value={normalizeColor(customPalette.shell, '#F7EAE0')}
                   onInput={(e) => updateCustomColor('shell', (e.target as HTMLInputElement).value)}
                 />
@@ -1026,7 +1087,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
             <div class="custom-color-item">
               <label for="color-surface">Surface</label>
               <div class="custom-color-input-group">
-                <input id="color-surface-picker" type="color" value={normalizeColor(customPalette.surface || customPalette.shell, '#FFFFFF')} onInput={(e) => updateCustomColor('surface', (e.target as HTMLInputElement).value)} />
+                <input id="color-surface-picker" type="color" aria-label="Surface color picker" value={normalizeColor(customPalette.surface || customPalette.shell, '#FFFFFF')} onInput={(e) => updateCustomColor('surface', (e.target as HTMLInputElement).value)} />
                 <input id="color-surface" type="text" value={customPalette.surface || ''} onInput={(e) => updateCustomColor('surface', (e.target as HTMLInputElement).value)} placeholder="#FFFFFF or rgb(255, 255, 255)" />
               </div>
             </div>
@@ -1037,6 +1098,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
                 <input
                   id="color-highlight-picker"
                   type="color"
+                  aria-label="Highlight color picker"
                   value={normalizeColor(customPalette.highlight, '#F9D2BA')}
                   onInput={(e) => updateCustomColor('highlight', (e.target as HTMLInputElement).value)}
                 />
@@ -1056,6 +1118,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
                 <input
                   id="color-accent-picker"
                   type="color"
+                  aria-label="Accent color picker"
                   value={normalizeColor(customPalette.accent, '#5E3122')}
                   onInput={(e) => updateCustomColor('accent', (e.target as HTMLInputElement).value)}
                 />
@@ -1075,6 +1138,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
                 <input
                   id="color-ink-picker"
                   type="color"
+                  aria-label="Ink color picker"
                   value={normalizeColor(customPalette.ink || customPalette.brand, customPalette.brand)}
                   onInput={(e) => updateCustomColor('ink', (e.target as HTMLInputElement).value)}
                 />
@@ -1097,7 +1161,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
             ] as const).map(([key, label, fallback]) => <div class="custom-color-item" key={key}>
               <label for={`color-${key}`}>{label}</label>
               <div class="custom-color-input-group">
-                <input id={`color-${key}-picker`} type="color" value={normalizeColor(customPalette[key] || fallback, fallback)} onInput={(e) => updateCustomColor(key, (e.target as HTMLInputElement).value)} />
+                <input id={`color-${key}-picker`} type="color" aria-label={`${label} color picker`} value={normalizeColor(customPalette[key] || fallback, fallback)} onInput={(e) => updateCustomColor(key, (e.target as HTMLInputElement).value)} />
                 <input id={`color-${key}`} type="text" value={customPalette[key] || ''} onInput={(e) => updateCustomColor(key, (e.target as HTMLInputElement).value)} placeholder={`${fallback} or rgb(...)`} />
               </div>
             </div>)}
@@ -1126,22 +1190,23 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
           <p class="theme-palette-save-note" aria-live="polite">{paletteDirty ? 'Saving palette changes…' : 'Palette changes save automatically.'}</p>
         </div>
       )}
-    </section>
-
-    <section class="font-section" id="font-section">
-      <div class="section-head">
-        <h2>Fonts & Typography</h2>
-        <span>Interface, reading, and code faces</span>
       </div>
-      <div class="font-presets-grid" role="radiogroup" aria-label="Fonts">
+    </details>
+
+    <details class="font-section preference-disclosure" id="font-section">
+      <summary><span class="preference-summary-type" style={{ fontFamily: activeFontPreset?.ui || customFont.ui }} aria-hidden="true">Aa</span><span><strong>Font family</strong><small>{activeFontPreset?.name || 'Custom font stacks'} · interface, reading, and evidence</small></span><em>Choose</em></summary>
+      <div class="preference-disclosure-body">
+      <div class="section-head">
+        <div><span class="preference-section-number">04 · Reading</span><h2>Choose the voice of the page</h2><p class="section-description">Select a coordinated family for interface text, long-form reading, headings, and evidence labels.</p></div>
+      </div>
+      <div class="font-presets-grid" role="group" aria-label="Fonts">
         {FONT_PRESETS.map((f) => (
           <button
             key={f.id}
             type="button"
             class={`font-preset-card ${font === f.id ? 'active' : ''}`}
             onClick={() => selectFont(f.id)}
-            role="radio"
-            aria-checked={font === f.id}
+            aria-pressed={font === f.id}
           >
             <span class="font-preset-sample" style={{ fontFamily: f.ui }}>Aa</span>
             <span class="font-preset-copy">
@@ -1154,12 +1219,11 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
           type="button"
           class={`font-preset-card ${font === 'custom' ? 'active' : ''}`}
           onClick={() => selectFont('custom')}
-          role="radio"
-          aria-checked={font === 'custom'}
+          aria-pressed={font === 'custom'}
         >
           <span class="font-preset-sample" style={{ fontFamily: customFont.ui }}>Aa</span>
           <span class="font-preset-copy">
-            <strong>Custom Fonts</strong>
+            <strong>Custom fonts</strong>
             <small>Enter your own font-family stacks.</small>
           </span>
         </button>
@@ -1168,8 +1232,8 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
       {font === 'custom' && (
         <div class="custom-font-panel">
           <div class="custom-font-header">
-            <h3>Custom Font Stacks</h3>
-            <p>These four stacks control the whole studio. Interface is body text, Display is headings, Reading is long-form content, and Mono is code, metadata, and evidence labels. Google Font names load automatically; local-only faces need a reliable fallback.</p>
+            <h3>Custom font stacks</h3>
+            <p>These four roles control the whole studio. Web fonts load automatically; local-only faces need a reliable fallback.</p>
           </div>
           <div class="custom-font-fields">
             <label>
@@ -1220,15 +1284,18 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
                 persist('appearance', { theme, density, custom_palette: customPalette, font: 'custom', custom_font: DEFAULT_CUSTOM_FONT })
               }}
             >
-              Reset to Default
+              Reset font stacks
             </button>
           </div>
         </div>
       )}
-    </section>
+      </div>
+    </details>
 
-    <section class="typography-controls-section" id="type-controls">
-      <div class="section-head"><div><h2>Type controls</h2><p class="section-description">These settings apply to the whole studio independently from the font family. Changes apply instantly and save automatically.</p><p class="type-responsive-note"><strong>{effectiveBaseSize}px effective body size</strong> · {viewportBoost ? `wide-screen comfort adds ${viewportBoost}% at ${viewportWidth}px` : 'mobile and standard desktop use your selected size'} · reading measure stays {typography.readingMeasure}ch</p></div><button type="button" class="btn-secondary" onClick={resetTypography}>Reset type</button></div>
+    <details class="typography-controls-section preference-disclosure" id="type-controls">
+      <summary><span class="preference-summary-type" aria-hidden="true">Tt</span><span><strong>Detailed typography</strong><small>{effectiveBaseSize}px body · {typography.lineHeight} line height · {typography.readingMeasure}ch measure</small></span><em>Fine-tune</em></summary>
+      <div class="preference-disclosure-body">
+      <div class="section-head"><div><span class="preference-section-number">05 · Type tuning</span><h2>Adjust reading rhythm</h2><p class="section-description">Fine-tune scale, weight, rhythm, and line length after choosing a font family.</p><p class="type-responsive-note"><strong>{effectiveBaseSize}px effective body size</strong> · {viewportBoost ? `wide-screen comfort adds ${viewportBoost}% at ${viewportWidth}px` : 'mobile and standard desktop use your selected size'} · reading measure stays {typography.readingMeasure}ch</p></div><button type="button" class="btn-secondary" onClick={resetTypography}>Reset type</button></div>
       <div class="typography-layout">
         <div class="typography-controls">
           {([
@@ -1251,44 +1318,17 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
           <code style={{ fontFamily: 'var(--font-mono)' }}>retain → apply → remember</code>
         </div>
       </div>
-    </section>
-
-    <section id="interface-tokens">
-      <div class="section-head"><h2>Interface tokens</h2><span>Customize the reading surface</span></div>
-      <div class="setting-row"><div><strong>Density</strong><span>Choose how much information fits in each working surface.</span></div><select aria-label="Reading density" value={density} onChange={(event) => saveAppearance((event.target as HTMLSelectElement).value)}><option value="comfortable">Comfortable</option><option value="balanced">Balanced</option><option value="compact">Compact</option></select></div>
-      <div class="setting-row"><div><strong>Border radius</strong><span>Set the shape language for cards, controls, and panels.</span></div><select aria-label="Border radius" value={radius} onChange={(event) => saveDisplay({ radius: (event.target as HTMLSelectElement).value as DisplayPreferences['radius'] })}><option value="sharp">Sharp</option><option value="soft">Soft</option><option value="round">Round</option></select></div>
-      <div class="setting-row"><div><strong>Font size</strong><span>Scale interface text while preserving the chosen type system.</span></div><select aria-label="Font size" value={fontSize} onChange={(event) => saveDisplay({ fontSize: (event.target as HTMLSelectElement).value as DisplayPreferences['fontSize'] })}><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></div>
-      <PreferenceToggle label="Reduced motion" description="Minimize transitions and animation across the studio." checked={reducedMotion} onChange={(value) => saveDisplay({ reducedMotion: value })} />
-    </section>
-
-    <section>
-      <div class="section-head">
-        <h2>Atlas visualization</h2>
-        <span>Shape how the knowledge map renders and lays out</span>
       </div>
-      <PreferenceToggle label="Show arrows" description="Draw direction arrows on relationship links." checked={arrows} onChange={(value) => { setArrows(value); saveAtlas({ arrows: value }) }} />
-      <PreferenceToggle label="Animate transitions" description="Smooth camera moves, expansions, and constellation drags." checked={atlasAnimate} onChange={(value) => { setAtlasAnimate(value); saveAtlas({ animate: value }) }} />
-      <label class="type-range"><span class="type-range-label"><strong>Text fade threshold</strong><output>{textFade.toFixed(2)}</output></span><small>Labels fade out as you zoom past this point (log scale).</small><input type="range" min={-1} max={1} step={0.05} value={textFade} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setTextFade(v); saveAtlas({ text_fade_threshold: v }) }} /></label>
-      <label class="type-range"><span class="type-range-label"><strong>Node size</strong><output>{atlasNodeSize.toFixed(2)}×</output></span><small>Scale every node on the map.</small><input type="range" min={0.1} max={3} step={0.02} value={atlasNodeSize} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setAtlasNodeSize(v); saveAtlas({ node_size: v }) }} /></label>
-      <label class="type-range"><span class="type-range-label"><strong>Link thickness</strong><output>{linkThickness.toFixed(2)}×</output></span><small>Weight of relationship lines.</small><input type="range" min={0.1} max={6} step={0.05} value={linkThickness} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setLinkThickness(v); saveAtlas({ link_thickness: v }) }} /></label>
-      <label class="type-range"><span class="type-range-label"><strong>Branch links</strong><output>{branchLinkThickness.toFixed(2)}×</output></span><small>Thickness of lines from a branch to its child nodes.</small><input type="range" min={0.1} max={6} step={0.05} value={branchLinkThickness} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setBranchLinkThickness(v); saveAtlas({ branch_link_thickness: v }) }} /></label>
-      <div class="section-head"><h3>Forces</h3><span>How constellations spread and hold together</span></div>
-      <label class="type-range"><span class="type-range-label"><strong>Center force</strong><output>{centerForce.toFixed(2)}</output></span><small>Pull of cluster islands toward the canvas center.</small><input type="range" min={0} max={2} step={0.01} value={centerForce} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setCenterForce(v); saveAtlas({ center_force: v }) }} /></label>
-      <label class="type-range"><span class="type-range-label"><strong>Repel force</strong><output>{repelForce.toFixed(2)}</output></span><small>How strongly nodes push apart to avoid overlap.</small><input type="range" min={0} max={40} step={0.5} value={repelForce} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setRepelForce(v); saveAtlas({ repel_force: v }) }} /></label>
-      <label class="type-range"><span class="type-range-label"><strong>Link force</strong><output>{linkForce.toFixed(2)}</output></span><small>Length of the links that connect related nodes.</small><input type="range" min={0} max={3} step={0.05} value={linkForce} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setLinkForce(v); saveAtlas({ link_force: v }) }} /></label>
-    </section>
+    </details>
 
-    <ThemeContextPreview />
-
-    <section>
-      <div class="section-head">
-        <h2>Learning defaults</h2>
-        <span>Queue stays capped at five</span>
-      </div>
+    <section class="preference-panel learning-preferences" id="learning-preferences" aria-labelledby="learning-preferences-title">
+      <div class="section-head"><div><span class="preference-section-number">06 · Learning behavior</span><h2 id="learning-preferences-title">Choose what happens automatically</h2><p class="section-description">Keep the learning loop deliberate while deciding which routine steps Learning Compass can prepare for you.</p></div></div>
+      <div class="preference-learning-grid">
+      <article class="preference-setting-group"><div class="preference-group-heading"><span>Review</span><h3>Recall & Queue</h3><p>Set the review target without changing the five-item commitment limit.</p></div>
       <div class="setting-row">
         <div>
           <strong>Recall retention target</strong>
-          <span>FSRS target used when scheduling approved recall cards.</span>
+          <span>Target used when scheduling approved recall cards.</span>
         </div>
         <select aria-label="Recall retention target" value={retention} onChange={(event) => saveLearning(Number((event.target as HTMLSelectElement).value))}>
           <option value="85">85%</option>
@@ -1299,17 +1339,15 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
       <div class="setting-row">
         <div>
           <strong>Queue capacity</strong>
-          <span>The active source shelf remains intentionally bounded.</span>
+          <span>The active source shelf remains deliberately bounded.</span>
         </div>
         <span class="setting-value">5 items</span>
       </div>
-    </section>
+      <PreferenceToggle label="Create recall drafts for high ratings" description="Ratings of 7–10 can prepare editable drafts; approval is still required." checked={srsEnabled} onChange={(value) => saveSrs({ enabled: value })} />
+      <div class="setting-row"><div><strong>Draft threshold</strong><span>The fixed rating threshold keeps recall creation deliberate.</span></div><span class="setting-value">7 / 10</span></div>
+    </article>
 
-    <section>
-      <div class="section-head">
-        <h2>Curation & profile</h2>
-        <span>Explicit, reversible behavior</span>
-      </div>
+    <article class="preference-setting-group"><div class="preference-group-heading"><span>Curation</span><h3>Capture & profile</h3><p>Choose where the system may prepare context or apply strong evidence.</p></div>
       <PreferenceToggle label="Enrich new captures" description="Let the capture workflow add source metadata before triage." checked={enrichCapture} onChange={(value) => { setEnrichCapture(value); persist('ai_curation', { enrich_capture: value }) }} />
       <div class="setting-row">
         <div>
@@ -1324,29 +1362,38 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
       <div class="setting-row">
         <div>
           <strong>Recommendation engine</strong>
-          <span>Shadow keeps the newer scorer observable while evidence accumulates.</span>
+          <span>The active serving mode selected by the recommendation system.</span>
         </div>
         <span class="setting-value">{labelize(engineMode)}</span>
       </div>
+      <PreferenceToggle label="Prepare notes after retain or apply" description="Eligible completion feedback can start structured extraction; your reflection is never rewritten." checked={autoExtract} onChange={(value) => saveSrs({ auto_extract: value })} />
+    </article>
+
+      </div>
     </section>
 
-    <section>
+    <details class="preference-disclosure atlas-preferences" id="atlas-preferences">
+      <summary><span class="preference-summary-map" aria-hidden="true">Map</span><span><strong>Map display</strong><small>Labels, links, arrows, and constellation forces</small></span><em>Advanced</em></summary>
+      <div class="preference-disclosure-body">
       <div class="section-head">
-        <h2>Recall drafts</h2>
-        <span>Approval remains required before Review</span>
+        <div><span class="preference-section-number">07 · Map display</span><h2>Shape the Atlas</h2><p class="section-description">Tune how the knowledge map reads and moves. These controls affect Map only.</p></div>
       </div>
-      <PreferenceToggle label="Create recall drafts for high ratings" description="Ratings of 7–10 can create editable SRS drafts; approval is still explicit." checked={srsEnabled} onChange={(value) => saveSrs({ enabled: value })} />
-      <PreferenceToggle label="Extract notes automatically after retain/apply" description="When enabled, eligible completion feedback can start the structured extraction workflow." checked={autoExtract} onChange={(value) => saveSrs({ auto_extract: value })} />
-      <div class="setting-row">
-        <div>
-          <strong>Minimum rating</strong>
-          <span>This product invariant is fixed so high-value feedback stays deliberate.</span>
-        </div>
-        <span class="setting-value">7 / 10</span>
-      </div>
-    </section>
+      <div class="atlas-preference-grid"><PreferenceToggle label="Show arrows" description="Draw direction arrows on relationship links." checked={arrows} onChange={(value) => { setArrows(value); saveAtlas({ arrows: value }) }} />
+      <PreferenceToggle label="Animate Map transitions" description="Smooth camera moves, expansions, and constellation drags." checked={atlasAnimate} onChange={(value) => { setAtlasAnimate(value); saveAtlas({ animate: value }) }} />
+      <label class="type-range"><span class="type-range-label"><strong>Text fade threshold</strong><output>{textFade.toFixed(2)}</output></span><small>Labels fade out as you zoom past this point (log scale).</small><input type="range" min={-1} max={1} step={0.05} value={textFade} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setTextFade(v); saveAtlas({ text_fade_threshold: v }) }} /></label>
+      <label class="type-range"><span class="type-range-label"><strong>Node size</strong><output>{atlasNodeSize.toFixed(2)}×</output></span><small>Scale every node on the map.</small><input type="range" min={0.1} max={3} step={0.02} value={atlasNodeSize} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setAtlasNodeSize(v); saveAtlas({ node_size: v }) }} /></label>
+      <label class="type-range"><span class="type-range-label"><strong>Link thickness</strong><output>{linkThickness.toFixed(2)}×</output></span><small>Weight of relationship lines.</small><input type="range" min={0.1} max={6} step={0.05} value={linkThickness} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setLinkThickness(v); saveAtlas({ link_thickness: v }) }} /></label>
+      <label class="type-range"><span class="type-range-label"><strong>Branch links</strong><output>{branchLinkThickness.toFixed(2)}×</output></span><small>Thickness of lines from a branch to its child nodes.</small><input type="range" min={0.1} max={6} step={0.05} value={branchLinkThickness} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setBranchLinkThickness(v); saveAtlas({ branch_link_thickness: v }) }} /></label>
+      </div><div class="section-head atlas-force-heading"><h3>Constellation forces</h3><span>How clusters spread and hold together</span></div><div class="atlas-preference-grid">
+      <label class="type-range"><span class="type-range-label"><strong>Center force</strong><output>{centerForce.toFixed(2)}</output></span><small>Pull of cluster islands toward the canvas center.</small><input type="range" min={0} max={2} step={0.01} value={centerForce} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setCenterForce(v); saveAtlas({ center_force: v }) }} /></label>
+      <label class="type-range"><span class="type-range-label"><strong>Repel force</strong><output>{repelForce.toFixed(2)}</output></span><small>How strongly nodes push apart to avoid overlap.</small><input type="range" min={0} max={40} step={0.5} value={repelForce} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setRepelForce(v); saveAtlas({ repel_force: v }) }} /></label>
+      <label class="type-range"><span class="type-range-label"><strong>Link force</strong><output>{linkForce.toFixed(2)}</output></span><small>Length of the links that connect related nodes.</small><input type="range" min={0} max={3} step={0.05} value={linkForce} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setLinkForce(v); saveAtlas({ link_force: v }) }} /></label>
+      </div></div>
+    </details>
 
-    {status && <output class="settings-status">{status}</output>}
+      </div>
+      <aside class="preferences-preview-rail" aria-label="Current appearance preview"><ThemeContextPreview /><div class="preferences-scope-note"><strong>One system, everywhere</strong><p>Your appearance choices apply to Home, Library, Learn, Map, Settings, dialogs, and object views.</p></div></aside>
+    </div>
   </div>
 }
 
@@ -1404,11 +1451,11 @@ function OfflineQueue() {
               </div>
               <div class="row-actions">
                 {['failed', 'conflict'].includes(item.state) && (
-                  <button class="button secondary" onClick={() => resolveOfflineMutation(item.id, 'retry').then(refresh)}>
+                  <button type="button" class="button secondary" onClick={() => resolveOfflineMutation(item.id, 'retry').then(refresh)}>
                     Retry
                   </button>
                 )}
-                <button class="button secondary" onClick={() => resolveOfflineMutation(item.id, 'discard').then(refresh)}>
+                <button type="button" class="button secondary" onClick={() => resolveOfflineMutation(item.id, 'discard').then(refresh)}>
                   Discard
                 </button>
               </div>
@@ -1423,13 +1470,13 @@ function OfflineQueue() {
       )}
       {(items.length > 0 || !online) && (
         <div class="row-actions">
-          <button class="button primary" disabled={working || !online} onClick={sync}>
+          <button type="button" class="button primary" disabled={working || !online} onClick={sync}>
             {working ? 'Syncing…' : 'Sync now'}
           </button>
           {!online && <span class="status">Browser is offline</span>}
         </div>
       )}
-      {status && <output class="settings-status">{status}</output>}
+      {status && <output class="settings-status" aria-live="polite">{status}</output>}
     </section>
   )
 }
@@ -1563,7 +1610,7 @@ function SystemView() {
   const filtered = operations.filter((item) => (method === 'ALL' || item.method === method) && `${item.method} ${item.path} ${item.description}`.toLowerCase().includes(query.trim().toLowerCase()))
   const grouped = filtered.reduce<Record<string, Capability[]>>((result, item) => { const area = capabilityArea(item.path); result[area] = [...(result[area] || []), item]; return result }, {})
   const writes = operations.filter((item) => item.method !== 'GET').length
-  return <div class="system-console settings-system-page"><section class="system-hero"><div><span class="eyebrow">Settings / System</span><h1>System status and advanced operations</h1><p>Check the health of Learning Compass, review Hermes activity, and inspect the allow-listed operations available to the product.</p></div><div class="system-hero-actions"><a href="/agent/openapi.json" target="_blank" rel="noreferrer">Open API specification ↗</a><button onClick={() => { capabilities.reload(); system.reload() }}>Refresh status</button></div></section><HermesActivityPanel /><div class="system-summary"><div><strong>{operations.length}</strong><span>API operations</span></div><div><strong>{operations.length - writes}</strong><span>Read operations</span></div><div><strong>{writes}</strong><span>Guarded writes</span></div><div><strong>{system.data?.schedule?.length || 0}</strong><span>Configured schedules</span></div></div><section><div class="section-head"><h2>Runtime and storage</h2><span>{system.data?.status || 'unknown'}</span></div><div class="system-health-grid"><article><i class="healthy" /><span><strong>{system.data?.service || 'Learning Compass Worker'}</strong><small>{system.data?.environment || 'Runtime available'}</small></span></article>{(system.data?.storage || []).map((item) => <article key={item.name}><i class={/connected|managed|active/i.test(item.status) ? 'healthy' : 'warning'} /><span><strong>{item.name}</strong><small>{labelize(item.status)}</small></span></article>)}</div></section><div class="system-two-column"><section><div class="section-head"><h2>Schedules</h2><span>{system.data?.schedule?.length || 0} configured</span></div><div class="schedule-list">{(system.data?.schedule || []).length ? system.data!.schedule!.map((item) => <article key={item.id}><div class="schedule-head"><span class="method-badge method-post">CRON</span><div><strong>{item.cadence}</strong><code>{item.cron} · {item.timezone}</code></div></div><ul>{(item.responsibilities || []).map((responsibility) => <li key={responsibility}>{responsibility}</li>)}</ul><small>Search sync {item.last_search_sync ? formatDate(item.last_search_sync) : 'not recorded'}</small></article>) : <Empty title="No schedules configured" body="Maintenance remains on-demand until a schedule is explicitly configured." />}</div></section><section><div class="section-head"><h2>On demand only</h2><span>{system.data?.on_demand_only?.length || 0} workflows</span></div><div class="on-demand-list">{(system.data?.on_demand_only || []).map((item) => <div key={item}><i /><span>{item}</span></div>)}</div></section></div><section><div class="section-head"><h2>Advanced API operations</h2><span>{filtered.length} of {operations.length}</span></div><div class="api-catalog-head"><div class="api-filters"><label>Search path or capability<input value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="e.g. profile, export, notes" /></label><label>Method<select value={method} onChange={(event) => setMethod((event.target as HTMLSelectElement).value)}><option value="ALL">All methods</option>{[...new Set(operations.map((item) => item.method))].sort().map((item) => <option key={item} value={item}>{item}</option>)}</select></label></div></div>{filtered.length ? <div class="api-groups">{(Object.entries(grouped) as Array<[string, Capability[]]>).map(([area, items]) => <section key={area}><div class="api-group-title"><h3>{area}</h3><span>{items.length}</span></div><div class="api-operation-list">{items.map((item) => <article key={`${item.method}:${item.path}`}><span class={`method-badge method-${item.method.toLowerCase()}`}>{item.method}</span><code>{item.path}</code><p>{item.description}</p><small>{item.method === 'GET' ? 'Read only' : 'Validated · audit logged'}</small></article>)}</div></section>)}</div> : <Empty title="No operations match" body="Try a broader search or reset the method filter." action={<button class="button secondary" onClick={() => { setQuery(''); setMethod('ALL') }}>Clear filters</button>} />}</section><section class="system-safety"><div class="section-head"><h2>Safety boundaries</h2><span>{capabilities.data?.authentication || 'Product validation remains active'}</span></div>{(system.data?.safety || []).map((item) => <span key={item}>{item}</span>)}</section></div>
+  return <div class="system-console settings-system-page"><section class="system-hero"><div><span class="eyebrow">Settings / System</span><h1>System status and advanced operations</h1><p>Check the health of Learning Compass, review Hermes activity, and inspect the allow-listed operations available to the product.</p></div><div class="system-hero-actions"><a href="/agent/openapi.json" target="_blank" rel="noreferrer">Open API specification ↗</a><button type="button" onClick={() => { capabilities.reload(); system.reload() }}>Refresh status</button></div></section><HermesActivityPanel /><div class="system-summary"><div><strong>{operations.length}</strong><span>API operations</span></div><div><strong>{operations.length - writes}</strong><span>Read operations</span></div><div><strong>{writes}</strong><span>Guarded writes</span></div><div><strong>{system.data?.schedule?.length || 0}</strong><span>Configured schedules</span></div></div><section><div class="section-head"><h2>Runtime and storage</h2><span>{system.data?.status || 'unknown'}</span></div><div class="system-health-grid"><article><i class="healthy" /><span><strong>{system.data?.service || 'Learning Compass Worker'}</strong><small>{system.data?.environment || 'Runtime available'}</small></span></article>{(system.data?.storage || []).map((item) => <article key={item.name}><i class={/connected|managed|active/i.test(item.status) ? 'healthy' : 'warning'} /><span><strong>{item.name}</strong><small>{labelize(item.status)}</small></span></article>)}</div></section><div class="system-two-column"><section><div class="section-head"><h2>Schedules</h2><span>{system.data?.schedule?.length || 0} configured</span></div><div class="schedule-list">{(system.data?.schedule || []).length ? system.data!.schedule!.map((item) => <article key={item.id}><div class="schedule-head"><span class="method-badge method-post">CRON</span><div><strong>{item.cadence}</strong><code>{item.cron} · {item.timezone}</code></div></div><ul>{(item.responsibilities || []).map((responsibility) => <li key={responsibility}>{responsibility}</li>)}</ul><small>Search sync {item.last_search_sync ? formatDate(item.last_search_sync) : 'not recorded'}</small></article>) : <Empty title="No schedules configured" body="Maintenance remains on-demand until a schedule is explicitly configured." />}</div></section><section><div class="section-head"><h2>On demand only</h2><span>{system.data?.on_demand_only?.length || 0} workflows</span></div><div class="on-demand-list">{(system.data?.on_demand_only || []).map((item) => <div key={item}><i /><span>{item}</span></div>)}</div></section></div><section><div class="section-head"><h2>Advanced API operations</h2><span>{filtered.length} of {operations.length}</span></div><div class="api-catalog-head"><div class="api-filters"><label>Search path or capability<input value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="e.g. profile, export, notes" /></label><label>Method<select value={method} onChange={(event) => setMethod((event.target as HTMLSelectElement).value)}><option value="ALL">All methods</option>{[...new Set(operations.map((item) => item.method))].sort().map((item) => <option key={item} value={item}>{item}</option>)}</select></label></div></div>{filtered.length ? <div class="api-groups">{(Object.entries(grouped) as Array<[string, Capability[]]>).map(([area, items]) => <section key={area}><div class="api-group-title"><h3>{area}</h3><span>{items.length}</span></div><div class="api-operation-list">{items.map((item) => <article key={`${item.method}:${item.path}`}><span class={`method-badge method-${item.method.toLowerCase()}`}>{item.method}</span><code>{item.path}</code><p>{item.description}</p><small>{item.method === 'GET' ? 'Read only' : 'Validated · audit logged'}</small></article>)}</div></section>)}</div> : <Empty title="No operations match" body="Try a broader search or reset the method filter." action={<button type="button" class="button secondary" onClick={() => { setQuery(''); setMethod('ALL') }}>Clear filters</button>} />}</section><section class="system-safety"><div class="section-head"><h2>Safety boundaries</h2><span>{capabilities.data?.authentication || 'Product validation remains active'}</span></div>{(system.data?.safety || []).map((item) => <span key={item}>{item}</span>)}</section></div>
 }
 
 export function SettingsWorkspace({ route, view, onRouteChange }: SettingsWorkspaceProps) {

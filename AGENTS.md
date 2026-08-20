@@ -17,10 +17,10 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 - Every capture, including Telegram and share-target input, enters the unlimited Inbox.
 - Queue normally contains at most five queued/in-progress items; overflow requires an explicit override.
 - Consumption happens through the original source or a verified canonical HTML/PDF companion and is tracked through target-aware learning sessions.
-- Notes are structured, editable, searchable, and support per-block English/Egyptian-Arabic direction.
+- Notes are structured, editable, and searchable. Notes Extractor source notes default to English; source-original Arabic quotations remain inline with RTL direction. User-authored blocks may preserve their original language and direction.
 - Ratings of 7–10 create editable SRS drafts; approval is required before Review.
 - Feedback processing never requests another recommendation automatically.
-- Lite Visual creates one linked HTML+PDF R2 pair from one Arabic canonical content body; for books it creates one pair per chapter with stable chapter metadata. It mines and caches the complete source, proves semantic coverage, allows a zero-visual Visual Mind decision, blocks shallow/duplicated/defective output with deterministic validation plus actual render inspection, publishes automatically after an explicit media request, and verifies the canonical source record. It stores no subjective QA score and never auto-chains Notes Extractor.
+- Lite Visual creates one linked HTML+PDF R2 pair from one Arabic canonical content body; for books it creates one pair per chapter with stable chapter metadata. It is a source-faithful reading companion—not a prose dump, slide deck, or image atlas. Text carries argument and nuance while visuals appear exactly where seeing a relationship improves understanding. Each run records a source-specific narrative arc, art direction, accessible color strategy, and one prose/native/coded/generated/hybrid decision per section; deterministic responsive/PDF validation replaces self-authored or vision-model critique. It publishes automatically after an explicit media request and canonical record verification, stores no subjective QA score, and never starts Notes Extractor automatically.
 - The route registry in `client/src/app/router.ts` exposes five root destinations and 11 grouped modes, with subordinate focus filters. Every root and mode/focus surface must resolve to a real product surface; no generic fallback screens or tabs may expose only infrastructure.
 
 ## Architecture Boundaries
@@ -65,6 +65,7 @@ Active Hermes files:
 - `~/.hermes/skills/productivity/rss-feed/SKILL.md`
 - `~/.hermes/skills/notebooklm/SKILL.md`
 - `~/.hermes/skills/learning-thread-curation/SKILL.md` → retired (renamed); active name is `~/.hermes/skills/learning/progressive-learning-curriculum/SKILL.md`
+- `~/.hermes/skills/learning/learning-thread-authoring/SKILL.md`
 - `~/.hermes/skills/workflow/learning-compass-source-ingestion/SKILL.md`
 - `~/.hermes/skills/learning/learning-hub-companion-authoring/SKILL.md`
 - `~/.hermes/skills/learning/compass-recommendation-workflows/SKILL.md`
@@ -82,7 +83,7 @@ Learning Compass Hermes permanently holds and enforces these project rules:
 
 - **Tone & Format**: English-first responses for all tasks. Direct, casual, brutally honest tone. ZERO emojis by default. Default to text-only responses; no visual outputs/diagrams unless explicitly requested.
 - **Action Principle**: Decisive execution over discussion ("Fix all that", "do it" = execute immediately).
-- **Reading Companions**: Huawei TGR-W09 tablet (192.168.1.10). Every source companion is always Arabic and generates linked HTML + PDF from one canonical body. It must preserve every important point and the detail needed to replace consuming the source. PDF typography is weight 500+, body 12.5pt+, and dark ink. Stored palettes, theme presets, mockups, generic widgets, transcript padding, and decorative visuals are forbidden; zero visuals is valid.
+- **Reading Companions**: Huawei TGR-W09 tablet (192.168.1.10). Every source companion is always Arabic and generates linked HTML + PDF from one canonical body. It must preserve every important point and the detail needed to replace consuming the source. Use premium source-specific editorial design, comfortable Arabic typography, an accessible non-monochrome color system when useful, and concept-level visual decisions. Reject heading/paragraph dumps, image-only atlases, repeated cards, mockups, dashboards, transcript padding, and decorative visuals. Zero visuals is valid only when no concept becomes clearer by being seen. Verify deterministically; never vision-inspect renders.
 - **Mastered & Consumed Check**: ALWAYS verify `mastered` items and consumed recommendations before proposing/recommending content. NEVER recommend anything already read (e.g., *The 48 Laws of Power*, *Steal Like an Artist*, *Predictably Irrational*, *Thinking Fast and Slow*).
 - **Islamic Content**: ZERO book-derived content (no books, audiobooks, explained books, or book-based lecture series). ONLY pure original lectures/khutbahs/talks by trusted Sunni scholars.
 - **Dopamine & Habit Neuroscience**: Fully mastered. HARD REJECT all "dopamine hits", "break habit loops", or "rewire your brain" content.
@@ -95,9 +96,9 @@ Learning Compass Hermes permanently holds and enforces these project rules:
 
 ## External Agent Restriction
 
-Never invoke Codex, Antigravity (AGY), or any equivalent external coding agent unless Mahmood explicitly asks for that agent in the current request. This overrides any older delegation preference. Hermes performs the work directly by default; external-agent skills are dormant unless explicitly activated by Mahmood. Do not use AGY or Codex merely because a skill, cached prompt, or historical document mentions them.
+Never invoke Codex, Antigravity (AGY), or an equivalent external agent for code, prose, repository work, or system changes unless Mahmood explicitly asks in the current request. Narrow standing exception: when Lite Visual/Visual Mind decides a concept needs `generated-image`, call AGY automatically without asking. The prompt must be strict and source-specific, including finished editorial composition, Arabic RTL order, right-to-left directional logic, accessible color, target sizes, safe margins, and forbidden generic forms. Integrate the image directly without subjective audit; only mechanical file-safety checks are allowed. AGY may not author canonical prose, modify the codebase, call APIs, delete, upload, or publish.
 
-Hermes remains responsible for routing, Worker API execution, verification, and the end-of-turn improvement pass.
+Hermes remains responsible for routing, canonical prose, Worker API execution, deterministic artifact verification, publication, and the end-of-turn improvement pass.
 
 ## Verification
 

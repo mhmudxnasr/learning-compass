@@ -13,6 +13,7 @@ export type Bindings = {
   GOOGLE_API_KEY?: string
   GEMINI_API_KEY?: string
   OPENCODE_ZEN_API_KEY?: string
+  HARDCOVER_API_TOKEN?: string
   TELEGRAM_BOT_TOKEN?: string
   TELEGRAM_WEBHOOK_SECRET?: string
   TELEGRAM_ALLOWED_CHAT_ID?: string
@@ -127,6 +128,9 @@ export function normalizeUrlForDedup(url: string): string {
   let u = url.trim().replace(/\/$/, '')
   u = u.replace(/[?&](utm_[^=]+=[^&]*|fbclid=[^&]*|ref=[^&]*|feature=[^&]*|si=[^&]*|t=[^&]*)(&|$)/g, '$2')
   u = u.replace(/[?&]$/, '')
-  u = normalizeYouTubeUrl(u)
+  try {
+    const host = new URL(u).hostname.toLowerCase().replace(/^www\./, '')
+    if (host === 'youtube.com' || host === 'youtu.be') u = normalizeYouTubeUrl(u)
+  } catch { /* URL validation happens at the route boundary. */ }
   return u
 }

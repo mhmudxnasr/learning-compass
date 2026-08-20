@@ -40,6 +40,15 @@ export interface PathArtifact {
   size_bytes?: number | null
   created_at?: string | null
   metadata?: Record<string, unknown>
+  thread_id?: string | null
+  stage_id?: string | null
+  owner_scope?: LearningOwnerScope
+}
+
+export interface LearningOwnerScope {
+  kind: 'thread' | 'level'
+  id: string
+  title: string
 }
 
 export interface PathSource {
@@ -75,6 +84,7 @@ export interface NoteRecord {
   created_at?: string | null
   updated_at?: string | null
   sections: NoteSection[]
+  owner_scope?: LearningOwnerScope
 }
 
 export interface StageEvidence {
@@ -88,6 +98,14 @@ export interface StageEvidence {
   score?: number | null
   occurred_at?: string | null
 }
+
+export type NextAction =
+  | { kind: 'start'; label: string; stage_id?: string }
+  | { kind: 'lesson'; label: string; stage_id?: string; lesson_id: string }
+  | { kind: 'item'; label: string; stage_id?: string; item_id: string }
+  | { kind: 'project'; label: string; stage_id?: string; project_id: string }
+  | { kind: 'verify'; label: string; stage_id?: string }
+  | { kind: 'none'; label: string; stage_id?: string; reason?: string }
 
 export interface PathStage {
   id: string
@@ -105,8 +123,10 @@ export interface PathStage {
   evidence: StageEvidence[]
   notes: NoteRecord[]
   files: PathArtifact[]
+  cards: RecallCard[]
+  recall_drafts: RecallDraft[]
   progress: { completed: number; total: number }
-  next_action?: { kind: string; label: string; lesson_id?: string }
+  next_action?: NextAction
 }
 
 export interface ThreadLesson {
@@ -158,6 +178,8 @@ export interface PathResponse {
   requirements: Array<{ id: string; label?: string | null; status?: string | null; evidence_type?: string | null; stage_id?: string | null }>
   notes: NoteRecord[]
   files: PathArtifact[]
+  cards: RecallCard[]
+  recall_drafts: RecallDraft[]
 }
 
 export interface NotesResponse {
@@ -175,8 +197,10 @@ export interface RecallCard {
   due_at?: string | null
   last_reviewed_at?: string | null
   thread_id?: string | null
+  stage_id?: string | null
   unit_id?: string | null
   repetitions?: number | null
+  owner_scope?: LearningOwnerScope
 }
 
 export interface RecallDraft {
@@ -190,9 +214,11 @@ export interface RecallDraft {
   status: 'draft' | 'approved' | 'rejected' | string
   recommendation_id?: string | null
   thread_id?: string | null
+  stage_id?: string | null
   unit_id?: string | null
   created_at?: string | null
   updated_at?: string | null
+  owner_scope?: LearningOwnerScope
 }
 
 export interface DueResponse {

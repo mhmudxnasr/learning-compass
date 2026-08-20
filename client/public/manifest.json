@@ -1,18 +1,75 @@
 {
+  "id": "/",
   "name": "Learning Compass",
   "short_name": "Compass",
   "description": "A private evidence studio for deliberate learning.",
-  "start_url": "/",
+  "lang": "en",
+  "dir": "ltr",
+  "start_url": "/#/home",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#faf8f3",
-  "theme_color": "#16281f",
+  "theme_color": "#1b4332",
+  "categories": ["education", "productivity"],
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
   "icons": [
     {
-      "src": "/brand-mark.svg",
+      "src": "/icons/compass-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/compass-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/compass-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
-  ]
+  ],
+  "shortcuts": [
+    {
+      "name": "Capture to Inbox",
+      "short_name": "Capture",
+      "url": "/#/library?mode=triage&focus=inbox&action=capture",
+      "icons": [{ "src": "/icons/compass-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Open Queue",
+      "short_name": "Queue",
+      "url": "/#/library?mode=triage&focus=queue",
+      "icons": [{ "src": "/icons/compass-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Review recall",
+      "short_name": "Recall",
+      "url": "/#/learn?mode=practice&focus=recall",
+      "icons": [{ "src": "/icons/compass-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
+  "share_target": {
+    "action": "/api/share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "prefer_related_applications": false
 }

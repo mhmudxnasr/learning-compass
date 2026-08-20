@@ -4,7 +4,7 @@ import { Icon } from '../components/Icon'
 
 const groupMeta: Record<string, { label: string; href: (item: any) => string }> = {
   recs: { label: 'Sources', href: (item) => `#/library/source/${encodeURIComponent(item.id)}` },
-  threads: { label: 'Paths', href: (item) => `#/learn/thread/${encodeURIComponent(item.id)}` },
+  threads: { label: 'Threads', href: (item) => `#/learn/thread/${encodeURIComponent(item.id)}` },
   notes: { label: 'Notes', href: (item) => `#/learn/note/${encodeURIComponent(item.id)}` },
   artifacts: { label: 'Files', href: (item) => `#/library/artifact/${encodeURIComponent(item.id)}` },
   nodes: { label: 'Map', href: (item) => `#/map/node/${encodeURIComponent(item.id)}` },
@@ -150,13 +150,13 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
         <h2 id="search-dialog-title" class="visually-hidden">Search everything</h2>
         <header class="search-input">
           <Icon name="search" />
-          <label class="visually-hidden" for="search-query">Search sources, notes, paths, files, and map</label>
+          <label class="visually-hidden" for="search-query">Search sources, notes, Threads, files, and map</label>
           <input
             id="search-query"
             autoFocus
             value={query}
             onInput={(event) => setQuery((event.target as HTMLInputElement).value)}
-            placeholder="Search sources, notes, paths, files, and map…"
+            placeholder="Search sources, notes, Threads, files, and map…"
           />
           <kbd>Esc</kbd>
         </header>

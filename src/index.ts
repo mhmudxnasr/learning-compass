@@ -31,6 +31,7 @@ import compassApi from './api/compass'
 import analyticsApi from './api/analytics'
 import learningCoreApi from './api/learning-core'
 import annotationsApi from './api/annotations'
+import hardcoverApi from './api/hardcover'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -93,7 +94,7 @@ app.use('/*', async (c, next) => {
   if (c.req.method === 'GET' || c.req.method === 'HEAD') {
     const path = new URL(c.req.url).pathname
     const already = c.res.headers.get('Cache-Control')
-    const isAsset = path === '/' || path === '/ui' || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path.startsWith('/assets/')
+    const isAsset = path === '/' || path === '/ui' || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path.startsWith('/assets/') || path.startsWith('/icons/')
     if (!isAsset && !already) c.res.headers.set('Cache-Control', 'no-store')
   }
 })
@@ -114,7 +115,7 @@ app.use('/*', async (c, next) => {
   const method = c.req.method.toUpperCase()
   if (method === 'GET' || method === 'OPTIONS' || method === 'HEAD') {
     const path = new URL(c.req.url).pathname
-    if (path === '/' || path === '/sw.js' || path.startsWith('/assets/')) return next()
+    if (path === '/' || path === '/sw.js' || path.startsWith('/assets/') || path.startsWith('/icons/')) return next()
     const ip = getClientIp(c)
     const { allowed, retryAfter } = checkRateLimit(ip, false)
     if (!allowed) {
@@ -137,7 +138,7 @@ app.use('/*', async (c, next) => {
   const method = c.req.method.toUpperCase()
   if (method === 'OPTIONS' || method === 'HEAD') return next()
   const path = new URL(c.req.url).pathname
-  const staticPath = path === '/' || path === '/ui' || path === '/health' || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path === '/favicon.ico' || path === '/api/telegram' || path.startsWith('/assets/')
+  const staticPath = path === '/' || path === '/ui' || path === '/health' || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path === '/favicon.ico' || path === '/api/telegram' || path.startsWith('/assets/') || path.startsWith('/icons/')
   if (staticPath) return next()
   const token = c.req.header('x-api-token') || (!c.env.REQUIRE_API_AUTH ? c.req.query('token') : undefined)
   const expected = c.env.API_TOKEN
@@ -215,6 +216,7 @@ app.route('/html', vaultApi)
 app.route('/learning', learningApi)
 app.route('/learning/core', learningCoreApi)
 app.route('/annotations', annotationsApi)
+app.route('/hardcover', hardcoverApi)
 app.route('/stats', statsApi)
 app.route('/search', searchApi)
 app.route('/ai', enhanceApi)
@@ -249,30 +251,17 @@ app.get('/ui', async (c) => {
   return new Response(asset.body, { status: asset.status, headers })
 })
 app.get('/assets/*', (c) => c.env.ASSETS.fetch(c.req.raw))
+app.get('/icons/*', (c) => c.env.ASSETS.fetch(c.req.raw))
 app.get('/icon.svg', (c) => c.env.ASSETS.fetch(c.req.raw))
 app.get('/brand-mark.svg', (c) => c.env.ASSETS.fetch(c.req.raw))
 app.get('/favicon.ico', (c) => c.body(null, 204))
 
-// Manifest for PWA
-app.get('/manifest.json', (c) => {
-  c.header('Content-Type', 'application/manifest+json; charset=utf-8')
-  c.header('Cache-Control', 'public, max-age=86400')
-  return c.json({
-    name: 'Learning Compass',
-    short_name: 'Learning Compass',
-    start_url: '/',
-    display: 'standalone',
-    background_color: '#f6f6f3',
-    theme_color: '#4d628c',
-    description: 'Private learning operating system',
-    icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }],
-    share_target: {
-      action: '/api/share-target',
-      method: 'POST',
-      enctype: 'multipart/form-data',
-      params: { title: 'title', text: 'text', url: 'url' }
-    }
-  })
+app.get('/manifest.json', async (c) => {
+  const asset = await c.env.ASSETS.fetch(c.req.raw)
+  const headers = new Headers(asset.headers)
+  headers.set('Content-Type', 'application/manifest+json; charset=utf-8')
+  headers.set('Cache-Control', 'public, max-age=3600')
+  return new Response(asset.body, { status: asset.status, headers })
 })
 
 app.get('/sw.js', async (c) => {
@@ -295,13 +284,13 @@ app.post('/api/share-target', async (c) => {
 
     const candidateUrl = url || text
     if (!candidateUrl || !isValidUrl(candidateUrl)) {
-      return c.html('<html><head><meta http-equiv="refresh" content="0;url=/"></head><body>Redirecting…</body></html>')
+      return c.redirect('/#/library?mode=triage&focus=inbox', 303)
     }
 
     const vt = title || candidateUrl.split('/').pop()?.replace(/-/g, ' ') || 'Shared item'
     await createInboxCapture(DB, { source: candidateUrl, title: vt })
   } catch { /* best effort */ }
-  return c.html('<html><head><meta http-equiv="refresh" content="0;url=/"></head><body>Saved. Redirecting…</body></html>')
+  return c.redirect('/#/library?mode=triage&focus=inbox', 303)
 })
 
 // YouTube metadata enrichment

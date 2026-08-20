@@ -699,7 +699,7 @@ app.get('/branch-deck', async (c) => {
   }
 })
 
-// ---- /brain/branch-explanations — Apply AGY-authored explanations to waiting branches only.
+// ---- /brain/branch-explanations — Apply reviewed explanations to waiting branches only.
 // This is metadata-only: it never changes branch status, taste, priority, or evidence.
 app.post('/branch-explanations', async (c) => {
   const { DB } = c.env

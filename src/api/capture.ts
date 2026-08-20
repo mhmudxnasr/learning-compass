@@ -162,7 +162,7 @@ app.delete('/feeds/:id', async (c) => {
 
 app.post('/:id/triage', async (c) => {
   const body: { action?: 'queue' | 'exclude'; thread_id?: string; override_queue_cap?: boolean; reason?: string } = await c.req.json().catch(() => ({}))
-  const item = await c.env.DB.prepare(`SELECT r.id,r.video_url,r.video_title,m.branch_id,n.label branch_label,n.status branch_status
+  const item = await c.env.DB.prepare(`SELECT r.id,r.video_url,r.video_title,m.branch_id,n.id branch_exists,n.label branch_label,n.status branch_status
     FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
     LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(c.req.param('id')).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
@@ -189,6 +189,9 @@ app.post('/:id/triage', async (c) => {
     return c.json({ ok: true, state: 'excluded' })
   }
   if (body.action !== 'queue') return c.json({ error: 'action must be queue or exclude' }, 400)
+  if (!item.branch_id || !item.branch_exists) {
+    return c.json({ error: 'branch_mapping_required', message: 'Map this source to a verified knowledge branch before adding it to Queue.' }, 409)
+  }
   if (item.branch_id && String(item.branch_status || '').toLowerCase() === 'pruned') {
     return c.json({
       error: 'pruned_branch_conflict',
@@ -215,7 +218,7 @@ app.post('/:id/triage', async (c) => {
   return c.json({ ok: true, state: 'queued', ...(thread ? { thread_id: thread.id } : {}), ...decision })
 })
 
-// Apply a reviewed, high-confidence branch classification to an active Queue item.
+// Apply a reviewed, high-confidence branch classification before or during Queue work.
 // Metadata-only: this does not claim the source was consumed or learned.
 app.post('/:id/branch-map', async (c) => {
   try {
@@ -224,11 +227,12 @@ app.post('/:id/branch-map', async (c) => {
     if (confidence !== 'high') return c.json({ error: 'only high-confidence mappings may be applied automatically' }, 422)
     const item = await c.env.DB.prepare("SELECT r.id,m.learning_state FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=? AND r.status='active'").bind(c.req.param('id')).first<any>()
     if (!item) return c.json({ error: 'active recommendation not found' }, 404)
-    if (!['queued','in_progress'].includes(String(item.learning_state || 'queued'))) return c.json({ error: 'item is not active in Queue' }, 409)
+    if (!['inbox','queued','in_progress'].includes(String(item.learning_state || 'inbox'))) return c.json({ error: 'item is not active in Inbox or Queue' }, 409)
     const branch = await c.env.DB.prepare("SELECT id,label,status FROM tree_nodes WHERE id=? AND type IN ('root','category','branch','leaf')").bind(String(body.branch_id || '')).first<any>()
     if (!branch) return c.json({ error: 'branch not found' }, 404)
     if (String(branch.status || '').toLowerCase() === 'pruned') return c.json({ error: 'cannot map to a pruned branch', branch_id: branch.id }, 409)
-    await c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,branch_id,source_metadata_json,updated_at) VALUES (?,?,json_object('branch_mapping_confidence',?,'branch_mapping_reason',?,'branch_mapping_source','agy'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET branch_id=excluded.branch_id, source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json), updated_at=datetime('now')`).bind(item.id, branch.id, confidence, String(body.reason || '').slice(0, 500)).run()
+    const mappingSource = String(c.req.header('x-agent-name') || 'user_review').trim().slice(0, 100) || 'user_review'
+    await c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,branch_id,source_metadata_json,updated_at) VALUES (?,?,json_object('branch_mapping_confidence',?,'branch_mapping_reason',?,'branch_mapping_source',?),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET branch_id=excluded.branch_id, source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json), updated_at=datetime('now')`).bind(item.id, branch.id, confidence, String(body.reason || '').slice(0, 500), mappingSource).run()
     return c.json({ ok: true, recommendation_id: item.id, branch_id: branch.id, branch_label: branch.label, confidence })
   } catch (err) { return c.json(safeError('Queue branch mapping failed')(err), 500) }
 })

@@ -73,7 +73,7 @@ export function CaptureDialog({ open, onClose, onCaptured, initialSource = '' }:
         method: 'POST',
         body: JSON.stringify({ source: file?.name || source.trim(), artifact_id: artifact?.id }),
       })
-      setStatus(result?.duplicate ? 'Already captured. The existing source is safe.' : 'Captured to Queue.')
+      setStatus(result?.duplicate ? 'Already captured. The existing source is safe.' : 'Captured to Inbox.')
       setSource('')
       setFile(null)
       onCaptured()
@@ -104,11 +104,11 @@ export function CaptureDialog({ open, onClose, onCaptured, initialSource = '' }:
             <span>Global capture</span>
             <h2 id="capture-title">Capture a source.</h2>
           </div>
-          <button class="icon-button" onClick={onClose} aria-label="Close capture">
+          <button type="button" class="icon-button" onClick={onClose} aria-label="Close capture">
             <Icon name="close" />
           </button>
         </header>
-        <p>Links, text, and local files are captured directly to your learning queue.</p>
+        <p>Links, text, and local files land safely in your unlimited Inbox. Triage decides what deserves a place in Queue.</p>
         <form onSubmit={submit}>
           <label>
             Link or text
@@ -135,7 +135,7 @@ export function CaptureDialog({ open, onClose, onCaptured, initialSource = '' }:
                 Cancel
               </button>
               <button class="button primary" disabled={!source.trim() && !file} type="submit">
-                Capture to Queue
+                Capture to Inbox
               </button>
             </div>
           </footer>

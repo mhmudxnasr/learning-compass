@@ -10,11 +10,14 @@ const rootIcons: Record<RootKey, IconName> = { home: 'home', library: 'library',
  * active workspace and are announced in the command location; they do not
  * create another layer of global navigation or another page path.
  */
-export function StudioShell({ route, children, inspector, onInspectorClose }: {
+export function StudioShell({ route, children, inspector, onInspectorClose, onCapture, onSearch, online }: {
   route: Route
   children: ComponentChildren
   inspector?: ComponentChildren
   onInspectorClose?: () => void
+  onCapture: () => void
+  onSearch: () => void
+  online: boolean
 }) {
   const inspectorRef = useRef<HTMLElement>(null)
   const lastFocus = useRef<HTMLElement | null>(null)
@@ -55,13 +58,24 @@ export function StudioShell({ route, children, inspector, onInspectorClose }: {
 
     <aside class="root-rail" aria-label="Main navigation">
       <nav aria-label="Five workspaces">
+        <div class="rail-top" aria-label="Global tools">
+          <button type="button" class="rail-command" onClick={onSearch} aria-keyshortcuts="Control+K Meta+K" title="Search (Ctrl/Command K)"><Icon name="search" size={19}/><span class="visually-hidden">Search</span></button>
+          <button type="button" class="rail-command rail-command-capture" onClick={onCapture} title="Capture to Inbox"><Icon name="capture" size={20}/><span class="visually-hidden">Capture to Inbox</span></button>
+        </div>
         {roots.map((item) => <a key={item.key} href={routeHref(item.key)} class={route.root === item.key ? 'active' : ''} aria-current={route.root === item.key ? 'page' : undefined} title={item.label} aria-label={item.label}>
           <Icon name={rootIcons[item.key]} size={20}/>
         </a>)}
+        <div class="rail-bottom">
+          <span class="sync-pip" title={online ? 'Online and ready to sync' : 'Offline; changes will sync when the connection returns'}><i class={online ? 'online' : 'offline'}/><span class="visually-hidden">{online ? 'Online' : 'Offline'}</span></span>
+        </div>
       </nav>
     </aside>
 
     <section class="work-area">
+      <div class="mobile-utilities" aria-label="Workspace tools">
+        <button type="button" class="button secondary" onClick={onSearch} aria-keyshortcuts="Control+K Meta+K"><Icon name="search" size={16}/> Search</button>
+        <button type="button" class="button primary" onClick={onCapture}><Icon name="capture" size={17}/> Capture</button>
+      </div>
       {route.recoveredFrom && !route.notFound && <div class="route-notice" role="status">Old link restored to this workspace: <code>{route.recoveredFrom}</code></div>}
       {route.notFound && <div class="route-notice route-warning" role="alert">That destination no longer exists. You are in the nearest real workspace instead: <code>{route.recoveredFrom}</code></div>}
       <main id="workspace-canvas" class="workspace-canvas" tabIndex={-1}>{children}</main>

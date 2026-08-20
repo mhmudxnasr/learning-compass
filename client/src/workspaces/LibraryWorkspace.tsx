@@ -17,6 +17,7 @@ import {
   QueueView,
   type LibraryViewHandlers,
 } from './library/LibraryViews'
+import { HardcoverJournalView } from './library/HardcoverJournalView'
 import {
   asView,
   artifactSelection,
@@ -47,6 +48,7 @@ function endpointFor(view: string, objectType?: string, objectId?: string) {
     case 'all': return '/recommendations/list?limit=200'
     case 'files': return '/artifacts'
     case 'books': return '/recommendations/books'
+    case 'journal': return '/hardcover'
     case 'collections': return '/collections'
     case 'archive': return '/recommendations/list?limit=200&source=manual'
     default: return '/capture/queue'
@@ -85,9 +87,10 @@ const triageFilters: Array<{ key: Extract<LibraryView, 'queue' | 'inbox' | 'feed
   { key: 'feeds', label: 'Feeds', description: 'Subscriptions & articles' },
 ]
 
-const catalogFilters: Array<{ key: Extract<LibraryView, 'all' | 'books' | 'collections' | 'archive'>; label: string; description: string }> = [
+const catalogFilters: Array<{ key: Extract<LibraryView, 'all' | 'books' | 'journal' | 'collections' | 'archive'>; label: string; description: string }> = [
   { key: 'all', label: 'All', description: 'Every source' },
   { key: 'books', label: 'Books', description: 'Chapter-aware sources' },
+  { key: 'journal', label: 'Journal', description: 'KOReader via Hardcover' },
   { key: 'collections', label: 'Collections', description: 'Purposeful source groups' },
   { key: 'archive', label: 'Archive', description: 'Completed and excluded' },
 ]
@@ -100,7 +103,7 @@ const primaryModes: Array<{ key: LibraryPrimaryMode; label: string; description:
 
 function primaryModeFor(view: LibraryView, objectType?: LibraryObjectType): LibraryPrimaryMode {
   if (objectType === 'artifact' || view === 'files') return 'assets'
-  if (objectType === 'collection' || view === 'all' || view === 'books' || view === 'collections' || view === 'archive') return 'catalog'
+  if (objectType === 'collection' || view === 'all' || view === 'books' || view === 'journal' || view === 'collections' || view === 'archive') return 'catalog'
   return 'triage'
 }
 
@@ -143,7 +146,7 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
   const activeRoute = route || localRoute
   const normalizedMode = activeRoute.mode || activeRoute.query.get('mode') || ''
   const normalizedFocus = activeRoute.focus || activeRoute.query.get('focus') || ''
-  const compatibleView = normalizedFocus || (/^(queue|inbox|feeds|all|files|books|collections|archive)$/.test(normalizedMode) ? normalizedMode : '') || (/^(queue|inbox|feeds|all|files|books|collections|archive)$/.test(activeRoute.view) ? activeRoute.view : '')
+  const compatibleView = normalizedFocus || (/^(queue|inbox|feeds|all|files|books|journal|collections|archive)$/.test(normalizedMode) ? normalizedMode : '') || (/^(queue|inbox|feeds|all|files|books|journal|collections|archive)$/.test(activeRoute.view) ? activeRoute.view : '')
   const view = compatibleView ? asView(compatibleView) : normalizedMode === 'catalog' ? 'all' : normalizedMode === 'assets' ? 'files' : 'queue'
   const objectType = activeRoute.objectType as LibraryObjectType | undefined
   const endpoint = endpointFor(view, objectType, activeRoute.objectId)
@@ -410,6 +413,7 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
         view === 'all' ? <AllSourcesView data={loaded} handlers={handlers}/> :
           view === 'files' ? <FilesView data={loaded} handlers={handlers}/> :
             view === 'books' ? <BooksView data={loaded} handlers={handlers}/> :
+              view === 'journal' ? <HardcoverJournalView data={loaded} onReload={reload}/> :
               view === 'collections' ? <CollectionsView data={loaded} handlers={handlers}/> :
                 <ArchiveView data={loaded} handlers={handlers}/>
   return <div class="library-workspace workspace-surface">{modeSwitcher}{content}</div>

@@ -37,6 +37,7 @@ export type Route = {
   focus?: string
   objectType?: string
   objectId?: string
+  parentObjectId?: string
   query: URLSearchParams
   canonical: string
   recoveredFrom?: string
@@ -65,7 +66,7 @@ export const modes: Record<RootKey, ModeDefinition[]> = {
     },
     {
       key: 'catalog', label: 'Catalog', description: 'Find and filter source material.', defaultView: 'all', defaultFocus: 'all',
-      focuses: [focus('all', 'All sources', 'Every source in one searchable ledger.'), focus('books', 'Books', 'Books tracked deliberately, with chapter evidence.'), focus('collections', 'Collections', 'Focused groups of related learning objects.'), focus('archive', 'Archive', 'Completed and excluded sources kept for recovery.')],
+      focuses: [focus('all', 'All sources', 'Every source in one searchable ledger.'), focus('books', 'Books', 'Books tracked deliberately, with chapter evidence.'), focus('journal', 'Reading journal', 'KOReader books, highlights, and notes mirrored through Hardcover.'), focus('collections', 'Collections', 'Focused groups of related learning objects.'), focus('archive', 'Archive', 'Completed and excluded sources kept for recovery.')],
     },
     {
       key: 'assets', label: 'Assets', description: 'Open files and reading companions.', defaultView: 'files', defaultFocus: 'files',
@@ -143,6 +144,8 @@ const legacyDestinations: Record<string, LegacyDestination> = {
   '/library/all': { root: 'library', mode: 'catalog', focus: 'all' },
   '/curate/books': { root: 'library', mode: 'catalog', focus: 'books' },
   '/library/books': { root: 'library', mode: 'catalog', focus: 'books' },
+  '/library/journal': { root: 'library', mode: 'catalog', focus: 'journal' },
+  '/library/hardcover': { root: 'library', mode: 'catalog', focus: 'journal' },
   '/curate/collections': { root: 'library', mode: 'catalog', focus: 'collections' },
   '/library/collections': { root: 'library', mode: 'catalog', focus: 'collections' },
   '/curate/archive': { root: 'library', mode: 'catalog', focus: 'archive' },
@@ -184,6 +187,7 @@ const legacySegments: Record<RootKey, Record<string, LegacyDestination>> = {
     queue: { root: 'library', mode: 'triage', focus: 'queue' }, inbox: { root: 'library', mode: 'triage', focus: 'inbox' },
     feeds: { root: 'library', mode: 'triage', focus: 'feeds' }, rss: { root: 'library', mode: 'triage', focus: 'feeds' },
     all: { root: 'library', mode: 'catalog', focus: 'all' }, books: { root: 'library', mode: 'catalog', focus: 'books' },
+    journal: { root: 'library', mode: 'catalog', focus: 'journal' }, hardcover: { root: 'library', mode: 'catalog', focus: 'journal' },
     collections: { root: 'library', mode: 'catalog', focus: 'collections' }, archive: { root: 'library', mode: 'catalog', focus: 'archive' },
     files: { root: 'library', mode: 'assets', focus: 'files' },
   },
@@ -206,7 +210,7 @@ const legacySegments: Record<RootKey, Record<string, LegacyDestination>> = {
 const objectTypes: Record<RootKey, string[]> = {
   home: [],
   library: ['source', 'artifact', 'book', 'collection'],
-  learn: ['thread', 'note', 'unit', 'card'],
+  learn: ['thread', 'level', 'note', 'unit', 'card', 'lesson'],
   map: ['node', 'branch'],
   settings: [],
 }
@@ -299,6 +303,8 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const originalQuery = new URLSearchParams(queryString)
   const oldThread = rawPath.match(/^\/learn\/hub\/([^/]+)$/)
   const oldTypedPath = oldThread ? `/learn/thread/${oldThread[1]}` : rawPath
+  const lessonPath = oldTypedPath.match(/^\/learn\/(?:thread\/([^/]+)\/lesson|t\/([^/]+)\/l)\/([^/]+)$/)
+  const levelPath = oldTypedPath.match(/^\/learn\/(?:thread\/([^/]+)\/level|t\/([^/]+)\/v)\/([^/]+)$/)
   const exactAlias = legacyDestinations[rawPath]
   const pathParts = oldTypedPath.replace(/^\//, '').split('/').filter(Boolean)
   const candidateRoot = (exactAlias?.root || pathParts[0]) as RootKey
@@ -313,16 +319,20 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const pathSegment = pathParts[1]
   const segmentState = pathSegment ? (legacySegments[root][pathSegment] || undefined) : undefined
   const modePrefixedObject = !exactAlias && pathParts.length >= 4 && isModeOrLeaf(root, pathSegment)
-  const objectRoute = !exactAlias && (modePrefixedObject || (pathParts.length >= 3 && !isModeOrLeaf(root, pathSegment)))
-  const objectType = objectRoute ? pathParts[modePrefixedObject ? 2 : 1] : undefined
+  const objectRoute = !exactAlias && (Boolean(lessonPath) || Boolean(levelPath) || modePrefixedObject || (pathParts.length >= 3 && !isModeOrLeaf(root, pathSegment)))
+  const objectType = lessonPath ? 'lesson' : levelPath ? 'level' : objectRoute ? pathParts[modePrefixedObject ? 2 : 1] : undefined
   const objectStart = modePrefixedObject ? 3 : 2
   let objectId: string | undefined
+  let parentObjectId: string | undefined
   if (objectRoute) {
-    const rawSegment = pathParts.slice(objectStart).join('/')
+    const nestedPath = lessonPath || levelPath
+    const rawSegment = nestedPath ? nestedPath[3] : pathParts.slice(objectStart).join('/')
     try {
       objectId = decodeURIComponent(rawSegment)
+      parentObjectId = nestedPath ? decodeURIComponent(nestedPath[1] || nestedPath[2]) : undefined
     } catch {
       objectId = rawSegment
+      parentObjectId = nestedPath ? nestedPath[1] || nestedPath[2] : undefined
     }
   }
   const pathState = segmentState || (pathSegment && modeMeta(root, pathSegment) ? { root, mode: pathSegment } : undefined)
@@ -340,7 +350,9 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const canonical = invalidObject || invalidModePath
     ? canonicalRoot(root, defaultState(root).mode, defaultState(root).focus)
     : objectRoute
-      ? canonicalObject(root, objectType!, objectId || '', state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
+      ? lessonPath || levelPath
+        ? `/learn/t/${encodeURIComponent(parentObjectId || '')}/${lessonPath ? 'l' : 'v'}/${encodeURIComponent(objectId || '')}${queryFor(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)}`
+        : canonicalObject(root, objectType!, objectId || '', state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
       : canonicalRoot(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
   const rawComparable = rawPath + (queryString ? `?${queryString}` : '')
   const changed = canonical !== rawComparable
@@ -352,6 +364,7 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
     view: viewFor(root, state.mode, state.focus),
     objectType: invalidObject ? undefined : objectType,
     objectId: invalidObject ? undefined : objectId,
+    parentObjectId: invalidObject ? undefined : parentObjectId,
     query,
     canonical,
     recoveredFrom: recovered || changed ? rawPath : undefined,

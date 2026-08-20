@@ -4,8 +4,6 @@ import { advanceConsolidationForExtraction, failConsolidationForJob } from '../s
 import { applyFeedbackProposal } from '../services/intelligence-v2'
 
 const app = new Hono<{ Bindings: Bindings }>()
-const hasArabic = (value: string) => /[\u0600-\u06ff]/.test(value)
-const hasLatin = (value: string) => /[A-Za-z]/.test(value)
 const sqliteTime = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString().slice(0, 19).replace('T', ' ')
 const workerFrom = (c: any, body: any) => String(body?.worker || c.req.header('x-hermes-worker') || '').trim().slice(0, 120)
 const proposalFingerprint = (recommendationId: unknown, noteId: unknown, proposal: any) => [recommendationId || '', noteId || '', proposal.change_type || '', proposal.target_label || '', JSON.stringify(proposal.proposed)].join('|').toLowerCase().replace(/\s+/g, ' ').slice(0, 1800)
@@ -109,21 +107,27 @@ app.post('/:id/complete', async (c) => {
       const note = body.note
       if (job.job_type === 'extract_notes' && note.kind === 'reflection') return c.json({ error: 'extracted source notes must not replace personal reflections' }, 400)
       if (job.job_type === 'extract_notes') {
-        const required = ['foundation', 'case_studies', 'exploitation', 'defense']
         const sections = Array.isArray(note.sections) ? note.sections : []
-        const missing = required.filter((key) => !sections.some((section: any) => section.section_key === key && String(section.content || '').trim()))
-        const incomplete = sections.filter((section: any) => required.includes(section.section_key) && (!hasLatin(String(section.content || '')) || !hasArabic(String(section.content || '')))).map((section: any) => section.section_key)
-        if (missing.length || incomplete.length) return c.json({ error: 'Notes Extractor must return complete bilingual English and Egyptian Arabic sections', missing, incomplete }, 400)
+        const incomplete = sections.map((section: any, index: number) => ({ index, section })).filter(({ section }: any) => !String(section.section_key || '').trim() || !String(section.label || '').trim() || !String(section.content || '').trim()).map(({ index }: any) => index)
+        if (!sections.length || incomplete.length) return c.json({ error: 'Notes Extractor must return one or more complete source-shaped sections', incomplete }, 400)
       }
       const noteId = note.id || `note_${crypto.randomUUID()}`
+      const levelId = String(note.stage_id || payload.stage_id || '').trim().slice(0, 120) || null
+      let ownerThreadId = String(note.thread_id || payload.thread_id || '').trim().slice(0, 120) || null
+      if (levelId) {
+        const level = await DB.prepare(`SELECT thread_id FROM learning_path_stages WHERE id=?`).bind(levelId).first<any>()
+        if (!level) return c.json({ error: 'learning_level_not_found', stage_id: levelId }, 409)
+        if (ownerThreadId && ownerThreadId !== level.thread_id) return c.json({ error: 'learning_scope_mismatch', thread_id: ownerThreadId, stage_id: levelId }, 409)
+        ownerThreadId = level.thread_id
+      }
       const provenance = Array.isArray(note.provenance) ? note.provenance.slice(0, 20).map((item: any) => ({ annotation_id: String(item.annotation_id || '').slice(0, 120), reason: String(item.reason || '').slice(0, 500), confidence: item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))) })).filter((item: any) => item.annotation_id) : []
-      statements.push(DB.prepare(`INSERT OR REPLACE INTO notes (id,recommendation_id,title,kind,branch_id,source_url,source_artifact_id,status,provenance_json,updated_at) VALUES (?,?,?,?,?,?,?,'draft',?,datetime('now'))`).bind(noteId, note.recommendation_id || null, note.title, note.kind || 'guide', note.branch_id || null, note.source_url || null, note.source_artifact_id || null, JSON.stringify(provenance)))
+      statements.push(DB.prepare(`INSERT OR REPLACE INTO notes (id,recommendation_id,title,kind,branch_id,source_url,source_artifact_id,status,provenance_json,thread_id,stage_id,updated_at) VALUES (?,?,?,?,?,?,?,'draft',?,?,?,datetime('now'))`).bind(noteId, note.recommendation_id || null, note.title, note.kind || 'guide', note.branch_id || null, note.source_url || null, note.source_artifact_id || null, JSON.stringify(provenance), levelId ? null : ownerThreadId, levelId))
       for (const [index, section] of (note.sections || []).entries()) statements.push(DB.prepare(`INSERT OR REPLACE INTO note_sections (id,note_id,section_key,label,content,direction,position,updated_at) VALUES (?,?,?,?,?,?,?,datetime('now'))`).bind(`${noteId}_${section.section_key}`, noteId, section.section_key, section.label, section.content || '', section.direction || 'auto', index))
       const retain = payload.disposition === 'retain' || payload.disposition === 'apply' || (!payload.disposition && Number(payload.rating || 0) >= 7)
       if (retain) {
         for (const draft of body.srs_drafts || []) {
           const provenance = Array.isArray(draft.provenance) ? draft.provenance.slice(0, 20).map((item: any) => ({ annotation_id: String(item.annotation_id || '').slice(0, 120), reason: String(item.reason || '').slice(0, 500), confidence: item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))) })).filter((item: any) => item.annotation_id) : []
-          statements.push(DB.prepare(`INSERT INTO srs_drafts (id,recommendation_id,note_id,question,answer,topic,unit_id,thread_id,provenance_json) VALUES (?,?,?,?,?,?,?,?,?)`).bind(`draft_${crypto.randomUUID()}`, note.recommendation_id || null, noteId, draft.question, draft.answer, draft.topic || note.branch_id || 'general', draft.unit_id || null, payload.thread_id || null, JSON.stringify(provenance)))
+          statements.push(DB.prepare(`INSERT INTO srs_drafts (id,recommendation_id,note_id,question,answer,topic,unit_id,thread_id,stage_id,provenance_json) VALUES (?,?,?,?,?,?,?,?,?,?)`).bind(`draft_${crypto.randomUUID()}`, note.recommendation_id || null, noteId, draft.question, draft.answer, draft.topic || note.branch_id || 'general', draft.unit_id || null, ownerThreadId, levelId, JSON.stringify(provenance)))
         }
       }
     }

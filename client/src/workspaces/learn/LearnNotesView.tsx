@@ -1,9 +1,12 @@
+import { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { Empty, ErrorState, Loading } from '../../components/States'
+import { Icon } from '../../components/Icon'
 import { useData } from '../../app/useData'
 import { objectHref, routeHref } from '../../app/router'
 import { directionValue, formatDate, noteHref } from './helpers'
+import { buildNoteReaderDocument, directionForText, NoteReaderBlock } from './noteReader'
 import { Direction, NoteRecord, NotesResponse } from './types'
 
 export function LearnNotesView({ noteId }: { noteId?: string }) {
@@ -77,40 +80,59 @@ function NoteRow({ note, onDelete, deleting }: { note: NoteRecord; onDelete: () 
   return <li class="folio-object-row folio-note-row"><a href={noteHref(note.id)} aria-label={`Open note ${note.title}`}><span class="folio-row-mark folio-mark-note" aria-hidden="true" /><span class="folio-row-main"><span class="folio-row-type">{note.kind || 'Note'} · {note.status || 'draft'}</span><strong>{note.title}</strong><span class="folio-row-detail">{preview ? `${preview.slice(0, 190)}${preview.length > 190 ? '…' : ''}` : 'Empty note; open to write the first section.'}</span></span><span class="folio-row-tail"><span>{note.sections?.length || 0} sections</span><small>{formatDate(note.updated_at)}</small></span><span class="folio-row-chevron" aria-hidden="true">→</span></a><button class="folio-note-delete" type="button" onClick={onDelete} disabled={deleting} aria-label={`Delete note ${note.title}`}>{deleting ? 'Deleting…' : 'Delete'}</button></li>
 }
 
-function plainTextParagraphs(note: NoteRecord): string[] {
-  const content = (note.sections || []).map((section) => section.content || '').join('\n\n')
-  return content
-    .replace(/\r\n?/g, '\n')
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph
-      .replace(/^\s{0,3}#{1,6}\s+/gm, '')
-      .replace(/^\s{0,3}>\s?/gm, '')
-      .replace(/^\s*[-*]\s+/gm, '')
-      .replace(/^\s*-{4,}\s*$/gm, '')
-      .replace(/\*\*|==|`/g, '')
-      .replace(/\n+/g, ' ')
-      .trim())
-    .filter(Boolean)
+function inlineMarkdown(text: string): ComponentChildren[] {
+  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^\s)]+\)|\*[^*]+\*)/g
+  return text.split(pattern).filter(Boolean).map((part, index) => {
+    const link = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/)
+    if (link) return <a key={index} href={link[2]} target="_blank" rel="noreferrer">{link[1]}<Icon name="external" size={13} /></a>
+    if (part.startsWith('**') && part.endsWith('**')) return <strong key={index}>{part.slice(2, -2)}</strong>
+    if (part.startsWith('*') && part.endsWith('*')) return <em key={index}>{part.slice(1, -1)}</em>
+    if (part.startsWith('`') && part.endsWith('`')) return <code key={index}>{part.slice(1, -1)}</code>
+    return part
+  })
 }
 
-function directionForText(text: string): 'ltr' | 'rtl' {
-  return /[\u0590-\u08ff]/.test(text) ? 'rtl' : 'ltr'
+function ReaderBlock({ block }: { block: NoteReaderBlock }) {
+  if (block.kind === 'heading') {
+    const Heading = block.level === 2 ? 'h2' : 'h3'
+    return <Heading dir={block.direction}>{inlineMarkdown(block.text)}</Heading>
+  }
+  if (block.kind === 'quote') return <blockquote dir={block.direction}>{inlineMarkdown(block.text)}</blockquote>
+  if (block.kind === 'list') {
+    const items = block.items.map((item, index) => <li key={index}>{inlineMarkdown(item)}</li>)
+    return block.ordered
+      ? <ol dir={block.direction} start={block.start}>{items}</ol>
+      : <ul dir={block.direction}>{items}</ul>
+  }
+  return <p dir={block.direction}>{inlineMarkdown(block.text)}</p>
 }
 
-function NoteReader({ note, onEdit, onGenerate, generating }: { note: NoteRecord; onEdit: () => void; onGenerate: () => void; generating: boolean }) {
-  const paragraphs = plainTextParagraphs(note)
+function NoteReader({ note, onGenerate, generating }: { note: NoteRecord; onGenerate: () => void; generating: boolean }) {
+  const document = buildNoteReaderDocument(note)
+  const sourceUrl = note.source_url || document.contentSourceUrl
   return <article class="folio-reading-shell">
     <header class="folio-reading-header">
-      <p class="folio-object-kicker">Personal field note</p>
-      <h1>{note.title}</h1>
-      <div class="folio-note-meta"><span>{formatDate(note.updated_at)}</span>{note.source_url && <a href={note.source_url} target="_blank" rel="noreferrer">Open source ↗</a>}</div>
+      <div class="folio-reading-overline"><span>{note.kind === 'note' ? 'Personal field note' : 'Source note'}</span><span aria-hidden="true" /><span>{note.status || 'draft'}</span></div>
+      <h1 id="note-reading-title" dir={directionForText(note.title)}>{note.title}</h1>
+      <div class="folio-reading-meta">
+        <time dateTime={note.updated_at || undefined}>{formatDate(note.updated_at)}</time>
+        <span>{document.wordCount.toLocaleString()} words</span>
+        <span>{document.readingMinutes} min read</span>
+        {sourceUrl && <a href={sourceUrl} target="_blank" rel="noreferrer"><span>Open source</span><Icon name="external" size={15} /></a>}
+      </div>
     </header>
     <div class="folio-reading-body">
-      {paragraphs.length ? paragraphs.map((paragraph, index) => <p key={index} dir={directionForText(paragraph)}>{paragraph}</p>) : <Empty title="This note has no content" body="Switch to edit mode to start writing." />}
+      {document.sections.length ? document.sections.map((section, index) => <section class="folio-reading-section" dir={section.direction} key={section.key}>
+        <div class="folio-reading-margin" aria-hidden="true"><span>{String(index + 1).padStart(2, '0')}</span></div>
+        <div class="folio-reading-copy">
+          {section.label && !/^(notes?|body|content|imported(?: obsidian)? note)$/i.test(section.label.trim()) && <p class="folio-reading-section-label">{section.label}</p>}
+          {section.blocks.map((block, blockIndex) => <ReaderBlock block={block} key={blockIndex} />)}
+        </div>
+      </section>) : <Empty title="This note has no content" body="Switch to edit mode to start writing." />}
     </div>
     <footer class="folio-reading-footer">
-      <button class="button secondary" type="button" onClick={onGenerate} disabled={generating}>{generating ? 'Generating recall…' : 'Generate recall cards'}</button>
-      <button class="button primary folio-primary" type="button" onClick={onEdit}>Edit note</button>
+      <div><p class="folio-object-kicker">After reading</p><strong>Turn the strongest ideas into retrieval practice.</strong></div>
+      <button class="button secondary" type="button" onClick={onGenerate} disabled={generating}><Icon name="recall" size={17} />{generating ? 'Generating recall…' : 'Generate recall cards'}</button>
     </footer>
   </article>
 }
@@ -155,9 +177,9 @@ function NoteEditor({ note, onBack, onSaved }: { note?: NoteRecord; onBack: () =
   }
 
   if (!editing) return <section class="learn-workspace folio-learn folio-note-reading" aria-labelledby="note-reading-title">
-    <header class="folio-editor-head folio-reading-toolbar"><button class="folio-back-link" type="button" onClick={onBack}>← Notes</button><div class="folio-editor-actions"><button class="button secondary" type="button" onClick={generateRecall} disabled={generating}>{generating ? 'Generating…' : 'Generate cards'}</button><button class="button primary folio-primary" type="button" onClick={() => setEditing(true)}>Edit note</button></div></header>
+    <header class="folio-editor-head folio-reading-toolbar"><button class="folio-back-link" type="button" onClick={onBack}><Icon name="back" size={17} />Notes</button><button class="button secondary folio-reading-edit" type="button" onClick={() => setEditing(true)}><Icon name="edit" size={16} />Edit note</button></header>
     {message && <output class="folio-status" aria-live="polite">{message}</output>}
-    <NoteReader note={draft} onEdit={() => setEditing(true)} onGenerate={generateRecall} generating={generating} />
+    <NoteReader note={draft} onGenerate={generateRecall} generating={generating} />
   </section>
 
   const updateSection = (sectionKey: string, patch: Partial<{ content: string; direction: Direction }>) => setDraft((current) => current ? { ...current, sections: current.sections.map((section) => section.section_key === sectionKey ? { ...section, ...patch } : section) } : current)

@@ -19,7 +19,7 @@ const missing = required.filter(([file]) => !existsSync(join(root, file))).map((
 if (missing.length) throw new Error(`Missing Hermes contract files: ${missing.join(', ')}`)
 
 const migrationNames = readdirSync(join(root, 'migrations')).filter((name) => /^\d+_.*\.sql$/.test(name)).sort()
-const expectedMigrations = ['0000_brain.sql', '0001_production_rebuild.sql', '0002_rss_feeds.sql', '0003_feedback_review.sql', '0004_discovery_engine.sql', '0005_recommendation_notebook_url.sql', '0006_hermes_upgrade.sql', '0007_sync_notifications.sql', '0008_compass_cascade.sql', '0009_proposal_dedup.sql', '0010_compass_queue_fill.sql', '0011_compass_adaptive_learning.sql', '0012_context_brief.sql', '0013_book_visual_chapters.sql', '0014_canonical_activity_ledger.sql', '0015_outcome_learning_integrity.sql', '0016_learning_integrity.sql', '0017_consolidation_workflows.sql', '0018_learning_threads.sql', '0019_learning_units.sql', '0020_mastery_evidence.sql', '0021_learning_outcomes_v2.sql', '0022_fsrs_and_thread_backfill.sql', '0023_intelligence_v2.sql', '0024_memory_context.sql', '0025_compass_contextual_reranking.sql', '0026_semantic_retrieval.sql', '0027_feedback_observability.sql', '0027_recommendation_quality_enhancements.sql', '0028_compass_thompson_pessimistic_prior.sql', '0029_learning_hub.sql', '0030_hub_notes_files.sql', '0031_thread_courses.sql', '0032_lesson_sources.sql', '0033_lesson_orientation.sql', '0034_srs_lineage_and_tags.sql', '0035_recommendation_branch_and_round.sql', '0036_profile_automation_manual.sql', '0037_atomic_mutation_reservations.sql', '0038_hermes_brief_annotations_receipts.sql', '0039_telegram_webhook_dedup.sql']
+const expectedMigrations = ['0000_brain.sql', '0001_production_rebuild.sql', '0002_rss_feeds.sql', '0003_feedback_review.sql', '0004_discovery_engine.sql', '0005_recommendation_notebook_url.sql', '0006_hermes_upgrade.sql', '0007_sync_notifications.sql', '0008_compass_cascade.sql', '0009_proposal_dedup.sql', '0010_compass_queue_fill.sql', '0011_compass_adaptive_learning.sql', '0012_context_brief.sql', '0013_book_visual_chapters.sql', '0014_canonical_activity_ledger.sql', '0015_outcome_learning_integrity.sql', '0016_learning_integrity.sql', '0017_consolidation_workflows.sql', '0018_learning_threads.sql', '0019_learning_units.sql', '0020_mastery_evidence.sql', '0021_learning_outcomes_v2.sql', '0022_fsrs_and_thread_backfill.sql', '0023_intelligence_v2.sql', '0024_memory_context.sql', '0025_compass_contextual_reranking.sql', '0026_semantic_retrieval.sql', '0027_feedback_observability.sql', '0027_recommendation_quality_enhancements.sql', '0028_compass_thompson_pessimistic_prior.sql', '0029_learning_hub.sql', '0030_hub_notes_files.sql', '0031_thread_courses.sql', '0032_lesson_sources.sql', '0033_lesson_orientation.sql', '0034_srs_lineage_and_tags.sql', '0035_recommendation_branch_and_round.sql', '0036_profile_automation_manual.sql', '0037_atomic_mutation_reservations.sql', '0038_hermes_brief_annotations_receipts.sql', '0039_telegram_webhook_dedup.sql', '0040_learning_thread_progression.sql', '0041_level_recall_scope.sql', '0042_hardcover_reading_journal.sql']
 if (migrationNames.length !== expectedMigrations.length || expectedMigrations.some((name, index) => migrationNames[index] !== name)) throw new Error(`Migration order drift: expected ${expectedMigrations.join(', ')}, found ${migrationNames.join(', ')}`)
 
 const checks = [
@@ -94,10 +94,10 @@ for (const trigger of ['specialist evolution handoff', 'observed skill failure',
 if (contract.self_evolution_owner !== 'learning-compass-self-evolution') throw new Error('Canonical self-evolution owner drift')
 const activeSkills = contract.skill_graph?.active || []
 const retiredSkills = contract.skill_graph?.retired || []
-if (activeSkills.length !== 22 || new Set(activeSkills.map((skill) => skill.name)).size !== activeSkills.length) {
+if (activeSkills.length !== 25 || new Set(activeSkills.map((skill) => skill.name)).size !== activeSkills.length) {
   throw new Error('Canonical Hermes active skill graph is incomplete or duplicated')
 }
-for (const name of ['learning-compass-operating-system', 'learning-compass-self-evolution', 'learning-compass-site-operator', 'recommendations-worker-ops', 'taste-mapper', 'taste-rec', 'learning-notes-extractor', 'lite-visual', 'visual-mind', 'notebooklm', 'rss-feed', 'agent-cli-delegation', 'youtube-playlist-verification', 'progressive-learning-curriculum', 'learning-compass-source-ingestion', 'learning-hub-companion-authoring', 'compass-recommendation-workflows', 'hermes-configuration-operations', 'learning-compass-feedback-corrections', 'learning-compass-foundation-curation', 'learning-compass-job-backlog-operations', 'learning-compass-bridge']) {
+for (const name of ['learning-compass-operating-system', 'learning-compass-self-evolution', 'learning-compass-site-operator', 'recommendations-worker-ops', 'taste-mapper', 'taste-rec', 'learning-notes-extractor', 'lite-visual', 'visual-mind', 'notebooklm', 'rss-feed', 'agent-cli-delegation', 'youtube-playlist-verification', 'learning-thread-authoring', 'progressive-learning-curriculum', 'learning-compass-source-ingestion', 'learning-hub-companion-authoring', 'compass-recommendation-workflows', 'hermes-configuration-operations', 'learning-compass-feedback-corrections', 'learning-compass-foundation-curation', 'learning-compass-job-backlog-operations', 'learning-compass-bridge', 'hermes-learning-compass', 'epub-repair']) {
   if (!activeSkills.some((skill) => skill.name === name && skill.path && skill.role)) throw new Error(`Canonical active skill missing: ${name}`)
 }
 for (const name of ['taste-enhancer', 'compass-queue-fill', 'learning-compass-curator-policy', 'master-editorial-synthesis', 'learning-thread-curation']) {
@@ -120,6 +120,9 @@ if (existsSync(localSkillsRoot)) {
     const body = readFileSync(file, 'utf8')
     if (!body.includes(`name: ${skill.name}`)) throw new Error(`Hermes skill name/path drift: ${skill.name}`)
     if (!body.includes('## Evolution handoff')) throw new Error(`Hermes skill lacks evolution handoff: ${skill.name}`)
+    for (const forbidden of ['style_lock: paper=', '## Keep the skill current (mandatory)', 'save to Hermes memory as hard reject', 'pair upload, extraction,', 'agy CLI agent last', 'Every substantive section must be bilingual', 'ε=0.15', 'V2 remains shadow-only', 'POST /learning/log', 'Gemini API exclusively', "Scholar's Instrument", 'or the canonical direct route']) {
+      if (body.includes(forbidden)) throw new Error(`Stale Hermes skill contract in ${skill.name}: ${forbidden}`)
+    }
     if (skill.name === 'learning-compass-self-evolution') {
       for (const needle of ['## Failure-to-repair protocol', 'Reproduce it with the smallest safe replay', 'Add a regression test or deterministic validator', 'Do not close a reproducible repairable failure as `no_change`']) {
         if (!body.includes(needle)) throw new Error(`Hermes self-evolution repair protocol missing: ${needle}`)
@@ -158,6 +161,9 @@ if (JSON.stringify(contract.specialist_receipt) !== JSON.stringify(receipt)) thr
 const routeEntries = Object.entries(contract.route_ownership || {})
 if (!routeEntries.length || routeEntries.some(([route, rule]) => !route.includes(' ') || !rule?.owner || !rule?.permission)) {
   throw new Error('Route ownership/permission contract is incomplete')
+}
+for (const route of ['GET /compass/context', 'POST /compass/semantic/index', 'POST /compass/pick/:id/candidates', 'POST /capture/:id/branch-map']) {
+  if (!contract.route_ownership?.[route]?.owner) throw new Error(`Canonical route owner missing: ${route}`)
 }
 const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
   const file = join(dir, entry.name)

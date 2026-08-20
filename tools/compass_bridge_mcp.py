@@ -3,7 +3,7 @@
 
 A dependency-free stdio MCP server for Hermes. It exposes high-level Compass
 operations and delegates all state access to the Worker's protocol-v2
-/agent/tool-call surface. It never accesses D1/R2 directly.
+read routes and guarded /agent/request surface. It never accesses D1/R2 directly.
 """
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ def site_request(method: str, path: str, body: dict[str, Any] | None = None, *, 
         args["body"] = body
     if method != "GET":
         args["idempotency_key"] = f"hermes-bridge:{method}:{path}:{uuid.uuid4()}"
-    return http_json("/agent/tool-call", {"name": "site_request", "arguments": args})
+    return http_json("/agent/request", args)
 
 
 def receipt(result: dict[str, Any]) -> dict[str, Any]:

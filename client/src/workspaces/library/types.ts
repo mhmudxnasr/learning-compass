@@ -1,7 +1,7 @@
 import type { Route } from '../../app/router'
 import { objectHref as canonicalObjectHref, routeHref } from '../../app/router'
 
-export type LibraryView = 'inbox' | 'queue' | 'feeds' | 'all' | 'files' | 'books' | 'collections' | 'archive'
+export type LibraryView = 'inbox' | 'queue' | 'feeds' | 'all' | 'files' | 'books' | 'journal' | 'collections' | 'archive'
 export type LibraryObjectType = 'source' | 'artifact' | 'book' | 'collection'
 
 export type LibraryRecord = Record<string, any>
@@ -30,6 +30,7 @@ export const viewLabels: Record<LibraryView, string> = {
   all: 'All sources',
   files: 'Files',
   books: 'Books',
+  journal: 'Reading journal',
   collections: 'Collections',
   archive: 'Archive',
 }
