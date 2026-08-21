@@ -72,7 +72,7 @@ try {
     if (status !== 0) throw new Error(`D1 setup failed:\n${output}`)
   }
 
-  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', String(port)], {
+  server = spawn(wrangler, ['dev', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', String(port)], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   })

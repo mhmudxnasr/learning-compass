@@ -201,7 +201,7 @@ function NoteDetailWorkspace({ noteId, allNotes, reloadLibrary }: { noteId: stri
 
   const { note, related_notes: relatedNotes, units, recall } = dossier.data
   const document = buildNoteReaderDocument(note)
-  const sourceUrl = note.source_url || document.contentSourceUrl || note.rec_video_url
+  const sourceUrl = note.source_url || document.contentSourceUrl || note.rec_video_url || note.rec_source_url
   const reflection = note.kind === 'guide' ? relatedNotes.find((item) => item.kind === 'reflection') : null
   const sourceNote = note.kind === 'reflection' ? relatedNotes.find((item) => item.kind === 'guide') : null
   const reflectionDocument = reflection ? buildNoteReaderDocument(reflection) : null

@@ -311,7 +311,7 @@ app.get('/notes/hub', async (c) => {
 })
 app.get('/notes/:id', async (c) => {
   const noteId = c.req.param('id')
-  const note = await c.env.DB.prepare(`SELECT n.*, r.branch as rec_branch, r.round as rec_round, r.content_type as rec_content_type, r.video_title as rec_title, r.video_url as rec_video_url FROM notes n LEFT JOIN recommendations r ON n.recommendation_id = r.id WHERE n.id=?`).bind(noteId).first<any>()
+  const note = await c.env.DB.prepare(`SELECT n.*, r.branch as rec_branch, r.round as rec_round, r.content_type as rec_content_type, r.video_title as rec_title, r.video_url as rec_video_url, json_extract(m.source_metadata_json,'$.raw_source') as rec_source_url FROM notes n LEFT JOIN recommendations r ON n.recommendation_id = r.id LEFT JOIN recommendation_meta m ON m.recommendation_id = n.recommendation_id WHERE n.id=?`).bind(noteId).first<any>()
   if (!note) return c.json({ error: 'not found' }, 404)
 
   const [sections, related, units, drafts, cards] = await Promise.all([
@@ -348,6 +348,7 @@ app.get('/notes/:id', async (c) => {
     branch_label: note.rec_branch || note.branch_id || null,
     round_label: note.rec_round || null,
     content_type: note.rec_content_type || null,
+    source_url: note.source_url || note.rec_video_url || note.rec_source_url || null,
     provenance: (() => { try { return JSON.parse(note.provenance_json || '[]') } catch { return [] } })(),
     provenance_json: undefined,
     sections: sections.results || []

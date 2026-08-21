@@ -110,6 +110,7 @@ export interface NoteRecord {
   coverage_status?: string | null
   rec_title?: string | null
   rec_video_url?: string | null
+  rec_source_url?: string | null
   created_at?: string | null
   updated_at?: string | null
   sections: NoteSection[]
