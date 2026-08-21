@@ -293,7 +293,8 @@ function NoteDetailWorkspace({ noteId, allNotes, reloadLibrary }: { noteId: stri
 function NoteEditor({ note, onCancel, onDelete, onSaved }: { note: NoteRecord; onCancel: () => void; onDelete: () => void; onSaved: () => void }) {
   const [title, setTitle] = useState(note.title)
   const [branch, setBranch] = useState(note.branch_label || note.branch_id || '')
-  const [sourceUrl, setSourceUrl] = useState(note.source_url || '')
+  const initialSourceUrl = note.source_url || note.rec_video_url || note.rec_source_url || ''
+  const [sourceUrl, setSourceUrl] = useState(initialSourceUrl)
   const [abstract, setAbstract] = useState(note.abstract || '')
   const [sections, setSections] = useState((note.sections || []).map((section) => ({ ...section, label: section.label || '', direction: directionValue(section.direction) })))
   const [working, setWorking] = useState(false)
@@ -320,7 +321,7 @@ function NoteEditor({ note, onCancel, onDelete, onSaved }: { note: NoteRecord; o
       {error && <output class="notes-error-banner">{error}</output>}
       <main>
         <label>Title<input class="note-editor-title" value={title} onInput={(event) => setTitle((event.target as HTMLInputElement).value)} required /></label>
-        <div class="note-editor-meta"><label>Branch<input value={branch} onInput={(event) => setBranch((event.target as HTMLInputElement).value)} /></label><label>Source URL<input type="url" value={sourceUrl} onInput={(event) => setSourceUrl((event.target as HTMLInputElement).value)} /></label></div>
+        <div class="note-editor-meta folio-note-meta"><label>Branch<input value={branch} onInput={(event) => setBranch((event.target as HTMLInputElement).value)} /></label><label>Source URL<input type="url" value={sourceUrl} onInput={(event) => setSourceUrl((event.target as HTMLInputElement).value)} /></label>{sourceUrl && <a href={sourceUrl} target="_blank" rel="noreferrer">Source</a>}</div>
         {note.kind === 'guide' && <label>Short orientation<textarea rows={3} value={abstract} onInput={(event) => setAbstract((event.target as HTMLTextAreaElement).value)} /></label>}
         <div class="note-editor-section-head"><h2>Foundation</h2><button class="button secondary" type="button" onClick={addSection}>Add section</button></div>
         {sections.map((section, index) => <section class="note-editor-section" key={section.section_key}><div><input aria-label={`Section ${index + 1} label`} value={section.label || ''} onInput={(event) => updateSection(index, { label: (event.target as HTMLInputElement).value })} /><select aria-label={`Section ${index + 1} direction`} value={section.direction || 'auto'} onChange={(event) => updateSection(index, { direction: (event.target as HTMLSelectElement).value as Direction })}><option value="auto">Auto</option><option value="ltr">LTR</option><option value="rtl">RTL</option></select></div><textarea rows={12} dir={directionValue(section.direction)} value={section.content} onInput={(event) => updateSection(index, { content: (event.target as HTMLTextAreaElement).value })} /></section>)}
