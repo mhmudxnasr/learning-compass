@@ -16,6 +16,7 @@ test('recommendation feedback separates neutral dismissal from explicit bad fit'
     eventType: 'recommendation_dismissed', signalScope: 'none', reasonCodes: ['not_now'], normalizedOutcome: 'dismissed',
   })
   assert.equal(classifyRecommendationFeedback('declined', ['wrong_topic']).signalScope, 'eligibility')
+  assert.deepEqual(classifyRecommendationFeedback('completed', ['Excellent Source', 'right-depth']).reasonCodes, ['excellent_source', 'right_depth'])
 })
 
 test('learning utility is missing-aware and emphasizes downstream evidence', () => {
@@ -57,14 +58,14 @@ test('Compass excludes candidates without grounded source evidence', () => {
 test('Compass excludes books unless the request explicitly permits them', () => {
   const book = { canonical_url: 'https://example.com/book', title: 'A book', format: 'book', editorial_review: { verdict: 'recommend', why_worth_time: 'It directly addresses the active decision with a concrete mechanism.', unique_value: 'It offers primary evidence rather than a familiar generic summary.', depth: 'deep' }, evidence: [{ claim: 'A source-grounded claim about this book.', source_url: 'https://example.com/book' }] }
   assert.equal(deriveCandidateFeatures(book)._exclusion_reason, 'book_requires_explicit_request')
-  assert.equal(deriveCandidateFeatures({ ...book, allow_books: true })._hard_excluded, false)
+  assert.equal(deriveCandidateFeatures({ ...book, allow_books: true }, undefined, { status: 'verified', evidence_status: 'verified' })._hard_excluded, false)
 })
 
 test('Compass requires a substantive editorial review before ranking a candidate', () => {
   const review = { verdict: 'recommend', why_worth_time: 'It teaches a concrete mechanism that directly changes the current decision.', unique_value: 'It is an original primary account rather than the familiar introductory summary.', depth: 'deep' }
   assert.equal(editorialReviewStatus(review), 'approved')
   const candidate = { canonical_url: 'https://example.com/editorial', title: 'Reviewed source', format: 'article', editorial_review: review, evidence: [{ claim: 'A source-grounded claim about the reviewed source.', source_url: 'https://example.com/editorial' }] }
-  assert.equal(deriveCandidateFeatures(candidate)._hard_excluded, false)
+  assert.equal(deriveCandidateFeatures(candidate, undefined, { status: 'verified', evidence_status: 'verified' })._hard_excluded, false)
   assert.equal(deriveCandidateFeatures({ ...candidate, editorial_review: undefined })._exclusion_reason, 'editorial_review_required')
 })
 
@@ -79,13 +80,14 @@ test('typed profile assertions affect relevance and expected learning value stay
   assert.ok(expectedLearningValue(profiled, 'fit') >= 0 && expectedLearningValue(profiled, 'fit') <= 1)
 })
 
-test('Compass rewards candidates that target an open Thread evidence gap', () => {
-  const base = { title: 'A decision framework for teams', creator: 'Expert', url: 'https://example.com/decision', source_class: 'essay', evidence: [{ claim: 'A grounded claim with enough structure.' }], editorial_review: { verdict: 'recommend', why_worth_time: 'This is a substantive source worth the time because it explains a real decision mechanism.', unique_value: 'It connects the mechanism to concrete decisions and tradeoffs.', depth: 'substantive' } }
-  const context: any = { knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [], thread: { id: 'thread_1', title: 'Decision quality', guiding_question: 'How should I make better decisions?', definition_of_done: 'Record a decision', open_evidence_requirements: [{ key: 'decision', label: 'Record a decision', evidence_type: 'decision' }] } }
-  const targeted = deriveCandidateFeatures({ ...base, evidence_type: 'decision' }, context)
-  const generic = deriveCandidateFeatures({ ...base, evidence_type: 'explanation' }, context)
+test('Compass rewards candidates that target a missing lesson material gap', () => {
+  const base = { title: 'A decision framework for teams', creator: 'Expert', url: 'https://example.com/decision', source_class: 'essay', evidence: [{ claim: 'A grounded claim with enough structure.', source_url: 'https://example.com/decision' }], editorial_review: { verdict: 'recommend', why_worth_time: 'This is a substantive source worth the time because it explains a real decision mechanism.', unique_value: 'It connects the mechanism to concrete decisions and tradeoffs.', depth: 'substantive' } }
+  const context: any = { knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [], thread: { id: 'thread_1', title: 'Decision quality', guiding_question: 'How should I make better decisions?', definition_of_done: 'Record a decision', recommendation_target_gaps: [{ kind: 'lesson_material', lesson_id: 'lesson_1', stage_id: 'stage_1', stage_title: 'Decision foundations', title: 'Decision frameworks', target_text: 'Compare decision frameworks and apply one to a team decision' }] } }
+  const targeted = deriveCandidateFeatures({ ...base, target_lesson_id: 'lesson_1', expected_contribution: 'Compare and apply a decision framework.' }, context, { status: 'verified', evidence_status: 'verified' })
+  const generic = deriveCandidateFeatures({ ...base, expected_contribution: 'A general management overview.' }, context, { status: 'verified', evidence_status: 'verified' })
   assert.ok(Number(targeted.thread_contribution) > Number(generic.thread_contribution))
-  assert.equal(targeted._evidence_gap_match, 1)
+  assert.equal(targeted._target_gap_match, 1)
+  assert.equal(targeted._target_lesson_id, 'lesson_1')
 })
 
 test('Compass uses supplied concepts and source summary to align a candidate to its Thread', () => {

@@ -2,7 +2,8 @@ import { canonicalCreatorKey, canonicalFormat, structuredEvidenceStatus, type Co
 
 export type TrustSignal = { average: number; count: number }
 export type KnownSource = { url: string; title: string; creator: string; status: string }
-export type SourceCheck = { status: 'verified' | 'restricted' | 'unknown' | 'unavailable' | 'invalid'; http_status?: number; final_url?: string }
+export type SourceCheck = { status: 'verified' | 'restricted' | 'unknown' | 'unavailable' | 'invalid'; http_status?: number; final_url?: string; evidence_status?: 'verified' | 'failed'; evidence_checks?: Array<{ submitted_url: string; final_url?: string; status: SourceCheck['status']; http_status?: number }> }
+export type RecommendationTargetGap = { kind: 'lesson_material'; lesson_id: string; stage_id: string; stage_title: string; title: string; target_text: string }
 export type ThreadCoverageAnchor = {
   threadId: string
   threadTitle: string
@@ -23,7 +24,7 @@ export type CompassContext = {
   featureWeights?: Map<string, Record<string, number>>
   branchSignals?: Map<string, { state: string; attentionShare: number; priorityShare: number | null }>
   profileAssertions?: Array<{ assertion_key: string; category: string; value: unknown; weight?: number | null; confidence: number; status: string }>
-  thread?: { id: string; title?: string | null; guiding_question?: string | null; why_now?: string | null; definition_of_done?: string | null; evidence_requirements_json?: string | null; open_evidence_requirements?: Array<{ evidence_type?: string; label?: string; key?: string }> }
+  thread?: { id: string; title?: string | null; guiding_question?: string | null; why_now?: string | null; definition_of_done?: string | null; recommendation_target_gaps?: RecommendationTargetGap[] }
   laneEvidence?: Map<string, number>
   threadCoverage?: ThreadCoverageAnchor[]
 }
@@ -171,7 +172,11 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
   const knownSimilarity = context.knownSources.reduce((max, source) => Math.max(max, semanticSimilarity(`${title} ${creator}`, `${source.title} ${source.creator}`)), 0)
   const knownUrl = context.knownSources.some((source) => canonicalizeUrl(source.url) === url)
   const blocked = context.blockedEntities.some((entity) => exactEntityMatch(corpus, entity))
-  const coverageMatch = matchThreadCoverage(item, context.threadCoverage || [])
+  const targetGap = (context.thread?.recommendation_target_gaps || []).find((gap) => gap.lesson_id === String(item.target_lesson_id || ''))
+  const coverageAnchors = targetGap
+    ? (context.threadCoverage || []).filter((anchor) => anchor.threadId !== context.thread?.id)
+    : context.threadCoverage || []
+  const coverageMatch = matchThreadCoverage(item, coverageAnchors)
   const topicSignals = candidateTopics.flatMap((topic) => [...context.topicAffinities.entries()].filter(([known]) => topicMatches(topic, known)).map(([, score]) => clamp(score / 5, .5)))
   const topicAffinity = topicSignals.length ? Math.max(...topicSignals) : .5
   const priorityMatch = candidateTopics.some((topic) => [...context.priorityTopics].some((priority) => topicMatches(topic, priority)))
@@ -194,17 +199,11 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
   const contributionCorpus = candidateContextText(item)
   const threadSimilarity = threadCorpus ? contextualAlignment(contributionCorpus, threadCorpus) : .5
   const explicitContribution = String(item.expected_contribution || item.expected_learning || '').trim().length >= 12
-  const requestedEvidence = [item.evidence_type, item.expected_evidence_type, ...(Array.isArray(item.evidence_types) ? item.evidence_types : [])].map((value) => norm(value)).filter(Boolean)
-  const evidenceText = `${title} ${candidateTopics.join(' ')} ${String(item.expected_contribution || item.expected_learning || '')} ${String(item.source_class || '')}`
-  const openRequirements = context.thread?.open_evidence_requirements || []
-  const evidenceGapMatch = openRequirements.length
-    ? Math.max(...openRequirements.map((requirement) => {
-      const type = norm(requirement.evidence_type)
-      if (requestedEvidence.includes(type)) return 1
-      return type && (exactEntityMatch(evidenceText, type) || exactEntityMatch(evidenceText, norm(requirement.label))) ? .78 : 0
-    }), 0)
+  const targetGaps = context.thread?.recommendation_target_gaps || []
+  const targetGapMatch = targetGap ? 1 : targetGaps.length
+    ? Math.max(...targetGaps.map((gap) => contextualAlignment(contributionCorpus, gap.target_text)), 0)
     : .5
-  const threadContribution = context.thread ? clamp(.28 + threadSimilarity * .38 + evidenceGapMatch * .22 + (explicitContribution ? .12 : 0), .28) : .5
+  const threadContribution = context.thread ? clamp(.28 + threadSimilarity * .38 + targetGapMatch * .22 + (explicitContribution ? .12 : 0), .28) : .5
   const evidenceStatus = structuredEvidenceStatus(item.evidence || item.rationale || item.why_this)
   const evidenceQuality = evidenceStatus === 'structured' ? .92 : evidenceStatus === 'legacy' ? .58 : evidenceStatus === 'invalid' ? .08 : .20
   return {
@@ -219,8 +218,8 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
     friction,
     _valid_url: Boolean(url),
     _has_identity: Boolean(title && url),
-    _hard_excluded: knownUrl || knownSimilarity >= .84 || blocked || Boolean(coverageMatch) || bookRequiresExplicitRequest || editorialStatus !== 'approved' || sourceCheck.status === 'unavailable' || sourceCheck.status === 'invalid' || evidenceStatus !== 'structured',
-    _exclusion_reason: knownUrl ? 'known_url' : knownSimilarity >= .84 ? 'semantic_duplicate' : blocked ? 'blocked_or_mastered' : coverageMatch ? 'covered_by_learning_thread' : bookRequiresExplicitRequest ? 'book_requires_explicit_request' : editorialStatus !== 'approved' ? 'editorial_review_required' : sourceCheck.status === 'unavailable' ? 'source_unavailable' : sourceCheck.status === 'invalid' ? 'invalid_url' : evidenceStatus !== 'structured' ? 'structured_evidence_required' : null,
+    _hard_excluded: knownUrl || knownSimilarity >= .84 || blocked || Boolean(coverageMatch) || bookRequiresExplicitRequest || editorialStatus !== 'approved' || !['verified','restricted'].includes(sourceCheck.status) || sourceCheck.evidence_status === 'failed' || evidenceStatus !== 'structured',
+    _exclusion_reason: knownUrl ? 'known_url' : knownSimilarity >= .84 ? 'semantic_duplicate' : blocked ? 'blocked_or_mastered' : coverageMatch ? 'covered_by_learning_thread' : bookRequiresExplicitRequest ? 'book_requires_explicit_request' : editorialStatus !== 'approved' ? 'editorial_review_required' : evidenceStatus !== 'structured' ? 'structured_evidence_required' : sourceCheck.status === 'unavailable' ? 'source_unavailable' : sourceCheck.status === 'invalid' ? 'invalid_url' : sourceCheck.status === 'unknown' ? 'source_verification_unknown' : sourceCheck.evidence_status === 'failed' ? 'evidence_source_unverified' : null,
     _coverage_match: coverageMatch,
     _topic_affinity: topicAffinity,
     _topic_signals: topicSignals.length,
@@ -234,7 +233,8 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
     _evidence_status: evidenceStatus,
     _editorial_status: editorialStatus,
     _thread_id: context.thread?.id || null,
-    _evidence_gap_match: evidenceGapMatch,
+    _target_gap_match: targetGapMatch,
+    _target_lesson_id: targetGap?.lesson_id || null,
     _candidate_context: contributionCorpus,
     contextual_alignment: threadSimilarity,
     // Replaced with candidate-set comparison in the route once all candidates

@@ -41,12 +41,12 @@ try {
   await query(`
     INSERT INTO tree_nodes (id,type,label,status,parent_id) VALUES ('compass-branch','branch','Compass test branch','love','root');
     INSERT INTO recommendations (id,video_title,creator,content_type,video_url,status,dedup_key) VALUES ('rec_decline','Declined source','Creator A','article','https://example.org/declined','active','declined-source');
-    INSERT INTO recommendation_meta (recommendation_id,learning_state) VALUES ('rec_decline','queued');
+    INSERT INTO recommendation_meta (recommendation_id,learning_state,branch_id) VALUES ('rec_decline','queued','compass-branch');
     INSERT INTO learning_sessions (id,recommendation_id,status,intent) VALUES ('session_decline','rec_decline','active','Compass Pick');
     INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,outcome_status) VALUES ('outcome_rec_decline','rec_decline','Creator A','article','active');
     INSERT INTO compass_picks (id,request_id,strategy,status,recommendation_id,candidate_count) VALUES ('pick_decline','request_decline','fit','started','rec_decline',3);
   `)
-  const declined = await request('/compass/pick/pick_decline/feedback', { method: 'POST', body: JSON.stringify({ outcome: 'declined', score: 3, reason_tags: ['too_shallow'], reflection: 'Too shallow for where I am now.' }) })
+  const declined = await request('/compass/pick/pick_decline/feedback', { method: 'POST', body: JSON.stringify({ outcome: 'declined', score: 3, disposition: 'drop', reason_tags: ['too_shallow'], reflection: 'Too shallow for where I am now.', expected: 'A substantive treatment.', actual: 'A surface overview.', effort: 'light', length_minutes: 12 }) })
   assert.equal(declined.status, 200)
   assert.equal(declined.body.recommendation_state, 'excluded')
   assert.ok(declined.body.feedback_job)
@@ -58,6 +58,21 @@ try {
   assert.equal(declinedRecord.body.sessions[0].status, 'returned')
   assert.equal(declinedRecord.body.notes[0].sections.find((section) => section.section_key === 'reaction').content, 'Too shallow for where I am now.')
   assert.ok(declinedRecord.body.jobs.some((job) => job.job_type === 'process_feedback'))
+  assert.equal(declinedRecord.body.feedback[0].structured.expected, 'A substantive treatment.')
+  assert.equal(declinedRecord.body.feedback[0].structured.actual, 'A surface overview.')
+  assert.equal(declinedRecord.body.feedback[0].disposition, 'drop')
+  const feedbackContext = await request('/feedback/context')
+  const declinedEvent = feedbackContext.body.feedback_events.find((event) => event.pick_id === 'pick_decline')
+  assert.equal(declinedEvent.lane, 'fit')
+  assert.equal(declinedEvent.branch_id, 'compass-branch')
+  assert.equal(declinedEvent.round, 'R1')
+  assert.equal(declinedEvent.outcome, 'declined')
+  assert.equal(declinedEvent.structured.effort, 'light')
+  assert.deepEqual(declinedEvent.reason_tags, ['too_shallow'])
+  const analytics = await request('/analytics/hermes')
+  assert.equal(analytics.body.compass_learning.feedback.total, 1)
+  assert.equal(analytics.body.compass_learning.feedback.by_reason[0].reason, 'too_shallow')
+  assert.equal(analytics.body.compass_learning.feedback.by_lane[0].lane, 'fit')
   // Observability (Phase 1): the rejection must now be learnable — a non-NULL
   // rejection_reason on the outcome and exposure context on the feedback row.
   const parseJson = (output) => JSON.parse(output.slice(output.indexOf('{'), output.lastIndexOf('}') + 1))
@@ -67,6 +82,8 @@ try {
   const declinedExposure = JSON.parse(declinedFeedback.exposure_json)
   assert.equal(declinedExposure.engine, 'v1')
   assert.equal(declinedExposure.lane, 'fit')
+  assert.equal(declinedExposure.branch_id, 'compass-branch')
+  assert.equal(declinedExposure.round, 'R1')
 
   await query(`
     INSERT INTO recommendations (id,video_title,creator,content_type,video_url,status,dedup_key) VALUES ('rec_complete','Completed source','Creator B','lecture','https://example.org/completed','active','completed-source');
@@ -95,12 +112,12 @@ try {
   assert.equal(badFitWithoutReason.body.error, 'bad_fit_reason_required')
   const dismissed = await request('/compass/pick/pick_dismiss/feedback', { method: 'POST', body: JSON.stringify({ outcome: 'dismissed', reason_tags: ['not_now'] }) })
   assert.equal(dismissed.status, 200)
-  assert.equal(dismissed.body.recommendation_state, 'inbox')
+  assert.equal(dismissed.body.recommendation_state, 'captured')
   assert.equal(dismissed.body.feedback_job, null)
   assert.equal(dismissed.body.learning_receipt.skipped, 'neutral_signal')
   const dismissedRecord = await request('/capture/rec_dismiss/record')
   assert.equal(dismissedRecord.body.item.status, 'active')
-  assert.equal(dismissedRecord.body.item.learning_state, 'inbox')
+  assert.equal(dismissedRecord.body.item.learning_state, 'captured')
   assert.equal(dismissedRecord.body.outcome.training_eligible, 0)
   assert.equal(dismissedRecord.body.outcome.learning_value, null)
 
@@ -159,6 +176,40 @@ try {
   const queue = await request('/capture/queue')
   assert.equal(queue.body.items.find((item) => item.id === acceptedWeak.body.recommendation_id).context_brief, 'What it is: a compact source review.\n• Covers the core argument and supporting evidence.\n• Expect a cautious, practical overview.')
   assert.equal((await request('/compass/pick')).body.pick.status, 'started')
+
+  const firstOrdinaryFeedback = await request('/feedback/record', { method: 'POST', body: JSON.stringify({
+    source_url: 'https://example.org/ordinary-feedback-history',
+    title: 'Ordinary feedback history',
+    feedback: 'I need to continue this when I have a longer block.',
+    completion_state: 'in_progress',
+    reason_tags: ['not_now'],
+    expected: 'A focused practical treatment.',
+    actual: 'Promising, but unfinished.',
+    effort: 'light',
+    length_minutes: 9,
+    disposition: 'reference',
+  }) })
+  assert.equal(firstOrdinaryFeedback.status, 200)
+  const secondOrdinaryFeedback = await request('/feedback/record', { method: 'POST', body: JSON.stringify({
+    recommendation_id: firstOrdinaryFeedback.body.source.id,
+    feedback: 'Finished it later; the final mechanism was worth retaining.',
+    completion_state: 'completed',
+    reason_tags: ['highly_relevant'],
+    score: 9,
+    expected: 'A focused practical treatment.',
+    actual: 'A clear mechanism with a useful boundary.',
+    effort: 'moderate',
+    length_minutes: 31,
+    disposition: 'retain',
+  }) })
+  assert.equal(secondOrdinaryFeedback.status, 200)
+  const ordinaryFeedbackContext = await request('/feedback/context')
+  const ordinaryEvents = ordinaryFeedbackContext.body.feedback_events.filter((event) => event.recommendation_id === firstOrdinaryFeedback.body.source.id && event.source !== 'compass_pick')
+  assert.equal(ordinaryEvents.length, 2)
+  assert.equal(ordinaryEvents.find((event) => event.structured.completion_state === 'in_progress').feedback, 'I need to continue this when I have a longer block.')
+  assert.deepEqual(ordinaryEvents.find((event) => event.structured.completion_state === 'in_progress').reason_tags, ['not_now'])
+  assert.equal(ordinaryEvents.find((event) => event.structured.completion_state === 'completed').structured.length_minutes, 31)
+  assert.equal(ordinaryEvents.find((event) => event.structured.completion_state === 'completed').disposition, 'retain')
 
   // Legacy/manual rows must not make the singular Compass read fail because a
   // receipt column contains malformed JSON.

@@ -51,7 +51,8 @@ export function canonicalCreatorKey(value: unknown): string | null {
 
 export const REASON_CODES = [
   'not_now', 'bad_fit', 'wrong_topic', 'too_familiar', 'too_shallow', 'too_long',
-  'poor_source', 'wrong_format', 'already_mastered', 'access_problem', 'other',
+  'too_advanced', 'poor_source', 'wrong_format', 'already_mastered', 'access_problem',
+  'highly_relevant', 'excellent_source', 'right_depth', 'other',
 ] as const
 export type ReasonCode = typeof REASON_CODES[number]
 
@@ -59,6 +60,7 @@ const reasonAliases: Record<string, ReasonCode> = {
   later: 'not_now', busy: 'not_now', not_for_me: 'bad_fit', irrelevant: 'wrong_topic',
   redundant: 'too_familiar', familiar: 'too_familiar', shallow: 'too_shallow',
   long: 'too_long', source: 'poor_source', format: 'wrong_format', mastered: 'already_mastered',
+  advanced: 'too_advanced', relevant: 'highly_relevant', excellent: 'excellent_source',
 }
 
 export function canonicalReasonCode(value: unknown): ReasonCode {

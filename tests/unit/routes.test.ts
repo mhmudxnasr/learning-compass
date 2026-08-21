@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import { modes, objectHref, parseRoute, roots, routeHref, views } from '../../client/src/app/router.ts'
 import { calibratedConfidence, canonicalizeUrl, compassPickIsUnresolved, deriveCandidateFeatures, matchThreadCoverage, pairwiseDominance, semanticSimilarity, serverScore } from '../../src/compass-scoring.ts'
+import { validatePublicHttpUrl } from '../../src/services/public-url.ts'
 test('Compass ignores started picks whose recommendation is already completed or rejected', () => {
   assert.equal(compassPickIsUnresolved('started', 'consumed'), false)
   assert.equal(compassPickIsUnresolved('started', 'rejected'), false)
@@ -78,6 +79,18 @@ test('Compass hard-excludes topics already owned by any learning Thread', () => 
   assert.equal(features._coverage_match?.threadTitle, 'Systems Thinking')
 })
 
+test('Compass permits an exact missing lesson target but preserves other Thread coverage', () => {
+  const review = { verdict: 'recommend', why_worth_time: 'This source directly teaches the missing lesson with a complete worked method.', unique_value: 'It provides the exact mechanism and worked application absent from the lesson.', depth: 'deep' }
+  const item = { canonical_url: 'https://example.com/loops', title: 'Feedback loops in practice', target_lesson_id: 'lesson_loops', evidence: [{ claim: 'The source teaches reinforcing and balancing loops.', source_url: 'https://example.com/loops' }], editorial_review: review }
+  const thread = { id: 'thread_systems', recommendation_target_gaps: [{ kind: 'lesson_material' as const, lesson_id: 'lesson_loops', stage_id: 'level_1', stage_title: 'Foundations', title: 'Feedback loops', target_text: 'reinforcing and balancing feedback loops' }] }
+  const sameThread = { threadId: 'thread_systems', threadTitle: 'Systems Thinking', scopeKind: 'lesson' as const, scopeId: 'lesson_loops', label: 'Feedback loops', text: 'reinforcing and balancing feedback loops' }
+  const allowed = deriveCandidateFeatures(item, { knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [], thread, threadCoverage: [sameThread] }, { status: 'verified', evidence_status: 'verified' })
+  assert.equal(allowed._hard_excluded, false)
+  const otherThread = { ...sameThread, threadId: 'thread_other', threadTitle: 'Another Thread' }
+  const blocked = deriveCandidateFeatures(item, { knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [], thread, threadCoverage: [sameThread, otherThread] }, { status: 'verified', evidence_status: 'verified' })
+  assert.equal(blocked._exclusion_reason, 'covered_by_learning_thread')
+})
+
 test('Thread coverage does not block a source that only shares a broad word', () => {
   const anchors = [{ threadId: 'thread_systems', threadTitle: 'Systems Thinking', scopeKind: 'thread' as const, scopeId: 'thread_systems', label: 'Systems Thinking', text: 'Systems Thinking feedback loops stocks flows and leverage points' }]
   assert.equal(matchThreadCoverage({ title: 'Designing reliable software systems', topic: 'software architecture' }, anchors), null)
@@ -86,6 +99,29 @@ test('Thread coverage does not block a source that only shares a broad word', ()
 test('Compass canonicalizes tracking and YouTube URL variants', () => {
   assert.equal(canonicalizeUrl('https://youtu.be/abc123?utm_source=x'), 'https://www.youtube.com/watch?v=abc123')
   assert.equal(canonicalizeUrl('https://Example.com/read/?utm_campaign=x#part'), 'https://example.com/read')
+})
+
+test('public source URLs reject credentials and private or reserved targets', () => {
+  assert.equal(validatePublicHttpUrl('https://Example.com/read#part'), 'https://example.com/read')
+  for (const url of ['http://localhost/x', 'http://127.0.0.1/x', 'http://10.0.0.1/x', 'http://[::1]/x', 'https://user:pass@example.com/x', 'https://192.0.2.1/x']) {
+    assert.throws(() => validatePublicHttpUrl(url))
+  }
+})
+
+test('Compass treats unknown source reachability as ineligible', () => {
+  const features = deriveCandidateFeatures({ canonical_url: 'https://example.com/source', title: 'Unverified source', editorial_review: { verdict: 'recommend', why_worth_time: 'This source provides a sufficiently substantial account of the target mechanism.', unique_value: 'It covers constraints and examples missing from introductory treatments.', depth: 'deep' }, evidence: [{ claim: 'A structured but not yet reachable source claim.', source_url: 'https://example.com/source' }] })
+  assert.equal(features._exclusion_reason, 'source_verification_unknown')
+})
+
+test('Compass labels decision confidence honestly and stores observational exposure only', () => {
+  const source = readFileSync(new URL('../../src/api/compass.ts', import.meta.url), 'utf8')
+  assert.match(source, /confidence_status: 'heuristic_uncalibrated'/)
+  assert.match(source, /position: 1,/)
+  assert.match(source, /candidate_count: Number\(pick\.candidate_count \|\| 0\),/)
+  assert.match(source, /branch_id: winner\?\.branch_id \|\| null,/)
+  assert.match(source, /round,/)
+  assert.match(source, /target_lesson_id: targetLessonId,/)
+  assert.doesNotMatch(source, /discount position bias/)
 })
 
 test('Compass semantic deduplication catches title variants', () => {

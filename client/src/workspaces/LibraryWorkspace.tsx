@@ -149,6 +149,7 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
   const [working, setWorking] = useState('')
   const [blockedId, setBlockedId] = useState('')
   const [notice, setNotice] = useState('')
+  const [feedbackReceipt, setFeedbackReceipt] = useState<{ sourceId: string; result: LibraryRecord } | null>(null)
 
   const inspect = (selection: LibrarySelection) => {
     onInspect?.(selection)
@@ -382,10 +383,12 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     onDeleteFeed: deleteFeed,
     onDeleteFeedEntry: deleteFeedEntry,
     onClearFeedEntries: clearFeedEntries,
+    onFeedbackSaved: (sourceId, result) => setFeedbackReceipt({ sourceId, result }),
+    feedbackReceipt,
     busyId: working,
     blockedId,
     notice,
-  }), [working, blockedId, notice])
+  }), [working, blockedId, notice, feedbackReceipt, reload])
 
   if (loading) return <Loading label={objectType ? `Loading ${objectType}` : `Loading ${view}`}/>
   if (error) return <ErrorState message={error} retry={reload}/>

@@ -9,6 +9,9 @@ import { INTELLIGENCE_ENGINE_VERSION, LEARNING_OBJECTIVE_VERSION, canonicalCreat
 import { recordRecommendationSignal, refreshRecommendationOutcome } from '../services/intelligence-v2'
 import { indexSemanticDocuments, semanticSourceMatches } from '../services/semantic-retrieval'
 import { loadThreadCoverageAnchors } from '../services/thread-coverage'
+import { validatePublicHttpUrl } from '../services/public-url'
+import { feedbackMetadata, normalizeStructuredFeedback, type FeedbackCompletionState } from '../services/feedback'
+import { displayRound } from '../services/branch-rounds'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const STRATEGIES = new Set(['fit', 'bridge', 'challenge'])
@@ -44,25 +47,41 @@ const weakPickSourceIsQueueable = (candidate: any) => {
   return Boolean(candidate?.canonical_url && candidate?.title && features._valid_url && features._has_identity && !features._hard_excluded && ['verified', 'restricted'].includes(String(features._source_check || '')))
 }
 
+const fetchPublicSource = async (value: string, method: 'HEAD' | 'GET', timeout: number) => {
+  let current = validatePublicHttpUrl(value)
+  for (let redirect = 0; redirect <= 5; redirect++) {
+    const response = await fetch(current, { method, redirect: 'manual', signal: AbortSignal.timeout(timeout), headers: { 'user-agent': 'LearningCompassVerifier/1.0', ...(method === 'GET' ? { range: 'bytes=0-0' } : {}) } })
+    if (![301, 302, 303, 307, 308].includes(response.status)) return { response, finalUrl: current }
+    const location = response.headers.get('location')
+    if (!location || redirect === 5) throw new Error('invalid_source_redirect')
+    current = validatePublicHttpUrl(new URL(location, current).toString())
+  }
+  throw new Error('too_many_source_redirects')
+}
+
 const checkSource = async (item: any): Promise<SourceCheck> => {
   const url = urlOf(item)
   if (!url) return { status: 'invalid' }
-  const host = new URL(url).hostname.toLowerCase()
-  if (host === 'localhost' || host === '0.0.0.0' || host === '[::1]' || host.includes(':') || host.endsWith('.local') || /^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) return { status: 'invalid' }
   try {
-    const response = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(3500), headers: { 'user-agent': 'LearningCompassVerifier/1.0' } })
-    const result = { http_status: response.status, final_url: canonicalizeUrl(response.url || url) }
-    if (response.status === 404 || response.status === 410) {
-      const retry = await fetch(url, { method: 'GET', redirect: 'follow', signal: AbortSignal.timeout(2500), headers: { 'user-agent': 'LearningCompassVerifier/1.0', range: 'bytes=0-0' } })
-      const retried = { http_status: retry.status, final_url: canonicalizeUrl(retry.url || url) }
+    validatePublicHttpUrl(url)
+    const { response, finalUrl } = await fetchPublicSource(url, 'HEAD', 3500)
+    const result = { http_status: response.status, final_url: canonicalizeUrl(finalUrl) }
+    if ([404, 405, 410].includes(response.status)) {
+      const { response: retry, finalUrl: retryUrl } = await fetchPublicSource(url, 'GET', 2500)
+      const retried = { http_status: retry.status, final_url: canonicalizeUrl(retryUrl) }
+      await retry.body?.cancel().catch(() => {})
       if (retry.ok) return { status: 'verified', ...retried }
-      if ([401, 403, 405, 429].includes(retry.status)) return { status: 'restricted', ...retried }
+      if ([401, 403, 429].includes(retry.status)) return { status: 'restricted', ...retried }
       return { status: 'unavailable', ...retried }
     }
     if (response.ok) return { status: 'verified', ...result }
     if ([401, 403, 405, 429].includes(response.status)) return { status: 'restricted', ...result }
     return { status: 'unknown', ...result }
-  } catch { return { status: 'unknown' } }
+  } catch (error) {
+    return error instanceof Error && ['invalid_public_url','url_credentials_not_allowed','private_or_local_url','invalid_source_redirect','too_many_source_redirects'].includes(error.message)
+      ? { status: 'invalid' }
+      : { status: 'unknown' }
+  }
 }
 
 export const loadCompassContext = async (DB: D1Database, thread: any = null): Promise<CompassContext> => {
@@ -164,7 +183,17 @@ async function resolveThread(DB: D1Database, requestedId?: unknown) {
     ? await DB.prepare(`SELECT * FROM learning_threads WHERE id=? AND superseded_at IS NULL AND status NOT IN ('verified','abandoned')`).bind(String(requestedId)).first<any>()
     : await DB.prepare(`SELECT * FROM learning_threads WHERE superseded_at IS NULL AND status='active' ORDER BY priority DESC,updated_at DESC LIMIT 1`).first<any>()
   if (!thread) return null
-  return { ...thread, open_evidence_requirements: [] }
+  const gaps = await DB.prepare(`SELECT l.id lesson_id,l.stage_id,s.title stage_title,l.title,l.description,l.objective,l.why_learn,l.takeaway
+    FROM thread_lessons l JOIN learning_path_stages s ON s.id=l.stage_id
+    WHERE l.thread_id=? AND l.status!='completed' AND s.status IN ('available','in_progress','evidence_pending','ready_to_verify')
+      AND COALESCE(NULLIF(TRIM(l.content),''),'')=''
+      AND NOT EXISTS (SELECT 1 FROM thread_lesson_sources ls WHERE ls.lesson_id=l.id)
+    ORDER BY s.position,l.position LIMIT 24`).bind(thread.id).all<any>()
+  const recommendationTargetGaps = (gaps.results || []).map((gap: any) => ({
+    kind: 'lesson_material' as const, lesson_id: String(gap.lesson_id), stage_id: String(gap.stage_id), stage_title: String(gap.stage_title), title: String(gap.title),
+    target_text: [gap.stage_title, gap.title, gap.objective, gap.description, gap.why_learn, gap.takeaway].filter(Boolean).join(' '),
+  }))
+  return { ...thread, recommendation_target_gaps: recommendationTargetGaps }
 }
 
 // Greedy MMR (maximal marginal relevance) post-pass. The primary sort is by
@@ -226,11 +255,18 @@ function candidateDecision(scored: ScoredCandidate[], engine: 'v1' | 'v2', force
 
 async function scoreCandidateSet(DB: D1Database, candidates: any[], thread: any, legacyStrategy: string) {
   const context = await loadCompassContext(DB, thread)
-  const sourceChecks = await Promise.all(candidates.map(checkSource))
+  const sourceUrls = [...new Set(candidates.flatMap((item) => [urlOf(item), ...(Array.isArray(item.evidence) ? item.evidence : [item.evidence]).map((entry: any) => canonicalizeUrl(entry?.source_url)).filter(Boolean)]).filter(Boolean))]
+  const checkedSources = new Map((await Promise.all(sourceUrls.map(async (url) => [url, await checkSource({ canonical_url: url })] as const))))
   const submittedKeys = new Set<string>()
   const prepared: PreparedCandidate[] = candidates.map((item: any, index: number) => {
     const lane = normalizeCompassLane(item.lane, index)
-    const sourceCheck = sourceChecks[index]
+    const evidenceChecks = (Array.isArray(item.evidence) ? item.evidence : [item.evidence]).map((entry: any) => {
+      const submittedUrl = canonicalizeUrl(entry?.source_url)
+      const check = checkedSources.get(submittedUrl) || { status: 'invalid' as const }
+      return { submitted_url: submittedUrl || String(entry?.source_url || ''), final_url: check.final_url, status: check.status, http_status: check.http_status }
+    })
+    const candidateCheck = checkedSources.get(urlOf(item)) || { status: 'invalid' as const }
+    const sourceCheck: SourceCheck = { ...candidateCheck, evidence_status: evidenceChecks.every((check: { status: SourceCheck['status'] }) => ['verified','restricted'].includes(check.status)) ? 'verified' : 'failed', evidence_checks: evidenceChecks }
     const features = deriveCandidateFeatures({ ...item, lane }, context, sourceCheck)
     const url = urlOf(item)
     const duplicate = submittedKeys.has(url) || candidates.slice(0, index).some((other: any) => semanticSimilarity(`${item.title || ''} ${item.creator || ''}`, `${other.title || ''} ${other.creator || ''}`) >= .88)
@@ -305,7 +341,7 @@ async function scoreCandidateSet(DB: D1Database, candidates: any[], thread: any,
   return { context, v1, v2, frontier, exploration, explorationPick, coverage }
 }
 
-async function learnFromOutcome(DB: D1Database, pick: any, score: number | null, outcome: string, reasonTags: string[], exposure?: Record<string, any>) {
+async function learnFromOutcome(DB: D1Database, pick: any, score: number | null, outcome: string, reasonTags: string[]) {
   if (outcome === 'dismissed' || reasonTags.includes('not_now')) return { skipped: 'neutral_signal' }
   const recommendationOutcome = pick.recommendation_id
     ? await DB.prepare(`SELECT predicted_components_json,learning_value,training_eligible,rejection_reason FROM recommendation_outcomes WHERE recommendation_id=?`).bind(pick.recommendation_id).first<any>()
@@ -367,11 +403,16 @@ async function learnFromOutcome(DB: D1Database, pick: any, score: number | null,
 }
 
 async function storedPickCoverageConflict(DB: D1Database, pickId: string): Promise<ThreadCoverageMatch | null> {
-  const winner = await DB.prepare(`SELECT canonical_url,title,creator,format,source_class,context_brief,evidence_json,lane,branch_id FROM compass_candidates WHERE pick_id=? AND is_winner=1 LIMIT 1`).bind(pickId).first<any>()
+  const winner = await DB.prepare(`SELECT c.canonical_url,c.title,c.creator,c.format,c.source_class,c.context_brief,c.evidence_json,c.lane,c.branch_id,p.thread_id FROM compass_candidates c JOIN compass_picks p ON p.id=c.pick_id WHERE c.pick_id=? AND c.is_winner=1 LIMIT 1`).bind(pickId).first<any>()
   if (!winner) return null
   const stored = parseJsonObject(winner.evidence_json)
   const candidateContext = stored.candidate_context && typeof stored.candidate_context === 'object' ? stored.candidate_context : {}
-  return matchThreadCoverage({ ...candidateContext, ...winner }, await loadThreadCoverageAnchors(DB))
+  let anchors = await loadThreadCoverageAnchors(DB)
+  if (candidateContext.target_lesson_id) {
+    const thread = await resolveThread(DB, winner.thread_id)
+    if ((thread?.recommendation_target_gaps || []).some((gap: any) => gap.lesson_id === candidateContext.target_lesson_id)) anchors = anchors.filter((anchor) => anchor.threadId !== winner.thread_id)
+  }
+  return matchThreadCoverage({ ...candidateContext, ...winner }, anchors)
 }
 
 async function currentPick(DB: D1Database) {
@@ -439,7 +480,7 @@ app.get('/context', async (c) => {
     return c.json({
       thread: {
         id: thread.id, title: thread.title, guiding_question: thread.guiding_question, why_now: thread.why_now,
-        definition_of_done: thread.definition_of_done, open_evidence_requirements: thread.open_evidence_requirements,
+        definition_of_done: thread.definition_of_done, recommendation_target_gaps: thread.recommendation_target_gaps,
       },
       priorities: [...context.priorityTopics],
       active_profile_assertions: (context.profileAssertions || []).map((assertion: any) => ({
@@ -456,10 +497,10 @@ app.get('/context', async (c) => {
       semantic_retrieval: { enabled: semantic.enabled, matches: semantic.matches.slice(0, 20), known_source_matches: semanticKnown },
       candidate_contract: {
         required: ['canonical_url', 'title', 'creator', 'format', 'source_class', 'branch_id', 'expected_contribution', 'evidence', 'editorial_review'],
-        optional_context: ['summary', 'concepts', 'mechanism', 'mechanisms', 'expected_evidence_type', 'evidence_types', 'duration_minutes', 'paywalled'],
+        optional_context: ['target_lesson_id', 'summary', 'concepts', 'mechanism', 'mechanisms', 'duration_minutes', 'paywalled'],
         evidence_rule: 'Every evidence claim needs its direct source_url; an anchor is strongly preferred.',
         editorial_review_rule: 'verdict=recommend, substantive why_worth_time and unique_value, depth=substantive|deep.',
-        coverage_rule: 'Supply precise topic/concept/mechanism fields and exclude anything present in thread_coverage. The Worker hard-enforces this rule.',
+        coverage_rule: 'Supply precise topic/concept/mechanism fields. Existing Thread coverage is excluded, except an exact target_lesson_id from recommendation_target_gaps.',
       },
       retrieval_receipt: { context_version: 'compass_research_v1', generated_at: new Date().toISOString(), source_count: context.knownSources.length },
     })
@@ -498,15 +539,26 @@ function validateCandidates(body: any): { candidates: any[]; error?: string } {
   for (const item of candidates) {
     if (!item || typeof item !== 'object') return { error: 'every candidate must be an object', candidates }
     if (typeof item.branch_id !== 'string' || !item.branch_id.trim()) return { error: 'candidate_branch_required', candidates }
+    if (!optionalText(item.target_lesson_id, 200)) return { error: 'target_lesson_id must be a non-empty string of at most 200 characters', candidates }
+    const evidence = Array.isArray(item.evidence) ? item.evidence : item.evidence ? [item.evidence] : []
+    if (evidence.length > 4) return { error: 'candidate evidence may contain at most 4 claims', candidates }
     if (!optionalText(item.summary, 1800)) return { error: 'candidate summary must be a non-empty string of at most 1800 characters', candidates }
     if (!optionalTextList(item.concepts, 2, 8, 160)) return { error: 'candidate concepts must contain 2 to 8 concise strings', candidates }
     if (!optionalText(item.mechanism, 500) || !optionalTextList(item.mechanisms, 1, 8, 240)) return { error: 'candidate mechanism fields must be concise strings', candidates }
     if (!optionalText(item.expected_evidence_type, 80) || !optionalTextList(item.evidence_types, 1, 6, 80)) return { error: 'candidate evidence type fields must be concise strings', candidates }
   }
+  const uniqueSourceUrls = new Set(candidates.flatMap((item: any) => [urlOf(item), ...(Array.isArray(item.evidence) ? item.evidence : [item.evidence]).map((entry: any) => canonicalizeUrl(entry?.source_url)).filter(Boolean)]).filter(Boolean))
+  if (uniqueSourceUrls.size > 40) return { error: 'candidate set may reference at most 40 unique source URLs', candidates }
   const hasExplicitLanes = candidates.some((item: any) => item?.lane != null)
   const initialLanes = new Set(candidates.slice(0, 3).map((item: any, index: number) => normalizeCompassLane(item?.lane, index)))
   if (hasExplicitLanes && initialLanes.size !== 3) return { error: 'the first three candidates must cover fit, bridge, and challenge lanes', candidates }
   return { candidates }
+}
+
+function validateCandidateTargets(candidates: any[], thread: any) {
+  const valid = new Set((thread.recommendation_target_gaps || []).map((gap: any) => String(gap.lesson_id)))
+  const invalid = [...new Set(candidates.map((candidate) => candidate.target_lesson_id).filter((id) => id && !valid.has(String(id))).map(String))]
+  return invalid.length ? { error: 'candidate_target_lesson_not_actionable', lesson_ids: invalid } : { ok: true }
 }
 
 async function validateCandidateBranches(DB: D1Database, candidates: any[]) {
@@ -551,6 +603,8 @@ async function createCompassPickV2(c: any, body: any) {
   if (!STRATEGIES.has(legacyStrategy)) return c.json({ error: 'strategy must be fit, bridge, or challenge' }, 400)
   const thread = await resolveThread(c.env.DB, body.thread_id)
   if (!thread) return c.json({ error: 'learning_thread_required' }, 409)
+  const targetValidation = validateCandidateTargets(validated.candidates, thread)
+  if (targetValidation.error) return c.json(targetValidation, 422)
   const branchValidation = await validateCandidateBranches(c.env.DB, validated.candidates)
   if (branchValidation.error) return c.json(branchValidation, branchValidation.error === 'candidate_branch_pruned' ? 409 : 422)
   await currentPick(c.env.DB)
@@ -580,7 +634,6 @@ async function createCompassPickV2(c: any, body: any) {
   const requestId = String(body.request_id || crypto.randomUUID())
   const pickId = `pick_${crypto.randomUUID()}`
   const status = selected.confident ? 'ready' : 'abstained'
-  const calibrationSamples = [...(decisions.context.laneEvidence?.values() || [])].reduce((sum, value) => sum + Number(value || 0), 0)
   const shadow = { mode, v1: decisionReadModel(decisions.v1), v2: decisionReadModel(decisions.v2), frontier: decisions.frontier.map((entry: any) => ({ index: entry.index, title: entry.item.title, score: entry.frontierScore, mechanism_match: entry.mechanismMatch, topic_distance: Math.round((1 - Number(entry.features._topic_affinity || 0)) * 1000) / 1000 })), exploration: decisions.exploration, coverage: decisions.coverage, disagreement: decisions.v1.winner?.index !== decisions.v2.winner?.index }
   const alternatives = selected.eligible.filter((entry) => entry.index !== winner.index).slice(0, 2).map((entry) => ({ title: entry.item.title, score: entry.score, expected_learning_value: entry.expectedLearningValue }))
   const selectionExplanation = selected.confident
@@ -605,7 +658,7 @@ async function createCompassPickV2(c: any, body: any) {
     intent, why_this: winner.item.why_this || '', context_brief: winner.item.context_brief || '', why_now: winner.item.why_now || '',
     expected_learning: winner.item.expected_learning || winner.item.expected_contribution || '', cost: winner.item.cost || null,
     lane: winner.lane, score: winner.score, expected_learning_value: winner.expectedLearningValue, exploration_bonus: winner.explorationBonus, candidate_set_diversity: winner.diversity,
-    confidence: selected.confidence, confidence_status: calibrationSamples >= 20 ? 'empirical' : 'insufficient_evidence', uncertainty: winner.uncertainty,
+    confidence: selected.confidence, confidence_status: 'heuristic_uncalibrated', uncertainty: winner.uncertainty,
     score_breakdown: winner.features, source_check: winner.sourceCheck, reviewable_weak_pick: selected.reviewableWeakPick,
     abstention_reason: selected.confident ? null : selected.abstentionReason,
     selection: { explanation: selectionExplanation, alternatives, learning_load: learningLoad },
@@ -635,7 +688,9 @@ async function createCompassPickV2(c: any, body: any) {
             expected_evidence_type: entry.item.expected_evidence_type, evidence_types: entry.item.evidence_types,
             duration_minutes: entry.item.duration_minutes, duration: entry.item.duration,
             paywalled: entry.item.paywalled, why_this: entry.item.why_this, why_now: entry.item.why_now, cost: entry.item.cost,
+            target_lesson_id: entry.item.target_lesson_id,
           },
+          source_verification: entry.sourceCheck,
         }),
         entry.score, entry.uncertainty, entry.features._valid_url && entry.features._has_identity && !['invalid','unavailable'].includes(entry.sourceCheck.status) ? 1 : 0,
         entry.index === winner.index ? 1 : 0, entry.lane, entry.item.branch_id || null, canonicalFormat(entry.item.format || entry.item.source_class),
@@ -649,7 +704,7 @@ async function createCompassPickV2(c: any, body: any) {
     reviewable_weak_pick: selected.reviewableWeakPick, pick_id: pickId, recommendation_id: recommendationId,
     candidate_count: selected.scored.length, eligible_count: selected.eligible.length, active_queue_count: queuedCount, queue_cap: QUEUE_CAP,
     score: winner.score, expected_learning_value: winner.expectedLearningValue, confidence: selected.confidence,
-    confidence_status: calibrationSamples >= 20 ? 'empirical' : 'insufficient_evidence', margin: selected.margin, source_check: winner.sourceCheck.status,
+    confidence_status: 'heuristic_uncalibrated', margin: selected.margin, source_check: winner.sourceCheck.status,
     abstention_reason: selected.confident ? null : selected.abstentionReason, shadow,
     selection_explanation: selectionExplanation, alternatives, learning_load: learningLoad,
     search_guidance: selected.confident ? null : { expand_to: 8, needs: ['independent source angle', 'structured evidence', 'clear Thread contribution'] },
@@ -665,6 +720,8 @@ app.post('/evaluate', async (c) => {
     if (!REQUEST_INTENTS.has(intent)) return c.json({ error: 'intent must be solve_problem, build_skill, deepen_thread, discover, or queue_fill' }, 400)
     const thread = await resolveThread(c.env.DB, body.thread_id)
     if (!thread) return c.json({ error: 'learning_thread_required' }, 409)
+    const targetValidation = validateCandidateTargets(validated.candidates, thread)
+    if (targetValidation.error) return c.json(targetValidation, 422)
     const requestedStrategy = body.strategy ? String(body.strategy) : ''
     const strategy = STRATEGIES.has(requestedStrategy) ? requestedStrategy : DEFAULT_COMPASS_STRATEGY
     const scored = await scoreCandidateSet(c.env.DB, validated.candidates.map((candidate: any) => ({ ...candidate, allow_books: body.allow_books === true })), thread, strategy)
@@ -672,7 +729,7 @@ app.post('/evaluate', async (c) => {
   } catch (err) { return c.json(safeError('Failed to evaluate Compass candidates')(err), 500) }
 })
 
-/** Hermes submits 3-8 candidates; the Worker owns scoring, selection, and abstention. */
+/** Hermes submits 3-24 candidates; the Worker owns scoring, selection, and abstention. */
 app.post('/picks', async (c) => {
   try {
     return await createCompassPickV2(c, await c.req.json<any>())
@@ -736,6 +793,18 @@ app.post('/pick/:id/start', async (c) => {
         c.env.DB.prepare(`UPDATE compass_picks SET recommendation_id=?,updated_at=datetime('now') WHERE id=?`).bind(recommendationId, pick.id),
       ])
     }
+    const winner = await c.env.DB.prepare(`SELECT evidence_json FROM compass_candidates WHERE pick_id=? AND is_winner=1`).bind(pick.id).first<any>()
+    const storedEvidence = parseJsonObject(winner?.evidence_json)
+    const targetLessonId = String(storedEvidence.candidate_context?.target_lesson_id || '')
+    let targetAttachments: D1PreparedStatement[] = []
+    if (targetLessonId) {
+      const targetGap = (thread.recommendation_target_gaps || []).find((gap: any) => gap.lesson_id === targetLessonId)
+      if (!targetGap) return c.json({ error: 'candidate_target_lesson_not_actionable' }, 409)
+      targetAttachments = [
+        c.env.DB.prepare(`DELETE FROM thread_lesson_sources WHERE lesson_id=? AND role='primary'`).bind(targetLessonId),
+        c.env.DB.prepare(`INSERT INTO thread_lesson_sources (lesson_id,recommendation_id,role,position) VALUES (?,?,'primary',0) ON CONFLICT(lesson_id,recommendation_id) DO UPDATE SET role='primary'`).bind(targetLessonId, recommendationId),
+      ]
+    }
     const sessionId = `session_${crypto.randomUUID()}`
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE compass_picks SET status='started',updated_at=datetime('now') WHERE id=? AND status='ready'`).bind(pick.id),
@@ -744,6 +813,7 @@ app.post('/pick/:id/start', async (c) => {
       c.env.DB.prepare(`UPDATE recommendation_meta SET learning_state='queued',updated_at=datetime('now') WHERE recommendation_id=?`).bind(recommendationId),
       c.env.DB.prepare(`INSERT INTO thread_sources (thread_id,recommendation_id,role,status) VALUES (?,?,'primary','active') ON CONFLICT(thread_id,recommendation_id) DO UPDATE SET status='active',updated_at=datetime('now')`).bind(thread.id, recommendationId),
       c.env.DB.prepare(`INSERT INTO learning_sessions (id,recommendation_id,status,intent,thread_id,target_kind,started_at) VALUES (?,?, 'active', ?,?,'original',datetime('now'))`).bind(sessionId, recommendationId, 'Compass Pick', thread.id),
+      ...targetAttachments,
     ])
     await recordRecommendationSignal(c.env.DB, { idempotencyKey: `compass-start:${pick.id}`, eventType: 'recommendation_started', recommendationId, threadId: thread.id, pickId: pick.id, signalScope: 'none', explicit: true, origin: 'compass_feedback', payload: { lane: pick.strategy } })
     return c.json({ ok: true, pick_id: pick.id, recommendation_id: recommendationId, session_id: sessionId, thread_id: thread.id })
@@ -768,24 +838,47 @@ app.post('/pick/:id/feedback', async (c) => {
     const completed = outcome === 'completed'
     const excluded = outcome === 'declined' || outcome === 'abandoned'
     const dismissed = outcome === 'dismissed'
+    const disposition = ['retain','apply','reference','drop','undecided'].includes(String(body.disposition || '').toLowerCase()) ? String(body.disposition).toLowerCase() : 'undecided'
+    const fallbackCompletion: FeedbackCompletionState = completed ? 'completed' : excluded ? 'stopped' : 'in_progress'
+    const structured = normalizeStructuredFeedback({ ...body, reason_tags: reasonTags }, fallbackCompletion)
     const feedbackJobId = reflection || rating.score !== null || classified.signalScope === 'eligibility' ? `job_${crypto.randomUUID()}` : null
-    // Exposure context: the position the pick held in its candidate set and the
-    // engine that served it. Used by the learning loop to discount position bias
-    // and by the shadow evaluation to weight feedback by exposure.
-    const exposure = { position: Number(body.position ?? null), candidate_count: Number(body.candidate_count ?? null), engine: pick.engine_version || 'v1', lane: pick.strategy || null, thread_id: pick.thread_id || null }
+    // Observational serving metadata only. Compass exposes one winner, so there
+    // is no ranked-list propensity model to justify position-bias correction.
+    const winner = await c.env.DB.prepare(`SELECT COALESCE(cc.branch_id,m.branch_id) branch_id,cc.format,COALESCE(cc.creator,r.creator) creator,cc.evidence_json,COALESCE(n.round_label,r.round) round_label
+      FROM compass_picks p
+      LEFT JOIN compass_candidates cc ON cc.pick_id=p.id AND cc.is_winner=1
+      LEFT JOIN recommendation_meta m ON m.recommendation_id=p.recommendation_id
+      LEFT JOIN recommendations r ON r.id=p.recommendation_id
+      LEFT JOIN tree_nodes n ON n.id=COALESCE(cc.branch_id,m.branch_id)
+      WHERE p.id=? LIMIT 1`).bind(pick.id).first<any>()
+    const winnerEvidence = parseJsonObject(winner?.evidence_json)
+    const targetLessonId = String(winnerEvidence.candidate_context?.target_lesson_id || '') || null
+    const round = winner?.branch_id ? displayRound({ round_label: winner.round_label, id: winner.branch_id }, { consumed: completed ? 1 : 0, notes: reflection ? 1 : 0, cards: 0, due: 0, recallStrength: null }) : null
+    const exposure = {
+      position: 1,
+      candidate_count: Number(pick.candidate_count || 0),
+      engine: pick.engine_version || 'v1',
+      lane: pick.strategy || null,
+      thread_id: pick.thread_id || null,
+      target_lesson_id: targetLessonId,
+      branch_id: winner?.branch_id || null,
+      round,
+      format: winner?.format || null,
+      creator: winner?.creator || null,
+    }
     const reflectionNote = reflection && pick.recommendation_id
       ? await c.env.DB.prepare(`SELECT id,revision FROM notes WHERE recommendation_id=? AND kind='reflection' ORDER BY updated_at DESC LIMIT 1`).bind(pick.recommendation_id).first<{ id: string; revision: number }>()
       : null
     const reflectionNoteId = reflection && pick.recommendation_id ? reflectionNote?.id || `reflection_${pick.recommendation_id}` : null
     const rejectionReason = excluded ? reasonTags[0] || (outcome === 'abandoned' ? 'abandoned' : 'declined') : null
     const statements: D1PreparedStatement[] = [
-      c.env.DB.prepare(`INSERT INTO compass_feedback (id,pick_id,recommendation_id,outcome,score,reason_tags_json,reflection,exposure_json) VALUES (?,?,?,?,?,?,?,?)`).bind(`cf_${crypto.randomUUID()}`, pick.id, pick.recommendation_id, outcome === 'dismissed' ? 'declined' : outcome, rating.score, JSON.stringify(reasonTags), body.reflection || null, JSON.stringify(exposure)),
+      c.env.DB.prepare(`INSERT INTO compass_feedback (id,pick_id,recommendation_id,outcome,score,reason_tags_json,reflection,exposure_json,structured_json,disposition) VALUES (?,?,?,?,?,?,?,?,?,?)`).bind(`cf_${crypto.randomUUID()}`, pick.id, pick.recommendation_id, outcome === 'dismissed' ? 'declined' : outcome, rating.score, JSON.stringify(reasonTags), body.reflection || null, JSON.stringify(exposure), JSON.stringify({ ...structured, outcome, source: 'compass_pick' }), disposition),
       c.env.DB.prepare(`UPDATE compass_picks SET status=?,updated_at=datetime('now'),resolved_at=CASE WHEN ? IN ('resolved','declined') THEN datetime('now') ELSE resolved_at END WHERE id=?`).bind(nextStatus, nextStatus, pick.id),
     ]
     if (pick.recommendation_id) {
       statements.push(
         c.env.DB.prepare(`UPDATE recommendations SET status=CASE WHEN ? THEN 'consumed' WHEN ? THEN 'rejected' ELSE status END,consumed_date=CASE WHEN ? THEN COALESCE(consumed_date,date('now')) ELSE consumed_date END,user_rating=COALESCE(?,user_rating),user_score=COALESCE(?,user_score),user_review=COALESCE(NULLIF(?,''),user_review),updated_at=datetime('now') WHERE id=?`).bind(completed ? 1 : 0, excluded ? 1 : 0, completed ? 1 : 0, rating.rating, rating.score, reflection, pick.recommendation_id),
-        c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,progress_percent,last_opened_at,updated_at) VALUES (?,?,?,?,datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET learning_state=excluded.learning_state,progress_percent=excluded.progress_percent,last_opened_at=datetime('now'),updated_at=datetime('now')`).bind(pick.recommendation_id, completed ? 'completed' : excluded ? 'excluded' : dismissed ? 'captured' : 'queued', completed ? 100 : 0, new Date().toISOString()),
+        c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,progress_percent,source_metadata_json,last_opened_at,updated_at) VALUES (?,?,?,?,?,datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET learning_state=excluded.learning_state,progress_percent=excluded.progress_percent,source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json),last_opened_at=datetime('now'),updated_at=datetime('now')`).bind(pick.recommendation_id, completed ? 'completed' : excluded ? 'excluded' : dismissed ? 'captured' : 'queued', completed ? 100 : 0, JSON.stringify(feedbackMetadata(structured, rating.score, { outcome, disposition, source: 'compass_pick', pick_id: pick.id, exposure })), new Date().toISOString()),
         c.env.DB.prepare(`UPDATE learning_sessions SET status=CASE WHEN ? THEN 'completed' ELSE 'returned' END,returned_at=datetime('now'),completed_at=CASE WHEN ? THEN COALESCE(completed_at,datetime('now')) ELSE completed_at END,reflection=COALESCE(NULLIF(?,''),reflection) WHERE recommendation_id=? AND status IN ('active','returned')`).bind(completed ? 1 : 0, completed ? 1 : 0, reflection, pick.recommendation_id),
         c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,actual_score,outcome_status,rejection_reason,consumed_at,evaluated_at,outcome_origin,training_eligible,objective_version) VALUES (?,?,?,?,?,CASE WHEN ? THEN date('now') ELSE NULL END,datetime('now'),'compass_feedback',0,?) ON CONFLICT(recommendation_id) DO UPDATE SET actual_score=excluded.actual_score,outcome_status=excluded.outcome_status,outcome_origin='compass_feedback',rejection_reason=COALESCE(excluded.rejection_reason,recommendation_outcomes.rejection_reason),consumed_at=COALESCE(recommendation_outcomes.consumed_at,excluded.consumed_at),evaluated_at=datetime('now')`).bind(`outcome_${pick.recommendation_id}`, pick.recommendation_id, rating.score, completed ? 'consumed' : excluded ? outcome === 'declined' ? 'rejected' : 'abandoned' : 'active', rejectionReason, completed ? 1 : 0, LEARNING_OBJECTIVE_VERSION),
       )
@@ -804,9 +897,8 @@ app.post('/pick/:id/feedback', async (c) => {
         for (const [position, [sectionKey, label, content]] of [['reaction', 'Reaction', reflection], ['foundation', 'Foundation', ''], ['case_studies', 'Case Studies', ''], ['exploitation', 'Exploitation', ''], ['defense', 'Defense', '']].entries()) statements.push(c.env.DB.prepare(`INSERT INTO note_sections (id,note_id,section_key,label,content,direction,position) VALUES (?,?,?,?,?,'auto',?)`).bind(`${reflectionNoteId}_${sectionKey}`, reflectionNoteId, sectionKey, label, content, position))
       }
     }
-    const disposition = ['retain','apply','reference','drop','undecided'].includes(String(body.disposition || '').toLowerCase()) ? String(body.disposition).toLowerCase() : 'undecided'
     if (pick.recommendation_id && disposition !== 'undecided') statements.push(c.env.DB.prepare(`INSERT INTO source_learning_dispositions(recommendation_id,thread_id,disposition,reason) VALUES (?,?,?,?) ON CONFLICT(recommendation_id,thread_id) DO UPDATE SET disposition=excluded.disposition,reason=excluded.reason,updated_at=datetime('now')`).bind(pick.recommendation_id, pick.thread_id || null, disposition, reflection || reasonTags.join(',')))
-    if (feedbackJobId && pick.recommendation_id) statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'process_feedback',?,?,?,'explicit_user_action') ON CONFLICT(idempotency_key) DO NOTHING`).bind(feedbackJobId, JSON.stringify({ recommendation_id: pick.recommendation_id, thread_id: pick.thread_id || null, note_id: reflectionNoteId, reflection: reflection || null, rating: rating.score, disposition, outcome, reason_tags: reasonTags, review_required: true, source: 'compass_pick', feedback_context_endpoint: '/feedback/context', feedback_context_scope: 'all_archived_feedback_profile_and_nodes' }), `compass-feedback:${pick.id}`, pick.recommendation_id))
+    if (feedbackJobId && pick.recommendation_id) statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'process_feedback',?,?,?,'explicit_user_action') ON CONFLICT(idempotency_key) DO NOTHING`).bind(feedbackJobId, JSON.stringify({ recommendation_id: pick.recommendation_id, thread_id: pick.thread_id || null, note_id: reflectionNoteId, reflection: reflection || null, rating: rating.score, disposition, outcome, ...structured, exposure, review_required: true, source: 'compass_pick', feedback_context_endpoint: '/feedback/context', feedback_context_scope: 'all_archived_feedback_profile_and_nodes' }), `compass-feedback:${pick.id}`, pick.recommendation_id))
     await c.env.DB.batch(statements)
     if (pick.recommendation_id) {
       await recordRecommendationSignal(c.env.DB, { idempotencyKey: `compass-feedback:${pick.id}:${outcome}`, eventType: classified.eventType, recommendationId: pick.recommendation_id, threadId: pick.thread_id || null, pickId: pick.id, reasonCode: reasonTags[0] || null, signalScope: classified.signalScope, explicit: true, origin: 'compass_feedback', payload: { outcome, reason_tags: reasonTags, exposure } })
@@ -814,10 +906,10 @@ app.post('/pick/:id/feedback', async (c) => {
       if (disposition !== 'undecided') await recordRecommendationSignal(c.env.DB, { idempotencyKey: `compass-disposition:${pick.id}`, eventType: 'disposition_recorded', recommendationId: pick.recommendation_id, threadId: pick.thread_id || null, pickId: pick.id, signalScope: 'utility', explicit: true, origin: 'compass_feedback', payload: { disposition, exposure } })
       await refreshRecommendationOutcome(c.env.DB, pick.recommendation_id)
     }
-    const learning = await learnFromOutcome(c.env.DB, pick, rating.score, outcome, reasonTags, exposure)
+    const learning = await learnFromOutcome(c.env.DB, pick, rating.score, outcome, reasonTags)
     // The typed Library source route preserves identity; the old Learn notes
     // query route was only a collection view and dropped the source context.
-    return c.json({ ok: true, pick_id: pick.id, status: nextStatus, recommendation_state: completed ? 'completed' : excluded ? 'excluded' : dismissed ? 'captured' : 'queued', disposition, reason_tags: reasonTags, feedback_job: feedbackJobId, learning_receipt: learning, source_page: pick.recommendation_id ? `/#/library/source/${encodeURIComponent(pick.recommendation_id)}?from=learn` : null })
+    return c.json({ ok: true, pick_id: pick.id, status: nextStatus, recommendation_state: completed ? 'completed' : excluded ? 'excluded' : dismissed ? 'captured' : 'queued', disposition, reason_tags: reasonTags, structured_feedback: { ...structured, score: rating.score }, feedback_job: feedbackJobId, learning_receipt: learning, receipt: { status: 'recorded', analysis: feedbackJobId ? 'queued' : 'not_needed', notes: 'not_requested', neutral: dismissed || reasonTags.includes('not_now') }, source_page: pick.recommendation_id ? `/#/library/source/${encodeURIComponent(pick.recommendation_id)}?from=learn` : null })
   } catch (err) { return c.json(safeError('Failed to record Compass feedback')(err), 500) }
 })
 

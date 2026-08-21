@@ -97,23 +97,10 @@ export function parseFeed(xml: string, feedUrl: string): ParsedFeed {
 }
 
 export function validateFeedUrl(value: string) {
-  if (typeof value !== 'string' || value.length === 0 || value.length >= 2048 || !/^https?:\/\/[^\s<>"']+$/i.test(value)) {
-    throw new Error('Enter a valid HTTP or HTTPS feed URL')
+  try { return validatePublicHttpUrl(value) }
+  catch (error) {
+    if (error instanceof Error && error.message === 'private_or_local_url') throw new Error('Private or local feed URLs are not allowed')
+    throw new Error('Enter a valid public HTTP or HTTPS feed URL')
   }
-  const url = new URL(value)
-  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
-  const parts = host.split('.').map(Number)
-  const privateIpv4 = parts.length === 4 && parts.every(Number.isInteger) && (
-    parts[0] === 0 || parts[0] === 10 || parts[0] === 127 ||
-    (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) ||
-    (parts[0] === 169 && parts[1] === 254) ||
-    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
-    (parts[0] === 192 && parts[1] === 168) || parts[0] >= 224
-  )
-  const privateIpv6 = host === '::1' || host === '::' || /^(?:fc|fd|fe8|fe9|fea|feb)/i.test(host)
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal') || privateIpv4 || privateIpv6) {
-    throw new Error('Private or local feed URLs are not allowed')
-  }
-  url.hash = ''
-  return url.toString()
 }
+import { validatePublicHttpUrl } from './public-url.ts'

@@ -14,6 +14,7 @@ import {
   formatReason,
   formatStatus,
   objectHref,
+  parseMetadata,
   sourceCreator,
   sourceFormat,
   sourceLink,
@@ -40,6 +41,8 @@ export type LibraryViewHandlers = {
   onDeleteFeed?: (feed: LibraryRecord) => void
   onDeleteFeedEntry?: (feedId: string, item: LibraryRecord) => void
   onClearFeedEntries?: (feedId: string) => void
+  onFeedbackSaved?: (sourceId: string, receipt: LibraryRecord) => void
+  feedbackReceipt?: { sourceId: string; result: LibraryRecord } | null
   busyId?: string
   blockedId?: string
   notice?: string
@@ -962,11 +965,139 @@ function SourceObject({ item, record, handlers }: { item: LibraryRecord; record:
     {branch && <section class="folio-object-section"><div class="folio-section-heading"><h2>Branch</h2><span class="folio-badge folio-badge-branch"><span class="badge-format">Branch</span><span>{branch.label}</span>{branch.round && <span class="badge-round">{branch.round}</span>}</span></div><div class="folio-row-actions"><a class="folio-button" href={`#/map/branch/${encodeURIComponent(String(branch.id))}`}>Open branch dossier</a></div><p class="folio-record-note">{branch.status === 'pruned' ? 'This branch is pruned — review the mapping before starting.' : branch.status && branch.status !== 'unverified' ? `Branch status: ${branch.status.replace(/_/g, ' ')}.` : 'Branch match is not verified yet.'}</p></section>}
     {(companions.html || companions.pdf) && <section class="folio-object-section"><div class="folio-section-heading"><h2>Reading companions</h2><span>{[(companions.html && 'HTML') || null, (companions.pdf && 'PDF') || null].filter(Boolean).join(' + ')}</span></div><div class="folio-row-actions">{companions.html && <a class="folio-button folio-button-primary" href={`/artifacts/${encodeURIComponent(String(companions.html.id))}`} target="_blank" rel="noreferrer">Read HTML companion</a>}{companions.pdf && <a class="folio-button" href={`/artifacts/${encodeURIComponent(String(companions.pdf.id))}`} target="_blank" rel="noreferrer">Download A4 PDF{companions.pdf.size_bytes ? ` · ${formatBytes(companions.pdf.size_bytes)}` : ''}</a>}</div><p class="folio-record-note">Canonical Arabic reading companion rendered from one verified body.</p></section>}
     <section class="folio-object-section"><div class="folio-section-heading"><h2>Active recall</h2><span>{recall.count} approved{recall.due > 0 ? ` · ${recall.due} due` : ''}</span></div>{(record.srs?.cards || []).length ? <ul class="folio-recall-list">{(record.srs.cards || []).map((card: LibraryRecord) => <li key={card.id}><strong>{card.question}</strong><span>Topic: {card.topic || 'General'} · Due {formatDate(card.due_at)} · {card.repetitions} reps</span></li>)}</ul> : <p class="folio-record-note">No approved recall cards yet.</p>}{drafts.length > 0 && <div class="folio-draft-strip"><span>{drafts.length} pending {drafts.length === 1 ? 'draft' : 'drafts'}</span><a class="folio-button" href="#/learn?mode=practice&focus=recall">Review drafts</a></div>}{recall.count === 0 && drafts.length === 0 && <div class="folio-row-actions"><a class="folio-button" href="#/learn?mode=practice&focus=notes">Take a note first</a></div>}</section>
-    <section class="folio-object-section"><div class="folio-section-heading"><h2>Feedback & evidence</h2>{userScore > 0 && <span class="folio-score">{userScore}/10</span>}</div>{item.user_review && <div class="folio-bilingual-block" dir="auto"><p>{item.user_review}</p></div>}{!item.user_review && !item.user_score && <p class="folio-record-note">No rating or review recorded yet.</p>}{outcome?.outcome_status && <dl class="folio-property-list"><div><dt>Outcome</dt><dd>{formatStatus(outcome.outcome_status)}</dd></div>{outcome.actual_score != null && <div><dt>Actual score</dt><dd>{outcome.actual_score}/10</dd></div>}{outcome.consumed_at && <div><dt>Consumed</dt><dd>{formatDate(outcome.consumed_at)}</dd></div>}</dl>}</section>
+    <SourceFeedbackPanel item={item} record={record} threadId={thread?.id} handlers={handlers} userScore={userScore} outcome={outcome}/>
     {thread && <section class="folio-object-section"><h2>Learning Thread</h2><a class="folio-linked-object" href={`#/learn/thread/${encodeURIComponent(String(thread.id))}`}><strong>{thread.title}</strong><span>{thread.role || 'Attached source'} · {formatStatus(thread.status)}</span></a>{thread.expected_contribution && <p>{thread.expected_contribution}</p>}</section>}
     <section class="folio-object-section"><div class="folio-section-heading"><h2>Files</h2><span>{artifacts.length}</span></div>{artifacts.length ? artifacts.map((file: LibraryRecord) => <a class="folio-linked-object" href={artifactLink(file)} target="_blank" rel="noreferrer" key={file.id}><strong>{file.filename || fileKind(file)}</strong><span>{fileKind(file)} · passive open</span></a>) : <p class="folio-record-note">No linked files yet.</p>}</section>
     {notes.map((note: LibraryRecord) => <section class="folio-object-section" key={note.id}><div class="folio-section-heading"><h2>{note.kind === 'reflection' ? 'Reflection' : 'Extracted note'}</h2><span>{formatStatus(note.status || 'draft')}</span></div>{(note.sections || []).map((section: LibraryRecord) => <div class="folio-bilingual-block" dir={section.direction || 'auto'} key={section.section_key}><strong>{section.label || labelize(section.section_key || 'section')}</strong><p>{section.content}</p></div>)}</section>)}
   </div>
+}
+
+type FeedbackCompletionState = 'completed' | 'in_progress' | 'stopped'
+
+const feedbackReasonOptions: Record<FeedbackCompletionState, Array<[string, string]>> = {
+  completed: [
+    ['highly_relevant', 'Highly relevant'], ['excellent_source', 'Excellent source'], ['right_depth', 'Right depth'],
+    ['too_shallow', 'Too shallow'], ['too_long', 'Too long'], ['wrong_format', 'Wrong format'],
+  ],
+  in_progress: [
+    ['not_now', 'Continue later'], ['access_problem', 'Access problem'], ['wrong_format', 'Wrong format'], ['too_long', 'Needs more time'],
+  ],
+  stopped: [
+    ['bad_fit', 'Bad fit'], ['wrong_topic', 'Wrong topic'], ['too_familiar', 'Too familiar'], ['already_mastered', 'Already mastered'],
+    ['too_shallow', 'Too shallow'], ['too_advanced', 'Too advanced'], ['too_long', 'Too long'], ['poor_source', 'Poor source'],
+    ['wrong_format', 'Wrong format'], ['access_problem', 'Access problem'], ['other', 'Another reason'],
+  ],
+}
+
+function SourceFeedbackPanel({ item, record, threadId, handlers, userScore, outcome }: {
+  item: LibraryRecord
+  record: LibraryRecord
+  threadId?: string
+  handlers: LibraryViewHandlers
+  userScore: number
+  outcome?: LibraryRecord | null
+}) {
+  const metadata = parseMetadata(item.source_metadata_json)
+  const previous = metadata.learning_feedback || {}
+  const initialCompletion: FeedbackCompletionState = ['completed', 'in_progress', 'stopped'].includes(String(previous.completion_state || ''))
+    ? previous.completion_state
+    : item.status === 'consumed' ? 'completed' : 'in_progress'
+  const [completionState, setCompletionState] = useState<FeedbackCompletionState>(initialCompletion)
+  const [reasonTags, setReasonTags] = useState<string[]>(Array.isArray(previous.reason_tags) ? previous.reason_tags : [])
+  const [score, setScore] = useState(previous.score ?? (userScore || ''))
+  const [disposition, setDisposition] = useState(String(record.disposition?.disposition || previous.disposition || 'undecided'))
+  const [reflection, setReflection] = useState(String(item.user_review || ''))
+  const [expected, setExpected] = useState(String(previous.expected || ''))
+  const [actual, setActual] = useState(String(previous.actual || ''))
+  const [effort, setEffort] = useState(String(previous.effort || ''))
+  const [lengthMinutes, setLengthMinutes] = useState(previous.length_minutes == null ? '' : String(previous.length_minutes))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [receipt, setReceipt] = useState<LibraryRecord | null>(null)
+
+  const changeCompletion = (next: FeedbackCompletionState) => {
+    setCompletionState(next)
+    setReasonTags((current) => current.filter((tag) => feedbackReasonOptions[next].some(([value]) => value === tag)))
+    setError('')
+  }
+  const toggleReason = (reason: string) => setReasonTags((current) => current.includes(reason) ? current.filter((item) => item !== reason) : [...current, reason].slice(0, 8))
+  const submit = async (event: Event) => {
+    event.preventDefault()
+    if (!reflection.trim()) { setError('Write a short reflection so the feedback keeps your exact meaning.'); return }
+    if (completionState === 'stopped' && reasonTags.length === 0) { setError('Choose at least one reason for stopping.'); return }
+    setSaving(true); setError(''); setReceipt(null)
+    try {
+      const result = await api<LibraryRecord>('/feedback/record', {
+        method: 'POST',
+        body: JSON.stringify({
+          recommendation_id: item.id,
+          thread_id: threadId,
+          feedback: reflection.trim(),
+          completion_state: completionState,
+          score: score === '' ? undefined : Number(score),
+          disposition,
+          reason_tags: reasonTags,
+          expected: expected.trim() || undefined,
+          actual: actual.trim() || undefined,
+          effort: effort || undefined,
+          length_minutes: lengthMinutes === '' ? undefined : Number(lengthMinutes),
+        }),
+      })
+      setReceipt(result)
+      handlers.onFeedbackSaved?.(String(item.id), result)
+    } catch (submitError: any) {
+      setError(submitError?.message || 'Feedback could not be saved. Check the fields and try again.')
+    } finally { setSaving(false) }
+  }
+
+  const visibleReceipt = receipt || (!saving && !error && handlers.feedbackReceipt?.sourceId === String(item.id) ? handlers.feedbackReceipt.result : null)
+  const receiptCopy = visibleReceipt
+    ? visibleReceipt.receipt?.neutral
+      ? 'Saved as a neutral timing signal. It will not count as bad fit.'
+      : visibleReceipt.extraction_job
+        ? 'Saved. Hermes analysis and note preparation are queued.'
+        : 'Saved. Hermes analysis is queued; no notes were requested.'
+    : ''
+
+  return <section class="folio-object-section source-feedback-panel" aria-labelledby="source-feedback-title">
+    <div class="folio-section-heading source-feedback-heading">
+      <div><span class="folio-kicker">Close the loop</span><h2 id="source-feedback-title">Feedback & outcome</h2><p class="folio-record-note">Record what happened. Timing, fit, rating, and what to keep remain separate.</p></div>
+      {userScore > 0 && <span class="folio-score">{userScore}/10</span>}
+    </div>
+    {(item.user_review || outcome?.outcome_status) && <div class="source-feedback-current">
+      {item.user_review && <blockquote dir="auto">{item.user_review}</blockquote>}
+      {outcome?.outcome_status && <dl class="folio-property-list"><div><dt>Outcome</dt><dd>{formatStatus(outcome.outcome_status)}</dd></div>{outcome.actual_score != null && <div><dt>Score</dt><dd>{outcome.actual_score}/10</dd></div>}{outcome.consumed_at && <div><dt>Finished</dt><dd>{formatDate(outcome.consumed_at)}</dd></div>}</dl>}
+    </div>}
+    <form class="source-feedback-form" onSubmit={submit} noValidate>
+      <fieldset class="source-feedback-state">
+        <legend>What happened?</legend>
+        <div class="source-feedback-segments">
+          {([['completed', 'Finished', 'Mark this source complete'], ['in_progress', 'Continue later', 'Keep it open without a negative signal'], ['stopped', 'Stopped', 'Record why it was not worth continuing']] as Array<[FeedbackCompletionState, string, string]>).map(([value, label, hint]) => <label class={completionState === value ? 'active' : ''} key={value}><input type="radio" name={`feedback-state-${item.id}`} value={value} checked={completionState === value} onChange={() => changeCompletion(value)}/><strong>{label}</strong><small>{hint}</small></label>)}
+        </div>
+      </fieldset>
+      <fieldset class="source-feedback-reasons">
+        <legend>{completionState === 'stopped' ? 'Why did you stop?' : completionState === 'completed' ? 'What stood out?' : 'Why continue later?'}</legend>
+        <div class="source-feedback-chips">
+          {feedbackReasonOptions[completionState].map(([value, label]) => <label class={reasonTags.includes(value) ? 'active' : ''} key={value}><input type="checkbox" value={value} checked={reasonTags.includes(value)} onChange={() => toggleReason(value)}/><span>{label}</span></label>)}
+        </div>
+      </fieldset>
+      <div class="source-feedback-decision-grid">
+        <label class="folio-form-field"><span>Usefulness score <small>optional, 0–10</small></span><input type="number" min="0" max="10" step="1" inputMode="numeric" value={score} onInput={(event) => setScore((event.target as HTMLInputElement).value)}/></label>
+        <label class="folio-form-field"><span>What should happen to the ideas?</span><select value={disposition} onChange={(event) => setDisposition((event.target as HTMLSelectElement).value)}><option value="undecided">Decide later</option><option value="retain">Keep for recall</option><option value="apply">Apply soon</option><option value="reference">Reference only</option><option value="drop">Drop</option></select></label>
+      </div>
+      <label class="folio-form-field source-feedback-reflection"><span>Your reflection</span><textarea value={reflection} maxLength={10000} aria-describedby={`feedback-reflection-help-${item.id}`} onInput={(event) => { setReflection((event.target as HTMLTextAreaElement).value); if (error) setError('') }} placeholder={completionState === 'completed' ? 'What was useful, surprising, or missing?' : completionState === 'stopped' ? 'What made this a poor use of your time?' : 'What should you remember when you return?'} required/><small id={`feedback-reflection-help-${item.id}`}>Your words are preserved exactly. Feedback never requests another recommendation.</small></label>
+      <details class="source-feedback-details" open={Boolean(previous.expected || previous.actual || previous.effort || previous.length_minutes)}>
+        <summary>Expectation, result, and effort <span>optional</span></summary>
+        <div class="source-feedback-expectation">
+          <label class="folio-form-field"><span>Expected</span><textarea value={expected} maxLength={2000} onInput={(event) => setExpected((event.target as HTMLTextAreaElement).value)} placeholder="What did you expect this source to give you?"/></label>
+          <label class="folio-form-field"><span>Actually got</span><textarea value={actual} maxLength={2000} onInput={(event) => setActual((event.target as HTMLTextAreaElement).value)} placeholder="What did it actually give you?"/></label>
+        </div>
+        <div class="source-feedback-decision-grid"><label class="folio-form-field"><span>Effort</span><select value={effort} onChange={(event) => setEffort((event.target as HTMLSelectElement).value)}><option value="">Not recorded</option><option value="light">Light</option><option value="moderate">Moderate</option><option value="deep">Deep</option></select></label><label class="folio-form-field"><span>Minutes spent</span><input type="number" min="0" max="100000" inputMode="numeric" value={lengthMinutes} onInput={(event) => setLengthMinutes((event.target as HTMLInputElement).value)}/></label></div>
+      </details>
+      {error && <p class="source-feedback-error" role="alert">{error}</p>}
+      <div class="folio-form-actions"><button type="submit" class="folio-button folio-button-primary" disabled={saving}>{saving ? 'Saving feedback…' : 'Save feedback'}</button>{receiptCopy && <output class="source-feedback-receipt" role="status"><strong>Feedback saved.</strong><span>{receiptCopy}</span>{visibleReceipt?.feedback_job && <small>Analysis receipt: {visibleReceipt.feedback_job}</small>}</output>}</div>
+    </form>
+  </section>
 }
 
 function SourceAnnotationPanel({ source, threadId, branchId }: { source: LibraryRecord; threadId?: string; branchId?: string }) {

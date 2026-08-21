@@ -155,7 +155,7 @@ app.get('/analytics/hermes', async (c) => {
     const calibrationRows = await allOr(DB.prepare(`SELECT p.expected_learning_value predicted_value,o.learning_value actual_value,o.format_key format,o.creator_key creator,p.strategy
       FROM recommendation_outcomes o LEFT JOIN compass_picks p ON p.recommendation_id=o.recommendation_id
       WHERE o.training_eligible=1 AND o.learning_value IS NOT NULL AND o.objective_version='learning_value_v2'`))
-    const [jobCounts, stale, retryQueue, deadLetters, quality, qualityByFormat, memory, alerts, failures, weights, proposals, compassPriors, compassWeights, candidateQuality] = await Promise.all([
+    const [jobCounts, stale, retryQueue, deadLetters, quality, qualityByFormat, memory, alerts, failures, weights, proposals, compassPriors, compassWeights, candidateQuality, compassFeedbackRows] = await Promise.all([
       DB.prepare(`SELECT status,COUNT(*) count FROM agent_jobs GROUP BY status`).all<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM agent_jobs WHERE status='running' AND lease_expires_at < datetime('now')`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM agent_job_retries WHERE dead_lettered_at IS NULL AND next_attempt_at > datetime('now')`).first<any>(),
@@ -178,6 +178,9 @@ app.get('/analytics/hermes', async (c) => {
         SUM(CASE WHEN json_array_length(json_extract(evidence_json,'$.candidate_context.concepts')) >= 2 THEN 1 ELSE 0 END) candidates_with_concepts,
         SUM(CASE WHEN json_extract(features_json,'$._exclusion_reason')='duplicate_submission' THEN 1 ELSE 0 END) duplicate_submissions
         FROM compass_candidates`).first<any>().catch(() => null),
+      DB.prepare(`SELECT cf.outcome,cf.score,cf.reason_tags_json,cf.exposure_json,p.strategy lane
+        FROM compass_feedback cf LEFT JOIN compass_picks p ON p.id=cf.pick_id
+        ORDER BY cf.created_at`).all<any>().catch(() => ({ results: [] })),
     ])
     const [signalPopulation, profileIntelligence, improvementRuns] = await Promise.all([
       DB.prepare(`SELECT COUNT(*) total,
@@ -190,6 +193,38 @@ app.get('/analytics/hermes', async (c) => {
     ])
     const statuses: Record<string, number> = {}
     for (const row of jobCounts.results || []) statuses[row.status] = Number(row.count || 0)
+    const reasonGroups = new Map<string, { reason: string; count: number; scores: number[] }>()
+    const laneGroups = new Map<string, { lane: string; total: number; completed: number; declined: number; abandoned: number; deferred: number; scores: number[] }>()
+    let neutralDeferrals = 0
+    for (const row of compassFeedbackRows.results || []) {
+      let reasons: string[] = []
+      let exposure: any = {}
+      try { reasons = JSON.parse(row.reason_tags_json || '[]') } catch {}
+      try { exposure = JSON.parse(row.exposure_json || '{}') } catch {}
+      const score = row.score == null || !Number.isFinite(Number(row.score)) ? null : Number(row.score)
+      const lane = String(exposure.lane || row.lane || 'unknown')
+      const laneGroup = laneGroups.get(lane) || { lane, total: 0, completed: 0, declined: 0, abandoned: 0, deferred: 0, scores: [] }
+      laneGroup.total += 1
+      if (row.outcome === 'completed') laneGroup.completed += 1
+      if (row.outcome === 'declined') laneGroup.declined += 1
+      if (row.outcome === 'abandoned') laneGroup.abandoned += 1
+      if (reasons.includes('not_now')) { laneGroup.deferred += 1; neutralDeferrals += 1 }
+      if (score !== null) laneGroup.scores.push(score)
+      laneGroups.set(lane, laneGroup)
+      for (const reason of reasons) {
+        const reasonGroup = reasonGroups.get(reason) || { reason, count: 0, scores: [] }
+        reasonGroup.count += 1
+        if (score !== null) reasonGroup.scores.push(score)
+        reasonGroups.set(reason, reasonGroup)
+      }
+    }
+    const summarizeScores = (scores: number[]) => scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length * 100) / 100 : null
+    const feedbackAnalytics = {
+      total: Number(compassFeedbackRows.results?.length || 0),
+      neutral_deferrals: neutralDeferrals,
+      by_reason: [...reasonGroups.values()].map(({ scores, ...group }) => ({ ...group, average_score: summarizeScores(scores) })).sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason)),
+      by_lane: [...laneGroups.values()].map(({ scores, ...group }) => ({ ...group, average_score: summarizeScores(scores) })).sort((a, b) => a.lane.localeCompare(b.lane)),
+    }
     const summarizeCalibration = (key: 'strategy' | 'format' | 'creator') => {
       const groups = new Map<string, { rated: number; paired: number; error: number }>()
       for (const row of calibrationRows) {
@@ -241,7 +276,7 @@ app.get('/analytics/hermes', async (c) => {
       memory: { entries: memory.results || [], active: (memory.results || []).filter((row: any) => row.status === 'active').reduce((sum: number, row: any) => sum + Number(row.count || 0), 0) },
       alerts: alerts.results || [],
       engine_weights: weights.results || [],
-      compass_learning: { strategies: compassPriors.results || [], feature_weights: compassWeights.results || [], calibration, candidate_quality: candidateQuality || {} },
+      compass_learning: { strategies: compassPriors.results || [], feature_weights: compassWeights.results || [], calibration, candidate_quality: candidateQuality || {}, feedback: feedbackAnalytics },
       profile_intelligence: profileIntelligence,
       self_improvement: { runs: improvementRuns.results || [] },
       pending_proposals: Number(proposals?.count || 0),

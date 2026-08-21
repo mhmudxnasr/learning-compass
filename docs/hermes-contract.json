@@ -6,7 +6,7 @@
   "agent_control": {
     "contract_version": "2026-08-20",
     "protocol": "learning-compass-agent-http/2",
-    "context": "canonical Queue plus Thread evidence gaps with explicit component health",
+    "context": "canonical Queue plus Thread lesson/material target gaps with explicit component health",
     "tools": ["list_capabilities", "site_request"],
     "mutations": "dry-run plus required idempotency, high-risk confirmation/precondition, canonical readback, and receipt"
   },
@@ -71,7 +71,7 @@
       "deployment": "automatic_after_release_verification_with_observed_live_smoke",
       "never": ["unverified rules", "silent policy weakening", "destructive deletion", "external publication", "scheduled self-improvement", "background self-improvement"]
     },
-    "feedback": "preserve exact reflection, then record proposals or evidence-backed no_change; auto-apply only through profile_v2 policy and never recommend",
+    "feedback": "preserve the exact reflection plus completion_state, reason_tags, expected, actual, effort, length_minutes, rating, and separate disposition; in_progress/not_now is neutral, stopped requires a reason, Compass exposure retains branch/round/lane/target context, every write returns a receipt, proposals or evidence-backed no_change follow profile_v2 policy, and feedback never recommends",
     "recommendation_objective": "learning_value_v2: available rating 25%, explicit disposition 25%, strongest downstream evidence 50%; administrative exclusion and not_now are non-utility",
     "profile_automation": "automatic at confidence >= 0.8 with direct user statement or two evidence items; explicit assertion supersession requires direct contradiction or confidence >= 0.95 with three evidence items; all changes reversible",
     "notebooklm": "explicit feedback grounding or explicit Studio request only",
