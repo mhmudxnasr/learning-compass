@@ -7,6 +7,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test:unit": "node --test tests/unit/*.test.ts",
+    "test:unit:portable": "node --test $(find tests/unit -name '*.test.ts' ! -name 'transcript-adapter.test.ts' ! -name 'lite-visual-source-extraction.test.ts' ! -name 'lite-visual-validator.test.ts' ! -name 'lite-visual-hardening.test.ts')",
     "test:e2e": "node tests/e2e/routes.mjs",
     "verify:hermes": "node scripts/verify-hermes-contract.mjs",
     "verify:agent-contract": "node --test tests/unit/agent-control.test.ts && node scripts/verify-hermes-contract.mjs",
