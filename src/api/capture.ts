@@ -22,7 +22,7 @@ const feedImportLimit = (value: unknown) => {
 app.post('/', async (c) => {
   const { DB } = c.env
   try {
-    const body = await c.req.json<{ source: string; title?: string; artifact_id?: string; override_queue_cap?: boolean }>()
+    const body = await c.req.json<{ source: string; title?: string; artifact_id?: string; branch_id?: string; branch_reason?: string; override_queue_cap?: boolean }>()
     const source = String(body.source || '').trim()
     if (!source) return c.json({ error: 'source required' }, 400)
 
@@ -30,8 +30,30 @@ app.post('/', async (c) => {
       ? await DB.prepare(`SELECT id,filename,media_type,r2_key FROM artifacts WHERE id=?`).bind(body.artifact_id).first<any>()
       : null
     if (body.artifact_id && !artifact) return c.json({ error: 'artifact not found' }, 404)
-    const result = await createCapture(DB, { source, title: body.title, artifact })
-    return c.json({ ok: true, ...result, state: result.duplicate ? undefined : 'captured' }, result.duplicate ? 200 : 201)
+    const branchId = String(body.branch_id || '').trim()
+    const branch = branchId
+      ? await DB.prepare("SELECT id,label,status FROM tree_nodes WHERE id=? AND type IN ('root','category','branch','leaf')").bind(branchId).first<any>()
+      : null
+    if (branchId && !branch) return c.json({ error: 'branch not found' }, 404)
+    if (String(branch?.status || '').toLowerCase() === 'pruned') return c.json({ error: 'cannot capture to a pruned branch', branch_id: branch.id }, 409)
+    const result = await createCapture(DB, {
+      source,
+      title: body.title,
+      artifact,
+      ...(branch ? { branch: {
+        id: branch.id,
+        confidence: 'high',
+        reason: String(body.branch_reason || '').slice(0, 500),
+        source: String(c.req.header('x-agent-name') || 'user_capture').trim().slice(0, 100) || 'user_capture',
+      } } : {}),
+    })
+    if ('branchConflict' in result) return c.json({ error: 'branch_mapping_conflict', recommendation_id: result.id, existing_branch_id: result.branchConflict }, 409)
+    return c.json({
+      ok: true,
+      ...result,
+      state: result.duplicate ? undefined : 'captured',
+      ...(branch ? { branch: { id: branch.id, label: branch.label, status: branch.status } } : {}),
+    }, result.duplicate ? 200 : 201)
   } catch (error) { return c.json(safeError('Capture failed')(error), 500) }
 })
 

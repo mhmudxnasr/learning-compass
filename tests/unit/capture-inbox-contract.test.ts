@@ -4,6 +4,7 @@ import test from 'node:test'
 
 const captureService = readFileSync(new URL('../../src/services/capture.ts', import.meta.url), 'utf8')
 const captureApi = readFileSync(new URL('../../src/api/capture.ts', import.meta.url), 'utf8')
+const agentCapabilities = readFileSync(new URL('../../src/services/agent-capabilities.ts', import.meta.url), 'utf8')
 const captureDialog = readFileSync(new URL('../../client/src/shell/CaptureDialog.tsx', import.meta.url), 'utf8')
 
 test('capture defaults to a captured source record rather than bypassing Queue', () => {
@@ -18,6 +19,11 @@ test('global Capture describes the same source-record contract as the API', () =
 })
 
 test('Captured sources can be branch-mapped but Queue rejects unmapped sources', () => {
+  assert.match(captureService, /branch_id=COALESCE\(branch_id,\?\)/)
+  assert.match(captureService, /INSERT INTO recommendation_meta \(recommendation_id,learning_state,branch_id,source_metadata_json,updated_at\)/)
+  assert.match(captureApi, /cannot capture to a pruned branch/)
+  assert.match(captureApi, /branch_mapping_conflict/)
+  assert.match(agentCapabilities, /\['source', 'branch_id'\]/)
   assert.match(captureApi, /\['captured','queued','in_progress'\]/)
   assert.match(captureApi, /branch_mapping_required/)
   assert.match(captureApi, /!item\.branch_id \|\| !item\.branch_exists/)

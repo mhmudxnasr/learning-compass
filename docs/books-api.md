@@ -57,5 +57,5 @@ Request `{ "completed": true|false }`. This changes chapter completion metadata 
 - Read and mutate book chapters through the Books routes.
 - Keep book chapter files book-scoped with `scope=book`.
 - Verify the owning book and chapter key before upload or completion.
-- Do not turn a book chapter into a standalone recommendation, Inbox item, Queue item, or general Files entry.
+- Do not turn a book chapter into a standalone recommendation, captured Library source, Queue item, or general Files entry.
 - Do not create HTML/PDF artifacts unless the user explicitly requests the chapter files.

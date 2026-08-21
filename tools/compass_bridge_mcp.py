@@ -27,9 +27,9 @@ def compact(value: Any, limit: int = 1800) -> Any:
     """Keep tool output useful without dumping large product responses."""
     if isinstance(value, dict):
         preferred = (
-            "ok", "verified", "id", "status", "state", "title", "source", "url",
+            "ok", "verified", "id", "status", "state", "title", "label", "round", "source", "url",
             "thread", "threads", "branch", "branches", "items", "queue", "recall",
-            "due", "count", "total", "returned", "receipt", "data", "error", "message",
+            "due", "count", "total", "returned", "receipt", "data", "error", "message", "blocker",
         )
         out = {k: compact(value[k]) for k in preferred if k in value}
         if not out:
@@ -132,10 +132,46 @@ def tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "compass_branch_suggest":
         return receipt(site_request("POST", "/brain/branch-suggest", {"mode": args.get("mode", "surprise"), "prompt": args.get("prompt", "")}))
     if name == "compass_capture":
-        body = {"source": args["source"]}
+        body = {"source": args["source"], "branch_id": args["branch_id"]}
         if args.get("title"):
             body["title"] = args["title"]
-        return receipt(site_request("POST", "/capture", body))
+        if args.get("branch_reason"):
+            body["branch_reason"] = args["branch_reason"]
+        captured = site_request("POST", "/capture", body)
+        capture_data = captured.get("data") or (captured.get("receipt") or {}).get("mutation_or_job", {}).get("data") or captured
+        item_id = capture_data.get("id") or capture_data.get("recommendation_id")
+        if not captured.get("ok") or not item_id:
+            return receipt(captured)
+        record = http_get(f"/capture/{urllib.parse.quote(str(item_id), safe='')}/record")
+        branch = (record.get("item") or {}).get("branch") or record.get("branch") or {}
+        if branch.get("id") != args["branch_id"] or not branch.get("round"):
+            mapped = http_json(
+                f"/capture/{urllib.parse.quote(str(item_id), safe='')}/branch-map",
+                {
+                    "branch_id": args["branch_id"],
+                    "confidence": "high",
+                    "reason": args.get("branch_reason", "Compatibility repair after atomic capture readback"),
+                },
+            )
+            if not mapped.get("ok"):
+                return receipt({"ok": False, "captured": compact(captured), "record": compact(record), "branch_mapping": compact(mapped), "blocker": "atomic capture branch readback failed and compatibility repair was rejected"})
+            record = http_get(f"/capture/{urllib.parse.quote(str(item_id), safe='')}/record")
+            branch = (record.get("item") or {}).get("branch") or record.get("branch") or {}
+        verified_branch = (
+            branch.get("id") == args["branch_id"]
+            and bool(branch.get("label"))
+            and bool(branch.get("round"))
+            and str(branch.get("status", "")).lower() != "pruned"
+        )
+        return receipt({
+            "ok": bool(record.get("ok", True)) and verified_branch,
+            "verified": verified_branch,
+            "id": item_id,
+            "state": (record.get("item") or {}).get("learning_state") or capture_data.get("state"),
+            "branch": branch,
+            "record": compact(record),
+            **({} if verified_branch else {"blocker": "capture branch/round readback failed"}),
+        })
     if name == "compass_start":
         item_id = args["item_id"]
         body = {"recommendation_id": item_id, "thread_id": args["thread_id"], "target_kind": args.get("target_kind", "original")}
@@ -167,7 +203,7 @@ TOOLS = [
     ("compass_threads", "List active Learning Threads and progression state.", {}),
     ("compass_branch_deck", "Read reviewable branch suggestions and map candidates.", {}),
     ("compass_branch_suggest", "Request grounded review-before-commit branch ideas; this does not commit a branch.", {"mode": {"type": "string", "enum": ["surprise", "expand", "bridge", "challenge"]}, "prompt": {"type": "string"}}),
-    ("compass_capture", "Capture a URL or source into the Learning Compass Inbox.", {"source": {"type": "string"}, "title": {"type": "string"}, "required": ["source"]}),
+    ("compass_capture", "Capture a URL or source into Library → All sources, map its verified branch, and return branch/round readback.", {"source": {"type": "string"}, "title": {"type": "string"}, "branch_id": {"type": "string", "minLength": 1}, "branch_reason": {"type": "string"}, "required": ["source", "branch_id"]}),
     ("compass_start", "Start a Compass item in a Thread and return the verified session receipt.", {"item_id": {"type": "string"}, "thread_id": {"type": "string"}, "target_kind": {"type": "string"}, "target_artifact_id": {"type": "string"}, "required": ["item_id", "thread_id"]}),
     ("compass_feedback", "Record a reflection, optional rating, and disposition for a consumed Compass item.", {"item_id": {"type": "string"}, "feedback": {"type": "string"}, "rating": {"type": "number", "minimum": 0, "maximum": 10}, "disposition": {"type": "string", "enum": ["retain", "apply", "reference", "drop"]}, "complete": {"type": "boolean"}, "required": ["item_id", "feedback"]}),
     ("compass_visualise", "Request a source-specific Arabic Lite Visual companion for a captured item.", {"item_id": {"type": "string"}, "mode": {"type": "string", "enum": ["lite_visual"]}, "required": ["item_id"]}),
@@ -200,7 +236,9 @@ def handle(message: dict[str, Any]) -> dict[str, Any] | None:
         try:
             result = tool_call(str(params.get("name")), params.get("arguments") or {})
             text = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
-            return {"jsonrpc": "2.0", "id": ident, "result": {"content": [{"type": "text", "text": text}], "isError": bool(result.get("error"))}}
+            nested = result.get("result") if isinstance(result.get("result"), dict) else {}
+            is_error = bool(result.get("error")) or result.get("ok") is False or nested.get("ok") is False
+            return {"jsonrpc": "2.0", "id": ident, "result": {"content": [{"type": "text", "text": text}], "isError": is_error}}
         except Exception as exc:
             return {"jsonrpc": "2.0", "id": ident, "error": {"code": -32000, "message": str(exc)}}
     if ident is not None:

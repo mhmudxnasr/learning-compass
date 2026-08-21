@@ -69,7 +69,7 @@ test('NotebookLM learning defaults to focused retrieval and truthful provider re
   assert.match(notebookLm, /`audio` is Arabic \(`ar_eg`\) and is only for orientation or review/)
   assert.match(notebookLm, /Never generate every format/)
   assert.match(notebookLm, /Never turn `pending` into `ready` by inference/)
-  assert.match(notebookLm, /never change Thread progress, lesson completion, evidence, recall scheduling, or mastery/)
+  assert.match(notebookLm, /never change lesson, Level, or Thread completion or recall scheduling/)
 })
 
 test('Lite Visual keeps the repaired companion quality baseline for future files', () => {

@@ -16,7 +16,7 @@ capture → curate → consume externally → reflect → extract notes
 3. **Consume:** opening an item starts or resumes a learning session, then hands off to the original source.
 4. **Return:** the user records a five-part reflection and may complete and rate the session in the same action.
 5. **Process:** structured notes are stored in D1. Large source files and generated reading companions live in R2.
-6. **Review:** ratings from 7–10 automatically queue a separate extracted note and editable recall-card drafts. A draft must be approved before entering spaced repetition.
+6. **Review:** explicit `retain`/`apply` may create a separate source-shaped note and up to four editable recall-card drafts. Rating alone never creates them; a draft must be approved before entering spaced repetition.
 7. **Learn from history:** ratings, notes, review events, and map coverage inform future resurfacing and taste analysis.
 
 Feedback never requests another recommendation automatically. Finishing one item should close the loop, not create an endless feed.
@@ -260,7 +260,7 @@ Do not start with analytics, AI recommendations, or a knowledge graph. First pro
 Build only:
 
 - universal capture;
-- an unlimited Inbox;
+- an unlimited Library → All sources catalog;
 - a deliberately small Queue;
 - external-source handoff;
 - resumable Queue handoffs backed by hidden sessions;
@@ -286,7 +286,7 @@ Add offline mutation recovery, large-data tests, bilingual direction handling, r
 
 ## Product rules that must remain true
 
-- Every capture enters the unlimited Inbox.
+- Every capture becomes a `captured` Library record; Queue is a separate explicit commitment.
 - Queue normally contains at most five queued or in-progress items.
 - Consumption happens at the original source or a verified canonical Lite Visual companion.
 - Returning with reflection creates one linked structured reflection.

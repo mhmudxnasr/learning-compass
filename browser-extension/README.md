@@ -1,6 +1,6 @@
 # Learning Compass Capture extension
 
-This is a deliberately small Manifest V3 capture seam. It requests only `activeTab`, `contextMenus`, and `storage`; it does not read page content in the background, store API tokens, or write directly to the Worker. The extension opens the app’s global capture dialog with the current URL or selected passage, and the normal capture flow writes to the unlimited Inbox.
+This is a deliberately small Manifest V3 capture seam. It requests only `activeTab`, `contextMenus`, and `storage`; it does not read page content in the background, store API tokens, or write directly to the Worker. The extension opens the app’s global capture dialog with the current URL or selected passage, and the normal capture flow creates a `captured` Library record.
 
 ## Install
 

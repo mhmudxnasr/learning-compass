@@ -1,4 +1,4 @@
-export const AGENT_CONTRACT_VERSION = '2026-08-20'
+export const AGENT_CONTRACT_VERSION = '2026-08-22'
 export const AGENT_PROTOCOL = 'learning-compass-agent-http/2'
 
 export type AgentMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -14,7 +14,7 @@ const objectSchema = (properties: Record<string, JsonSchema> = {}, required: str
 })
 
 const BODY_SCHEMAS: Record<string, JsonSchema> = {
-  'POST /capture': objectSchema({ source: { type: 'string', minLength: 1 }, title: { type: 'string' }, artifact_id: { type: 'string' } }, ['source']),
+  'POST /capture': objectSchema({ source: { type: 'string', minLength: 1 }, title: { type: 'string' }, artifact_id: { type: 'string' }, branch_id: { type: 'string', minLength: 1 }, branch_reason: { type: 'string', maxLength: 500 } }, ['source', 'branch_id']),
   'POST /annotations': objectSchema({
     recommendation_id: { type: 'string', minLength: 1 },
     artifact_id: { type: 'string' },
@@ -116,9 +116,6 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /learning/core/threads/:id/stages/:stageId/start': '/learning/core/threads/:id/path',
   'POST /learning/core/threads/:id/stages': '/learning/core/threads/:id/path',
   'PATCH /learning/core/threads/:id/stages/:stageId': '/learning/core/threads/:id/path',
-  'POST /learning/core/threads/:id/stages/:stageId/items': '/learning/core/threads/:id/path',
-  'PATCH /learning/core/threads/:id/stages/:stageId/items/:itemId': '/learning/core/threads/:id/path',
-  'POST /learning/core/threads/:id/stages/:stageId/verify': '/learning/core/threads/:id/path',
   'POST /learning/core/threads/:id/stages/:stageId/sources': '/learning/core/threads/:id/path',
   'POST /learning/core/threads/:id/stages/:stageId/lessons': '/learning/core/threads/:id/path',
   'PATCH /learning/core/threads/:id/lessons/:lessonId': '/learning/core/threads/:id/path',
@@ -127,7 +124,6 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /learning/core/threads/:id/sources': '/learning/core/threads/:id/path',
   'DELETE /learning/core/threads/:id/sources/:sourceId': '/learning/core/threads/:id/path',
   'DELETE /learning/core/threads/:id': '/learning/core/threads',
-  'POST /learning/core/threads/:id/verify': '/learning/core/threads/:id/path',
   'POST /learning/core/canon/domains': '/learning/core/canon/domains/:id',
   'PATCH /learning/core/canon/domains/:id': '/learning/core/canon/domains/:id',
   'PUT /learning/core/canon/domains/:id/entries/:role': '/learning/core/canon/domains/:id',
@@ -146,16 +142,12 @@ const PRECONDITION_OVERRIDES: Record<string, string[]> = {
   'DELETE /recommendations/:id/permanent': ['Target must be archived/non-active.', 'Explicit irreversible confirmation is required.'],
   'DELETE /learning/core/threads/:id': ['Read the exact Thread and require explicit destructive intent.'],
   'POST /compass/pick/:id/start': ['The pick must be ready and Queue must be below the cap.'],
-  'POST /learning/core/threads/:id/verify': ['Confirm the exact Thread path is still ready to verify.'],
-  'POST /learning/core/threads/:id/stages/:stageId/verify': ['The exact stage must be ready_to_verify.', 'Confirm the current Thread path before advancing it.'],
   'POST /learning/srs/review': ['The learner must supply or confirm the recall grade.', 'Confirm the exact card state before recording the review.'],
 }
 
 const PRECONDITION_PATH_OVERRIDES: Record<string, string> = {
   'DELETE /recommendations/:id/permanent': '/capture/:id/record',
   'DELETE /learning/core/threads/:id': '/learning/core/threads/:id',
-  'POST /learning/core/threads/:id/verify': '/learning/core/threads/:id/path',
-  'POST /learning/core/threads/:id/stages/:stageId/verify': '/learning/core/threads/:id/path',
   'POST /learning/srs/review': '/learning/srs/cards/:id',
   'POST /analytics/hermes/engine/activate': '/analytics/hermes/engine',
   'POST /analytics/hermes/recalibrate': '/analytics/hermes/engine',

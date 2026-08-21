@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 
 const root = new URL('..', import.meta.url).pathname
 const read = (file) => readFileSync(join(root, file), 'utf8')
@@ -50,6 +50,8 @@ const checks = [
   ['PROJECT_CONTEXT.md', '`schema.sql` is the base schema; `migrations/` are ordered, idempotent production migrations.', 'migration contract synchronization'],
   ['.hermes.md', 'learning-compass-operating-system', 'procedural Hermes router contract'],
   ['src/api/agent.ts', "['POST', '/learning/core/threads'", 'Learning Thread agent capability'],
+  ['src/api/capture.ts', 'branch_mapping_conflict', 'atomic branch-aware capture conflict guard'],
+  ['src/services/capture.ts', 'branch_id=COALESCE(branch_id,?)', 'atomic capture branch persistence'],
   ['.hermes.md', 'output_contract=source_note_v2', 'source-note extraction contract'],
   ['src/api/agent.ts', "['GET', '/agent/briefing'", 'Hermes briefing capability'],
   ['src/api/search.ts', "app.get('/evidence'", 'evidence retrieval endpoint'],
@@ -60,7 +62,7 @@ if (failed.length) throw new Error(`Hermes contract drift: ${failed.join(', ')}`
 if (read('src/index.ts').includes('createHermesEvaluatorProposals')) throw new Error('Scheduled self-improvement remains enabled')
 
 const contract = JSON.parse(read('docs/hermes-contract.json'))
-if (contract.version !== 5) throw new Error('Canonical Hermes contract version drift')
+if (contract.version !== 6) throw new Error('Canonical Hermes contract version drift')
 const agentControlSource = read('src/services/agent-capabilities.ts')
 const agentApiSource = read('src/api/agent.ts')
 const agentVersion = agentControlSource.match(/AGENT_CONTRACT_VERSION = '([^']+)'/)?.[1]
@@ -71,6 +73,14 @@ if (!agentControlSource.includes("paths['/agent/request']")) throw new Error('Ag
 if (!read('src/index.ts').includes('INSERT OR IGNORE INTO sync_mutation_locks')) throw new Error('Atomic mutation reservation drift')
 for (const obsolete of ["name: 'push_recommendation'", "name: 'validate_content_fit'", "name: 'log_learning_session'", "name: 'get_agent_context'", "app.post('/validate-fit'"]) {
   if (agentApiSource.includes(obsolete)) throw new Error(`Obsolete agent tool remains: ${obsolete}`)
+}
+for (const retired of [
+  "['POST', '/learning/core/threads/:id/stages/:stageId/items'",
+  "['PATCH', '/learning/core/threads/:id/stages/:stageId/items/:itemId'",
+  "['POST', '/learning/core/threads/:id/stages/:stageId/verify'",
+  "['POST', '/learning/core/threads/:id/verify'",
+]) {
+  if (agentApiSource.includes(retired)) throw new Error(`Retired progression-gate agent route remains: ${retired}`)
 }
 for (const tool of contract.agent_control?.tools || []) {
   if (!agentApiSource.includes(`name: '${tool}'`) || !agentApiSource.includes(`name === '${tool}'`)) throw new Error(`Agent tool declaration/handler drift: ${tool}`)
@@ -83,6 +93,9 @@ const requiredPolicy = [
   ['background_self_improvement', false],
   ['notebooklm', 'explicit feedback grounding or explicit Studio request only'],
   ['recommendations', 'explicit request only; feedback never creates a recommendation'],
+  ['capture', 'every new source is a captured Library record with its validated branch persisted atomically; Queue is separate and explicit'],
+  ['learning_progression', 'Levels and Threads advance only through learner-confirmed direct lesson completion; projects, sources, notes, ratings, dispositions, recall, and provider receipts never gate or advance progression'],
+  ['branch_round', 'every captured, recommended, or queued item requires a verified non-pruned branch plus round and a visible branch pill on every rendering surface'],
 ]
 for (const [key, expected] of requiredPolicy) {
   if (contract.policies?.[key] !== expected) throw new Error(`Canonical Hermes policy drift: ${key}`)
@@ -129,6 +142,9 @@ if (existsSync(localSkillsRoot)) {
     for (const forbidden of ['style_lock: paper=', '## Keep the skill current (mandatory)', 'save to Hermes memory as hard reject', 'pair upload, extraction,', 'agy CLI agent last', 'Every substantive section must be bilingual', 'ε=0.15', 'V2 remains shadow-only', 'POST /learning/log', 'Gemini API exclusively', "Scholar's Instrument", 'or the canonical direct route']) {
       if (body.includes(forbidden)) throw new Error(`Stale Hermes skill contract in ${skill.name}: ${forbidden}`)
     }
+    for (const forbidden of [/\bInbox\b/i, /learning[- ]evidence/i, /learner evidence/i, /Thread evidence/i, /proof (?:work|action|requirement|counter)/i, /ready_to_verify/i, /evidence_pending/i, /\/learning\/core\/evidence/i, /2026-08-18/]) {
+      if (forbidden.test(body)) throw new Error(`Retired Learning Compass concept remains in ${skill.name}: ${forbidden}`)
+    }
     if (skill.name === 'learning-compass-self-evolution') {
       for (const needle of ['## Failure-to-repair protocol', 'Reproduce it with the smallest safe replay', 'Add a regression test or deterministic validator', 'Do not close a reproducible repairable failure as `no_change`']) {
         if (!body.includes(needle)) throw new Error(`Hermes self-evolution repair protocol missing: ${needle}`)
@@ -168,6 +184,36 @@ if (existsSync(localSkillsRoot)) {
   const activeNames = new Set(activeSkills.map((skill) => skill.name))
   const unownedEnabled = installedSkillNames.filter((name) => !activeNames.has(name) && !disabledSkills.has(name))
   if (unownedEnabled.length) throw new Error(`Unowned Hermes skills remain enabled: ${unownedEnabled.join(', ')}`)
+
+  const profileRoot = join(homedir(), '.hermes', 'profiles', 'compass')
+  const profileSkillsRoot = join(profileRoot, 'skills')
+  if (!existsSync(profileSkillsRoot)) throw new Error('Compass Hermes profile skill tree is missing')
+  const relevantFiles = (dir) => walkSkillFiles(dir).filter((file) => !file.includes('/__pycache__/') && !file.includes('/.usage/') && !file.includes('/.hub/') && !file.endsWith('.pyc'))
+  for (const skill of activeSkills) {
+    const canonicalDir = join(localSkillsRoot, skill.path)
+    const profileDir = join(profileSkillsRoot, skill.path)
+    if (!existsSync(profileDir)) throw new Error(`Compass profile skill is missing: ${skill.name}`)
+    const canonicalFiles = relevantFiles(canonicalDir).map((file) => relative(canonicalDir, file)).sort()
+    const profileFiles = relevantFiles(profileDir).map((file) => relative(profileDir, file)).sort()
+    if (JSON.stringify(profileFiles) !== JSON.stringify(canonicalFiles)) throw new Error(`Compass profile file-set drift: ${skill.name}`)
+    for (const file of canonicalFiles) {
+      const canonical = readFileSync(join(canonicalDir, file))
+      const profile = readFileSync(join(profileDir, file))
+      if (!canonical.equals(profile)) throw new Error(`Compass profile content drift: ${skill.name}/${file}`)
+      if (/\.(?:md|py|js|mjs|sh|json|ya?ml)$/.test(file)) {
+        const text = canonical.toString('utf8')
+        for (const forbidden of [/\bInbox\b/i, /learning[- ]evidence/i, /learner evidence/i, /Thread evidence/i, /proof (?:work|action|requirement|counter)/i, /ready_to_verify/i, /evidence_pending/i, /\/learning\/core\/evidence/i, /2026-08-18/]) {
+          if (forbidden.test(text)) throw new Error(`Retired Learning Compass concept remains in ${skill.name}/${file}: ${forbidden}`)
+        }
+      }
+    }
+  }
+  const rootMemory = join(homedir(), '.hermes', 'memories', 'MEMORY.md')
+  const profileMemory = join(profileRoot, 'memories', 'MEMORY.md')
+  if (!existsSync(profileMemory) || readFileSync(rootMemory, 'utf8') !== readFileSync(profileMemory, 'utf8')) throw new Error('Compass profile durable memory drift')
+  const rootSoul = join(homedir(), '.hermes', 'SOUL.md')
+  const profileSoul = join(profileRoot, 'SOUL.md')
+  if (!existsSync(profileSoul) || readFileSync(rootSoul, 'utf8') !== readFileSync(profileSoul, 'utf8')) throw new Error('Compass profile SOUL drift')
 }
 for (const tier of ['automatic', 'proposal_only', 'explicit_only']) {
   if (!contract.side_effect_tiers?.[tier]?.requires || !Array.isArray(contract.side_effect_tiers[tier].allows)) {

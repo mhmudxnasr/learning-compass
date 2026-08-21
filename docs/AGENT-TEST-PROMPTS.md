@@ -13,7 +13,7 @@ Load learning-compass-operating-system. I am still working through [TITLE]. Save
 ```
 
 ```text
-Load learning-compass-operating-system. Capture [URL] titled [TITLE]. Keep it in Inbox, verify the capture, and do not triage, recommend, extract notes, or create a job unless I explicitly request it.
+Load learning-compass-operating-system. Capture [URL] titled [TITLE] into Library → All sources, map it to [BRANCH_ID], verify branch and round, and do not triage, recommend, extract notes, or create a job unless I explicitly request it.
 ```
 
 Set context once:
@@ -29,7 +29,7 @@ List every operation available through the Learning Compass agent API. Group the
 ```
 
 ```text
-Read the current Inbox, active Queue, Momentum workspace, profile, knowledge graph, notes, SRS drafts, settings, and analytics. Return a compact status report with IDs for anything actionable.
+Read the current captured-source catalog, active Queue, Momentum workspace, profile, knowledge graph, notes, SRS drafts, settings, and analytics. Return a compact status report with IDs for anything actionable.
 ```
 
 ```text
@@ -39,7 +39,7 @@ Search the site for items related to [TOPIC]. Show matching IDs, titles, status,
 ## Create and edit
 
 ```text
-Capture this source into Inbox, preserving the real URL and using this title: [TITLE]. Do not promote it to Queue.
+Capture this source into Library → All sources, preserving the real URL and using this title: [TITLE]. Map and verify [BRANCH_ID] plus round. Do not promote it to Queue.
 Source: [URL]
 ```
 
@@ -62,7 +62,7 @@ Enhance recommendation [RECOMMENDATION_ID]. Improve its rationale using Mahmood�
 ## Workflow actions
 
 ```text
-Triage Inbox item [CAPTURE_ID] into Queue. If the five-item limit blocks it, report the conflict and ask for explicit override instead of bypassing the limit.
+Triage captured item [CAPTURE_ID] into Queue after verifying its non-pruned branch and round. If the five-item limit blocks it, report the conflict and ask for explicit override instead of bypassing the limit.
 ```
 
 ```text

@@ -4,18 +4,18 @@ Learning Compass is Mahmood’s private learning operating system. D1 is canonic
 
 ## Core loop
 
-Define a question, decision, build, or capability as a Learning Thread → attach deliberate sources → consume at the real source → preserve reflection → consolidate anchored Learning Units → retrieve or apply them → satisfy the Thread evidence contract → verify the outcome → resurface the next useful work.
+Define a question, decision, build, or capability as a Learning Thread → attach deliberate sources → consume at the real source → preserve reflection → optionally consolidate notes/recall → complete lessons directly → resurface the next useful work.
 
-Sources are inputs. Notes are readable projections. Ratings train taste, but enjoyment is not mastery. Delayed retrieval, explanation, transfer, decisions, artifacts, or application results are the evidence of learning.
+Sources are inputs. Notes are readable projections. Ratings train taste, but enjoyment does not change Thread progress. Lessons, Levels, and Threads advance only through direct lesson completion.
 
-Every capture—including URL, text, PDF, HTML, video, Telegram, share-target, RSS, and Atom input—lands in the unlimited Inbox. The Queue normally holds at most five queued or in-progress items; exceeding that limit requires an explicit triage override.
+Every capture—including URL, text, PDF, HTML, video, Telegram, share-target, RSS, and Atom input—becomes a `captured` record in Library → All sources. Queue is a separate explicit commitment and normally holds at most five queued or in-progress items; exceeding that limit requires an explicit triage override.
 
 ## Navigation contract
 
 The browser is the **Botanical Folio / Evidence Ledger**: one green-and-cream evidence studio with five stable root destinations, 12 grouped modes, and subordinate focus filters. The global route roots are:
 
 - `#/home` — Home / Today
-- `#/library` — Queue, Inbox, All sources, Files, Books, Reading journal, Collections, Archive
+- `#/library` — Queue, RSS Feeds, All sources, Files, Books, Reading journal, Collections, Archive
 - `#/learn` — Threads, Canon, Notes, Recall
 - `#/map` — Atlas, Branches, Balance
 - `#/settings` — Learning profile, Preferences, Data & recovery, System
@@ -24,9 +24,9 @@ The five roots plus their grouped modes and focus filters are the complete globa
 
 Branches is the personal top-layer manager, not a swipe game or a dump of every graph node. It lists broad durable subjects under live category nodes, while nested branches and leaves remain topics. The user can create and edit branch scope, prioritize, pause, archive, restore, and undo without losing linked sources, notes, recall, files, or topic structure.
 
-On desktop the studio is a persistent root rail plus a working canvas and optional object inspector. Search, Capture to Inbox, and sync state live in that rail without becoming destinations. There is no permanent context pane. On mobile and tablet the rail becomes a five-item bottom dock with separate global Search and Capture utilities, primary modes in an equal-width visible grid, and subordinate filters as compact wrapping controls; the inspector becomes a full-height sheet or pushed detail view.
+On desktop the studio is a persistent root rail plus a working canvas and optional object inspector. Search, Capture to Library, and sync state live in that rail without becoming destinations. There is no permanent context pane. On mobile and tablet the rail becomes a five-item bottom dock with separate global Search and Capture utilities, primary modes in an equal-width visible grid, and subordinate filters as compact wrapping controls; the inspector becomes a full-height sheet or pushed detail view.
 
-On Android this same mobile client is installable as the canonical app: standalone window, launcher icon, Capture/Queue/Recall shortcuts, share-to-Inbox, push, safe-area layout, and an offline application shell. Installation is an explicit, dismissible user choice. A future Play Store build wraps the same origin as a verified Trusted Web Activity rather than duplicating the product in a generic WebView.
+On Android this same mobile client is installable as the canonical app: standalone window, launcher icon, Capture/Queue/Recall shortcuts, share-to-Library, push, safe-area layout, and an offline application shell. Installation is an explicit, dismissible user choice. A future Play Store build wraps the same origin as a verified Trusted Web Activity rather than duplicating the product in a generic WebView.
 
 ## Product behavior
 
@@ -34,10 +34,10 @@ On Android this same mobile client is installable as the canonical app: standalo
 - Completion records a separate `retain`, `apply`, `reference`, or `drop` disposition. Retain/apply creates anchored extraction and editable recall work regardless of enjoyment score.
 - Notes are source-centric, structured, editable, searchable, and direction-aware. One proportional source synthesis, Mahmood's separate reflection, anchored retained ideas, and recall state read as one dossier. Handwritten PDF annotations remain personal reflection while printed source text remains source material.
 - Explicit retain/apply consolidation creates zero to four high-value, source-anchored Unit-linked drafts. Rating and free-text paste never generate cards. Approval is required before cards enter Review; approved cards use the versioned FSRS implementation and failed reviews never advance mastery.
-- Feedback distinguishes neutral Not now, explicit Bad fit with a reason, rating, disposition, and later learning evidence. Feedback processing never requests another recommendation automatically.
+- Feedback distinguishes neutral Not now, explicit Bad fit with a reason, rating, disposition, and later utility/recall/application signals. Feedback processing never requests another recommendation automatically.
 - Recommendations are Thread-first and source-grounded. Compass can use fit, bridge, and challenge lanes; shadow serving remains gated by evidence quality. Mastered and consumed items, Mahmood’s explicit exclusions, and the five-item Queue contract are always enforced.
-- Canon is the evergreen browse-first exception to finite Threads: the learner-facing atlas separates complete **Ready to explore** trios from unfinished **Coming next** coverage and treats curation counts as secondary detail. Family browsing and search lead to exactly three permanent book roles (Foundation, Representative, Boundary), presented as a vertical reading path with comparison and progressively disclosed selection notes. Every domain carries a verified branch, boundary, curation state, and field-test state; every selection carries a full dossier, sources, and strongest rejected alternative. Surprise discovery selects only complete trios. Books become canonical source records only through explicit branch-preserving Inbox capture, and a domain can create a finite Thread only after its approved trio is complete and at least one selected book is captured.
-- Thread levels report Study and Proof separately: completing lessons does not imply that the level evidence contract is satisfied. Every required proof action remains visible and recordable from the level finish line.
+- Canon is the evergreen browse-first exception to finite Threads: the learner-facing atlas separates complete **Ready to explore** trios from unfinished **Coming next** coverage and treats curation counts as secondary detail. Family browsing and search lead to exactly three permanent book roles (Foundation, Representative, Boundary), presented as a vertical reading path with comparison and progressively disclosed selection notes. Every domain carries a verified branch, boundary, curation state, and field-test state; every selection carries a full dossier, sources, and strongest rejected alternative. Surprise discovery selects only complete trios. Books become canonical source records only through explicit branch-preserving Library capture, and a domain can create a finite Thread only after its approved trio is complete and at least one selected book is captured.
+- Thread levels report direct lesson progress. Projects, notes, sources, ratings, and recall remain useful context but never gate or advance a Level or Thread.
 - Lesson readiness is explicit. A lesson is Ready, In progress, Completed, or Needs material; authored lesson content or a verified linked source is required before the interface enables completion. Lesson context (`why_learn`, `why_now`, and `takeaway`) is part of the reading surface, while notes, files, and recall remain owned by the parent Level.
 - Library → Reading journal securely syncs KOReader-originated books, highlights, and notes already sent to Hardcover. It defaults to books with at least one journal entry; All books restores the full synced library. The journal screen is read-only apart from explicit synchronization.
 - Invisible AI may enrich, rank, classify, and explain, but it never rewrites user-authored reflection. Hermes changes to typed profile knowledge are auditable, confidence-aware, reversible, and never scheduled as autonomous curation.

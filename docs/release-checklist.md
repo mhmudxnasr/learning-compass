@@ -5,14 +5,14 @@
 - `npm run test:e2e`
 - `npm run build`
 - Rehearse `schema.sql` and every numbered migration discovered in `migrations/` on a clean D1 database.
-- Verify loop-ordered navigation, weekly closure/counterevidence, Queue Thread backfill, universal target-aware sessions, source dispositions, consolidation closure, anchored Units, evidence gates, source-centric Notes, FSRS recall, Atlas, and Inbox/RSS refresh.
+- Verify loop-ordered navigation, direct lesson completion, Queue Thread backfill, universal target-aware sessions, source dispositions, consolidation closure, anchored Units, source-centric Notes, FSRS recall, Atlas, and captured-source/RSS refresh.
 - Verify Insights → Hermes clean cohorts, profile health, improvement receipts, shadow gates, guarded memory, automatic profile application/undo, snapshot repair dry-run, and the 20-global/8-lane recalibration gates.
 - Verify `learning-compass-self-evolution` is the sole improvement owner, every active skill exposes an evolution handoff, retired skills are absent, and improvement receipts can close as applied/deployed, failed/resumable, or evidence-backed no-change.
 - Verify Compass requires an open Thread, stores fit/bridge/challenge lanes and v1/v2 shadow receipts, treats `not_now` as neutral, and records bad-fit reasons separately from rating/disposition/evidence.
 - Check desktop, tablet, phone, light, and dark screenshots.
-- Confirm `/manifest.json` is linked from the shell and exposes standalone launch, 192px/512px PNG icons, a maskable icon, Capture/Queue/Recall shortcuts, and the share-to-Inbox target.
+- Confirm `/manifest.json` is linked from the shell and exposes standalone launch, 192px/512px PNG icons, a maskable icon, Capture/Queue/Recall shortcuts, and the share-to-Library target.
 - Confirm the service worker reaches `ready`, the fingerprinted shell reloads offline, an HTML companion opened online reloads at the same URL offline without replacing the cached shell, installed-mode safe areas do not collide with Android system bars, and no stale cache remains after the cache-version bump.
-- On Android, verify the install card appears only when `beforeinstallprompt` is available, Not now suppresses it for 30 days, standalone launch reuses the existing app window, and a shared URL lands in Inbox.
+- On Android, verify the install card appears only when `beforeinstallprompt` is available, Not now suppresses it for 30 days, standalone launch reuses the existing app window, and a shared URL becomes a captured Library record.
 - Deploy with `npx wrangler deploy --config wrangler.toml`.
 - Smoke-test `/health`, `/dashboard/briefing`, `/capture`, `/capture/feeds`, `/notes`, `/learning/srs/due`, `/learning/core/integrity/health`, `/learning/core/threads`, `/learning/core/consolidation/open`, `/agent/jobs`, `/agent/briefing`, `/agent/activity`, `/agent/capabilities`, `/agent/system`, `/search/evidence`, and `/hardcover`.
 - Confirm `/updates/learning-materials` returns the public release folio with its restrictive content policy, one `Open Learn` action path, and no horizontal overflow at desktop or phone widths.

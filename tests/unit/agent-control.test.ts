@@ -42,7 +42,7 @@ const agentRequest = (body: unknown) => agentApp.request('https://example.test/r
 
 test('agent capability catalog is structured, filterable, and safety-aware', () => {
   const catalog = buildCapabilityCatalog(sample)
-  assert.equal(AGENT_CONTRACT_VERSION, '2026-08-20')
+  assert.equal(AGENT_CONTRACT_VERSION, '2026-08-22')
   assert.equal(AGENT_PROTOCOL, 'learning-compass-agent-http/2')
   assert.equal(catalog.length, sample.length)
   assert.deepEqual(buildCapabilityCatalog(sample, { domain: 'capture', intent: 'update' }).map((item) => item.path), ['/capture/:id/triage'])
@@ -187,26 +187,41 @@ test('high-risk dry-run needs no confirmation while execution requires the exact
   assert.equal(rejectedPayload.required_precondition_path, '/capture/rec-1/record')
 })
 
-test('evidence mutation verifies the Thread, and failed post-commit readback remains a committed receipt', async () => {
+test('retired progression-gate mutations are absent from the Hermes registry', async () => {
+  const agent = readFileSync(new URL('../../src/api/agent.ts', import.meta.url), 'utf8')
+  for (const retired of [
+    "['POST', '/learning/core/threads/:id/stages/:stageId/items'",
+    "['PATCH', '/learning/core/threads/:id/stages/:stageId/items/:itemId'",
+    "['POST', '/learning/core/threads/:id/stages/:stageId/verify'",
+    "['POST', '/learning/core/threads/:id/verify'",
+  ]) assert.equal(agent.includes(retired), false, `retired agent route remains: ${retired}`)
+
+  const response = await agentRequest({
+    method: 'POST',
+    path: '/learning/core/threads/thread-1/verify',
+    idempotency_key: 'retired-progress-route',
+    body: {},
+  })
+  assert.equal(response.status, 403)
+})
+
+test('failed post-commit readback remains an explicit committed receipt', async () => {
   const originalFetch = globalThis.fetch
   let readCount = 0
-  globalThis.fetch = (async (input: any, init?: RequestInit) => {
-    const url = new URL(String(input))
-    if (init?.method === 'POST') return Response.json({ ok: true, id: 'evidence-1' }, { status: 201 })
+  globalThis.fetch = (async (_input: any, init?: RequestInit) => {
+    if (init?.method === 'POST') return Response.json({ ok: true, state: 'queued' })
     readCount += 1
-    if (readCount === 1) return Response.json({ thread: { id: 'thread-1', status: 'active' } })
+    if (readCount === 1) return Response.json({ item: { id: 'cap-1', learning_state: 'captured' } })
     return Response.json({ error: 'temporary readback failure' }, { status: 503 })
   }) as any
   try {
     const response = await agentRequest({
       method: 'POST',
-      path: '/learning/core/threads/thread-1/verify',
-      idempotency_key: 'verify-1',
-      confirm: true,
-      precondition: { path: '/learning/core/threads/thread-1/path', field: 'thread.id', equals: 'thread-1' },
-      body: {},
+      path: '/capture/cap-1/triage',
+      idempotency_key: 'queue-cap-1',
+      body: { action: 'queue' },
     })
-    assert.equal(response.status, 201)
+    assert.equal(response.status, 200)
     const payload: any = await response.json()
     assert.equal(payload.ok, true)
     assert.equal(payload.verified, false)
