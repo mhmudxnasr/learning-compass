@@ -1,14 +1,23 @@
 import { useState } from 'preact/hooks'
 import { api } from '../../api'
+import { Icon } from '../../components/Icon'
 import { PathStage } from './types'
 
-export function ThreadAuthoring({ threadId, stage, stageCount, onChanged }: { threadId: string; stage?: PathStage; stageCount: number; onChanged: () => void }) {
+export function ThreadAuthoring({
+  threadId,
+  stage,
+  stageCount,
+  onChanged,
+}: {
+  threadId: string
+  stage?: PathStage
+  stageCount: number
+  onChanged: () => void
+}) {
   const [stageTitle, setStageTitle] = useState('')
   const [stageObjective, setStageObjective] = useState('')
-  const [itemTitle, setItemTitle] = useState('')
-  const [itemType, setItemType] = useState('concept')
-  const [itemEvidence, setItemEvidence] = useState('explanation')
-  const [itemDescription, setItemDescription] = useState('')
+  const [lessonTitle, setLessonTitle] = useState('')
+  const [lessonObjective, setLessonObjective] = useState('')
   const [working, setWorking] = useState('')
   const [message, setMessage] = useState('')
 
@@ -18,10 +27,17 @@ export function ThreadAuthoring({ threadId, stage, stageCount, onChanged }: { th
     setWorking('stage')
     setMessage('Adding level…')
     try {
-      await api(`/learning/core/threads/${encodeURIComponent(threadId)}/stages`, { method: 'POST', body: JSON.stringify({ title: stageTitle.trim(), objective: stageObjective.trim(), position: stageCount }) })
+      await api(`/learning/core/threads/${encodeURIComponent(threadId)}/stages`, {
+        method: 'POST',
+        body: JSON.stringify({
+          title: stageTitle.trim(),
+          objective: stageObjective.trim(),
+          position: stageCount,
+        }),
+      })
       setStageTitle('')
       setStageObjective('')
-      setMessage('Level added.')
+      setMessage('Level added to curriculum.')
       onChanged()
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : 'The level could not be added.')
@@ -30,45 +46,116 @@ export function ThreadAuthoring({ threadId, stage, stageCount, onChanged }: { th
     }
   }
 
-  const addItem = async (event: Event) => {
+  const addLesson = async (event: Event) => {
     event.preventDefault()
-    if (!stage || !itemTitle.trim()) return
-    setWorking('item')
-    setMessage('Adding proof action…')
+    if (!stage || !lessonTitle.trim()) return
+    setWorking('lesson')
+    setMessage('Adding lesson…')
     try {
-      await api(`/learning/core/threads/${encodeURIComponent(threadId)}/stages/${encodeURIComponent(stage.id)}/items`, {
+      await api(`/learning/core/threads/${encodeURIComponent(threadId)}/stages/${encodeURIComponent(stage.id)}/lessons`, {
         method: 'POST',
-        body: JSON.stringify({ title: itemTitle.trim(), description: itemDescription.trim(), item_type: itemType, evidence_type: itemEvidence, position: stage.items.length }),
+        body: JSON.stringify({
+          title: lessonTitle.trim(),
+          objective: lessonObjective.trim(),
+          position: stage.lessons.length,
+        }),
       })
-      setItemTitle('')
-      setItemDescription('')
-      setMessage('Proof action added.')
+      setLessonTitle('')
+      setLessonObjective('')
+      setMessage('Lesson added to level.')
       onChanged()
     } catch (error: unknown) {
-      setMessage(error instanceof Error ? error.message : 'The proof action could not be added.')
+      setMessage(error instanceof Error ? error.message : 'The lesson could not be added.')
     } finally {
       setWorking('')
     }
   }
 
-  return <details class="folio-authoring">
-    <summary>Shape this path</summary>
-    <div class="folio-authoring-body">
-      <form onSubmit={addStage}>
-        <div><p class="folio-object-kicker">Curriculum level</p><h4>Add a level</h4><p>Keep each level small enough to finish and verify.</p></div>
-        <label>Level title<input value={stageTitle} onInput={(event) => setStageTitle((event.target as HTMLInputElement).value)} required /></label>
-        <label>Objective<textarea value={stageObjective} onInput={(event) => setStageObjective((event.target as HTMLTextAreaElement).value)} /></label>
-        <button class="button secondary" type="submit" disabled={working === 'stage' || !stageTitle.trim()}>{working === 'stage' ? 'Adding…' : 'Add level'}</button>
-      </form>
-      <form onSubmit={addItem} class={!stage ? 'folio-form-disabled' : undefined}>
-        <div><p class="folio-object-kicker">Proof action</p><h4>{stage ? `Add to ${stage.title}` : 'Select an available level'}</h4><p>Only required proof actions influence stage verification.</p></div>
-        <label>Action title<input value={itemTitle} onInput={(event) => setItemTitle((event.target as HTMLInputElement).value)} disabled={!stage} required /></label>
-        <label>Action type<select value={itemType} onChange={(event) => setItemType((event.target as HTMLSelectElement).value)} disabled={!stage}><option value="concept">Concept</option><option value="recall_prompt">Free recall</option><option value="exercise">Exercise</option><option value="application">Application</option><option value="reflection">Reflection</option></select></label>
-        <label>Evidence type<select value={itemEvidence} onChange={(event) => setItemEvidence((event.target as HTMLSelectElement).value)} disabled={!stage}><option value="explanation">Explanation</option><option value="free_recall">Free recall</option><option value="transfer">Transfer</option><option value="application">Application</option><option value="decision">Decision</option><option value="artifact">Artifact</option></select></label>
-        <label>Description<textarea value={itemDescription} onInput={(event) => setItemDescription((event.target as HTMLTextAreaElement).value)} disabled={!stage} /></label>
-        <button class="button secondary" type="submit" disabled={!stage || working === 'item' || !itemTitle.trim()}>{working === 'item' ? 'Adding…' : 'Add proof action'}</button>
-      </form>
-      {message && <output aria-live="polite">{message}</output>}
-    </div>
-  </details>
+  return (
+    <details class="folio-authoring thread-authoring-container">
+      <summary>
+        <span class="thread-authoring-summary-content">
+          <Icon name="spark" size={15} />
+          <strong>Curriculum Authoring: Add Level or Lesson</strong>
+        </span>
+        <span class="thread-authoring-summary-hint">Expand to structure path</span>
+      </summary>
+
+      <div class="folio-authoring-body">
+        <div class="thread-authoring-grid">
+          {/* Add Level Form */}
+          <form onSubmit={addStage} class="thread-authoring-card">
+            <div class="thread-authoring-card-head">
+              <p class="folio-object-kicker">New Curriculum Level</p>
+              <h4>Add Level {stageCount + 1}</h4>
+              <p>Each level establishes a coherent stage of understanding.</p>
+            </div>
+            <label>
+              <span>Level Title</span>
+              <input
+                value={stageTitle}
+                onInput={(event) => setStageTitle((event.target as HTMLInputElement).value)}
+                placeholder="e.g. Core Protocols & Primitives"
+                required
+              />
+            </label>
+            <label>
+              <span>Objective</span>
+              <textarea
+                value={stageObjective}
+                onInput={(event) => setStageObjective((event.target as HTMLTextAreaElement).value)}
+                placeholder="What will this level achieve?"
+                rows={2}
+              />
+            </label>
+            <button
+              class="button primary folio-primary"
+              type="submit"
+              disabled={working === 'stage' || !stageTitle.trim()}
+            >
+              {working === 'stage' ? 'Adding Level…' : 'Add Level to Curriculum'}
+            </button>
+          </form>
+
+          {/* Add Lesson Form */}
+          <form onSubmit={addLesson} class={`thread-authoring-card ${!stage ? 'folio-form-disabled' : ''}`}>
+            <div class="thread-authoring-card-head">
+              <p class="folio-object-kicker">Sequential Lesson</p>
+              <h4>{stage ? `Add Lesson to ${stage.title}` : 'Select an active Level first'}</h4>
+              <p>Sequential units that build towards level mastery.</p>
+            </div>
+            <label>
+              <span>Lesson Title</span>
+              <input
+                value={lessonTitle}
+                onInput={(event) => setLessonTitle((event.target as HTMLInputElement).value)}
+                disabled={!stage}
+                placeholder="e.g. Raft State Transitions"
+                required
+              />
+            </label>
+            <label>
+              <span>Objective</span>
+              <textarea
+                value={lessonObjective}
+                onInput={(event) => setLessonObjective((event.target as HTMLTextAreaElement).value)}
+                disabled={!stage}
+                placeholder="Core takeaway of this lesson"
+                rows={2}
+              />
+            </label>
+            <button
+              class="button secondary"
+              type="submit"
+              disabled={!stage || working === 'lesson' || !lessonTitle.trim()}
+            >
+              {working === 'lesson' ? 'Adding Lesson…' : 'Add Lesson to Level'}
+            </button>
+          </form>
+        </div>
+
+        {message && <output class="folio-status" aria-live="polite">{message}</output>}
+      </div>
+    </details>
+  )
 }

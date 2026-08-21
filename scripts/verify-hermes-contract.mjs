@@ -19,7 +19,12 @@ const missing = required.filter(([file]) => !existsSync(join(root, file))).map((
 if (missing.length) throw new Error(`Missing Hermes contract files: ${missing.join(', ')}`)
 
 const migrationNames = readdirSync(join(root, 'migrations')).filter((name) => /^\d+_.*\.sql$/.test(name)).sort()
-const expectedMigrations = ['0000_brain.sql', '0001_production_rebuild.sql', '0002_rss_feeds.sql', '0003_feedback_review.sql', '0004_discovery_engine.sql', '0005_recommendation_notebook_url.sql', '0006_hermes_upgrade.sql', '0007_sync_notifications.sql', '0008_compass_cascade.sql', '0009_proposal_dedup.sql', '0010_compass_queue_fill.sql', '0011_compass_adaptive_learning.sql', '0012_context_brief.sql', '0013_book_visual_chapters.sql', '0014_canonical_activity_ledger.sql', '0015_outcome_learning_integrity.sql', '0016_learning_integrity.sql', '0017_consolidation_workflows.sql', '0018_learning_threads.sql', '0019_learning_units.sql', '0020_mastery_evidence.sql', '0021_learning_outcomes_v2.sql', '0022_fsrs_and_thread_backfill.sql', '0023_intelligence_v2.sql', '0024_memory_context.sql', '0025_compass_contextual_reranking.sql', '0026_semantic_retrieval.sql', '0027_feedback_observability.sql', '0027_recommendation_quality_enhancements.sql', '0028_compass_thompson_pessimistic_prior.sql', '0029_learning_hub.sql', '0030_hub_notes_files.sql', '0031_thread_courses.sql', '0032_lesson_sources.sql', '0033_lesson_orientation.sql', '0034_srs_lineage_and_tags.sql', '0035_recommendation_branch_and_round.sql', '0036_profile_automation_manual.sql', '0037_atomic_mutation_reservations.sql', '0038_hermes_brief_annotations_receipts.sql', '0039_telegram_webhook_dedup.sql', '0040_learning_thread_progression.sql', '0041_level_recall_scope.sql', '0042_hardcover_reading_journal.sql']
+const expectedMigrations = ['0000_brain.sql', '0001_production_rebuild.sql', '0002_rss_feeds.sql', '0003_feedback_review.sql', '0004_discovery_engine.sql', '0005_recommendation_notebook_url.sql', '0006_hermes_upgrade.sql', '0007_sync_notifications.sql', '0008_compass_cascade.sql', '0009_proposal_dedup.sql', '0010_compass_queue_fill.sql', '0011_compass_adaptive_learning.sql', '0012_context_brief.sql', '0013_book_visual_chapters.sql', '0014_canonical_activity_ledger.sql', '0015_outcome_learning_integrity.sql', '0016_learning_integrity.sql', '0017_consolidation_workflows.sql', '0018_learning_threads.sql', '0019_learning_units.sql', '0020_mastery_evidence.sql', '0021_learning_outcomes_v2.sql', '0022_fsrs_and_thread_backfill.sql', '0023_intelligence_v2.sql', '0024_memory_context.sql', '0025_compass_contextual_reranking.sql', '0026_semantic_retrieval.sql', '0027_feedback_observability.sql', '0027_recommendation_quality_enhancements.sql', '0028_compass_thompson_pessimistic_prior.sql', '0029_learning_hub.sql', '0030_hub_notes_files.sql', '0031_thread_courses.sql', '0032_lesson_sources.sql', '0033_lesson_orientation.sql', '0034_srs_lineage_and_tags.sql', '0035_recommendation_branch_and_round.sql', '0036_profile_automation_manual.sql', '0037_atomic_mutation_reservations.sql', '0038_hermes_brief_annotations_receipts.sql', '0039_telegram_webhook_dedup.sql', '0040_learning_thread_progression.sql', '0041_level_recall_scope.sql', '0042_hardcover_reading_journal.sql', '0043_remove_thread_evidence.sql', '0044_lesson_learning_scope.sql']
+expectedMigrations.splice(expectedMigrations.indexOf('0044_lesson_learning_scope.sql'), 1, '0044_drop_learning_evidence.sql', '0045_lesson_learning_scope.sql')
+expectedMigrations.push('0046_canon_atlas.sql')
+expectedMigrations.push('0047_personal_branch_map.sql')
+expectedMigrations.push('0048_remove_inbox_concept.sql')
+expectedMigrations.push('0049_source_notes_recall_quality.sql')
 if (migrationNames.length !== expectedMigrations.length || expectedMigrations.some((name, index) => migrationNames[index] !== name)) throw new Error(`Migration order drift: expected ${expectedMigrations.join(', ')}, found ${migrationNames.join(', ')}`)
 
 const checks = [
@@ -44,7 +49,7 @@ const checks = [
   ['PROJECT_CONTEXT.md', '`schema.sql` is the base schema; `migrations/` are ordered, idempotent production migrations.', 'migration contract synchronization'],
   ['.hermes.md', 'learning-compass-operating-system', 'procedural Hermes router contract'],
   ['src/api/agent.ts', "['POST', '/learning/core/threads'", 'Learning Thread agent capability'],
-  ['.hermes.md', 'output_contract=learning_units_v1', 'anchored Learning Unit output contract'],
+  ['.hermes.md', 'output_contract=source_note_v2', 'source-note extraction contract'],
   ['src/api/agent.ts', "['GET', '/agent/briefing'", 'Hermes briefing capability'],
   ['src/api/search.ts', "app.get('/evidence'", 'evidence retrieval endpoint'],
   ['docs/recovery.md', 'Recovery and portability', 'portable recovery contract'],
@@ -128,6 +133,19 @@ if (existsSync(localSkillsRoot)) {
         if (!body.includes(needle)) throw new Error(`Hermes self-evolution repair protocol missing: ${needle}`)
       }
     }
+    if (skill.name === 'lite-visual') {
+      for (const needle of ['lite-visual-linear/v4', 'lite-visual-source-extraction/v1', 'scripts/extract_source.py', 'references/source-extraction.md', 'article[data-canonical-content=true]', 'POST /artifacts/pairs', 'Intent', 'Frontend Design', 'code-only']) {
+        if (!body.includes(needle)) throw new Error(`Visual Lite v4 contract missing: ${needle}`)
+      }
+      for (const forbidden of ['generated-image', 'call AGY automatically', 'Visual Mind records', 'two to four Arabic pauses']) {
+        if (body.includes(forbidden)) throw new Error(`Visual Lite retained a removed image/widget path: ${forbidden}`)
+      }
+    }
+  }
+
+  const liteVisualRoot = join(localSkillsRoot, 'lite-visual')
+  for (const file of ['references/source-extraction.md', 'scripts/extract_source.py', 'scripts/extract_article.mjs', 'scripts/render_page.mjs', 'scripts/fetch_transcript.py']) {
+    if (!existsSync(join(liteVisualRoot, file))) throw new Error(`Visual Lite source adapter missing: ${file}`)
   }
   for (const name of retiredSkills) {
     const installed = readdirSync(localSkillsRoot, { withFileTypes: true }).some((entry) => entry.isDirectory() && entry.name === name)
@@ -190,6 +208,9 @@ const stale = [
   ['docs/architecture.md', 'Hermes polls D1 jobs every two minutes'],
   ['docs/architecture.md', 'Only user approval queues the exact application job'],
   ['/home/mahmud/.hermes/skills/personal/taste-rec/SKILL.md', 'AI/LLM tools content** must ONLY appear in the RSS feed'],
+  ['/home/mahmud/.hermes/skills/workflow/learning-compass-operating-system/SKILL.md', 'call AGY automatically'],
+  ['/home/mahmud/.hermes/skills/workflow/learning-compass-self-evolution/SKILL.md', 'Lite Visual/Visual Mind'],
+  ['/home/mahmud/.hermes/skills/visual-mind/SKILL.md', 'decision: generated-image'],
 ]
 for (const [file, phrase] of stale) {
   if (file.startsWith('/') && !existsSync(file)) continue

@@ -88,9 +88,14 @@ export async function createConsolidationRun(DB: D1Database, input: {
 }
 
 export async function advanceConsolidationForExtraction(DB: D1Database, jobId: string, result: unknown) {
-  const job = await DB.prepare(`SELECT workflow_run_id FROM agent_jobs WHERE id=?`).bind(jobId).first<{ workflow_run_id: string | null }>()
-  if (!job?.workflow_run_id) return
-  const runId = job.workflow_run_id
+  const job = await DB.prepare(`SELECT workflow_run_id,recommendation_id,payload_json FROM agent_jobs WHERE id=?`).bind(jobId).first<{ workflow_run_id: string | null; recommendation_id: string | null; payload_json: string | null }>()
+  let runId = job?.workflow_run_id || null
+  if (!runId) {
+    let recommendationId = job?.recommendation_id || null
+    if (!recommendationId) { try { recommendationId = JSON.parse(job?.payload_json || '{}').recommendation_id || null } catch {} }
+    if (recommendationId) runId = (await DB.prepare(`SELECT id FROM consolidation_runs WHERE recommendation_id=? AND state NOT IN ('closed','waived') ORDER BY requested_at DESC LIMIT 1`).bind(recommendationId).first<{ id: string }>())?.id || null
+  }
+  if (!runId) return
   await DB.batch([
     DB.prepare(`UPDATE consolidation_steps SET status='completed',result_json=?,completed_at=datetime('now'),updated_at=datetime('now') WHERE run_id=? AND step_key='extract_source'`).bind(JSON.stringify(result || {}), runId),
     DB.prepare(`UPDATE consolidation_steps SET status='completed',completed_at=datetime('now'),updated_at=datetime('now') WHERE run_id=? AND step_key IN ('validate_anchors','create_units','prepare_recall','verify_record')`).bind(runId),

@@ -42,3 +42,9 @@ test('reader preserves Markdown structure and chooses direction per block', () =
   assert.equal(blocks[2].direction, 'rtl')
   assert.equal(directionForText('السلوك البشري (Behaviorism)'), 'rtl')
 })
+
+test('reader does not turn ordinary prose labels into generated cards', () => {
+  const blocks = parseNoteBlocks('Risk sharing: The contract allocates uncertainty between both sides.\n\nStory: This remains ordinary source prose.')
+  assert.deepEqual(blocks.map((block) => block.kind), ['paragraph', 'paragraph'])
+  assert.equal(blocks.some((block) => ['definition', 'case_study', 'synthesis'].includes((block as any).kind)), false)
+})

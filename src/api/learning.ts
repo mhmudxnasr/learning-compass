@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
 import { FSRS_SCHEDULER_VERSION, scheduleReview } from '../domain'
-import { generateRecallCardsWithGemini } from '../services/gemini-recall'
 import { loadSettings } from '../services/settings'
 import { buildLearningBalance } from '../services/learning-balance'
 import { recordLearningEvent } from '../services/learning-core'
@@ -9,19 +8,20 @@ import { LearningScopeError, resolveLearningScope, type ResolvedLearningScope } 
 
 const app = new Hono<{ Bindings: Bindings }>()
 
-async function resolveRecallScope(DB: D1Database, input: { thread_id?: unknown; stage_id?: unknown; note_id?: unknown }): Promise<ResolvedLearningScope | null> {
+async function resolveRecallScope(DB: D1Database, input: { thread_id?: unknown; stage_id?: unknown; lesson_id?: unknown; note_id?: unknown }): Promise<ResolvedLearningScope | null> {
   const threadId = String(input.thread_id || '').trim().slice(0, 120)
   const levelId = String(input.stage_id || '').trim().slice(0, 120)
-  if (threadId && levelId) throw new LearningScopeError('invalid_scope', 'Choose either a Thread or a Level recall owner.')
-  const requested = threadId ? await resolveLearningScope(DB, { kind: 'thread', id: threadId }) : levelId ? await resolveLearningScope(DB, { kind: 'level', id: levelId }) : null
+  const lessonId = String(input.lesson_id || '').trim().slice(0, 120)
+  if ([threadId, levelId, lessonId].filter(Boolean).length > 1) throw new LearningScopeError('invalid_scope', 'Choose one recall owner.')
+  const requested = threadId ? await resolveLearningScope(DB, { kind: 'thread', id: threadId }) : levelId ? await resolveLearningScope(DB, { kind: 'level', id: levelId }) : lessonId ? await resolveLearningScope(DB, { kind: 'lesson', id: lessonId }) : null
   const noteId = String(input.note_id || '').trim().slice(0, 120)
   if (!noteId) return requested
-  const note = await DB.prepare(`SELECT thread_id,stage_id FROM notes WHERE id=?`).bind(noteId).first<any>()
+  const note = await DB.prepare(`SELECT thread_id,stage_id,lesson_id FROM notes WHERE id=?`).bind(noteId).first<any>()
   if (!note) throw new LearningScopeError('scope_not_found', 'Recall Note not found.')
-  const noteScope = note.stage_id
+  const noteScope = note.lesson_id ? await resolveLearningScope(DB, { kind: 'lesson', id: note.lesson_id }) : note.stage_id
     ? await resolveLearningScope(DB, { kind: 'level', id: note.stage_id })
     : note.thread_id ? await resolveLearningScope(DB, { kind: 'thread', id: note.thread_id }) : null
-  if (requested && noteScope && (requested.threadId !== noteScope.threadId || requested.levelId !== noteScope.levelId)) {
+  if (requested && noteScope && (requested.threadId !== noteScope.threadId || requested.levelId !== noteScope.levelId || requested.lessonId !== noteScope.lessonId)) {
     throw new LearningScopeError('scope_integrity_error', 'Recall scope must match the Note owner.')
   }
   return requested || noteScope
@@ -194,22 +194,15 @@ app.post('/srs/review', async (c) => {
       WHERE id = ?
     `).bind(next.difficulty, next.difficulty, next.stability, next.intervalDays, next.repetitions, next.lapses, next.learningSteps, next.scheduledDays, next.fsrsState, next.schedulerVersion, next.dueAt, card_id).run()
     await DB.prepare(`INSERT INTO srs_review_events (card_id,grade,previous_state_json,next_state_json) VALUES (?,?,?,?)`).bind(card_id, grade, JSON.stringify(card), JSON.stringify(next)).run()
-    let evidenceId: string | null = null
     if (card.unit_id || card.thread_id) {
-      evidenceId = `evidence_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
       const result = grade >= 3 ? 'pass' : 'fail'
-      const delayDays = card.last_reviewed_at ? Math.max(0, (Date.now() - new Date(card.last_reviewed_at).getTime()) / 86_400_000) : null
-      await DB.prepare(`INSERT INTO learning_evidence (id,thread_id,unit_id,stage_id,evidence_type,result,score,evaluator,delay_days,context_json) VALUES (?,?,?,?,'free_recall',?,?,'user',?,?)`).bind(evidenceId, card.thread_id || null, card.unit_id || null, card.stage_id || null, result, grade / 5, delayDays, JSON.stringify({ card_id, grade, stage_id: card.stage_id || null })).run()
-      if (result === 'pass' && card.thread_id) {
-        await DB.prepare(`UPDATE thread_evidence_requirements SET status='satisfied',satisfied_by_evidence_id=?,updated_at=datetime('now') WHERE thread_id=? AND evidence_type='free_recall' AND status='open' AND (stage_id IS NULL OR stage_id=?) AND (minimum_score IS NULL OR ? >= minimum_score) AND (SELECT COUNT(*) FROM learning_evidence e WHERE e.thread_id=? AND e.evidence_type='free_recall' AND e.result IN ('pass','recorded') AND (thread_evidence_requirements.stage_id IS NULL OR e.stage_id=thread_evidence_requirements.stage_id)) >= minimum_count`).bind(evidenceId, card.thread_id, card.stage_id || null, grade / 5, card.thread_id).run()
-      }
       if (result === 'pass' && card.unit_id) {
         await DB.prepare(`INSERT INTO unit_mastery_state (unit_id,stage,due_at,last_retrieved_at,delayed_retrievals) VALUES (?,'retrieved',?,datetime('now'),1) ON CONFLICT(unit_id) DO UPDATE SET stage=CASE WHEN unit_mastery_state.stage IN ('exposed','encoded') THEN 'retrieved' ELSE unit_mastery_state.stage END,due_at=excluded.due_at,last_retrieved_at=datetime('now'),delayed_retrievals=unit_mastery_state.delayed_retrievals+1,updated_at=datetime('now')`).bind(card.unit_id, next.dueAt).run()
       }
-      await recordLearningEvent(DB, { eventType: 'recall_attempted', actorType: 'user', evidenceWeight: 1, idempotencyKey: `core-recall:${card_id}:${evidenceId}`, threadId: card.thread_id || null, recommendationId: card.recommendation_id || null, unitId: card.unit_id || null, evidenceId, payload: { grade, result } })
+      await recordLearningEvent(DB, { eventType: 'recall_attempted', actorType: 'user', evidenceWeight: 1, idempotencyKey: `core-recall:${card_id}:${Date.now()}`, threadId: card.thread_id || null, recommendationId: card.recommendation_id || null, unitId: card.unit_id || null, payload: { grade, result } })
     }
 
-    return c.json({ ok: true, next_due: next.dueAt, interval_days: next.intervalDays, ease_factor: next.difficulty, scheduler: FSRS_SCHEDULER_VERSION, evidence_id: evidenceId })
+    return c.json({ ok: true, next_due: next.dueAt, interval_days: next.intervalDays, ease_factor: next.difficulty, scheduler: FSRS_SCHEDULER_VERSION })
   } catch (err) {
     return c.json(safeError('SRS review failed')(err), 500)
   }
@@ -219,114 +212,30 @@ app.post('/srs/review', async (c) => {
 app.post('/srs/create', async (c) => {
   const { DB } = c.env
   try {
-    const { recommendation_id, note_id, thread_id, stage_id, question, answer, topic, branch } = await c.req.json<{ recommendation_id?: string; note_id?: string; thread_id?: string; stage_id?: string; question: string; answer: string; topic?: string; branch?: string }>()
+    const { recommendation_id, note_id, thread_id, stage_id, lesson_id, question, answer, topic, branch } = await c.req.json<{ recommendation_id?: string; note_id?: string; thread_id?: string; stage_id?: string; lesson_id?: string; question: string; answer: string; topic?: string; branch?: string }>()
     if (!question || !answer) return c.json({ error: 'question and answer required' }, 400)
-    const scope = await resolveRecallScope(DB, { thread_id, stage_id, note_id })
+    const scope = await resolveRecallScope(DB, { thread_id, stage_id, lesson_id, note_id })
 
     const id = `card_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     await DB.prepare(`
-      INSERT INTO srs_cards (id, recommendation_id, note_id, thread_id, stage_id, question, answer, topic, branch, ease_factor, interval_days, repetitions, due_at, scheduler_version)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 2.5, 1, 0, date('now'), ?)
-    `).bind(id, recommendation_id || null, note_id || null, scope?.threadId || null, scope?.levelId || null, question, answer, topic || 'general', branch || null, FSRS_SCHEDULER_VERSION).run()
+      INSERT INTO srs_cards (id, recommendation_id, note_id, thread_id, stage_id, lesson_id, question, answer, topic, branch, ease_factor, interval_days, repetitions, due_at, scheduler_version)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 2.5, 1, 0, date('now'), ?)
+    `).bind(id, recommendation_id || null, note_id || null, scope?.kind === 'thread' ? scope.threadId : null, scope?.kind === 'level' ? scope.levelId : null, scope?.lessonId || null, question, answer, topic || 'general', branch || null, FSRS_SCHEDULER_VERSION).run()
 
-    return c.json({ ok: true, card_id: id, thread_id: scope?.threadId || null, stage_id: scope?.levelId || null })
+    return c.json({ ok: true, card_id: id, thread_id: scope?.kind === 'thread' ? scope.threadId : null, stage_id: scope?.kind === 'level' ? scope.levelId : null, lesson_id: scope?.lessonId || null })
   } catch (err) {
     if (err instanceof LearningScopeError) return c.json({ error: err.code, message: err.message }, err.code === 'scope_not_found' ? 404 : 409)
     return c.json(safeError('Card creation failed')(err), 500)
   }
 })
 
-// POST /learning/srs/generate — Synchronous direct card generator via Gemini Flash Lite
+// Direct text-to-card generation created ungrounded, duplicate study clutter.
+// Recall drafts now come only from the anchored source-note extraction contract.
 app.post('/srs/generate', async (c) => {
-  const { DB } = c.env
-  const apiKey = c.env.GEMINI_API_KEY || c.env.GOOGLE_API_KEY
-  if (!apiKey) {
-    return c.json({ error: 'GEMINI_API_KEY or GOOGLE_API_KEY is not configured in worker secrets' }, 400)
-  }
-
-  try {
-    const { note_id, recommendation_id, thread_id, stage_id, content, topic, branch, auto_approve } = await c.req.json<{
-      note_id?: string
-      recommendation_id?: string
-      thread_id?: string
-      stage_id?: string
-      content?: string
-      topic?: string
-      branch?: string
-      auto_approve?: boolean
-    }>()
-    const scope = await resolveRecallScope(DB, { thread_id, stage_id, note_id })
-
-    let textToAnalyze = (content || '').trim()
-    let resolvedTopic = topic || 'general'
-    let resolvedBranch = branch || 'General'
-    let resolvedRecId = recommendation_id || null
-    let resolvedNoteTitle: string | null = null
-
-    if (!textToAnalyze && note_id) {
-      const note = await DB.prepare('SELECT * FROM notes WHERE id = ?').bind(note_id).first<any>()
-      if (note) {
-        resolvedRecId = resolvedRecId || note.recommendation_id || null
-        resolvedNoteTitle = note.title
-        if (resolvedBranch === 'General') {
-          resolvedBranch = note.branch_id || 'General'
-        }
-        if (resolvedTopic === 'general') {
-          resolvedTopic = note.title || 'general'
-        }
-        const sections = await DB.prepare('SELECT content FROM note_sections WHERE note_id = ? ORDER BY position ASC').bind(note_id).all<any>()
-        const bodyText = (sections.results || []).map((s) => s.content || '').join('\n\n')
-        textToAnalyze = `${note.title}\n\n${bodyText}`
-      }
-    }
-
-    if (!textToAnalyze && resolvedRecId) {
-      const rec = await DB.prepare('SELECT * FROM recommendations WHERE id = ?').bind(resolvedRecId).first<any>()
-      if (rec) {
-        resolvedNoteTitle = rec.video_title
-        if (resolvedTopic === 'general') {
-          resolvedTopic = rec.video_title || 'general'
-        }
-        textToAnalyze = `${rec.video_title}\n\n${rec.why_this || ''}\n\n${rec.context_brief || ''}\n\n${rec.user_review || ''}`
-      }
-    }
-
-    if (!textToAnalyze || textToAnalyze.length < 20) {
-      return c.json({ error: 'Not enough content provided to generate recall cards' }, 400)
-    }
-
-    const cards = await generateRecallCardsWithGemini(textToAnalyze, apiKey, resolvedTopic, resolvedBranch)
-    if (!cards.length) {
-      return c.json({ ok: true, drafts: [], count: 0, message: 'No atomic recall cards extracted for this source.' })
-    }
-
-    const createdDrafts: any[] = []
-    for (const card of cards) {
-      const draftId = `draft_${crypto.randomUUID()}`
-      const cardBranch = card.branch || resolvedBranch
-      const cardTopic = card.topic || resolvedTopic
-      if (auto_approve) {
-        const cardId = `card_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-        await DB.prepare(`
-          INSERT INTO srs_cards (id, recommendation_id, note_id, thread_id, stage_id, question, answer, topic, branch, due_at, scheduler_version)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'), ?)
-        `).bind(cardId, resolvedRecId, note_id || null, scope?.threadId || null, scope?.levelId || null, card.question, card.answer, cardTopic, cardBranch, FSRS_SCHEDULER_VERSION).run()
-        createdDrafts.push({ id: cardId, question: card.question, answer: card.answer, topic: cardTopic, branch: cardBranch, source_title: resolvedNoteTitle || resolvedTopic, status: 'approved', thread_id: scope?.threadId || null, stage_id: scope?.levelId || null })
-      } else {
-        await DB.prepare(`
-          INSERT INTO srs_drafts (id, recommendation_id, note_id, thread_id, stage_id, question, answer, topic, branch, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
-        `).bind(draftId, resolvedRecId, note_id || null, scope?.threadId || null, scope?.levelId || null, card.question, card.answer, cardTopic, cardBranch).run()
-        createdDrafts.push({ id: draftId, question: card.question, answer: card.answer, topic: cardTopic, branch: cardBranch, source_title: resolvedNoteTitle || resolvedTopic, status: 'draft', thread_id: scope?.threadId || null, stage_id: scope?.levelId || null })
-      }
-    }
-
-    return c.json({ ok: true, drafts: createdDrafts, count: createdDrafts.length })
-  } catch (err: unknown) {
-    if (err instanceof LearningScopeError) return c.json({ error: err.code, message: err.message }, err.code === 'scope_not_found' ? 404 : 409)
-    const msg = err instanceof Error ? err.message : 'Recall generation failed'
-    return c.json({ error: msg }, 500)
-  }
+  return c.json({
+    error: 'direct_recall_generation_retired',
+    message: 'Recall drafts are created only from anchored ideas during source-note extraction. Reprocess the source note instead of pasting free text.',
+  }, 409)
 })
 
 // GET /learning/gaps — Analyze current knowledge gaps across branches

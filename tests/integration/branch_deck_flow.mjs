@@ -57,6 +57,9 @@ try {
   // 1. Evidence-driven deck: the branch appears with real mapped + unmapped counts.
   const deck = await request('/brain/branch-deck')
   assert.equal(deck.status, 200, JSON.stringify(deck.body))
+  assert.ok(deck.body.categories.some((item) => item.id === 'cat-mind'), 'deck returns the canonical category index')
+  assert.ok(!deck.body.existing.some((item) => item.id === 'practical-ai'), 'removed paused AI branch does not remain in the top-level registry')
+  assert.ok(!deck.body.existing.some((item) => item.status === 'held'), 'the rebuilt personal registry starts with no paused branches')
   const branch = deck.body.existing.find((item) => item.id === BRANCH)
   assert.ok(branch, 'branch must appear in the evidence-driven deck')
   assert.equal(branch.mapped_count, 1, 'explicitly mapped source must be counted via recommendation_meta.branch_id')
@@ -91,6 +94,7 @@ try {
   assert.ok(exclusions.some((term) => String(term).includes(BRANCH) || String(term).includes('deep work')), 'pruned branch must block future recommendations')
 
   // 4. Priority is one explicit renumbered rank, and love status.
+  const priorityOrderBeforePromotion = parseJson(await query('SELECT branch_id,rank FROM priorities ORDER BY rank')).results
   const promoted = await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: BRANCH, action: 'priority', label: 'Deep Work', super_category: 'cat-mind', round_label: 'R1' }) })
   assert.equal(promoted.status, 200, JSON.stringify(promoted.body))
   node = parseJson(await query(`SELECT status FROM tree_nodes WHERE id='${BRANCH}'`)).results[0]
@@ -101,21 +105,49 @@ try {
   assert.equal(assertion.category, 'priority')
 
   // 5. Undo reverses the side effects, not just the tree row.
-  const undone = await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: BRANCH, action: 'undo', label: 'Deep Work', restore_status: 'pruned', restore_priority_rank: null }) })
+  const undone = await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: BRANCH, action: 'undo', label: 'Deep Work', restore_status: 'pruned', restore_priority_rank: null, restore_action: 'priority' }) })
   assert.equal(undone.status, 200, JSON.stringify(undone.body))
   node = parseJson(await query(`SELECT status FROM tree_nodes WHERE id='${BRANCH}'`)).results[0]
   assert.equal(node.status, 'pruned', 'undo restores the prior tree status')
   const prioritiesAfterUndo = parseJson(await query(`SELECT COUNT(*) c FROM priorities WHERE branch_id='${BRANCH}'`)).results[0]
   assert.equal(prioritiesAfterUndo.c, 0, 'undo removes the promoted priority row')
+  const priorityOrderAfterUndo = parseJson(await query('SELECT branch_id,rank FROM priorities ORDER BY rank')).results
+  assert.deepEqual(priorityOrderAfterUndo, priorityOrderBeforePromotion, 'undo restores the complete priority order without gaps')
   taste = parseJson(await query(`SELECT COUNT(*) c FROM taste_vectors WHERE topic='${BRANCH}'`)).results[0]
   assert.equal(taste.c, 0, 'undo deletes the taste signal the decision wrote')
   assertion = parseJson(await query(`SELECT status FROM profile_assertions WHERE assertion_key='${ASSERTION}'`)).results[0]
   assert.equal(assertion.status, 'inactive', 'undo deactivates the typed assertion')
 
+  // Pruning and restoring an existing priority keeps the entire list contiguous.
+  const seededPriorityOrder = parseJson(await query('SELECT branch_id,rank FROM priorities ORDER BY rank')).results
+  const prunedPriority = await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: 'taz', action: 'prune', label: 'Tazkiyah & Character', super_category: 'cat-faith' }) })
+  assert.equal(prunedPriority.status, 200, JSON.stringify(prunedPriority.body))
+  const compactPriorityOrder = parseJson(await query('SELECT branch_id,rank FROM priorities ORDER BY rank')).results
+  assert.deepEqual(compactPriorityOrder.map((item) => item.rank), [1, 2, 3, 4], 'archiving a priority closes its rank gap')
+  const restoredPriority = await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: 'taz', action: 'undo', label: 'Tazkiyah & Character', restore_status: 'active', restore_priority_rank: 1, restore_action: 'prune' }) })
+  assert.equal(restoredPriority.status, 200, JSON.stringify(restoredPriority.body))
+  const restoredPriorityOrder = parseJson(await query('SELECT branch_id,rank FROM priorities ORDER BY rank')).results
+  assert.deepEqual(restoredPriorityOrder, seededPriorityOrder, 'restoring an archived priority restores its exact rank order')
+
   // 6. Undo of an add removes the branch entirely (it never existed before).
-  await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: 'r1-test-add', action: 'add', label: 'Test Add', super_category: 'cat-tech', round_label: 'R1', description: 'Temp branch for undo test', leaves_sample: ['a', 'b'] }) })
+  await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: 'r1-test-add', action: 'add', label: 'Test Add', super_category: 'cat-mind', parent_id: 'cat-mind', description: 'Temp branch for undo test', leaves_sample: ['a', 'b'] }) })
   node = parseJson(await query(`SELECT status FROM tree_nodes WHERE id='r1-test-add'`)).results[0]
   assert.equal(node.status, 'active')
+  const signalBeforeUpdate = parseJson(await query('SELECT recent_signal FROM profile WHERE id=1')).results[0]?.recent_signal ?? null
+  const updated = await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: 'r1-test-add', action: 'update', label: 'Test Add Updated', super_category: 'cat-life', parent_id: 'cat-life', description: 'Updated personal scope', leaves_sample: ['one', 'two'], contrast_hook: 'Not a test category.' }) })
+  assert.equal(updated.status, 200, JSON.stringify(updated.body))
+  assert.equal(updated.body.affinity_score, null, 'editing metadata must not write a taste signal')
+  const updatedNode = parseJson(await query(`SELECT label,parent_id,status,json_extract(meta_json,'$.description') description FROM tree_nodes WHERE id='r1-test-add'`)).results[0]
+  assert.equal(updatedNode.label, 'Test Add Updated')
+  assert.equal(updatedNode.parent_id, 'cat-life')
+  assert.equal(updatedNode.status, 'active', 'editing details must preserve branch status')
+  assert.equal(updatedNode.description, 'Updated personal scope')
+  const partialUpdate = await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: 'r1-test-add', action: 'update', label: 'Test Add Renamed' }) })
+  assert.equal(partialUpdate.status, 200, JSON.stringify(partialUpdate.body))
+  const partialNode = parseJson(await query(`SELECT label,parent_id,json_extract(meta_json,'$.description') description FROM tree_nodes WHERE id='r1-test-add'`)).results[0]
+  assert.deepEqual(partialNode, { label: 'Test Add Renamed', parent_id: 'cat-life', description: 'Updated personal scope' }, 'partial edits preserve omitted category and metadata')
+  const signalAfterUpdate = parseJson(await query('SELECT recent_signal FROM profile WHERE id=1')).results[0]?.recent_signal ?? null
+  assert.equal(signalAfterUpdate, signalBeforeUpdate, 'editing metadata must not change the recommendation profile signal')
   const undidAdd = await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: 'r1-test-add', action: 'undo', label: 'Test Add', restore_status: 'candidate', restore_priority_rank: null }) })
   assert.equal(undidAdd.status, 200, JSON.stringify(undidAdd.body))
   const afterUndoAdd = parseJson(await query(`SELECT COUNT(*) c FROM tree_nodes WHERE id='r1-test-add'`)).results[0]

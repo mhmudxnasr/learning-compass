@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { mergeArtifactMultipartMetadata, normalizeQualityAssurance, validateArtifactIntegrity } from '../artifact-metadata'
+import { LITE_VISUAL_RECEIPT_SCHEMA, LITE_VISUAL_WORKFLOW_CONTRACT, mergeArtifactMultipartMetadata, normalizeQualityAssurance, sha256Hex, validateArtifactIntegrity, validateLiteVisualPair, type LiteVisualValidationReceipt } from '../artifact-metadata'
 import { Bindings, escapeHtml, safeError } from '../lib'
 import { resolveLearningScope } from '../services/learning-scope'
 
@@ -92,6 +92,92 @@ app.get('/hub', async (c) => {
   return c.json({ files })
 })
 
+app.post('/pairs', async (c) => {
+  const storedKeys: string[] = []
+  try {
+    const form = await c.req.formData()
+    const html = form.get('html')
+    const pdf = form.get('pdf')
+    if (!(html instanceof File) || !(pdf instanceof File)) return c.json({ error: 'html and pdf files are required' }, 400)
+    const rawMetadata = form.get('metadata')
+    const rawReceipt = form.get('validation_receipt')
+    if (typeof rawMetadata !== 'string' || typeof rawReceipt !== 'string') return c.json({ error: 'metadata and validation_receipt JSON are required' }, 400)
+    let metadata: Record<string, unknown>
+    let receipt: LiteVisualValidationReceipt
+    try {
+      metadata = JSON.parse(rawMetadata)
+      receipt = JSON.parse(rawReceipt)
+    } catch {
+      return c.json({ error: 'metadata and validation_receipt must be valid JSON objects' }, 400)
+    }
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata) || !receipt || typeof receipt !== 'object' || Array.isArray(receipt)) return c.json({ error: 'metadata and validation_receipt must be JSON objects' }, 400)
+
+    const [htmlBytes, pdfBytes] = await Promise.all([html.arrayBuffer(), pdf.arrayBuffer()])
+    const validation = await validateLiteVisualPair(metadata, receipt, html, pdf, htmlBytes, pdfBytes)
+    if (!validation.ok) return c.json({ error: 'lite_visual_pair_validation_failed', failures: validation.failures }, 422)
+
+    const recommendationId = String(metadata.recommendation_id)
+    const target = await c.env.DB.prepare(`SELECT r.id,r.video_url,r.video_title,m.source_metadata_json FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=? AND r.status='active'`).bind(recommendationId).first<any>()
+    if (!target) return c.json({ error: 'recommendation_not_found' }, 404)
+    const sourceUrl = String(metadata.source_url || '')
+    if (sourceUrl && target.video_url && sourceUrl !== String(target.video_url)) return c.json({ error: 'source_url_mismatch' }, 409)
+
+    const pairId = String(metadata.pair_id)
+    const existing = await c.env.DB.prepare(`SELECT id,filename,media_type,metadata_json FROM artifacts WHERE json_extract(metadata_json,'$.pair_id')=? ORDER BY created_at`).bind(pairId).all<any>()
+    if ((existing.results || []).length) {
+      const rows = (existing.results || []).map((row: any) => {
+        try { return { ...row, metadata: JSON.parse(row.metadata_json || '{}') } } catch { return { ...row, metadata: {} } }
+      })
+      const existingHtml = rows.find((row: any) => row.metadata.role === 'html')
+      const existingPdf = rows.find((row: any) => row.metadata.role === 'pdf')
+      const isReadyV4 = (row: any) => row?.metadata?.recommendation_id === recommendationId
+        && row.metadata.workflow_contract === LITE_VISUAL_WORKFLOW_CONTRACT
+        && row.metadata.asset_policy === 'code-only'
+        && row.metadata.publication_state === 'ready'
+        && row.metadata.validation_status === 'passed'
+      if (existingHtml && existingPdf && isReadyV4(existingHtml) && isReadyV4(existingPdf) && existingHtml.metadata.html_sha256 === validation.hashes.html && existingPdf.metadata.pdf_sha256 === validation.hashes.pdf) {
+        return c.json({ ok: true, reused: true, pair_id: pairId, status: 'ready', html: { id: existingHtml.id, filename: existingHtml.filename }, pdf: { id: existingPdf.id, filename: existingPdf.filename } })
+      }
+      return c.json({ error: 'artifact_pair_conflict', pair_id: pairId }, 409)
+    }
+
+    const receiptSha256 = await sha256Hex(rawReceipt)
+    const date = new Date().toISOString().slice(0, 10)
+    const nonce = crypto.randomUUID().slice(0, 8)
+    const htmlId = `artifact_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
+    const pdfId = `artifact_${Date.now() + 1}_${crypto.randomUUID().slice(0, 6)}`
+    const safeName = (value: string) => value.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const htmlKey = `${date}/lite-visual/${pairId}/${nonce}-${safeName(html.name || 'companion.html')}`
+    const pdfKey = `${date}/lite-visual/${pairId}/${nonce}-${safeName(pdf.name || 'companion.pdf')}`
+    if (c.env.ARTIFACTS) {
+      await c.env.ARTIFACTS.put(htmlKey, htmlBytes, { httpMetadata: { contentType: 'text/html; charset=utf-8' } })
+      storedKeys.push(htmlKey)
+      await c.env.ARTIFACTS.put(pdfKey, pdfBytes, { httpMetadata: { contentType: 'application/pdf' } })
+      storedKeys.push(pdfKey)
+    }
+    const common = {
+      ...metadata,
+      generator: 'lite-visual',
+      workflow_contract: LITE_VISUAL_WORKFLOW_CONTRACT,
+      asset_policy: 'code-only',
+      publication_state: 'ready',
+      validation_status: 'passed',
+      validation_receipt_schema: LITE_VISUAL_RECEIPT_SCHEMA,
+      validation_receipt_sha256: receiptSha256,
+      validation_receipt: receipt,
+      source: 'lite_visual_atomic_pair',
+    }
+    await c.env.DB.batch([
+      c.env.DB.prepare(`INSERT INTO artifacts (id,filename,media_type,r2_key,size_bytes,metadata_json) VALUES (?,?,?,?,?,?)`).bind(htmlId, html.name, 'text/html; charset=utf-8', htmlKey, html.size, JSON.stringify({ ...common, role: 'html', html_sha256: validation.hashes.html, pdf_sha256: validation.hashes.pdf })),
+      c.env.DB.prepare(`INSERT INTO artifacts (id,filename,media_type,r2_key,size_bytes,metadata_json) VALUES (?,?,?,?,?,?)`).bind(pdfId, pdf.name, 'application/pdf', pdfKey, pdf.size, JSON.stringify({ ...common, role: 'pdf', html_sha256: validation.hashes.html, pdf_sha256: validation.hashes.pdf })),
+    ])
+    return c.json({ ok: true, reused: false, pair_id: pairId, status: 'ready', html: { id: htmlId, filename: html.name }, pdf: { id: pdfId, filename: pdf.name }, verification: { validation_receipt_sha256: receiptSha256, source_record: `/capture/${encodeURIComponent(recommendationId)}/record` } }, 201)
+  } catch (error) {
+    if (c.env.ARTIFACTS) await Promise.allSettled(storedKeys.map((key) => c.env.ARTIFACTS!.delete(key)))
+    return c.json(safeError('Atomic Lite Visual publication failed')(error), 500)
+  }
+})
+
 app.post('/', async (c) => {
   try {
     const form = await c.req.formData()
@@ -116,9 +202,10 @@ app.post('/', async (c) => {
     }
     const threadId = String(metadata.thread_id || '').trim().slice(0, 120) || null
     const stageId = String(metadata.stage_id || '').trim().slice(0, 120) || null
-    if (threadId && stageId) return c.json({ error: 'file cannot belong to both a Thread and a Level' }, 400)
-    if (threadId || stageId) {
-      try { await resolveLearningScope(c.env.DB, threadId ? { kind: 'thread', id: threadId } : { kind: 'level', id: stageId! }) }
+    const lessonId = String(metadata.lesson_id || '').trim().slice(0, 120) || null
+    if ([threadId, stageId, lessonId].filter(Boolean).length > 1) return c.json({ error: 'file must have exactly one learning owner' }, 400)
+    if (threadId || stageId || lessonId) {
+      try { await resolveLearningScope(c.env.DB, threadId ? { kind: 'thread', id: threadId } : stageId ? { kind: 'level', id: stageId } : { kind: 'lesson', id: lessonId! }) }
       catch (error: any) { return c.json({ error: error?.code || 'invalid_scope', message: error?.message || 'Invalid learning scope.' }, 400) }
     }
     const pairId = String(metadata.pair_id || '')
@@ -137,7 +224,7 @@ app.post('/', async (c) => {
     const id = `artifact_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
     const key = `${new Date().toISOString().slice(0, 10)}/${id}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
     if (c.env.ARTIFACTS) await c.env.ARTIFACTS.put(key, file.stream(), { httpMetadata: { contentType: file.type || 'application/octet-stream' } })
-    await c.env.DB.prepare(`INSERT INTO artifacts (id,filename,media_type,r2_key,size_bytes,metadata_json,thread_id,stage_id) VALUES (?,?,?,?,?,?,?,?)`).bind(id, file.name, file.type || 'application/octet-stream', key, file.size, JSON.stringify({ source: 'artifact_upload', ...metadata }), threadId, stageId).run()
+    await c.env.DB.prepare(`INSERT INTO artifacts (id,filename,media_type,r2_key,size_bytes,metadata_json,thread_id,stage_id,lesson_id) VALUES (?,?,?,?,?,?,?,?,?)`).bind(id, file.name, file.type || 'application/octet-stream', key, file.size, JSON.stringify({ source: 'artifact_upload', ...metadata }), threadId, stageId, lessonId).run()
     return c.json({ ok: true, id, filename: file.name, r2_key: key, metadata, quality_assurance: normalizeQualityAssurance(metadata) }, 201)
   } catch (error) { return c.json(safeError('Artifact upload failed')(error), 500) }
 })
@@ -169,6 +256,7 @@ app.post('/:id/process', async (c) => {
       source_url: sourceUrl,
       pair_id: metadata.pair_id || null,
       artifact_role: metadata.role || null,
+      output_contract: 'source_note_v2',
     }),
     idempotencyKey,
   ).run()

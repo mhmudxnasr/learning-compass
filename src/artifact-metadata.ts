@@ -1,10 +1,85 @@
-const stringFields = ['pair_id', 'role', 'recommendation_id', 'source_url', 'source_title', 'generator', 'revision', 'supersedes_pair_id', 'qa_status', 'video_format', 'recommended_start']
+const stringFields = ['pair_id', 'role', 'recommendation_id', 'source_url', 'source_title', 'source_checksum', 'generator', 'revision', 'supersedes_pair_id', 'qa_status', 'validation_status', 'validation_receipt_sha256', 'workflow_contract', 'asset_policy', 'publication_state', 'video_format', 'recommended_start']
 const booleanFields = ['custom_prompt_applied', 'notebook_url_linked', 'source_indexed', 'download_verified']
 const jsonFields: string[] = []
 
 export type ArtifactMetadataValidation =
   | { ok: true; metadata: Record<string, unknown>; failures: [] }
   | { ok: false; metadata: Record<string, unknown>; failures: string[] }
+
+export const LITE_VISUAL_WORKFLOW_CONTRACT = 'lite-visual-linear/v4'
+export const LITE_VISUAL_RECEIPT_SCHEMA = 'lite-visual-validation/v5'
+const SHA256_RE = /^[a-f0-9]{64}$/
+const PAIR_ID_RE = /^lv-[a-zA-Z0-9._-]+$/
+
+export type LiteVisualValidationReceipt = {
+  schema_version?: unknown
+  status?: unknown
+  source_sha256?: unknown
+  source_scope_sha256?: unknown
+  coverage_ledger_sha256?: unknown
+  html_sha256?: unknown
+  pdf_sha256?: unknown
+  checks?: unknown
+  [key: string]: unknown
+}
+
+export async function sha256Hex(bytes: ArrayBuffer | Uint8Array | string) {
+  const value = typeof bytes === 'string' ? new TextEncoder().encode(bytes) : bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+  const copy = new Uint8Array(value.byteLength)
+  copy.set(value)
+  const digest = await crypto.subtle.digest('SHA-256', copy.buffer)
+  return [...new Uint8Array(digest)].map((part) => part.toString(16).padStart(2, '0')).join('')
+}
+
+export async function validateLiteVisualPair(
+  metadata: Record<string, unknown>,
+  receipt: LiteVisualValidationReceipt,
+  htmlFile: { name?: string; type?: string; size?: number },
+  pdfFile: { name?: string; type?: string; size?: number },
+  htmlBytes: ArrayBuffer,
+  pdfBytes: ArrayBuffer,
+) {
+  const failures: string[] = []
+  const pairId = String(metadata.pair_id || '')
+  const sourceChecksum = String(metadata.source_checksum || '')
+  if (!PAIR_ID_RE.test(pairId)) failures.push('pair_id must start with lv- and contain only letters, digits, dots, underscores, or hyphens')
+  if (!String(metadata.recommendation_id || '').trim()) failures.push('recommendation_id is required')
+  if (!SHA256_RE.test(sourceChecksum)) failures.push('source_checksum must be a full lowercase SHA-256')
+  if (metadata.generator !== 'lite-visual') failures.push('generator must be lite-visual')
+  if (metadata.workflow_contract !== LITE_VISUAL_WORKFLOW_CONTRACT) failures.push(`workflow_contract must be ${LITE_VISUAL_WORKFLOW_CONTRACT}`)
+  if (metadata.asset_policy !== 'code-only') failures.push('asset_policy must be code-only')
+  if (metadata.recommended_start !== 'html') failures.push('recommended_start must be html for Lite Visual')
+  if (receipt.schema_version !== LITE_VISUAL_RECEIPT_SCHEMA) failures.push(`validation receipt schema_version must be ${LITE_VISUAL_RECEIPT_SCHEMA}`)
+  if (receipt.status !== 'passed') failures.push('validation receipt status must be passed')
+  if (receipt.source_sha256 !== sourceChecksum) failures.push('validation receipt source hash does not match metadata')
+  for (const key of ['source_scope_sha256', 'coverage_ledger_sha256', 'html_sha256', 'pdf_sha256'] as const) {
+    if (!SHA256_RE.test(String(receipt[key] || ''))) failures.push(`validation receipt ${key} must be a full lowercase SHA-256`)
+  }
+  const checks = receipt.checks && typeof receipt.checks === 'object' && !Array.isArray(receipt.checks) ? receipt.checks as Record<string, unknown> : {}
+  for (const key of ['source_coverage', 'claim_traceability', 'canonical_html', 'code_only', 'rtl', 'accessibility', 'responsive', 'print_a4', 'pdf_parity'] as const) {
+    if (checks[key] !== true) failures.push(`validation receipt check ${key} must be true`)
+  }
+
+  failures.push(...validateArtifactIntegrity({ role: 'html' }, htmlFile, htmlBytes))
+  failures.push(...validateArtifactIntegrity({ role: 'pdf' }, pdfFile, pdfBytes))
+  const html = new TextDecoder().decode(htmlBytes)
+  const forbidden = [
+    [/<\s*(?:img|picture|source|image|canvas|video|audio|iframe|object|embed)\b/i, 'HTML must not contain raster or embedded media'],
+    [/<\s*(?:script|template|form|input|button|select|textarea|details|dialog)\b/i, 'HTML must not contain scripts or interactive widgets'],
+    [/\b(?:data-visual-kind|data-asset-kind|class)=["'][^"']*(?:mind[\s-]*map|image[\s-]*atlas|generated[\s-]*image)[^"']*["']/i, 'HTML must not declare mind-map or generated-image output'],
+    [/(?:url\(\s*["']?https?:\/\/|@import\s+(?:url\()?\s*["']?https?:\/\/|<\s*link\b[^>]*\bhref=["']https?:\/\/|<\s*use\b[^>]*\bhref=["']https?:\/\/)/i, 'HTML must not load remote resources'],
+  ] as const
+  for (const [pattern, message] of forbidden) if (pattern.test(html)) failures.push(message)
+  if (!/<html\b[^>]*\blang=["']ar(?:-[^"']+)?["'][^>]*\bdir=["']rtl["']/i.test(html)
+    && !/<html\b[^>]*\bdir=["']rtl["'][^>]*\blang=["']ar(?:-[^"']+)?["']/i.test(html)) failures.push('HTML root must declare Arabic and RTL')
+  if (!/<article\b[^>]*data-canonical-content=["']true["']/i.test(html)) failures.push('HTML must contain one canonical article[data-canonical-content=true]')
+  if (!/@page\s*{[^}]*size\s*:\s*A4\b/is.test(html)) failures.push('HTML must declare A4 print CSS')
+
+  const [htmlHash, pdfHash] = await Promise.all([sha256Hex(htmlBytes), sha256Hex(pdfBytes)])
+  if (receipt.html_sha256 !== htmlHash) failures.push('validation receipt HTML hash does not match upload')
+  if (receipt.pdf_sha256 !== pdfHash) failures.push('validation receipt PDF hash does not match upload')
+  return { ok: failures.length === 0, failures: [...new Set(failures)], hashes: { html: htmlHash, pdf: pdfHash } }
+}
 
 export function validateArtifactIntegrity(metadata: Record<string, unknown>, file: { name?: string; type?: string; size?: number }, bytes: ArrayBuffer) {
   const failures: string[] = []
@@ -72,6 +147,9 @@ export function validateArtifactQuality(metadata: Record<string, unknown>, file?
   const failures: string[] = mediaRoleFailures(metadata, file)
   if (metadata.recommended_start && !['original', 'html', 'pdf', 'notebooklm'].includes(String(metadata.recommended_start))) failures.push('recommended_start must be original, html, pdf, or notebooklm')
   const generator = String(metadata.generator || '')
+  if (generator === 'lite-visual' && ['html', 'pdf'].includes(String(metadata.role || '').toLowerCase())) {
+    failures.push('Lite Visual HTML/PDF must use the atomic /artifacts/pairs publication route')
+  }
   if (generator === 'notebooklm' && isVideo(metadata, file)) {
     if (metadata.video_format !== 'cinematic') failures.push('video_format must be cinematic for NotebookLM video')
     for (const key of ['custom_prompt_applied', 'source_indexed', 'notebook_url_linked', 'download_verified']) if (metadata[key] !== true) failures.push(`${key} must be true for NotebookLM video`)
@@ -103,13 +181,14 @@ export function mergeArtifactMultipartMetadata(metadata: Record<string, unknown>
 export function normalizeQualityAssurance(metadata: Record<string, unknown> = {}, legacy = false) {
   const contractFailures = validateArtifactQuality(metadata)
   const explicitRepair = false
-  const repairRequired = explicitRepair || (Boolean(metadata.qa_status) && contractFailures.length > 0)
+  const liteVisual = String(metadata.generator || '') === 'lite-visual' && ['html', 'pdf'].includes(String(metadata.role || '').toLowerCase())
+  const repairRequired = explicitRepair || (Boolean(metadata.qa_status) && contractFailures.length > 0) || (liteVisual && metadata.validation_status !== 'passed')
   const notebookVideo = String(metadata.generator || '') === 'notebooklm' && isVideo(metadata)
   const failures = repairRequired
     ? [...new Set([...(metadata.repair_reason ? [String(metadata.repair_reason)] : []), ...contractFailures])]
     : []
   return {
-    status: legacy || !notebookVideo ? 'unverified' : repairRequired ? 'repair_required' : metadata.qa_status === 'passed' ? 'passed' : 'unverified',
+    status: legacy ? 'unverified' : liteVisual ? metadata.validation_status === 'passed' ? 'passed' : 'repair_required' : !notebookVideo ? 'unverified' : repairRequired ? 'repair_required' : metadata.qa_status === 'passed' ? 'passed' : 'unverified',
     score: null,
     video_format: metadata.video_format || null,
     repair_status: repairRequired ? 'required' : null,

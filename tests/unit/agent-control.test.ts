@@ -42,7 +42,7 @@ const agentRequest = (body: unknown) => agentApp.request('https://example.test/r
 
 test('agent capability catalog is structured, filterable, and safety-aware', () => {
   const catalog = buildCapabilityCatalog(sample)
-  assert.equal(AGENT_CONTRACT_VERSION, '2026-08-18')
+  assert.equal(AGENT_CONTRACT_VERSION, '2026-08-20')
   assert.equal(AGENT_PROTOCOL, 'learning-compass-agent-http/2')
   assert.equal(catalog.length, sample.length)
   assert.deepEqual(buildCapabilityCatalog(sample, { domain: 'capture', intent: 'update' }).map((item) => item.path), ['/capture/:id/triage'])
@@ -53,6 +53,20 @@ test('agent capability catalog is structured, filterable, and safety-aware', () 
   assert.equal(destructive.explicit_confirmation_required, true)
   assert.equal(destructive.idempotency_supported, true)
   assert.equal(destructive.dry_run_supported, true)
+})
+
+test('permanent Thread deletion is exact-target, high-risk, and parent-list verified', () => {
+  const routes = [
+    ['DELETE', '/learning/core/threads/:id', 'Delete one Thread.'],
+  ] as const satisfies readonly CapabilityTuple[]
+  const capability = buildCapabilityCatalog(routes)[0]
+  assert.equal(capability.risk, 'high')
+  assert.equal(capability.reversible, false)
+  assert.equal(capability.explicit_confirmation_required, true)
+  assert.equal(capability.precondition_path, '/learning/core/threads/:id')
+  assert.equal(capability.verification_path, '/learning/core/threads')
+  assert.deepEqual(resolveCapabilityReadbacks('DELETE /learning/core/threads/:id', capability.verification_path, capability.path, '/learning/core/threads/thread-1'), ['/learning/core/threads'])
+  assert.match(readFileSync(new URL('../../src/api/agent.ts', import.meta.url), 'utf8'), /\['DELETE', '\/learning\/core\/threads\/:id'/)
 })
 
 test('agent OpenAPI is generated from the same catalog with control schemas and safety extensions', () => {
@@ -69,22 +83,32 @@ test('agent OpenAPI is generated from the same catalog with control schemas and 
   assert.ok(spec.components.responses.Conflict)
 })
 
-test('verification readbacks resolve evidence, feedback, and batch targets exactly', () => {
-  assert.deepEqual(resolveCapabilityReadbacks('POST /learning/core/evidence', '/learning/core/threads/:thread_id/path', '/learning/core/evidence', '/learning/core/evidence', { thread_id: 'thread 1' }, { id: 'evidence-1' }), ['/learning/core/threads/thread%201/path'])
+test('verification readbacks resolve srs, feedback, and batch targets exactly', () => {
   assert.deepEqual(resolveCapabilityReadbacks('POST /learning/srs/review', '/learning/srs/cards/:id', '/learning/srs/review', '/learning/srs/review', { card_id: 'card 1' }, {}), ['/learning/srs/cards/card%201'])
   assert.deepEqual(resolveCapabilityReadbacks('POST /feedback/record', '/capture/:id/record', '/feedback/record', '/feedback/record', {}, { source: { id: 'rec-1' } }), ['/capture/rec-1/record'])
   assert.deepEqual(resolveCapabilityReadbacks('POST /recommendations/map', '/capture/:id/record', '/recommendations/map', '/recommendations/map', { ids: ['rec-1', 'rec-2'] }, {}), ['/capture/rec-1/record', '/capture/rec-2/record'])
 })
 
-test('lesson source attachment requires a visible role and verified branch without polluting Inbox', () => {
+test('lesson source attachment replaces required roles but accumulates optional sources', () => {
   const learningCore = readFileSync(new URL('../../src/api/learning-core.ts', import.meta.url), 'utf8')
   const capabilities = readFileSync(new URL('../../src/services/agent-capabilities.ts', import.meta.url), 'utf8')
   assert.match(learningCore, /valid non-pruned branch_id required/)
-  assert.match(learningCore, /learning_state='inbox' THEN 'attached'/)
+  assert.match(learningCore, /learning_state='captured' THEN 'attached'/)
   assert.match(learningCore, /branch_id=excluded\.branch_id/)
-  assert.match(learningCore, /DELETE FROM thread_lesson_sources WHERE lesson_id=\? AND role=\? AND recommendation_id<>\?/)
+  assert.match(learningCore, /DELETE FROM thread_lesson_sources WHERE lesson_id=\? AND role=\? AND recommendation_id<>\? AND \?!='optional'/)
   assert.match(capabilities, /'POST \/learning\/core\/threads\/:id\/lessons\/:lessonId\/sources'/)
   assert.match(capabilities, /\['recommendation_id', 'role', 'branch_id'\]/)
+})
+
+test('NotebookLM learning routes expose typed plans and canonical receipt readback', () => {
+  const routes = [
+    ['POST', '/notebooklm/learning/route', 'Route outputs.'],
+    ['POST', '/notebooklm/learning/receipts', 'Record provider evidence.'],
+  ] as const satisfies readonly CapabilityTuple[]
+  const catalog = buildCapabilityCatalog(routes)
+  assert.deepEqual(catalog[0].required_fields, ['recommendation_id'])
+  assert.deepEqual(catalog[1].required_fields, ['kind', 'recommendation_id', 'notebook_id', 'notebook_url', 'status'])
+  assert.deepEqual(resolveCapabilityReadbacks('POST /notebooklm/learning/route', '/notebooklm/learning/receipts?recommendation_id=:recommendation_id', '/notebooklm/learning/route', '/notebooklm/learning/route', { recommendation_id: 'rec 1' }, {}), ['/notebooklm/learning/receipts?recommendation_id=rec%201'])
 })
 
 test('guarded agent mutations can call same-zone Worker routes in production', () => {
@@ -110,12 +134,39 @@ test('agent context and tools enforce canonical v2 semantics', () => {
     assert.equal(agent.includes(obsolete), false, `obsolete tool remains: ${obsolete}`)
   }
   assert.equal(agent.includes("AVG(CASE WHEN user_rating IN ('love','like') THEN 1 ELSE 0 END) as mastery_rate"), false)
-  assert.ok(agent.includes('FROM thread_evidence_requirements r'))
+  assert.ok(agent.includes('learning_gaps'))
   assert.ok(agent.includes('verified_threads'))
   assert.ok(agent.includes('legacy_mastered'))
   assert.ok(agent.includes("return c.json(payload, requiredUnavailable ? 503 : 200)"))
   assert.ok(agent.includes('loadCaptureQueue(DB, 50)'))
+  assert.ok(agent.includes('HAVING MAX(COALESCE(dm.last_consumed, dr.last_consumed)) IS NULL'))
+  assert.equal(agent.includes('HAVING last_consumed IS NULL'), false)
   assert.ok(capture.includes('loadCaptureQueue(c.env.DB)'))
+})
+
+test('recommendation engine rollout cannot bypass readiness gates through generic settings', () => {
+  const product = readFileSync(new URL('../../src/api/product.ts', import.meta.url), 'utf8')
+  assert.match(product, /key === 'recommendation_engine'/)
+  assert.match(product, /engine_rollout_managed/)
+  assert.match(product, /analytics\/hermes\/engine\/activate/)
+  assert.match(product, /analytics\/hermes\/engine\/rollback/)
+})
+
+test('stranded consolidation runs reconcile from canonical outputs or regain a linked extraction job', () => {
+  const core = readFileSync(new URL('../../src/api/learning-core.ts', import.meta.url), 'utf8')
+  const service = readFileSync(new URL('../../src/services/learning-core.ts', import.meta.url), 'utf8')
+  assert.match(core, /consolidation\/:id\/reconcile/)
+  assert.match(core, /consolidation-reconcile-v2:/)
+  assert.match(core, /output_contract: 'source_note_v2'/)
+  assert.match(core, /workflow_run_id=\?,workflow_step='extract_source'/)
+  assert.match(service, /SELECT id FROM consolidation_runs WHERE recommendation_id=\?/)
+})
+
+test('legacy extraction jobs cannot write stale Thread foreign keys', () => {
+  const jobs = readFileSync(new URL('../../src/api/jobs.ts', import.meta.url), 'utf8')
+  assert.match(jobs, /SELECT id FROM learning_threads WHERE id=\?/)
+  assert.match(jobs, /if \(payloadThreadId\) statements\.push/)
+  assert.doesNotMatch(jobs, /if \(payload\.thread_id\) statements\.push/)
 })
 
 test('high-risk dry-run needs no confirmation while execution requires the exact asserted target', async () => {
@@ -149,11 +200,11 @@ test('evidence mutation verifies the Thread, and failed post-commit readback rem
   try {
     const response = await agentRequest({
       method: 'POST',
-      path: '/learning/core/evidence',
-      idempotency_key: 'evidence-1',
+      path: '/learning/core/threads/thread-1/verify',
+      idempotency_key: 'verify-1',
       confirm: true,
       precondition: { path: '/learning/core/threads/thread-1/path', field: 'thread.id', equals: 'thread-1' },
-      body: { thread_id: 'thread-1', evidence_type: 'application', result: 'pass' },
+      body: {},
     })
     assert.equal(response.status, 201)
     const payload: any = await response.json()

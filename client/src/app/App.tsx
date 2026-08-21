@@ -121,11 +121,11 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    if (route.root !== 'library' || !route.objectId) setSelection(null)
+    setSelection(null)
   }, [route.root, route.view, route.objectId, route.mode, route.focus])
 
   const routedMapSelection = mapSelection(route)
-  const activeSelection = selection || routedMapSelection
+  const activeSelection = route.root === 'map' ? routedMapSelection : (route.root === 'library' && route.objectId ? null : selection)
   const closeSelection = () => {
     setSelection(null)
     if (routedMapSelection) navigate(routeHref('map', route.mode, route.focus))
@@ -138,7 +138,7 @@ export function App() {
   const refreshWorkspace = () => setRefreshKey((value) => value + 1)
   const closeCapture = () => {
     setCaptureOpen(false)
-    if (capturePayload || captureAction) navigate(routeHref('library', 'triage', 'inbox'))
+    if (capturePayload || captureAction) navigate(routeHref('library', 'catalog', 'all'))
   }
 
   return <AppErrorBoundary>

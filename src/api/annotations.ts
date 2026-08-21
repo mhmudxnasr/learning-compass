@@ -55,7 +55,7 @@ app.post('/', async (c) => {
   const [source, artifact, thread, branch] = await Promise.all([
     c.env.DB.prepare(`SELECT id,video_url FROM recommendations WHERE id=? AND deleted_at IS NULL`).bind(recommendationId).first<any>(),
     body.artifact_id ? c.env.DB.prepare(`SELECT id FROM artifacts WHERE id=?`).bind(clean(body.artifact_id, 120)).first<any>() : Promise.resolve(null),
-    body.thread_id ? c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=?`).bind(clean(body.thread_id, 120)).first<any>() : Promise.resolve(null),
+    body.thread_id ? c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=? AND superseded_at IS NULL`).bind(clean(body.thread_id, 120)).first<any>() : Promise.resolve(null),
     body.branch_id ? c.env.DB.prepare(`SELECT id,status FROM tree_nodes WHERE id=? AND type IN ('branch','category','leaf')`).bind(clean(body.branch_id, 120)).first<any>() : Promise.resolve(null),
   ])
   if (!source) return c.json({ error: 'source not found' }, 404)

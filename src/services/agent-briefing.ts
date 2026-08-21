@@ -25,7 +25,7 @@ const count = (row: any) => Number(row?.count || 0)
  * state; it only explains the next useful existing action.
  */
 export async function loadHermesBrief(DB: Database) {
-  const [queue, due, drafts, inbox, proposals, evidenceGap, consolidation, jobs] = await Promise.all([
+  const [queue, due, drafts, inbox, proposals, consolidation, jobs] = await Promise.all([
     DB.prepare(`SELECT r.id,r.video_title,m.learning_state,m.branch_id
       FROM recommendations r
       LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
@@ -33,13 +33,8 @@ export async function loadHermesBrief(DB: Database) {
       ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 1`).first<any>(),
     DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE due_at<=date('now')`).first<any>(),
     DB.prepare(`SELECT COUNT(*) count FROM srs_drafts WHERE status='draft'`).first<any>(),
-    DB.prepare(`SELECT COUNT(*) count FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND m.learning_state='inbox'`).first<any>(),
+    DB.prepare(`SELECT COUNT(*) count FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND m.learning_state='captured'`).first<any>(),
     DB.prepare(`SELECT COUNT(*) count FROM feedback_proposals WHERE status='pending'`).first<any>(),
-    DB.prepare(`SELECT r.id requirement_id,r.thread_id,r.stage_id,r.label,r.evidence_type,t.title thread_title
-      FROM thread_evidence_requirements r
-      JOIN learning_threads t ON t.id=r.thread_id
-      WHERE t.status NOT IN ('verified','abandoned') AND r.status='open'
-      ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.priority DESC,t.updated_at DESC,r.rowid LIMIT 1`).first<any>(),
     DB.prepare(`SELECT cr.id,cr.recommendation_id,cr.failure_reason,r.video_title
       FROM consolidation_runs cr JOIN recommendations r ON r.id=cr.recommendation_id
       WHERE cr.state NOT IN ('closed','waived') ORDER BY cr.requested_at LIMIT 1`).first<any>(),
@@ -52,14 +47,6 @@ export async function loadHermesBrief(DB: Database) {
       id: 'due-recall', kind: 'review', label: 'Review due recall',
       reason: `${count(due)} recall ${count(due) === 1 ? 'card is' : 'cards are'} due today.`,
       target: 'learn.recall', href: '#/learn?mode=practice&focus=recall', priority: 'high',
-    }
-  } else if (evidenceGap) {
-    next_action = {
-      id: `evidence:${evidenceGap.requirement_id}`, kind: 'record_evidence',
-      label: `Record proof: ${String(evidenceGap.label || 'open evidence requirement').slice(0, 96)}`,
-      reason: `The active Thread is waiting for ${evidenceGap.evidence_type || 'evidence'} before it can progress.`,
-      target: `learn.thread.${evidenceGap.thread_id}`, href: `#/learn/thread/${encodeURIComponent(evidenceGap.thread_id)}`,
-      priority: 'high', thread_id: evidenceGap.thread_id, requirement_id: evidenceGap.requirement_id, stage_id: evidenceGap.stage_id || undefined,
     }
   } else if (consolidation) {
     next_action = {
@@ -82,14 +69,14 @@ export async function loadHermesBrief(DB: Database) {
     }
   } else if (count(inbox) > 0) {
     next_action = {
-      id: 'inbox', kind: 'curate', label: 'Curate the Inbox',
+      id: 'captured-sources', kind: 'curate', label: 'Review captured sources',
       reason: `${count(inbox)} captured ${count(inbox) === 1 ? 'source needs' : 'sources need'} a decision.`,
-      target: 'library.inbox', href: '#/library?mode=triage&focus=inbox', priority: 'low',
+      target: 'library.all', href: '#/library?mode=catalog&focus=all', priority: 'low',
     }
   } else {
     next_action = {
       id: 'capture', kind: 'curate', label: 'Capture the next useful source',
-      reason: 'The active Queue and Inbox are clear.', target: 'library.inbox', href: '#/library?mode=triage&focus=inbox', priority: 'low',
+      reason: 'The active Queue and captured sources are clear.', target: 'library.all', href: '#/library?mode=catalog&focus=all', priority: 'low',
     }
   }
 

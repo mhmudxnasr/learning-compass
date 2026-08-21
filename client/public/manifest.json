@@ -43,9 +43,9 @@
   ],
   "shortcuts": [
     {
-      "name": "Capture to Inbox",
+      "name": "Save source",
       "short_name": "Capture",
-      "url": "/#/library?mode=triage&focus=inbox&action=capture",
+      "url": "/#/library?mode=catalog&focus=all&action=capture",
       "icons": [{ "src": "/icons/compass-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {

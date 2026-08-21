@@ -2,6 +2,8 @@ import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
 import { buildLearningEventStatement, recordLearningEvent } from '../services/learning-core'
 import { refreshRecommendationOutcome } from '../services/intelligence-v2'
+import { selectLearningSourceRenditions } from '../services/learning-material-renditions'
+import { loadNotebookLearningStates, summarizeNotebookLearningState } from '../services/notebooklm-learning'
 import { loadThreadLearningMaterials } from '../services/learning-scope'
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -10,6 +12,20 @@ const clean = (value: unknown, max = 4000) => String(value || '').trim().slice(0
 const threadTypes = new Set(['understand', 'decide', 'build', 'practice'])
 const unitTypes = new Set(['claim', 'concept', 'method', 'example', 'question', 'application', 'counterclaim'])
 const evidenceTypes = new Set(['free_recall', 'explanation', 'transfer', 'application', 'decision', 'artifact'])
+
+const keepSupersededThreadsReadOnly = async (c: any, next: () => Promise<void>) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) return next()
+  const thread = (await c.env.DB.prepare(`SELECT superseded_by_type,superseded_by_id,superseded_at FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first()) as { superseded_at?: string; superseded_by_type?: string; superseded_by_id?: string } | null
+  if (thread?.superseded_at) return c.json({
+    error: 'learning_thread_superseded',
+    message: 'This Learning Thread is preserved read-only because its work moved to a dedicated product object.',
+    superseded_by: { type: thread.superseded_by_type, id: thread.superseded_by_id },
+  }, 409)
+  return next()
+}
+
+app.use('/threads/:id', keepSupersededThreadsReadOnly)
+app.use('/threads/:id/*', keepSupersededThreadsReadOnly)
 
 const defaultRequirements = (type: string) => type === 'understand'
   ? [{ key: 'delayed_recall', label: 'Pass delayed free recall', evidence_type: 'free_recall', minimum_count: 1, minimum_score: .6 }]
@@ -23,21 +39,33 @@ async function syncPathStatuses(db: any, threadId: string) {
   const stages = await db.prepare(`SELECT id,status,position FROM learning_path_stages WHERE thread_id=? ORDER BY position`).bind(threadId).all()
   let priorComplete = true
   for (const stage of stages.results || []) {
-    const requiredItems = await db.prepare(`SELECT COUNT(*) count FROM learning_path_items WHERE stage_id=? AND required=1 AND status='open' AND item_type NOT IN ('source_role','companion')`).bind(stage.id).first()
-    const openRequirements = await db.prepare(`SELECT COUNT(*) count FROM thread_evidence_requirements WHERE thread_id=? AND stage_id=? AND status='open'`).bind(threadId, stage.id).first()
-    const evidence = await db.prepare(`SELECT COUNT(*) count FROM learning_evidence WHERE stage_id=? AND result IN ('pass','recorded')`).bind(stage.id).first()
+    const [lessons, items, projects]: any[] = await Promise.all([
+      db.prepare(`SELECT COUNT(*) total, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) completed FROM thread_lessons WHERE stage_id=?`).bind(stage.id).first(),
+      db.prepare(`SELECT COUNT(*) total, SUM(CASE WHEN status IN ('satisfied','waived') THEN 1 ELSE 0 END) completed FROM learning_path_items WHERE stage_id=? AND required=1 AND item_type NOT IN ('source_role','companion','concept','exercise','application')`).bind(stage.id).first(),
+      db.prepare(`SELECT COUNT(*) total, SUM(CASE WHEN status IN ('completed','deferred') THEN 1 ELSE 0 END) completed FROM thread_projects WHERE stage_id=? AND type='level'`).bind(stage.id).first(),
+    ])
+    const totalWork = Number(lessons?.total || 0) + Number(items?.total || 0) + Number(projects?.total || 0)
+    const completedWork = Number(lessons?.completed || 0) + Number(items?.completed || 0) + Number(projects?.completed || 0)
     const current = String(stage.status || 'locked')
     const next = ['verified', 'waived'].includes(current)
       ? current
       : !priorComplete
         ? 'locked'
-        : Number(requiredItems?.count || 0) + Number(openRequirements?.count || 0) === 0
+        : totalWork > 0 && completedWork === totalWork && ['in_progress','ready_to_verify'].includes(current)
           ? 'ready_to_verify'
-          : Number(evidence?.count || 0) > 0
-            ? 'evidence_pending'
-            : current === 'in_progress' ? 'in_progress' : 'available'
+          : completedWork > 0 || current === 'in_progress' || current === 'ready_to_verify'
+            ? 'in_progress'
+            : 'available'
     if (next !== current) await db.prepare(`UPDATE learning_path_stages SET status=?,updated_at=datetime('now') WHERE id=?`).bind(next, stage.id).run()
     priorComplete = ['verified', 'waived'].includes(next)
+  }
+  const remaining: any = await db.prepare(`SELECT COUNT(*) count FROM learning_path_stages WHERE thread_id=? AND status NOT IN ('verified','waived')`).bind(threadId).first()
+  const finalProjects: any = await db.prepare(`SELECT COUNT(*) total, SUM(CASE WHEN status IN ('completed','deferred') THEN 1 ELSE 0 END) completed FROM thread_projects WHERE thread_id=? AND type='final'`).bind(threadId).first()
+  const thread: any = await db.prepare(`SELECT status FROM learning_threads WHERE id=?`).bind(threadId).first()
+  if (thread && !['verified','abandoned','draft'].includes(thread.status)) {
+    const ready = Number(remaining?.count || 0) === 0 && Number(finalProjects?.total || 0) === Number(finalProjects?.completed || 0)
+    const next = ready ? 'ready_to_verify' : thread.status === 'ready_to_verify' ? 'active' : thread.status
+    if (next !== thread.status) await db.prepare(`UPDATE learning_threads SET status=?,updated_at=datetime('now') WHERE id=?`).bind(next, threadId).run()
   }
 }
 
@@ -56,9 +84,9 @@ app.get('/integrity/health', async (c) => {
 app.get('/threads', async (c) => {
   const status = c.req.query('status')
   const rows = status
-    ? await c.env.DB.prepare(`SELECT * FROM learning_threads WHERE status=? ORDER BY priority DESC,updated_at DESC`).bind(status).all<any>()
-    : await c.env.DB.prepare(`SELECT * FROM learning_threads ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'ready_to_verify' THEN 1 WHEN 'paused' THEN 2 ELSE 3 END,priority DESC,updated_at DESC`).all<any>()
-  return c.json({ threads: (rows.results || []).map((row) => ({ ...row, evidence_requirements: JSON.parse(row.evidence_requirements_json || '[]') })) })
+    ? await c.env.DB.prepare(`SELECT * FROM learning_threads WHERE status=? AND superseded_at IS NULL ORDER BY priority DESC,updated_at DESC`).bind(status).all<any>()
+    : await c.env.DB.prepare(`SELECT * FROM learning_threads WHERE superseded_at IS NULL ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'ready_to_verify' THEN 1 WHEN 'paused' THEN 2 ELSE 3 END,priority DESC,updated_at DESC`).all<any>()
+  return c.json({ threads: (rows.results || []).map((row) => ({ ...row, evidence_requirements: [] })) })
 })
 
 app.get('/hub', async (c) => {
@@ -66,75 +94,77 @@ app.get('/hub', async (c) => {
     (SELECT COUNT(*) FROM learning_path_stages s WHERE s.thread_id=t.id) stage_count,
     (SELECT COUNT(*) FROM learning_path_stages s WHERE s.thread_id=t.id AND s.status IN ('verified','waived')) completed_stage_count,
     (SELECT s.title FROM learning_path_stages s WHERE s.thread_id=t.id AND s.status IN ('available','in_progress','evidence_pending','ready_to_verify') ORDER BY s.position LIMIT 1) current_stage_title,
-    (SELECT s.status FROM learning_path_stages s WHERE s.thread_id=t.id AND s.status IN ('available','in_progress','evidence_pending','ready_to_verify') ORDER BY s.position LIMIT 1) current_stage_status
-    FROM learning_threads t ORDER BY CASE t.status WHEN 'active' THEN 0 WHEN 'ready_to_verify' THEN 1 WHEN 'paused' THEN 2 WHEN 'draft' THEN 3 ELSE 4 END,t.priority DESC,t.updated_at DESC`).all<any>()
-  return c.json({ paths: (rows.results || []).map((row: any) => ({ ...row, stage_count: Number(row.stage_count || 0), completed_stage_count: Number(row.completed_stage_count || 0), evidence_requirements: JSON.parse(row.evidence_requirements_json || '[]') })) })
+    (SELECT s.status FROM learning_path_stages s WHERE s.thread_id=t.id AND s.status IN ('available','in_progress','evidence_pending','ready_to_verify') ORDER BY s.position LIMIT 1) current_stage_status,
+    (SELECT COUNT(*) FROM thread_lessons l WHERE l.thread_id=t.id) lesson_count,
+    (SELECT COUNT(*) FROM thread_lessons l WHERE l.thread_id=t.id AND l.status='completed') completed_lesson_count,
+    (SELECT COUNT(*) FROM learning_path_items i JOIN learning_path_stages s ON s.id=i.stage_id WHERE s.thread_id=t.id AND i.required=1 AND i.item_type NOT IN ('source_role','companion','concept','exercise','application')) proof_count,
+    (SELECT COUNT(*) FROM learning_path_items i JOIN learning_path_stages s ON s.id=i.stage_id WHERE s.thread_id=t.id AND i.required=1 AND i.item_type NOT IN ('source_role','companion','concept','exercise','application') AND i.status IN ('satisfied','waived')) completed_proof_count,
+    (SELECT COUNT(*) FROM thread_lessons l WHERE l.thread_id=t.id AND COALESCE(NULLIF(TRIM(l.content),''),'')='' AND NOT EXISTS (SELECT 1 FROM thread_lesson_sources ls WHERE ls.lesson_id=l.id)) needs_material_count
+    FROM learning_threads t WHERE t.superseded_at IS NULL ORDER BY CASE t.status WHEN 'active' THEN 0 WHEN 'ready_to_verify' THEN 1 WHEN 'paused' THEN 2 WHEN 'draft' THEN 3 ELSE 4 END,t.priority DESC,t.updated_at DESC`).all<any>()
+  return c.json({ paths: (rows.results || []).map((row: any) => ({ ...row, stage_count: Number(row.stage_count || 0), completed_stage_count: Number(row.completed_stage_count || 0), lesson_count: Number(row.lesson_count || 0), completed_lesson_count: Number(row.completed_lesson_count || 0), proof_count: Number(row.proof_count || 0), completed_proof_count: Number(row.completed_proof_count || 0), needs_material_count: Number(row.needs_material_count || 0), evidence_requirements: [] })) })
 })
 
 app.get('/threads/:id/path', async (c) => {
   const thread = await c.env.DB.prepare(`SELECT * FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!thread) return c.json({ error: 'thread not found' }, 404)
-  const [stages, items, sources, lessons, lessonSources, projects, evidence, requirements, materials] = await Promise.all([
+  const [stages, items, sources, lessons, lessonSources, projects, materials] = await Promise.all([
     c.env.DB.prepare(`SELECT * FROM learning_path_stages WHERE thread_id=? ORDER BY position`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT i.* FROM learning_path_items i JOIN learning_path_stages s ON s.id=i.stage_id WHERE s.thread_id=? ORDER BY s.position,i.position`).bind(thread.id).all<any>(),
-    c.env.DB.prepare(`SELECT ps.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state FROM learning_path_sources ps JOIN learning_path_stages s ON s.id=ps.stage_id JOIN recommendations r ON r.id=ps.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE s.thread_id=? ORDER BY s.position,ps.position`).bind(thread.id).all<any>(),
+    c.env.DB.prepare(`SELECT ps.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state,m.branch_id,COALESCE(n.label,r.branch) branch_label,COALESCE(n.round_label,r.round) round_label,n.status branch_status FROM learning_path_sources ps JOIN learning_path_stages s ON s.id=ps.stage_id JOIN recommendations r ON r.id=ps.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE s.thread_id=? ORDER BY s.position,ps.position`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT * FROM thread_lessons WHERE thread_id=? ORDER BY stage_id,position`).bind(thread.id).all<any>(),
-    c.env.DB.prepare(`SELECT ls.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state FROM thread_lesson_sources ls JOIN thread_lessons l ON l.id=ls.lesson_id JOIN recommendations r ON r.id=ls.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE l.thread_id=? ORDER BY l.stage_id,l.position,ls.position`).bind(thread.id).all<any>(),
+    c.env.DB.prepare(`SELECT ls.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state,m.branch_id,COALESCE(n.label,r.branch) branch_label,COALESCE(n.round_label,r.round) round_label,n.status branch_status FROM thread_lesson_sources ls JOIN thread_lessons l ON l.id=ls.lesson_id JOIN recommendations r ON r.id=ls.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE l.thread_id=? ORDER BY l.stage_id,l.position,ls.position`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT * FROM thread_projects WHERE thread_id=? ORDER BY CASE WHEN type='level' THEN 0 ELSE 1 END,created_at`).bind(thread.id).all<any>(),
-    c.env.DB.prepare(`SELECT * FROM learning_evidence WHERE thread_id=? ORDER BY occurred_at DESC LIMIT 100`).bind(thread.id).all<any>(),
-    c.env.DB.prepare(`SELECT * FROM thread_evidence_requirements WHERE thread_id=? ORDER BY COALESCE(stage_id,''),rowid`).bind(thread.id).all<any>(),
     loadThreadLearningMaterials(c.env.DB, thread.id),
   ])
   const recIds = [...new Set([...(sources.results || []), ...(lessonSources.results || [])].map((s: any) => s.recommendation_id).filter(Boolean))]
-  const artifactsByRec = new Map<string, { html?: any; pdf?: any }>()
+  let artifactsByRec = new Map<string, { html?: any; pdf?: any }>()
+  let notebookLearningByRec = new Map<string, any>()
   if (recIds.length) {
-    const placeholders = recIds.map(() => '?').join(',')
-    const artifactMatches = recIds.map(() => `metadata_json LIKE ?`).join(' OR ')
-    const artRows = await c.env.DB.prepare(`SELECT id,filename,media_type,metadata_json FROM artifacts WHERE ${artifactMatches} ORDER BY created_at DESC`).bind(...recIds.map((id) => `%"recommendation_id":"${id}"%`)).all<any>()
-    for (const art of artRows.results || []) {
-      let meta: any = {}
-      try { meta = JSON.parse(art.metadata_json || '{}') } catch {}
-      const recId = meta.recommendation_id
-      if (!recId) continue
-      const current = artifactsByRec.get(recId) || {}
-      const role = meta.role || (art.filename?.endsWith('.pdf') ? 'pdf' : art.filename?.endsWith('.html') ? 'html' : null)
-      if (role === 'html' && !current.html) current.html = art
-      else if (role === 'pdf' && !current.pdf) current.pdf = art
-      artifactsByRec.set(recId, current)
+    const artifactMatches = recIds.map(() => '?').join(',')
+    const [artRows, notebookStates] = await Promise.all([
+      c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,created_at,metadata_json FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${artifactMatches}) AND COALESCE(json_extract(metadata_json,'$.scope'),'')!='book' ORDER BY rowid DESC`).bind(...recIds).all<any>(),
+      loadNotebookLearningStates(c.env.DB, [...(sources.results || []), ...(lessonSources.results || [])]),
+    ])
+    artifactsByRec = selectLearningSourceRenditions(artRows.results || [])
+    notebookLearningByRec = notebookStates
+  }
+  const attachLearningMaterials = (source: any) => {
+    const notebookState = notebookLearningByRec.get(source.recommendation_id)
+    return {
+      ...source,
+      artifacts: artifactsByRec.get(source.recommendation_id) || {},
+      ...(source.notebook_url ? { notebook_learning: notebookState ? summarizeNotebookLearningState(notebookState) : null } : {}),
     }
   }
   const stageRows = (stages.results || []).map((stage: any) => {
     const stageItems = (items.results || []).filter((item: any) => item.stage_id === stage.id)
-    const stageSources = (sources.results || []).filter((source: any) => source.stage_id === stage.id).map((source: any) => ({
-      ...source,
-      artifacts: artifactsByRec.get(source.recommendation_id) || {},
-    }))
-    const stageRequirements = (requirements.results || []).filter((requirement: any) => requirement.stage_id === stage.id)
-    const stageEvidence = (evidence.results || []).filter((item: any) => item.stage_id === stage.id)
-    const stageLessons = (lessons.results || []).filter((lesson: any) => lesson.stage_id === stage.id).map((lesson: any) => ({ ...lesson, sources: (lessonSources.results || []).filter((source: any) => source.lesson_id === lesson.id).map((source: any) => ({ ...source, artifacts: artifactsByRec.get(source.recommendation_id) || {} })) }))
+    const stageSources = (sources.results || []).filter((source: any) => source.stage_id === stage.id).map(attachLearningMaterials)
+    const stageLessons = (lessons.results || []).filter((lesson: any) => lesson.stage_id === stage.id).map((lesson: any) => ({ ...lesson, sources: (lessonSources.results || []).filter((source: any) => source.lesson_id === lesson.id).map(attachLearningMaterials), notes: materials.lessons.get(lesson.id)?.notes || [], files: materials.lessons.get(lesson.id)?.files || [], cards: materials.lessons.get(lesson.id)?.cards || [], recall_drafts: materials.lessons.get(lesson.id)?.drafts || [] }))
     const stageProjects = (projects.results || []).filter((project: any) => project.stage_id === stage.id)
-    const requiredItems = stageItems.filter((item: any) => Number(item.required) === 1 && !['source_role', 'companion'].includes(item.item_type))
-    const completedItems = stageLessons.length ? stageLessons.filter((lesson: any) => lesson.status === 'completed') : requiredItems.filter((item: any) => item.status !== 'open')
-    const totalItems = stageLessons.length ? stageLessons.length : requiredItems.length
-    const nextItem = stageLessons.length ? stageLessons.find((lesson: any) => lesson.status !== 'completed') : requiredItems.find((item: any) => item.status === 'open')
+    const completedLessons = stageLessons.filter((lesson: any) => lesson.status === 'completed').length
+    const totalLessons = stageLessons.length
+    const proofItems = stageItems.filter((item: any) => Number(item.required) === 1 && !['source_role','companion','concept','exercise','application'].includes(item.item_type))
+    const completedProof = proofItems.filter((item: any) => ['satisfied','waived'].includes(item.status)).length
+    const requiredProjects = stageProjects.filter((project: any) => project.type === 'level')
+    const completedProjects = requiredProjects.filter((project: any) => ['completed','deferred'].includes(project.status)).length
+    const nextItem = stageLessons.find((lesson: any) => lesson.status !== 'completed')
     return {
       ...stage,
       items: stageItems,
       lessons: stageLessons,
       projects: stageProjects,
       sources: stageSources,
-      requirements: stageRequirements,
-      evidence: stageEvidence,
+      requirements: [],
       notes: materials.levels.get(stage.id)?.notes || [],
       files: materials.levels.get(stage.id)?.files || [],
       cards: materials.levels.get(stage.id)?.cards || [],
       recall_drafts: materials.levels.get(stage.id)?.drafts || [],
-      progress: { completed: completedItems.length, total: totalItems },
-      next_action: stage.status === 'available' ? { kind: 'start', stage_id: stage.id, label: 'Start stage' } : stage.status === 'ready_to_verify' ? { kind: 'verify', stage_id: stage.id, label: 'Verify stage' } : nextItem ? stageLessons.length ? { kind: 'lesson', stage_id: stage.id, lesson_id: (nextItem as any).id, label: `Continue: ${nextItem.title}` } : { kind: 'item', stage_id: stage.id, item_id: (nextItem as any).id, label: `Complete: ${nextItem.title}` } : stageProjects[0] ? { kind: 'project', stage_id: stage.id, project_id: stageProjects[0].id, label: `Open: ${stageProjects[0].title}` } : { kind: 'none', stage_id: stage.id, label: 'No next action', reason: 'This stage has no remaining actions.' },
+      progress: { completed: completedLessons + completedProof + completedProjects, total: totalLessons + proofItems.length + requiredProjects.length, study_completed: completedLessons, study_total: totalLessons, proof_completed: completedProof, proof_total: proofItems.length, project_completed: completedProjects, project_total: requiredProjects.length },
+      next_action: stage.status === 'locked' ? { kind: 'none', stage_id: stage.id, label: 'Level locked', reason: 'Verify the previous level to unlock this one.' } : stage.status === 'available' ? { kind: 'start', stage_id: stage.id, label: 'Start level' } : stage.status === 'ready_to_verify' ? { kind: 'verify', stage_id: stage.id, label: 'Verify level' } : stage.status === 'verified' ? { kind: 'none', stage_id: stage.id, label: 'Level verified' } : nextItem ? { kind: 'lesson', stage_id: stage.id, lesson_id: nextItem.id, label: `${nextItem.status === 'in_progress' ? 'Continue' : 'Study'}: ${nextItem.title}` } : requiredProjects.find((project: any) => !['completed','deferred'].includes(project.status)) ? { kind: 'project', stage_id: stage.id, project_id: requiredProjects.find((project: any) => !['completed','deferred'].includes(project.status)).id, label: `Complete: ${requiredProjects.find((project: any) => !['completed','deferred'].includes(project.status)).title}` } : { kind: 'none', stage_id: stage.id, label: 'No next action', reason: 'This level has no remaining actions.' },
     }
   })
   const current = stageRows.find((stage: any) => ['available','in_progress','evidence_pending','ready_to_verify'].includes(stage.status)) || stageRows.find((stage: any) => stage.status === 'locked') || stageRows[stageRows.length - 1] || null
-  return c.json({ thread: { ...thread, evidence_requirements: JSON.parse(thread.evidence_requirements_json || '[]') }, stages: stageRows, projects: projects.results || [], current_stage: current, evidence: evidence.results || [], requirements: requirements.results || [], notes: materials.thread.notes, files: materials.thread.files, cards: materials.thread.cards, recall_drafts: materials.thread.drafts })
+  return c.json({ thread: { ...thread, evidence_requirements: [] }, stages: stageRows, projects: projects.results || [], current_stage: current, requirements: [], notes: materials.thread.notes, files: materials.thread.files, cards: materials.thread.cards, recall_drafts: materials.thread.drafts })
 })
 
 app.post('/threads/:id/stages/:stageId/lessons', async (c) => {
@@ -168,8 +198,11 @@ app.post('/threads/:id/stages/:stageId/lessons', async (c) => {
 
 app.patch('/threads/:id/lessons/:lessonId', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}))
-  const lesson = await c.env.DB.prepare(`SELECT l.* FROM thread_lessons l WHERE l.id=? AND l.thread_id=?`).bind(c.req.param('lessonId'), c.req.param('id')).first<any>()
+  const lesson = await c.env.DB.prepare(`SELECT l.*,s.status stage_status FROM thread_lessons l JOIN learning_path_stages s ON s.id=l.stage_id WHERE l.id=? AND l.thread_id=?`).bind(c.req.param('lessonId'), c.req.param('id')).first<any>()
   if (!lesson) return c.json({ error: 'lesson not found' }, 404)
+  if (lesson.stage_status === 'locked') return c.json({ error: 'level is locked; verify the previous level first' }, 409)
+  if (lesson.stage_status === 'available') return c.json({ error: 'start the level before updating its lessons' }, 409)
+  if (['verified','waived'].includes(lesson.stage_status)) return c.json({ error: 'verified levels are read-only' }, 409)
   const status = ['not_started','in_progress','completed'].includes(body.status) ? body.status : null
   if (!status) return c.json({ error: 'invalid lesson status' }, 400)
   const statements: D1PreparedStatement[] = [c.env.DB.prepare(`UPDATE thread_lessons SET status=?,why_learn=COALESCE(?,why_learn),why_now=COALESCE(?,why_now),takeaway=COALESCE(?,takeaway),content=COALESCE(?,content),updated_at=datetime('now') WHERE id=?`).bind(status, body.why_learn || null, body.why_now || null, body.takeaway || null, body.content || null, lesson.id)]
@@ -190,13 +223,13 @@ app.post('/threads/:id/lessons/:lessonId/sources', async (c) => {
   if (!branch || branch.status === 'pruned') return c.json({ error: 'valid non-pruned branch_id required' }, 400)
   const role = ['primary','case','challenge','reference','optional'].includes(body.role) ? body.role : 'primary'
   await c.env.DB.batch([
-    c.env.DB.prepare(`DELETE FROM thread_lesson_sources WHERE lesson_id=? AND role=? AND recommendation_id<>?`).bind(c.req.param('lessonId'), role, body.recommendation_id),
+    c.env.DB.prepare(`DELETE FROM thread_lesson_sources WHERE lesson_id=? AND role=? AND recommendation_id<>? AND ?!='optional'`).bind(c.req.param('lessonId'), role, body.recommendation_id, role),
     c.env.DB.prepare(`INSERT OR REPLACE INTO thread_lesson_sources (lesson_id,recommendation_id,role,position) VALUES (?,?,?,?)`).bind(c.req.param('lessonId'), body.recommendation_id, role, Math.max(0, Number(body.position || 0))),
     c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,branch_id,source_metadata_json,updated_at)
       VALUES (?,'attached',?,'{}',datetime('now'))
       ON CONFLICT(recommendation_id) DO UPDATE SET
         branch_id=excluded.branch_id,
-        learning_state=CASE WHEN recommendation_meta.learning_state='inbox' THEN 'attached' ELSE recommendation_meta.learning_state END,
+        learning_state=CASE WHEN recommendation_meta.learning_state='captured' THEN 'attached' ELSE recommendation_meta.learning_state END,
         updated_at=datetime('now')`).bind(body.recommendation_id, branch.id),
   ])
   return c.json({ ok: true, lesson_id: lesson.id, recommendation_id: body.recommendation_id, role, branch }, 201)
@@ -206,9 +239,16 @@ app.patch('/threads/:id/projects/:projectId', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}))
   const project = await c.env.DB.prepare(`SELECT * FROM thread_projects WHERE id=? AND thread_id=?`).bind(c.req.param('projectId'), c.req.param('id')).first<any>()
   if (!project) return c.json({ error: 'project not found' }, 404)
+  if (project.stage_id) {
+    const stage = await c.env.DB.prepare(`SELECT status FROM learning_path_stages WHERE id=?`).bind(project.stage_id).first<any>()
+    if (!stage || stage.status === 'locked') return c.json({ error: 'level is locked; verify the previous level first' }, 409)
+    if (stage.status === 'available') return c.json({ error: 'start the level before updating its project' }, 409)
+    if (['verified','waived'].includes(stage.status)) return c.json({ error: 'verified levels are read-only' }, 409)
+  }
   const status = ['not_started','in_progress','completed','deferred'].includes(body.status) ? body.status : null
   if (!status) return c.json({ error: 'invalid project status' }, 400)
   await c.env.DB.prepare(`UPDATE thread_projects SET status=?,started_at=CASE WHEN ?='in_progress' AND started_at IS NULL THEN datetime('now') ELSE started_at END,completed_at=CASE WHEN ?='completed' THEN datetime('now') ELSE completed_at END,updated_at=datetime('now') WHERE id=?`).bind(status,status,status,project.id).run()
+  await syncPathStatuses(c.env.DB, c.req.param('id'))
   return c.json({ ok: true, id: project.id, status })
 })
 
@@ -271,7 +311,7 @@ app.post('/threads/:id/stages/:stageId/verify', async (c) => {
   if (!stage) return c.json({ error: 'stage not found' }, 404)
   await syncPathStatuses(c.env.DB, c.req.param('id'))
   const refreshed = await c.env.DB.prepare(`SELECT status FROM learning_path_stages WHERE id=?`).bind(stage.id).first<any>()
-  if (refreshed?.status !== 'ready_to_verify') return c.json({ error: 'stage evidence is not ready to verify', status: refreshed?.status || stage.status }, 409)
+  if (refreshed?.status !== 'ready_to_verify') return c.json({ error: 'complete this level’s lessons, proof, and project before verification', status: refreshed?.status || stage.status }, 409)
   await c.env.DB.prepare(`UPDATE learning_path_stages SET status='verified',updated_at=datetime('now') WHERE id=?`).bind(stage.id).run()
   await syncPathStatuses(c.env.DB, c.req.param('id'))
   return c.json({ ok: true, status: 'verified' })
@@ -296,17 +336,11 @@ app.post('/threads', async (c) => {
   const definition = clean(body.definition_of_done, 2000)
   const type = clean(body.thread_type, 20)
   if (!title || !guidingQuestion || !definition || !threadTypes.has(type)) return c.json({ error: 'title, valid thread_type, guiding_question, and definition_of_done required' }, 400)
-  const requirements = Array.isArray(body.evidence_requirements) && body.evidence_requirements.length ? body.evidence_requirements.slice(0, 12) : defaultRequirements(type)
   const id = makeId('thread')
   const status = body.activate === true ? 'active' : 'draft'
   const statements: D1PreparedStatement[] = []
   if (status === 'active') statements.push(c.env.DB.prepare(`UPDATE learning_threads SET status='paused',paused_at=datetime('now'),updated_at=datetime('now') WHERE status='active'`))
-  statements.push(c.env.DB.prepare(`INSERT INTO learning_threads (id,title,thread_type,guiding_question,why_now,definition_of_done,evidence_requirements_json,status,started_at,priority) VALUES (?,?,?,?,?,?,?,?,CASE WHEN ?='active' THEN datetime('now') END,?)`).bind(id, title, type, guidingQuestion, clean(body.why_now, 2000) || null, definition, JSON.stringify(requirements), status, status, Number(body.priority || 0)))
-  for (const [index, requirement] of requirements.entries()) {
-    const key = clean(requirement.key || `requirement_${index + 1}`, 80)
-    const evidenceType = evidenceTypes.has(requirement.evidence_type) ? requirement.evidence_type : defaultRequirements(type)[0].evidence_type
-    statements.push(c.env.DB.prepare(`INSERT INTO thread_evidence_requirements (id,thread_id,requirement_key,label,evidence_type,minimum_count,minimum_score) VALUES (?,?,?,?,?,?,?)`).bind(`${id}_${key}`, id, key, clean(requirement.label || key, 240), evidenceType, Math.max(1, Number(requirement.minimum_count || 1)), requirement.minimum_score == null ? null : Math.max(0, Math.min(1, Number(requirement.minimum_score)))))
-  }
+  statements.push(c.env.DB.prepare(`INSERT INTO learning_threads (id,title,thread_type,guiding_question,why_now,definition_of_done,evidence_requirements_json,status,started_at,priority) VALUES (?,?,?,?,?,?,'[]',?,CASE WHEN ?='active' THEN datetime('now') END,?)`).bind(id, title, type, guidingQuestion, clean(body.why_now, 2000) || null, definition, status, status, Number(body.priority || 0)))
   await c.env.DB.batch(statements)
   await recordLearningEvent(c.env.DB, { eventType: 'thread_created', actorType: 'user', idempotencyKey: `thread-created:${id}`, threadId: id, payload: { type, status } })
   return c.json({ ok: true, id, status }, 201)
@@ -315,29 +349,26 @@ app.post('/threads', async (c) => {
 app.get('/threads/:id', async (c) => {
   const thread = await c.env.DB.prepare(`SELECT * FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!thread) return c.json({ error: 'thread not found' }, 404)
-  const [sources, units, requirements, evidence, relations] = await Promise.all([
+  const [sources, units, relations] = await Promise.all([
     c.env.DB.prepare(`SELECT ts.*,r.video_title,r.creator,r.content_type,r.video_url,m.learning_state FROM thread_sources ts JOIN recommendations r ON r.id=ts.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE ts.thread_id=? AND ts.status!='removed' ORDER BY ts.position,r.created_at`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT u.*,tu.role,tu.importance FROM thread_units tu JOIN learning_units u ON u.id=tu.unit_id WHERE tu.thread_id=? ORDER BY tu.position,u.updated_at DESC`).bind(thread.id).all<any>(),
-    c.env.DB.prepare(`SELECT * FROM thread_evidence_requirements WHERE thread_id=? ORDER BY rowid`).bind(thread.id).all<any>(),
-    c.env.DB.prepare(`SELECT * FROM learning_evidence WHERE thread_id=? ORDER BY occurred_at DESC LIMIT 100`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT ur.* FROM unit_relations ur WHERE ur.source_unit_id IN (SELECT unit_id FROM thread_units WHERE thread_id=?) OR ur.target_unit_id IN (SELECT unit_id FROM thread_units WHERE thread_id=?) ORDER BY ur.created_at DESC`).bind(thread.id,thread.id).all<any>(),
   ])
-  return c.json({ thread: { ...thread, evidence_requirements: JSON.parse(thread.evidence_requirements_json || '[]') }, sources: sources.results || [], units: units.results || [], requirements: requirements.results || [], evidence: evidence.results || [], relations: relations.results || [] })
+  return c.json({ thread: { ...thread, evidence_requirements: [] }, sources: sources.results || [], units: units.results || [], requirements: [], evidence: [], relations: relations.results || [] })
 })
 
 app.get('/threads/:id/export', async (c) => {
   const thread = await c.env.DB.prepare(`SELECT * FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!thread) return c.json({ error: 'thread not found' }, 404)
-  const [sources, units, anchors, evidence] = await Promise.all([
+  const [sources, units, anchors] = await Promise.all([
     c.env.DB.prepare(`SELECT r.video_title,r.creator,r.video_url,ts.role FROM thread_sources ts JOIN recommendations r ON r.id=ts.recommendation_id WHERE ts.thread_id=? AND ts.status!='removed' ORDER BY ts.position`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT u.* FROM thread_units tu JOIN learning_units u ON u.id=tu.unit_id WHERE tu.thread_id=? ORDER BY tu.position,u.updated_at`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT a.* FROM unit_anchors a WHERE a.unit_id IN (SELECT unit_id FROM thread_units WHERE thread_id=?) ORDER BY a.created_at`).bind(thread.id).all<any>(),
-    c.env.DB.prepare(`SELECT * FROM learning_evidence WHERE thread_id=? ORDER BY occurred_at`).bind(thread.id).all<any>(),
   ])
-  if ((c.req.query('format') || 'json') !== 'md') return c.json({ thread, sources: sources.results || [], units: units.results || [], anchors: anchors.results || [], evidence: evidence.results || [] })
+  if ((c.req.query('format') || 'json') !== 'md') return c.json({ thread, sources: sources.results || [], units: units.results || [], anchors: anchors.results || [], evidence: [] })
   const anchorMap = new Map<string, any[]>()
   for (const anchor of anchors.results || []) anchorMap.set(anchor.unit_id, [...(anchorMap.get(anchor.unit_id) || []), anchor])
-  const markdown = [`# ${thread.title}`, '', `**Type:** ${thread.thread_type}`, '', `## Guiding question`, '', thread.guiding_question, '', `## Definition of done`, '', thread.definition_of_done, '', `## Final synthesis`, '', thread.final_synthesis || '_Not completed_', '', `## Sources`, '', ...(sources.results || []).map((source: any) => `- [${source.video_title}](${source.video_url}) — ${source.role}${source.creator ? ` · ${source.creator}` : ''}`), '', `## Learning Units`, '', ...(units.results || []).flatMap((unit: any) => [`### ${unit.unit_type}: ${unit.statement}`, '', unit.user_synthesis || '', ...(anchorMap.get(unit.id) || []).map((anchor: any) => `- Anchor: ${anchor.locator}${anchor.excerpt ? ` — ${anchor.excerpt}` : ''}`), '']), `## Evidence`, '', ...(evidence.results || []).map((item: any) => `- ${item.evidence_type} · ${item.result}${item.response ? ` — ${item.response}` : ''}`)].join('\n')
+  const markdown = [`# ${thread.title}`, '', `**Type:** ${thread.thread_type}`, '', `## Guiding question`, '', thread.guiding_question, '', `## Definition of done`, '', thread.definition_of_done, '', `## Final synthesis`, '', thread.final_synthesis || '_Not completed_', '', `## Sources`, '', ...(sources.results || []).map((source: any) => `- [${source.video_title}](${source.video_url}) — ${source.role}${source.creator ? ` · ${source.creator}` : ''}`), '', `## Learning Units`, '', ...(units.results || []).flatMap((unit: any) => [`### ${unit.unit_type}: ${unit.statement}`, '', unit.user_synthesis || '', ...(anchorMap.get(unit.id) || []).map((anchor: any) => `- Anchor: ${anchor.locator}${anchor.excerpt ? ` — ${anchor.excerpt}` : ''}`), ''])].join('\n')
   c.header('Content-Type', 'text/markdown; charset=utf-8')
   c.header('Content-Disposition', `attachment; filename="${thread.id}.md"`)
   return c.body(markdown)
@@ -417,13 +448,10 @@ app.delete('/threads/:id', async (c) => {
     await c.env.DB.batch([
       c.env.DB.prepare(`DELETE FROM learning_path_sources WHERE stage_id IN (SELECT id FROM learning_path_stages WHERE thread_id=?)`).bind(id),
       c.env.DB.prepare(`DELETE FROM learning_path_items WHERE stage_id IN (SELECT id FROM learning_path_stages WHERE thread_id=?)`).bind(id),
-      c.env.DB.prepare(`UPDATE learning_evidence SET stage_id=NULL WHERE stage_id IN (SELECT id FROM learning_path_stages WHERE thread_id=?)`).bind(id),
       c.env.DB.prepare(`DELETE FROM learning_path_stages WHERE thread_id=?`).bind(id),
       c.env.DB.prepare(`DELETE FROM thread_sources WHERE thread_id=?`).bind(id),
       c.env.DB.prepare(`DELETE FROM thread_units WHERE thread_id=?`).bind(id),
-      c.env.DB.prepare(`DELETE FROM thread_evidence_requirements WHERE thread_id=?`).bind(id),
       c.env.DB.prepare(`DELETE FROM source_learning_dispositions WHERE thread_id=?`).bind(id),
-      c.env.DB.prepare(`UPDATE learning_evidence SET thread_id=NULL WHERE thread_id=?`).bind(id),
       c.env.DB.prepare(`UPDATE learning_sessions SET thread_id=NULL WHERE thread_id=?`).bind(id),
       c.env.DB.prepare(`UPDATE srs_cards SET thread_id=NULL WHERE thread_id=?`).bind(id),
       c.env.DB.prepare(`UPDATE srs_drafts SET thread_id=NULL WHERE thread_id=?`).bind(id),
@@ -440,11 +468,11 @@ app.delete('/threads/:id', async (c) => {
 })
 
 app.post('/threads/:id/verify', async (c) => {
-  const thread = await c.env.DB.prepare(`SELECT final_synthesis FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first<any>()
+  const thread = await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!thread) return c.json({ error: 'thread not found' }, 404)
-  const open = await c.env.DB.prepare(`SELECT COUNT(*) count FROM thread_evidence_requirements WHERE thread_id=? AND status!='satisfied'`).bind(c.req.param('id')).first<any>()
-  if (!clean(thread.final_synthesis, 20000)) return c.json({ error: 'final synthesis required' }, 409)
-  if (Number(open?.count || 0) > 0) return c.json({ error: 'evidence requirements remain open', open: open.count }, 409)
+  await syncPathStatuses(c.env.DB, c.req.param('id'))
+  const refreshed = await c.env.DB.prepare(`SELECT status FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first<any>()
+  if (refreshed?.status !== 'ready_to_verify') return c.json({ error: 'verify every level and complete the final project first', status: refreshed?.status }, 409)
   await c.env.DB.prepare(`UPDATE learning_threads SET status='verified',completed_at=COALESCE(completed_at,datetime('now')),verified_at=datetime('now'),updated_at=datetime('now') WHERE id=?`).bind(c.req.param('id')).run()
   await recordLearningEvent(c.env.DB, { eventType: 'thread_verified', actorType: 'user', evidenceWeight: 1, idempotencyKey: `thread-verified:${c.req.param('id')}`, threadId: c.req.param('id') })
   return c.json({ ok: true, status: 'verified' })
@@ -519,9 +547,7 @@ app.post('/evidence', async (c) => {
   const threadId = clean(body.thread_id, 120) || null
   const stageId = clean(body.stage_id, 120) || null
   const itemId = clean(body.item_id, 120) || null
-  let requirementId = clean(body.requirement_id, 120) || null
   let item: any = null
-  let requirement: any = null
   if (stageId) {
     const stage = await c.env.DB.prepare(`SELECT id FROM learning_path_stages WHERE id=? AND thread_id=?`).bind(stageId, threadId || '').first()
     if (!stage) return c.json({ error: 'stage does not belong to thread' }, 400)
@@ -532,40 +558,22 @@ app.post('/evidence', async (c) => {
     if (!['open'].includes(item.status)) return c.json({ error: 'item is not open' }, 409)
     if (item.evidence_type && item.evidence_type !== type) return c.json({ error: 'evidence type does not match item' }, 400)
   }
-  if (requirementId) {
-    requirement = await c.env.DB.prepare(`SELECT * FROM thread_evidence_requirements WHERE id=? AND thread_id=?`).bind(requirementId, threadId || '').first<any>()
-    if (!requirement) return c.json({ error: 'requirement does not belong to thread' }, 400)
-    if (requirement.stage_id && stageId && requirement.stage_id !== stageId) return c.json({ error: 'requirement does not belong to stage' }, 400)
-    if (requirement.status === 'waived') return c.json({ error: 'requirement is waived' }, 409)
-    if (requirement.evidence_type !== type) return c.json({ error: 'evidence type does not match requirement' }, 400)
-  }
-  if (threadId && !requirementId && ['pass', 'recorded'].includes(result)) {
-    const matching = await c.env.DB.prepare(`SELECT * FROM thread_evidence_requirements WHERE thread_id=? AND evidence_type=? AND status='open' ORDER BY rowid`).bind(threadId, type).all<any>()
-    if ((matching.results || []).length === 1) {
-      requirement = matching.results[0]
-      requirementId = requirement.id
-    }
-  }
   const id = makeId('evidence')
   const score = body.score == null ? null : Math.max(0, Math.min(1, Number(body.score)))
   const linkedUnit = body.unit_id ? await c.env.DB.prepare(`SELECT recommendation_id FROM learning_units WHERE id=?`).bind(body.unit_id).first<any>() : null
   const recommendationId = clean(body.context?.recommendation_id || linkedUnit?.recommendation_id, 120) || null
   const context = { ...(body.context && typeof body.context === 'object' ? body.context : {}), ...(recommendationId ? { recommendation_id: recommendationId } : {}) }
-  const statements: D1PreparedStatement[] = [c.env.DB.prepare(`INSERT INTO learning_evidence (id,thread_id,unit_id,stage_id,item_id,evidence_type,prompt,response,result,score,self_rating,evaluator,proof_ref,delay_days,context_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id, threadId, body.unit_id || null, stageId, itemId, type, clean(body.prompt, 4000) || null, clean(body.response, 20000) || null, result, score, body.self_rating == null ? null : Number(body.self_rating), clean(body.evaluator, 80) || 'user', clean(body.proof_ref, 1000) || null, body.delay_days == null ? null : Number(body.delay_days), JSON.stringify(context))]
+  const statements: D1PreparedStatement[] = []
   if (itemId && ['pass', 'recorded'].includes(result)) statements.push(c.env.DB.prepare(`UPDATE learning_path_items SET status='satisfied',updated_at=datetime('now') WHERE id=? AND status='open'`).bind(itemId))
-  if (requirementId && ['pass', 'recorded'].includes(result)) {
-    statements.push(c.env.DB.prepare(`INSERT OR IGNORE INTO thread_requirement_evidence (requirement_id,evidence_id) VALUES (?,?)`).bind(requirementId, id))
-    statements.push(c.env.DB.prepare(`UPDATE thread_evidence_requirements SET status=CASE WHEN (minimum_score IS NULL OR ? >= minimum_score) AND (SELECT COUNT(*) FROM thread_requirement_evidence re JOIN learning_evidence e ON e.id=re.evidence_id WHERE re.requirement_id=? AND e.result IN ('pass','recorded')) >= minimum_count THEN 'satisfied' ELSE status END,satisfied_by_evidence_id=CASE WHEN (minimum_score IS NULL OR ? >= minimum_score) AND (SELECT COUNT(*) FROM thread_requirement_evidence re JOIN learning_evidence e ON e.id=re.evidence_id WHERE re.requirement_id=? AND e.result IN ('pass','recorded')) >= minimum_count THEN ? ELSE satisfied_by_evidence_id END,updated_at=datetime('now') WHERE id=?`).bind(score ?? 1, requirementId, score ?? 1, requirementId, id, requirementId))
-  }
   if (body.unit_id && ['pass', 'recorded'].includes(result)) {
     const masteryStage = type === 'application' ? 'applied' : type === 'transfer' ? 'transferred' : type === 'free_recall' && result === 'pass' ? 'retrieved' : type === 'explanation' && result === 'pass' ? 'encoded' : 'exposed'
     statements.push(c.env.DB.prepare(`INSERT INTO unit_mastery_state (unit_id,stage,due_at,last_retrieved_at,delayed_retrievals,transfer_count,application_count) VALUES (?,?,date('now','+1 day'),CASE WHEN ?='retrieved' THEN datetime('now') END,CASE WHEN ?='retrieved' THEN 1 ELSE 0 END,CASE WHEN ?='transferred' THEN 1 ELSE 0 END,CASE WHEN ?='applied' THEN 1 ELSE 0 END) ON CONFLICT(unit_id) DO UPDATE SET stage=excluded.stage,updated_at=datetime('now')`).bind(body.unit_id, masteryStage, masteryStage, masteryStage, masteryStage, masteryStage))
   }
-  statements.push(buildLearningEventStatement(c.env.DB, { eventType: type === 'free_recall' ? 'recall_attempted' : `${type}_recorded`, actorType: 'user', evidenceWeight: 1, idempotencyKey: `evidence:${id}`, threadId, recommendationId, unitId: body.unit_id || null, evidenceId: id, signalScope: 'utility', signalValue: score, explicit: true, origin: 'learning_evidence', payload: { result, score, evidence_type: type, item_id: itemId, requirement_id: requirementId } }))
-  await c.env.DB.batch(statements)
+  statements.push(buildLearningEventStatement(c.env.DB, { eventType: type === 'free_recall' ? 'recall_attempted' : `${type}_recorded`, actorType: 'user', evidenceWeight: 1, idempotencyKey: `evidence:${id}`, threadId, recommendationId, unitId: body.unit_id || null, evidenceId: id, signalScope: 'utility', signalValue: score, explicit: true, origin: 'learning_event', payload: { result, score, evidence_type: type, item_id: itemId } }))
+  if (statements.length) await c.env.DB.batch(statements)
   const outcome = recommendationId ? await refreshRecommendationOutcome(c.env.DB, recommendationId) : null
   if (stageId && threadId) await syncPathStatuses(c.env.DB, threadId)
-  return c.json({ ok: true, id, recommendation_id: recommendationId, item_id: itemId, requirement_id: requirementId, learning_outcome: outcome }, 201)
+  return c.json({ ok: true, id, recommendation_id: recommendationId, item_id: itemId, learning_outcome: outcome }, 201)
 })
 
 app.get('/consolidation/open', async (c) => {
@@ -600,6 +608,52 @@ app.post('/consolidation/:id/waive', async (c) => {
     c.env.DB.prepare(`UPDATE consolidation_steps SET status='waived',error=?,completed_at=datetime('now'),updated_at=datetime('now') WHERE run_id=? AND status IN ('pending','failed')`).bind(reason, c.req.param('id')),
   ])
   return c.json({ ok: true, state: 'waived' })
+})
+
+app.post('/consolidation/:id/reconcile', async (c) => {
+  const run = await c.env.DB.prepare(`SELECT cr.*,r.video_url,r.user_score,r.user_review FROM consolidation_runs cr JOIN recommendations r ON r.id=cr.recommendation_id WHERE cr.id=? AND cr.state NOT IN ('closed','waived')`).bind(c.req.param('id')).first<any>()
+  if (!run) return c.json({ error: 'open consolidation run not found' }, 404)
+  const [note, units, anchors, drafts, completedExtraction] = await Promise.all([
+    c.env.DB.prepare(`SELECT COUNT(*) count,SUM(CASE WHEN extraction_contract='source_note_v2' THEN 1 ELSE 0 END) quality_count FROM notes WHERE recommendation_id=? AND kind!='reflection'`).bind(run.recommendation_id).first<any>(),
+    c.env.DB.prepare(`SELECT COUNT(*) count FROM learning_units WHERE recommendation_id=?`).bind(run.recommendation_id).first<any>(),
+    c.env.DB.prepare(`SELECT COUNT(DISTINCT unit_id) count FROM unit_anchors WHERE recommendation_id=?`).bind(run.recommendation_id).first<any>(),
+    c.env.DB.prepare(`SELECT COUNT(*) count FROM srs_drafts WHERE recommendation_id=?`).bind(run.recommendation_id).first<any>(),
+    c.env.DB.prepare(`SELECT result_json FROM agent_jobs WHERE job_type='extract_notes' AND recommendation_id=? AND status='completed' ORDER BY updated_at DESC LIMIT 1`).bind(run.recommendation_id).first<any>(),
+  ])
+  let noCardReason = ''
+  try {
+    const parsed = JSON.parse(completedExtraction?.result_json || '{}')
+    if (parsed?.recall?.status === 'none') noCardReason = String(parsed.recall.reason || '').trim()
+  } catch {}
+  const needsRecall = run.disposition === 'retain' || run.disposition === 'apply'
+  const unitCount = Number(units?.count || 0)
+  const qualityNote = Number(note?.quality_count || 0) > 0
+  const anchorsComplete = unitCount > 0 && Number(anchors?.count || 0) === unitCount
+  const recallComplete = !needsRecall || Number(drafts?.count || 0) > 0 || Boolean(noCardReason)
+  const complete = qualityNote && unitCount > 0 && anchorsComplete && recallComplete
+  if (complete) {
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE consolidation_steps SET status='completed',completed_at=COALESCE(completed_at,datetime('now')),updated_at=datetime('now') WHERE run_id=? AND step_key IN ('extract_source','validate_anchors','create_units','prepare_recall','verify_record')`).bind(run.id),
+      c.env.DB.prepare(`UPDATE consolidation_steps SET status='waived',completed_at=COALESCE(completed_at,datetime('now')),updated_at=datetime('now') WHERE run_id=? AND step_key='attach_map' AND status='pending'`).bind(run.id),
+      c.env.DB.prepare(`UPDATE consolidation_runs SET state='closed',failure_reason=NULL,completed_at=datetime('now'),updated_at=datetime('now') WHERE id=?`).bind(run.id),
+    ])
+    return c.json({ ok: true, state: 'closed', reconciled_from: { notes: Number(note?.count || 0), units: Number(units?.count || 0), anchors: Number(anchors?.count || 0), drafts: Number(drafts?.count || 0) } })
+  }
+  const existing = await c.env.DB.prepare(`SELECT id,status FROM agent_jobs WHERE job_type='extract_notes' AND recommendation_id=? AND status IN ('pending','running','retry') ORDER BY created_at DESC LIMIT 1`).bind(run.recommendation_id).first<any>()
+  const jobId = existing?.id || makeId('job')
+  if (!existing) await c.env.DB.prepare(`INSERT INTO agent_jobs(id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind,workflow_run_id,workflow_step) VALUES (?,'extract_notes',?,?,?,'explicit_user_action',?,'extract_source')`).bind(
+    jobId,
+    JSON.stringify({ recommendation_id: run.recommendation_id, thread_id: run.thread_id || null, source_url: run.video_url || null, rating: run.user_score, reflection: run.user_review || '', disposition: run.disposition, output_contract: 'source_note_v2' }),
+    `consolidation-reconcile-v2:${run.id}`,
+    run.recommendation_id,
+    run.id,
+  ).run()
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE agent_jobs SET workflow_run_id=?,workflow_step='extract_source',recommendation_id=? WHERE id=?`).bind(run.id, run.recommendation_id, jobId),
+    c.env.DB.prepare(`UPDATE consolidation_steps SET agent_job_id=?,status='pending',error=NULL,updated_at=datetime('now') WHERE run_id=? AND step_key='extract_source'`).bind(jobId, run.id),
+    c.env.DB.prepare(`UPDATE consolidation_runs SET state='queued',failure_reason=NULL,updated_at=datetime('now') WHERE id=?`).bind(run.id),
+  ])
+  return c.json({ ok: true, state: 'queued', job_id: jobId, missing: { quality_note: !qualityNote, units: unitCount === 0, anchors: !anchorsComplete, recall_resolution: !recallComplete } })
 })
 
 export default app

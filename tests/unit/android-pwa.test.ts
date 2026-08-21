@@ -9,7 +9,7 @@ const android = readFileSync(new URL('../../client/src/app/android.tsx', import.
 const worker = readFileSync(new URL('../../client/public/sw.js', import.meta.url), 'utf8')
 const server = readFileSync(new URL('../../src/index.ts', import.meta.url), 'utf8')
 
-test('Android manifest is installable and keeps capture inside the canonical Inbox flow', () => {
+test('Android manifest is installable and keeps capture inside the canonical source ledger', () => {
   assert.equal(manifest.id, '/')
   assert.equal(manifest.start_url, '/#/home')
   assert.equal(manifest.scope, '/')
@@ -18,7 +18,7 @@ test('Android manifest is installable and keeps capture inside the canonical Inb
   assert.ok(manifest.icons.some((icon: any) => icon.sizes === '512x512' && icon.type === 'image/png'))
   assert.ok(manifest.icons.some((icon: any) => icon.purpose === 'maskable'))
   assert.equal(manifest.share_target?.action, '/api/share-target')
-  assert.equal(manifest.shortcuts?.[0]?.url, '/#/library?mode=triage&focus=inbox&action=capture')
+  assert.equal(manifest.shortcuts?.[0]?.url, '/#/library?mode=catalog&focus=all&action=capture')
   assert.equal(manifest.launch_handler?.client_mode, 'navigate-existing')
 })
 
@@ -44,11 +44,11 @@ test('the app links its manifest, registers the service worker, and exposes a re
   assert.match(android, /DISMISS_FOR_MS = 30 \* 24 \* 60 \* 60 \* 1000/)
   assert.match(worker, /cacheShell\(\)/)
   assert.match(worker, /CORE_DATA = \['\/dashboard\/briefing'\]/)
-  assert.match(worker, /learning-compass-shell-v11/)
+  assert.match(worker, /learning-compass-shell-v\d+/)
   assert.match(worker, /learning-compass-html-artifacts-v1/)
   assert.match(worker, /isArtifactNavigation\(url\)/)
   assert.match(worker, /cache\.put\(request, response\.clone\(\)\)/)
   assert.match(worker, /isAppShellNavigation\(url\)/)
   assert.match(worker, /\/icons\/compass-maskable-512\.png/)
-  assert.match(server, /c\.redirect\('\/#\/library\?mode=triage&focus=inbox', 303\)/)
+  assert.match(server, /c\.redirect\('\/#\/library\?mode=catalog&focus=all', 303\)/)
 })

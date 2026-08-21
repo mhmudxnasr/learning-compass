@@ -49,15 +49,16 @@ function RecordMeta({ children }: { children: preact.ComponentChildren }) {
   return <span class="folio-record-meta">{children}</span>
 }
 
-function RowTitle({ item, type = 'source', onInspect }: { item: LibraryRecord; type?: 'source' | 'artifact' | 'book' | 'collection'; onInspect: (selection: LibrarySelection) => void }) {
+function RowTitle({ item, type = 'source' }: { item: LibraryRecord; type?: 'source' | 'artifact' | 'book' | 'collection'; onInspect?: (selection: LibrarySelection) => void }) {
   const selection = type === 'artifact' ? artifactSelection(item) : type === 'book' ? bookSelection(item) : type === 'collection' ? collectionSelection(item) : sourceSelection(item)
-  return <button type="button" class="folio-object-btn" onClick={() => onInspect(selection)}>
+  const href = objectHref(type, String(item.id))
+  return <a href={href} class="folio-object-btn">
     <span class="folio-object-copy">
       <strong>{selection.title}</strong>
       <small>{type === 'artifact' ? `${fileKind(item)}${item.size_bytes ? ` · ${formatBytes(item.size_bytes)}` : ''}` : type === 'collection' ? `${item.item_count || 0} sources · ${formatStatus(item.scope || 'library')}` : `${sourceCreator(item)} · ${sourceFormat(item)}`}</small>
     </span>
     <Icon name="chevron" size={16}/>
-  </button>
+  </a>
 }
 
 function ViewEmpty({ title, body }: { title: string; body: string }) {
@@ -95,7 +96,7 @@ export function QueueView({ data, handlers }: { data: LibraryRecord; handlers: L
             {Boolean(item.branch?.label || item.branch_preflight?.branch_label || item.branch_label || (typeof item.branch === 'string' && item.branch)) && <div class="folio-queue-badges" aria-label="Branch context">
               <a class="folio-badge folio-badge-branch" href={`#/map/branch/${encodeURIComponent(String(item.branch?.id || item.branch_preflight?.branch_id || item.branch_id || item.branch?.label || item.branch_label || item.branch))}`} title="Open branch dossier"><span class="badge-format">Branch</span><span>{item.branch?.label || item.branch_preflight?.branch_label || item.branch_label || (typeof item.branch === 'string' ? item.branch : '')}</span>{(item.branch?.round || item.round_label || (typeof item.round === 'string' ? item.round : '')) && <span class="badge-round">{item.branch?.round || item.round_label || item.round}</span>}</a>
               {item.note ? <a class="folio-badge folio-badge-note" href="#/learn?mode=practice&focus=notes" title="Open field notes">Note taken: {item.note.title}</a> : <span class="folio-badge folio-badge-muted">No note yet</span>}
-              {item.recall && (item.recall.count > 0 ? <a class="folio-badge folio-badge-recall" href="#/learn?mode=practice&focus=recall" title="Open recall deck">{item.recall.count} approved {item.recall.count === 1 ? 'card' : 'cards'}{item.recall.due > 0 ? ` · ${item.recall.due} due today` : ''}</a> : <a class="folio-badge folio-badge-recall" href="#/learn?mode=practice&focus=recall" title="Generate recall cards">Generate recall</a>)}
+              {item.recall && (item.recall.count > 0 ? <a class="folio-badge folio-badge-recall" href="#/learn?mode=practice&focus=recall" title="Open recall deck">{item.recall.count} approved {item.recall.count === 1 ? 'card' : 'cards'}{item.recall.due > 0 ? ` · ${item.recall.due} due today` : ''}</a> : <span class="folio-badge folio-badge-muted">No approved recall</span>)}
               {item.companions?.html && <a class="folio-badge folio-badge-html" href={`/artifacts/${encodeURIComponent(String(item.companions.html.id))}`} title="Open Arabic reading companion">Read HTML</a>}
               {item.companions?.pdf && <a class="folio-badge folio-badge-pdf" href={`/artifacts/${encodeURIComponent(String(item.companions.pdf.id))}`} title="Download A4 companion">PDF</a>}
             </div>}
@@ -111,31 +112,7 @@ export function QueueView({ data, handlers }: { data: LibraryRecord; handlers: L
           </div>
         </article>
       })}
-    </div> : <ViewEmpty title="Queue is clear" body="A source earns a place here only after a deliberate decision in Inbox."/>}
-    {handlers.notice && <p class="folio-action-status" role="status">{handlers.notice}</p>}
-  </div>
-}
-
-export function InboxView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
-  const items = Array.isArray(data.items) ? data.items : []
-  return <div class="folio-library-view folio-inbox-view">
-    <div class="folio-view-intro"><div><p class="folio-kicker">Unlimited landing place</p><h1>Inbox</h1><p>Every capture waits here until it earns Queue, stays neutral for later, or is explicitly excluded.</p></div><span class="folio-count-readout"><strong>{items.length}</strong><small>waiting</small></span></div>
-    {items.length ? <div class="folio-record-list" aria-label="Inbox captures">
-      {items.map((item: LibraryRecord) => <article class="folio-record" key={item.id}>
-        <div class="folio-record-main">
-          <RecordMeta>{item.feed_title ? `RSS · ${item.feed_title}` : sourceFormat(item)} · {formatDate(item.created_at)}</RecordMeta>
-          <RowTitle item={item} onInspect={handlers.onInspect}/>
-          <p class="folio-record-reason">{formatReason(item)}</p>
-          {item.resurface_at && <p class="folio-record-note">Neutral revisit window: {formatDate(item.resurface_at)}</p>}
-          <div class="folio-row-actions">
-            <button type="button" class="folio-button folio-button-primary" onClick={() => handlers.onQueue(item)} disabled={handlers.busyId === item.id}>Queue</button>
-            <button type="button" class="folio-button" onClick={() => handlers.onExclude(item)} disabled={handlers.busyId === item.id}>Exclude</button>
-          </div>
-          <small class="folio-action-note">Exclude is an administrative archive action. It does not teach Compass that the source was a bad fit.</small>
-          {handlers.blockedId === item.id && <div class="folio-queue-override" role="alert"><strong>Queue cap reached.</strong><span>Adding this source is an explicit overflow choice.</span><button type="button" class="folio-button folio-button-primary" onClick={() => handlers.onQueue(item, true)} disabled={handlers.busyId === item.id}>Add anyway — override cap</button></div>}
-        </div>
-      </article>)}
-    </div> : <ViewEmpty title="Inbox is clear" body="Captures, share-target links, Telegram links, and feed entries will appear here for triage."/>}
+    </div> : <ViewEmpty title="Queue is clear" body="A source earns a place here only after a deliberate decision in All sources."/>}
     {handlers.notice && <p class="folio-action-status" role="status">{handlers.notice}</p>}
   </div>
 }
@@ -197,7 +174,7 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
         <div>
           <p class="folio-kicker">Incoming external publications</p>
           <h1>RSS Feeds</h1>
-          <p>Subscribe to RSS/Atom feeds, check for new incoming material, and triage articles directly into Queue or Inbox.</p>
+          <p>Subscribe to RSS/Atom feeds, check for new material, and decide from the unified source ledger.</p>
         </div>
         <div class="folio-view-intro-actions">
           <button
@@ -222,7 +199,7 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
             <div class="folio-section-heading">
               <div>
                 <h2>Subscribe to a feed</h2>
-                <p>Articles enter Inbox for triage; they never bypass deliberate commitment.</p>
+                <p>Articles enter All sources; they never bypass deliberate commitment.</p>
               </div>
               {handlers.onSyncFeeds && (
                 <button
@@ -555,7 +532,7 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
             <div class="folio-record-list" aria-label={`Articles from ${selectedFeed.title || selectedFeed.feed_url}`}>
               {feedEntries.map((item: LibraryRecord) => {
                 const href = sourceLink(item)
-                const isQueued = item.learning_state === 'in_progress' || (item.status === 'active' && item.learning_state !== 'inbox')
+                const isQueued = item.learning_state === 'in_progress' || (item.status === 'active' && !['captured', 'inbox'].includes(String(item.learning_state || 'captured')))
                 const isConsumed = item.status === 'consumed'
                 const isExcluded = item.status === 'rejected' || item.learning_state === 'excluded'
                 const isInbox = !isQueued && !isConsumed && !isExcluded
@@ -688,7 +665,7 @@ export function AllSourcesView({ data, handlers }: { data: LibraryRecord; handle
   return <div class="folio-library-view folio-all-view">
     <div class="folio-view-intro"><div><p class="folio-kicker">One source ledger</p><h1>All sources</h1><p>Search the canonical record without losing its lifecycle or source identity.</p></div><span class="folio-count-readout"><strong>{data.total ?? recommendations.length}</strong><small>records</small></span></div>
     <label class="folio-search-field"><span>Filter sources</span><input type="search" value={query} onInput={(event) => setQuery((event.currentTarget as HTMLInputElement).value)} placeholder="Title, creator, or rationale"/></label>
-    {items.length ? <div class="folio-record-list" aria-label="All sources">{items.map((item: LibraryRecord) => <article class="folio-record" key={item.id}><div class="folio-record-main"><RecordMeta>{sourceFormat(item)} · {formatStatus(item.status)} · {formatDate(item.created_at)}</RecordMeta><BranchContextBadges item={item}/><RowTitle item={item} onInspect={handlers.onInspect}/><p class="folio-record-reason">{item.user_review || formatReason(item)}</p>{item.status !== 'active' && <div class="folio-row-actions"><a class="folio-button" href={objectHref('source', String(item.id))}>Dossier</a><button type="button" class="folio-button danger-button" onClick={() => handlers.onDeleteRecommendationPermanently(item)} disabled={handlers.busyId === `permanent-delete:${item.id}`}>{handlers.busyId === `permanent-delete:${item.id}` ? 'Deleting forever…' : 'Delete permanently'}</button></div>}</div></article>)}</div> : <ViewEmpty title="No matching sources" body="Try a shorter title, creator, or rationale."/>}
+    {items.length ? <div class="folio-record-list" aria-label="All sources">{items.map((item: LibraryRecord) => { const isCaptured = item.status === 'active' && item.learning_state === 'captured'; return <article class="folio-record" key={item.id}><div class="folio-record-main"><RecordMeta>{sourceFormat(item)} · {formatStatus(item.learning_state || item.status)} · {formatDate(item.created_at)}</RecordMeta><BranchContextBadges item={item}/><RowTitle item={item} onInspect={handlers.onInspect}/><p class="folio-record-reason">{item.user_review || formatReason(item)}</p><div class="folio-row-actions">{isCaptured && <><button type="button" class="folio-button folio-button-primary" onClick={() => handlers.onQueue(item)} disabled={handlers.busyId === item.id}>Queue</button><button type="button" class="folio-button" onClick={() => handlers.onExclude(item)} disabled={handlers.busyId === item.id}>Exclude</button></>}<a class="folio-button" href={objectHref('source', String(item.id))}>{isCaptured ? 'Open record' : 'Dossier'}</a>{item.status !== 'active' && <button type="button" class="folio-button danger-button" onClick={() => handlers.onDeleteRecommendationPermanently(item)} disabled={handlers.busyId === `permanent-delete:${item.id}`}>{handlers.busyId === `permanent-delete:${item.id}` ? 'Deleting forever…' : 'Delete permanently'}</button>}</div></div></article> })}</div> : <ViewEmpty title="No matching sources" body="Try a shorter title, creator, or rationale."/>}
   </div>
 }
 
@@ -893,15 +870,15 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
   const [expanded, setExpanded] = useState<string | null>(null)
   const books = Array.isArray(data.books) ? data.books : []
   const shelves = [
-    ['Inbox', books.filter((book: LibraryRecord) => String(book.learning_state || '') === 'inbox' || String(book.status || '') === 'active' && String(book.learning_state || '') !== 'in_progress'), 'Books enter here first.'],
+    ['Captured', books.filter((book: LibraryRecord) => ['captured', 'inbox', ''].includes(String(book.learning_state || '')) && String(book.status || '') === 'active'), 'Books enter the source ledger here first.'],
     ['Reading', books.filter((book: LibraryRecord) => String(book.learning_state || '') === 'in_progress'), 'Only deliberate reading belongs here.'],
     ['Finished', books.filter((book: LibraryRecord) => String(book.status || '') === 'consumed'), 'Finished books remain available for reflection and evidence.'],
   ] as Array<[string, LibraryRecord[], string]>
   const submit = (event: Event) => { event.preventDefault(); if (title.trim() && author.trim()) { handlers.onAddBook({ title: title.trim(), author: author.trim(), isbn: isbn.trim() }); setTitle(''); setAuthor(''); setIsbn('') } }
   return <div class="folio-library-view folio-books-view">
-    <div class="folio-view-intro"><div><p class="folio-kicker">Deliberate intake</p><h1>Books</h1><p>Books enter Inbox, then move through the same Queue, session, reflection, and evidence loop as every other source.</p></div><span class="folio-count-readout"><strong>{books.length}</strong><small>books</small></span></div>
-    <form class="folio-intake-form" onSubmit={submit}><div><h2>Add a book</h2><p>Record the reason before the title becomes a commitment.</p></div><label>Title<input value={title} onInput={(event) => setTitle((event.currentTarget as HTMLInputElement).value)} required/></label><label>Author<input value={author} onInput={(event) => setAuthor((event.currentTarget as HTMLInputElement).value)} required/></label><label>ISBN <span>(optional)</span><input value={isbn} onInput={(event) => setIsbn((event.currentTarget as HTMLInputElement).value)}/></label><button type="submit" class="folio-button folio-button-primary">Add to Inbox</button></form>
-    {shelves.map(([label, items, description]) => <section class="folio-shelf" key={label}><div class="folio-section-heading"><div><h2>{label}</h2><p>{description}</p></div><span>{items.length}</span></div>{items.length ? <div class="folio-record-list">{items.map((book) => { const expandedBook = expanded === book.id; const bookStatus = String(book.learning_state || book.status); return <article class="folio-record folio-book-record" key={book.id}><div class="folio-record-main"><RecordMeta>{sourceCreator(book)} · {formatStatus(bookStatus)}</RecordMeta><RowTitle item={book} type="book" onInspect={handlers.onInspect}/>{book.why_this && <p class="folio-record-reason">{book.why_this}</p>}<div class="folio-row-actions"><button type="button" class="folio-button" onClick={() => setExpanded(expandedBook ? null : String(book.id))}>{expandedBook ? 'Hide chapters' : 'Show chapters'}</button>{String(book.learning_state || '') === 'inbox' && <button type="button" class="folio-button folio-button-primary" onClick={() => handlers.onQueue(book)} disabled={handlers.busyId === book.id}>Queue</button>}{sourceLink(book) && String(book.learning_state || '') === 'in_progress' && <a class="folio-button" href={sourceLink(book)!} target="_blank" rel="noreferrer">Open source</a>}<a class="folio-button" href={objectHref('source', String(book.id))}>Record</a>{bookStatus !== 'active' && <button type="button" class="folio-button danger-button" onClick={() => handlers.onDeleteRecommendationPermanently(book)} disabled={handlers.busyId === `permanent-delete:${book.id}`}>{handlers.busyId === `permanent-delete:${book.id}` ? 'Deleting forever…' : 'Delete permanently'}</button>}</div>{expandedBook && <BookChapters book={book} handlers={handlers}/>}</div></article> })}</div> : <p class="folio-shelf-empty">Nothing on this shelf yet.</p>}</section>)}
+    <div class="folio-view-intro"><div><p class="folio-kicker">Deliberate intake</p><h1>Books</h1><p>Books enter All sources, then move through the same Queue, session, reflection, and consolidation loop as every other source.</p></div><span class="folio-count-readout"><strong>{books.length}</strong><small>books</small></span></div>
+    <form class="folio-intake-form" onSubmit={submit}><div><h2>Add a book</h2><p>Record the reason before the title becomes a commitment.</p></div><label>Title<input value={title} onInput={(event) => setTitle((event.currentTarget as HTMLInputElement).value)} required/></label><label>Author<input value={author} onInput={(event) => setAuthor((event.currentTarget as HTMLInputElement).value)} required/></label><label>ISBN <span>(optional)</span><input value={isbn} onInput={(event) => setIsbn((event.currentTarget as HTMLInputElement).value)}/></label><button type="submit" class="folio-button folio-button-primary">Save book</button></form>
+    {shelves.map(([label, items, description]) => <section class="folio-shelf" key={label}><div class="folio-section-heading"><div><h2>{label}</h2><p>{description}</p></div><span>{items.length}</span></div>{items.length ? <div class="folio-record-list">{items.map((book) => { const expandedBook = expanded === book.id; const bookStatus = String(book.learning_state || book.status); const chapterCount = book.visual?.chapters?.length || 0; return <article class="folio-record folio-book-record" key={book.id}><div class="folio-record-main"><RecordMeta>{sourceCreator(book)} · {formatStatus(bookStatus)}</RecordMeta><RowTitle item={book} type="book" onInspect={handlers.onInspect}/><BranchContextBadges item={book}/>{book.why_this && <p class="folio-record-reason">{book.why_this}</p>}<div class="folio-row-actions"><button type="button" class="folio-button" onClick={() => setExpanded(expandedBook ? null : String(book.id))}>{expandedBook ? 'Hide chapters' : chapterCount > 0 ? `Chapters (${chapterCount})` : 'Show chapters'}</button>{String(book.learning_state || '') === 'inbox' && <button type="button" class="folio-button folio-button-primary" onClick={() => handlers.onQueue(book)} disabled={handlers.busyId === book.id}>Queue</button>}<a class="folio-button" href={objectHref('book', String(book.id))}>Book details</a>{bookStatus !== 'active' && <button type="button" class="folio-button danger-button" onClick={() => handlers.onDeleteRecommendationPermanently(book)} disabled={handlers.busyId === `permanent-delete:${book.id}`}>{handlers.busyId === `permanent-delete:${book.id}` ? 'Deleting forever…' : 'Delete permanently'}</button>}</div>{expandedBook && <BookChapters book={book} handlers={handlers}/>}</div></article> })}</div> : <p class="folio-shelf-empty">Nothing on this shelf yet.</p>}</section>)}
     {handlers.notice && <p class="folio-action-status" role="status">{handlers.notice}</p>}
   </div>
 }
@@ -909,7 +886,7 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
 function BookChapters({ book, handlers }: { book: LibraryRecord; handlers: LibraryViewHandlers }) {
   const chapters = book.visual?.chapters || []
   if (!chapters.length) return <p class="folio-record-note">No chapter companion records yet. Visual creation remains an explicit source action.</p>
-  return <div class="folio-chapter-list" aria-label={`${sourceTitle(book)} chapters`}>{chapters.map((chapter: LibraryRecord) => <div class="folio-chapter-row" key={chapter.key}><div><strong>{chapter.number ? `${chapter.number}. ` : ''}{chapter.title}</strong><small>{chapter.completed ? 'Finished' : 'Not finished'}</small></div><div class="folio-row-actions">{chapter.html && <a href={`/artifacts/${chapter.html.id}/view`} target="_blank" rel="noreferrer">HTML</a>}{chapter.pdf && <a href={`/artifacts/${chapter.pdf.id}`} target="_blank" rel="noreferrer">PDF</a>}<button type="button" onClick={() => handlers.onCompleteChapter(book, chapter)} disabled={handlers.busyId === `${book.id}:${chapter.key}`}>{chapter.completed ? 'Undo' : 'Finish'}</button></div></div>)}</div>
+  return <div class="folio-chapter-list" aria-label={`${sourceTitle(book)} chapters`}>{chapters.map((chapter: LibraryRecord) => <div class="folio-chapter-row" key={chapter.key}><div><strong>{chapter.number ? `${chapter.number}. ` : ''}{chapter.title}</strong><small>{chapter.completed ? 'Finished' : 'Not finished'}</small></div><div class="folio-row-actions">{chapter.html && <a class="folio-button" href={`/artifacts/${chapter.html.id}/view`} target="_blank" rel="noreferrer">HTML</a>}{chapter.pdf && <a class="folio-button" href={`/artifacts/${chapter.pdf.id}`} target="_blank" rel="noreferrer">PDF</a>}<button type="button" class="folio-button" onClick={() => handlers.onCompleteChapter(book, chapter)} disabled={handlers.busyId === `${book.id}:${chapter.key}`}>{chapter.completed ? 'Undo' : 'Finish'}</button></div></div>)}</div>
 }
 
 export function CollectionsView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
@@ -959,7 +936,7 @@ export function ObjectRouteView({ type, data, handlers, onBack }: { type: 'sourc
     <header class="folio-object-header"><div><RecordMeta>{type === 'source' ? `${sourceFormat(item)} · ${sourceState(item)}` : type === 'artifact' ? `${fileKind(item)} · ${formatBytes(item.size_bytes) || 'size unavailable'}` : type === 'book' ? `Book · ${formatStatus(item.status)}` : `Collection · ${item.item_count || 0} sources`}</RecordMeta><h1>{title}</h1><p>{type === 'collection' ? item.description || 'No description recorded.' : type === 'artifact' ? item.metadata?.source_title || 'Owned file in the R2 library.' : `${sourceCreator(item)}${item.created_at ? ` · added ${formatDate(item.created_at)}` : ''}`}</p></div></header>
     {type === 'source' && <SourceObject item={item} record={data} handlers={handlers}/>}
     {type === 'artifact' && <ArtifactObject item={item}/>}
-    {type === 'book' && <BookObject item={item} handlers={handlers}/>}
+    {type === 'book' && <BookObject item={item} record={data} handlers={handlers}/>}
     {type === 'collection' && <CollectionObject item={item}/>}
   </div>
 }
@@ -1027,8 +1004,89 @@ function ArtifactObject({ item }: { item: LibraryRecord }) {
   return <div class="folio-object-sections"><section class="folio-object-section"><h2>Artifact access</h2><div class="folio-row-actions"><a class="folio-button folio-button-primary" href={artifactLink(item)} target="_blank" rel="noreferrer">Open {fileKind(item)}</a></div><dl class="folio-property-list"><div><dt>Filename</dt><dd>{item.filename || 'Unnamed file'}</dd></div><div><dt>Source</dt><dd>{metadata.source_title || metadata.source_url || 'Not linked'}</dd></div><div><dt>Created</dt><dd>{formatDate(item.created_at)}</dd></div><div><dt>Role</dt><dd>{metadata.role || fileKind(item)}</dd></div></dl></section></div>
 }
 
-function BookObject({ item, handlers }: { item: LibraryRecord; handlers: LibraryViewHandlers }) {
-  return <div class="folio-object-sections"><section class="folio-object-section"><h2>Book access</h2><p>Books use the same source lifecycle. Queue owns tracked reading starts; the original link remains a passive browse action here.</p><div class="folio-row-actions">{sourceLink(item) && <a class="folio-button" href={sourceLink(item)!} target="_blank" rel="noreferrer">Browse source</a>}{String(item.learning_state || '') === 'inbox' && <button type="button" class="folio-button folio-button-primary" onClick={() => handlers.onQueue(item)}>Queue book</button>}</div></section><section class="folio-object-section"><h2>Chapters</h2><BookChapters book={item} handlers={handlers}/></section></div>
+function BookObject({ item, record, handlers }: { item: LibraryRecord; record: LibraryRecord; handlers: LibraryViewHandlers }) {
+  const thread = (record.threads || [])[0]
+  const notes = record.notes || []
+  const recall = record.srs?.recall_summary || { count: 0, due: 0 }
+  const drafts = (record.srs?.drafts || []).filter((draft: LibraryRecord) => draft.status !== 'approved')
+  const branch = item.branch || (item.branch_id ? { id: item.branch_id, label: item.branch_label || item.branch_id, round: item.round, status: item.branch_status } : null)
+  const chapters = item.visual?.chapters || record.visual?.chapters || record.book_chapters || []
+  const bookWithChapters = { ...item, visual: { ...(item.visual || record.visual || {}), chapters } }
+
+  return <div class="folio-object-sections">
+    {branch && <section class="folio-object-section">
+      <div class="folio-section-heading">
+        <h2>Branch & Knowledge Domain</h2>
+        <span class="folio-badge folio-badge-branch">
+          <span class="badge-format">Branch</span>
+          <span>{branch.label}</span>
+          {branch.round && <span class="badge-round">{branch.round}</span>}
+        </span>
+      </div>
+      <div class="folio-row-actions">
+        <a class="folio-button" href={`#/map/branch/${encodeURIComponent(String(branch.id))}`}>Open branch dossier</a>
+        {['captured', 'inbox'].includes(String(item.learning_state || '')) && <button type="button" class="folio-button folio-button-primary" onClick={() => handlers.onQueue(item)}>Queue book</button>}
+      </div>
+      {item.why_this && <p class="folio-record-reason">{item.why_this}</p>}
+    </section>}
+
+    <section class="folio-object-section">
+      <div class="folio-section-heading">
+        <h2>Chapters & Reading Companions</h2>
+        <span>{chapters.length} {chapters.length === 1 ? 'chapter' : 'chapters'}</span>
+      </div>
+      <BookChapters book={bookWithChapters} handlers={handlers}/>
+    </section>
+
+    {notes.length > 0 && <section class="folio-object-section">
+      <div class="folio-section-heading">
+        <h2>Chapter Notes & Study Records</h2>
+        <span>{notes.length} {notes.length === 1 ? 'note' : 'notes'}</span>
+      </div>
+      {notes.map((note: LibraryRecord) => <div class="folio-note-block" key={note.id}>
+        <div class="folio-section-heading"><h3>{note.title || 'Chapter Note'}</h3><span>{formatStatus(note.status || 'draft')}</span></div>
+        {(note.sections || []).map((section: LibraryRecord) => <div class="folio-bilingual-block" dir={section.direction || 'auto'} key={section.section_key}>
+          <strong>{section.label || labelize(section.section_key || 'section')}</strong>
+          <p>{section.content}</p>
+        </div>)}
+      </div>)}
+      <div class="folio-row-actions"><a class="folio-button" href="#/learn?mode=practice&focus=notes">Open notes in Learn</a></div>
+    </section>}
+
+    {notes.length === 0 && <section class="folio-object-section">
+      <div class="folio-section-heading"><h2>Chapter Notes</h2><span>0 notes</span></div>
+      <p class="folio-record-note">No chapter notes recorded yet. Extracted chapter notes appear here during study sessions.</p>
+      <div class="folio-row-actions"><a class="folio-button" href="#/learn?mode=practice&focus=notes">Take notes in Learn</a></div>
+    </section>}
+
+    <section class="folio-object-section">
+      <div class="folio-section-heading">
+        <h2>Active Recall</h2>
+        <span>{recall.count} approved{recall.due > 0 ? ` · ${recall.due} due` : ''}</span>
+      </div>
+      {(record.srs?.cards || []).length ? <ul class="folio-recall-list">
+        {(record.srs.cards || []).map((card: LibraryRecord) => <li key={card.id}>
+          <strong>{card.question}</strong>
+          <span>Topic: {card.topic || 'General'} · Due {formatDate(card.due_at)} · {card.repetitions} reps</span>
+        </li>)}
+      </ul> : <p class="folio-record-note">No approved recall cards for this book yet.</p>}
+      {drafts.length > 0 && <div class="folio-draft-strip">
+        <span>{drafts.length} pending {drafts.length === 1 ? 'draft' : 'drafts'}</span>
+        <a class="folio-button" href="#/learn?mode=practice&focus=recall">Review drafts</a>
+      </div>}
+    </section>
+
+    <SourceAnnotationPanel source={item} threadId={thread?.id} branchId={branch?.id}/>
+
+    {thread && <section class="folio-object-section">
+      <h2>Learning Thread</h2>
+      <a class="folio-linked-object" href={`#/learn/thread/${encodeURIComponent(String(thread.id))}`}>
+        <strong>{thread.title}</strong>
+        <span>{thread.role || 'Attached book'} · {formatStatus(thread.status)}</span>
+      </a>
+      {thread.expected_contribution && <p>{thread.expected_contribution}</p>}
+    </section>}
+  </div>
 }
 
 function CollectionObject({ item }: { item: LibraryRecord }) {

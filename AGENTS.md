@@ -11,7 +11,7 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 
 ## Product Invariants
 
-- Product: **Learning Compass**. Visual language: **Botanical Folio / Evidence Studio** — a cypress/cream Evidence Ledger with a persistent desktop root rail, grouped workspace modes, a working canvas, and an optional contextual inspector. On mobile, the rail becomes a five-item bottom dock with inline compact, equal-width mode controls and wrapping subordinate filters.
+- Product: **Learning Compass**. Visual language: **Botanical Folio / Evidence Studio** — a cypress/cream Evidence Ledger with a persistent desktop root rail, grouped workspace modes, a working canvas, and an optional contextual inspector. On mobile, the rail becomes a five-item bottom dock with inline compact, equal-width mode controls and wrapping subordinate filters. Learn contains finite Threads, the evergreen three-book Canon atlas, and Practice; Canon never becomes a sixth root.
 - Loop: capture → curate → consume externally → reflect → notes → review → map update → resurface.
 - D1 is canonical. R2 stores large artifacts. Obsidian is an archive/export for extracted notes only.
 - Every capture, including Telegram and share-target input, enters the unlimited Inbox.
@@ -20,8 +20,8 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 - Notes are structured, editable, and searchable. Notes Extractor source notes default to English; source-original Arabic quotations remain inline with RTL direction. User-authored blocks may preserve their original language and direction.
 - Ratings of 7–10 create editable SRS drafts; approval is required before Review.
 - Feedback processing never requests another recommendation automatically.
-- Lite Visual creates one linked HTML+PDF R2 pair from one Arabic canonical content body; for books it creates one pair per chapter with stable chapter metadata. It is a source-faithful reading companion—not a prose dump, slide deck, or image atlas. Text carries argument and nuance while visuals appear exactly where seeing a relationship improves understanding. Each run records a source-specific narrative arc, art direction, accessible color strategy, and one prose/native/coded/generated/hybrid decision per section; deterministic responsive/PDF validation replaces self-authored or vision-model critique. It publishes automatically after an explicit media request and canonical record verification, stores no subjective QA score, and never starts Notes Extractor automatically.
-- The route registry in `client/src/app/router.ts` exposes five root destinations and 11 grouped modes, with subordinate focus filters. Every root and mode/focus surface must resolve to a real product surface; no generic fallback screens or tabs may expose only infrastructure.
+- Lite Visual creates one atomically published HTML+PDF R2 pair from one canonical Arabic semantic HTML article; books create one pair per chapter with stable metadata. `extract_source.py` is the sole acquisition entry point: hash-verified cache, Mozilla Readability, Playwright fallback, YouTube captions/yt-dlp/Whisper, PyMuPDF/Tesseract, EPUB spine, Pandoc, or direct UTF-8; authoring stops unless its structured receipt is complete. Read Intent and Frontend Design before authoring, then derive the artifact's typography, color, rhythm, and restrained signature from the source. Only semantic HTML, source-specific CSS, native structures, equations, and rare justified inline SVG are allowed. Raster/generated images, image agents, Visual Mind delegation, preset themes/palettes/layouts, scripts, widgets, and mandatory pauses are forbidden. Gapless checksum-backed source scopes plus deterministic RTL, accessibility, responsive, A4, pagination, and HTML/PDF parity checks produce a hash-bound receipt. Every workflow checkpoint requires exact evidence; generic single-file upload is invalid, the pair publishes together, and the source record is verified. There is no subjective QA score and Notes Extractor never starts automatically.
+- The route registry in `client/src/app/router.ts` exposes five root destinations and 12 grouped modes, with subordinate focus filters. Every root and mode/focus surface must resolve to a real product surface; no generic fallback screens or tabs may expose only infrastructure.
 
 ## Architecture Boundaries
 
@@ -61,7 +61,6 @@ Active Hermes files:
 - `~/.hermes/skills/personal/taste-rec/SKILL.md`
 - `~/.hermes/skills/learning-notes-extractor/SKILL.md`
 - `~/.hermes/skills/lite-visual/SKILL.md`
-- `~/.hermes/skills/visual-mind/SKILL.md`
 - `~/.hermes/skills/productivity/rss-feed/SKILL.md`
 - `~/.hermes/skills/notebooklm/SKILL.md`
 - `~/.hermes/skills/learning-thread-curation/SKILL.md` → retired (renamed); active name is `~/.hermes/skills/learning/progressive-learning-curriculum/SKILL.md`
@@ -96,7 +95,7 @@ Learning Compass Hermes permanently holds and enforces these project rules:
 
 ## External Agent Restriction
 
-Never invoke Codex, Antigravity (AGY), or an equivalent external agent for code, prose, repository work, or system changes unless Mahmood explicitly asks in the current request. Narrow standing exception: when Lite Visual/Visual Mind decides a concept needs `generated-image`, call AGY automatically without asking. The prompt must be strict and source-specific, including finished editorial composition, Arabic RTL order, right-to-left directional logic, accessible color, target sizes, safe margins, and forbidden generic forms. Integrate the image directly without subjective audit; only mechanical file-safety checks are allowed. AGY may not author canonical prose, modify the codebase, call APIs, delete, upload, or publish.
+Never invoke Codex, Antigravity (AGY), or an equivalent external agent for code, prose, repository work, system changes, or Lite Visual assets unless Mahmood explicitly asks in the current request. Lite Visual has no image-agent exception: it is always code-only and Hermes owns the complete source, HTML, PDF, validation, publication, and verification path.
 
 Hermes remains responsible for routing, canonical prose, Worker API execution, deterministic artifact verification, publication, and the end-of-turn improvement pass.
 

@@ -52,7 +52,7 @@ export async function ensureCreatorEntity(DB: D1Database, rawCreator: unknown) {
 }
 
 export async function refreshRecommendationOutcome(DB: D1Database, recommendationId: string) {
-  const [recommendation, disposition, evidenceRows, latestSignal] = await Promise.all([
+  const [recommendation, disposition, latestSignal] = await Promise.all([
     DB.prepare(`SELECT r.id,r.status,r.creator,r.content_type,r.user_score,r.user_rating,r.consumed_date,m.branch_id,
       (SELECT signal_value*10 FROM learning_events le WHERE le.recommendation_id=r.id AND le.event_type='rating_recorded' AND le.is_explicit=1 ORDER BY le.occurred_at DESC LIMIT 1) explicit_rating,
       (SELECT score FROM rating_events re WHERE re.recommendation_id=r.id ORDER BY re.created_at DESC LIMIT 1) rating_event_score,
@@ -61,10 +61,6 @@ export async function refreshRecommendationOutcome(DB: D1Database, recommendatio
     DB.prepare(`SELECT json_extract(payload_json,'$.disposition') disposition FROM learning_events
       WHERE recommendation_id=? AND event_type='disposition_recorded' AND is_explicit=1
       ORDER BY occurred_at DESC LIMIT 1`).bind(recommendationId).first<any>().catch(() => null),
-    DB.prepare(`SELECT e.evidence_type,e.result,e.score FROM learning_evidence e
-      LEFT JOIN learning_units u ON u.id=e.unit_id
-      WHERE u.recommendation_id=? OR json_extract(e.context_json,'$.recommendation_id')=?
-      ORDER BY e.occurred_at`).bind(recommendationId, recommendationId).all<any>().catch(() => ({ results: [] })),
     DB.prepare(`SELECT event_type,origin FROM learning_events WHERE recommendation_id=? AND is_explicit=1 ORDER BY occurred_at DESC LIMIT 1`).bind(recommendationId).first<any>().catch(() => null),
   ])
   if (!recommendation) return null
@@ -72,7 +68,7 @@ export async function refreshRecommendationOutcome(DB: D1Database, recommendatio
   const utility = computeLearningUtility({
     rating,
     disposition: disposition?.disposition || null,
-    evidence: (evidenceRows.results || []) as LearningEvidenceInput[],
+    evidence: [],
   })
   const creator = await ensureCreatorEntity(DB, recommendation.creator)
   const outcomeStatus = recommendation.status === 'consumed' ? 'consumed' : recommendation.status === 'rejected' ? 'rejected' : 'active'

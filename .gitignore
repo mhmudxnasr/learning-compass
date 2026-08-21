@@ -25,6 +25,7 @@ Thumbs.db
 *.log
 debug.html
 dark-patterns-deep-dive.html
+.tmp/
 
 # Wrangler configs that may contain account IDs
 .wrangler/

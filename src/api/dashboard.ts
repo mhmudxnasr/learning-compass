@@ -19,7 +19,7 @@ app.get('/briefing', async (c) => {
          WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')
         ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE due_at<=date('now')`).first<any>(),
-      DB.prepare(`SELECT COUNT(*) count FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND m.learning_state='inbox'`).first<any>(),
+      DB.prepare(`SELECT COUNT(*) count FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND m.learning_state='captured'`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM feedback_proposals WHERE status='pending'`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM srs_drafts WHERE status='draft'`).first<any>(),
       DB.prepare(`SELECT
@@ -40,7 +40,6 @@ app.get('/briefing', async (c) => {
 
     const activeItems = active.results || []
     const activeThread = await DB.prepare(`SELECT * FROM learning_threads WHERE status='active' ORDER BY priority DESC,updated_at DESC LIMIT 1`).first<any>()
-    const threadRequirements = activeThread ? await DB.prepare(`SELECT * FROM thread_evidence_requirements WHERE thread_id=? ORDER BY rowid`).bind(activeThread.id).all<any>() : { results: [] as any[] }
     const openConsolidations = await DB.prepare(`SELECT cr.id,cr.recommendation_id,cr.state,cr.failure_reason,r.video_title FROM consolidation_runs cr JOIN recommendations r ON r.id=cr.recommendation_id WHERE cr.state NOT IN ('closed','waived') ORDER BY cr.requested_at LIMIT 10`).all<any>()
     const verifiedOutcomes = await DB.prepare(`SELECT COUNT(*) count FROM learning_threads WHERE status='verified' AND verified_at>=datetime('now','-30 days')`).first<any>()
     const hermesBrief = await loadHermesBrief(DB)
@@ -118,7 +117,7 @@ app.get('/briefing', async (c) => {
       queue_count: activeItems.length,
       recent: recent.results || [],
       recent_signal: latestSignal?.summary || null,
-      active_thread: activeThread ? { ...activeThread, evidence_requirements: threadRequirements.results || [] } : null,
+      active_thread: activeThread ? { ...activeThread, evidence_requirements: [] } : null,
       open_cognitive_loops: openConsolidations.results || [],
       verified_learning_outcomes_30d: Number(verifiedOutcomes?.count || 0),
     })

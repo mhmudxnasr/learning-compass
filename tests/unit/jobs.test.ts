@@ -21,3 +21,20 @@ test('job cancellation is guarded to pending and retry jobs', () => {
   assert.match(cancellation, /lease_owner=NULL,lease_expires_at=NULL/)
   assert.match(cancellation, /return c\.json\(\{ error: 'job not cancellable or not found' \}, 409\)/)
 })
+
+test('Visual Lite checkpoints are leased, linear, and resumable', () => {
+  const source = readFileSync(new URL('../../src/api/jobs.ts', import.meta.url), 'utf8')
+  const checkpoint = source.match(/app\.post\('\/:id\/checkpoint',[\s\S]*?\n\}\)/)?.[0] || ''
+  assert.match(checkpoint, /job\.status !== 'running'/)
+  assert.match(checkpoint, /nextIndex < currentIndex \|\| nextIndex > currentIndex \+ 1/)
+  assert.match(checkpoint, /validateLiteVisualCheckpointEvidence/)
+  assert.match(checkpoint, /lite_visual_checkpoint_evidence_invalid/)
+  assert.match(checkpoint, /resume_from: step/)
+  assert.match(checkpoint, /workflow_step=\?/)
+})
+
+test('Visual Lite cannot complete before exact pair verification', () => {
+  const source = readFileSync(new URL('../../src/api/jobs.ts', import.meta.url), 'utf8')
+  assert.match(source, /job\.workflow_step !== 'verify_record'/)
+  assert.match(source, /Lite Visual completion requires one verified atomic HTML\/PDF pair/)
+})

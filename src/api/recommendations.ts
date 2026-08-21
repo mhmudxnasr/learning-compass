@@ -40,6 +40,8 @@ app.get('/list', async (c) => {
     if (!VALID_STATUS.has(status)) return c.json({ error: 'invalid status' }, 400)
     where.push('recommendations.status = ?')
     bindings.push(status)
+  } else {
+    where.push("(recommendations.status IS NULL OR recommendations.status != 'deleted') AND recommendations.deleted_at IS NULL")
   }
   if (contentType) {
     where.push('recommendations.content_type = ?')
@@ -122,8 +124,14 @@ app.get('/books', async (c) => {
   const status = c.req.query('status')
   const allowed = new Set(['active', 'consumed', 'rejected'])
   if (status && !allowed.has(status)) return c.json({ error: 'invalid status' }, 400)
-  const query = `SELECT r.*,m.learning_state,m.priority_rank,(SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND t.status NOT IN ('verified','abandoned') ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 1) thread_id FROM recommendations r
+  const query = `SELECT r.*,m.learning_state,m.priority_rank,m.branch_id,
+    COALESCE(n.label, r.branch) branch_label,
+    COALESCE(n.status, 'love') branch_status,
+    COALESCE(n.round_label, r.round) round_label,
+    (SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND t.status NOT IN ('verified','abandoned') ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 1) thread_id
+    FROM recommendations r
     LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
+    LEFT JOIN tree_nodes n ON n.id=m.branch_id
     WHERE r.content_type='book' ${status ? 'AND r.status=?' : ''}
     ORDER BY r.updated_at DESC, r.created_at DESC`
   const rows = status ? await c.env.DB.prepare(query).bind(status).all<any>() : await c.env.DB.prepare(query).all<any>()
@@ -176,7 +184,22 @@ app.get('/books', async (c) => {
       if (chapter) chapter.extraction = { id: row.id, status: row.status, error: row.error || null, updated_at: row.updated_at }
     }
   }
-  return c.json({ books: books.map((book: any) => ({ ...book, visual: visuals.get(book.id) })) })
+  return c.json({
+    books: books.map((book: any) => {
+      const branchLabel = book.branch_label || book.branch
+      const branchId = book.branch_id || branchLabel
+      const roundLabel = book.round_label || book.round
+      const branchInfo = branchLabel ? { id: branchId, label: branchLabel, round: roundLabel, status: book.branch_status || 'love' } : null
+      return {
+        ...book,
+        branch: branchInfo,
+        branch_label: branchLabel,
+        branch_status: book.branch_status || 'love',
+        round: roundLabel,
+        visual: visuals.get(book.id),
+      }
+    }),
+  })
 })
 
 app.post('/books/:id/chapters/:chapterKey/complete', async (c) => {
@@ -249,7 +272,7 @@ app.post('/books', async (c) => {
     const item = await c.env.DB.prepare('SELECT id FROM recommendations WHERE dedup_key=?').bind(dedupKey).first<{ id: string }>()
     if (!item) return c.json({ error: 'book could not be saved' }, 500)
     await c.env.DB.prepare(`INSERT OR IGNORE INTO recommendation_meta
-      (recommendation_id,learning_state,source_metadata_json,updated_at) VALUES (?,'inbox',?,datetime('now'))`)
+      (recommendation_id,learning_state,source_metadata_json,updated_at) VALUES (?,'captured',?,datetime('now'))`)
       .bind(item.id, JSON.stringify({ isbn: isbn || null, source: 'bookshelf' })).run()
     const saved = await c.env.DB.prepare(`SELECT r.*,m.learning_state FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?`).bind(item.id).first<any>()
     return c.json({ ok: true, book: saved, duplicate: item.id !== id }, item.id === id ? 201 : 200)
@@ -330,7 +353,7 @@ app.post('/push', async (c) => {
     await DB.batch(stmts)
     for (const dedupKey of dedupKeys) {
       const row = await DB.prepare(`SELECT id FROM recommendations WHERE dedup_key=?`).bind(dedupKey).first<{ id: string }>()
-      if (row) await DB.prepare(`INSERT OR IGNORE INTO recommendation_meta (recommendation_id,learning_state,source_metadata_json,updated_at) VALUES (?,'inbox',?,datetime('now'))`).bind(row.id, JSON.stringify({ imported: true })).run()
+      if (row) await DB.prepare(`INSERT OR IGNORE INTO recommendation_meta (recommendation_id,learning_state,source_metadata_json,updated_at) VALUES (?,'captured',?,datetime('now'))`).bind(row.id, JSON.stringify({ imported: true })).run()
     }
 
     // Incremental FTS5: index pushed recommendations immediately
@@ -598,7 +621,6 @@ app.delete('/:id/permanent', async (c) => {
     ]
     if (unitPlaceholders) {
       statements.unshift(
-        DB.prepare(`DELETE FROM learning_evidence WHERE unit_id IN (${unitPlaceholders})`).bind(...unitIdList),
         DB.prepare(`DELETE FROM unit_anchors WHERE unit_id IN (${unitPlaceholders})`).bind(...unitIdList),
         DB.prepare(`DELETE FROM unit_relations WHERE source_unit_id IN (${unitPlaceholders}) OR target_unit_id IN (${unitPlaceholders})`).bind(...unitIdList, ...unitIdList),
         DB.prepare(`DELETE FROM thread_units WHERE unit_id IN (${unitPlaceholders})`).bind(...unitIdList),

@@ -8,9 +8,9 @@ export type CaptureArtifact = {
   r2_key: string | null
 }
 
-export async function createInboxCapture(
+export async function createCapture(
   DB: D1Database,
-  input: { source: string; title?: string; artifact?: CaptureArtifact | null; initialLearningState?: 'inbox' | 'queued' },
+  input: { source: string; title?: string; artifact?: CaptureArtifact | null; initialLearningState?: 'captured' | 'queued' },
 ) {
   const source = input.source.trim()
   const sourceIsUrl = /^https?:\/\//i.test(source) && isValidUrl(source)
@@ -20,7 +20,7 @@ export async function createInboxCapture(
     : artifact?.media_type === 'application/pdf' || /\.pdf(?:$|\?)/i.test(source) ? 'paper'
       : artifact?.media_type?.includes('html') ? 'article' : sourceIsUrl ? 'article' : 'other'
   const title = input.title?.trim() || (sourceIsUrl ? new URL(source).hostname.replace(/^www\./, '') : source.slice(0, 100))
-  const initialLearningState = input.initialLearningState || 'inbox'
+  const initialLearningState = input.initialLearningState || 'captured'
   const dedup = deriveDedupKey({ video_url: url, video_title: title, content_type: contentType })
   const existing = await DB.prepare(`SELECT id,status FROM recommendations WHERE dedup_key=?`).bind(dedup).first<{ id: string; status: string }>()
 

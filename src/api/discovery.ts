@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { safeError, type Bindings } from '../lib'
-import { createInboxCapture } from '../services/capture'
+import { createCapture } from '../services/capture'
 import { adaptAndNormalizeWeights, computeDialecticDivergenceScore } from '../domain'
 import { canonicalCreatorKey, canonicalFormat } from '../intelligence-v2'
 import { AGENT_CONTRACT_VERSION, AGENT_PROTOCOL } from '../services/agent-capabilities'
@@ -139,7 +139,7 @@ export async function activateWaitingRun(DB: D1Database, targetRunId?: string) {
   if (!candidate) return null
 
   const receipt = run.decision_receipt_json ? JSON.parse(run.decision_receipt_json) : null
-  const capture = await createInboxCapture(DB, { source: candidate.canonical_url, title: candidate.title })
+  const capture = await createCapture(DB, { source: candidate.canonical_url, title: candidate.title })
   const sessionId = `session_${crypto.randomUUID()}`
 
   await DB.batch([

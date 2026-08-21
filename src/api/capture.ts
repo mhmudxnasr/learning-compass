@@ -1,11 +1,13 @@
 import { Hono } from 'hono'
 import { queueDecision } from '../domain'
 import { Bindings, safeError } from '../lib'
-import { createInboxCapture } from '../services/capture'
+import { createCapture } from '../services/capture'
 import { addFeed, syncAllFeeds, syncFeed } from '../services/rss'
 import { recordRecommendationSignal } from '../services/intelligence-v2'
 import { displayRound } from '../services/branch-rounds'
 import { loadCaptureQueue } from '../services/capture-queue'
+import { selectLearningSourceRenditions } from '../services/learning-material-renditions'
+import { LITE_VISUAL_CHECKPOINT_REQUIREMENTS, LITE_VISUAL_SOURCE_EXTRACTION_SCHEMA, LITE_VISUAL_STAGES, LITE_VISUAL_WORKFLOW_CONTRACT, LITE_VISUAL_WORKFLOW_VERSION, resolveLiteVisualResume } from '../services/lite-visual-workflow'
 
 import { activateWaitingRun } from './discovery'
 
@@ -28,8 +30,8 @@ app.post('/', async (c) => {
       ? await DB.prepare(`SELECT id,filename,media_type,r2_key FROM artifacts WHERE id=?`).bind(body.artifact_id).first<any>()
       : null
     if (body.artifact_id && !artifact) return c.json({ error: 'artifact not found' }, 404)
-    const result = await createInboxCapture(DB, { source, title: body.title, artifact })
-    return c.json({ ok: true, ...result, state: result.duplicate ? undefined : 'inbox' }, result.duplicate ? 200 : 201)
+    const result = await createCapture(DB, { source, title: body.title, artifact })
+    return c.json({ ok: true, ...result, state: result.duplicate ? undefined : 'captured' }, result.duplicate ? 200 : 201)
   } catch (error) { return c.json(safeError('Capture failed')(error), 500) }
 })
 
@@ -38,7 +40,7 @@ app.get('/', async (c) => {
     json_extract(m.source_metadata_json,'$.resurface_at') resurface_at,
     (SELECT fs.title FROM feed_entries fe JOIN feed_sources fs ON fs.id=fe.feed_id WHERE fe.recommendation_id=r.id LIMIT 1) feed_title
     FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id
-    WHERE r.status='active' AND m.learning_state='inbox'
+    WHERE r.status='active' AND m.learning_state='captured'
     ORDER BY CASE WHEN json_extract(m.source_metadata_json,'$.resurface_at') IS NOT NULL AND datetime(json_extract(m.source_metadata_json,'$.resurface_at'))<=datetime('now') THEN 0 ELSE 1 END, r.created_at DESC LIMIT 200`).all()
   return c.json({ items: rows.results || [] })
 })
@@ -167,7 +169,7 @@ app.post('/:id/triage', async (c) => {
     LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(c.req.param('id')).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
   if (body.action === 'exclude') {
-    const exclusionReason = String(body.reason || 'inbox_triage').trim().slice(0, 120) || 'inbox_triage'
+    const exclusionReason = String(body.reason || 'capture_exclusion').trim().slice(0, 120) || 'capture_exclusion'
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE recommendations SET status='rejected',updated_at=datetime('now') WHERE id=?`).bind(c.req.param('id')),
       c.env.DB.prepare(`UPDATE recommendation_meta SET learning_state='excluded',updated_at=datetime('now') WHERE recommendation_id=?`).bind(c.req.param('id')),
@@ -183,7 +185,7 @@ app.post('/:id/triage', async (c) => {
       signalScope: 'none',
       explicit: false,
       origin: 'administrative_exclusion',
-      payload: { surface: 'inbox_triage', rejection_reason: exclusionReason },
+      payload: { surface: 'source_record', rejection_reason: exclusionReason },
     })
     try { await activateWaitingRun(c.env.DB) } catch {}
     return c.json({ ok: true, state: 'excluded' })
@@ -201,7 +203,7 @@ app.post('/:id/triage', async (c) => {
     }, 409)
   }
   const thread = body.thread_id
-    ? await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=? AND status NOT IN ('verified','abandoned')`).bind(body.thread_id).first<{ id: string }>()
+    ? await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=? AND superseded_at IS NULL AND status NOT IN ('verified','abandoned')`).bind(body.thread_id).first<{ id: string }>()
     : null
   if (body.thread_id && !thread) return c.json({ error: 'learning_thread_not_found' }, 404)
   const active = await c.env.DB.prepare(`SELECT COUNT(*) c FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')`).first<{ c: number }>()
@@ -227,7 +229,7 @@ app.post('/:id/branch-map', async (c) => {
     if (confidence !== 'high') return c.json({ error: 'only high-confidence mappings may be applied automatically' }, 422)
     const item = await c.env.DB.prepare("SELECT r.id,m.learning_state FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=? AND r.status='active'").bind(c.req.param('id')).first<any>()
     if (!item) return c.json({ error: 'active recommendation not found' }, 404)
-    if (!['inbox','queued','in_progress'].includes(String(item.learning_state || 'inbox'))) return c.json({ error: 'item is not active in Inbox or Queue' }, 409)
+    if (!['captured','queued','in_progress'].includes(String(item.learning_state || 'captured'))) return c.json({ error: 'item is not an active source or Queue item' }, 409)
     const branch = await c.env.DB.prepare("SELECT id,label,status FROM tree_nodes WHERE id=? AND type IN ('root','category','branch','leaf')").bind(String(body.branch_id || '')).first<any>()
     if (!branch) return c.json({ error: 'branch not found' }, 404)
     if (String(branch.status || '').toLowerCase() === 'pruned') return c.json({ error: 'cannot map to a pruned branch', branch_id: branch.id }, 409)
@@ -246,34 +248,59 @@ app.post('/:id/visualise', async (c) => {
   try { sourceMetadata = JSON.parse(item.source_metadata_json || '{}') } catch {}
   const sourceArtifactId = sourceMetadata.artifact_id || null
   if (!item.video_url && !sourceArtifactId) return c.json({ error: 'source URL or source artifact required' }, 400)
-  const idempotencyKey = `visualise-source:${item.id}`
-  const existing = await c.env.DB.prepare(`SELECT id,status FROM agent_jobs WHERE idempotency_key=?`).bind(idempotencyKey).first<{ id: string; status: string }>()
-  if (existing && existing.status !== 'failed') return c.json({ ok: true, status: existing.status, job_id: existing.id, recommendation_id: item.id }, 202)
-  const jobId = existing?.id || `job_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
-  if (existing?.status === 'failed') {
-    await c.env.DB.prepare(`UPDATE agent_jobs SET status='retry',attempts=0,error=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=?`).bind(existing.id).run()
-    return c.json({ ok: true, status: 'retry', job_id: existing.id, recommendation_id: item.id }, 202)
+  const artifactRows = await c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,created_at FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id')=? ORDER BY created_at DESC`).bind(item.id).all<any>()
+  const ready = selectLearningSourceRenditions(artifactRows.results || []).get(item.id)
+  if (ready?.html && ready?.pdf) {
+    const metadata = (ready.html.metadata || {}) as Record<string, unknown>
+    if (metadata.workflow_contract === 'lite-visual-linear/v4' && metadata.publication_state === 'ready') {
+      return c.json({ ok: true, status: 'ready', recommendation_id: item.id, pair_id: metadata.pair_id || null, companion: { primary: { role: 'html', id: ready.html.id }, secondary: { role: 'pdf', id: ready.pdf.id } } })
+    }
   }
-  await c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'visualise_source',?,?)`).bind(jobId, JSON.stringify({
+  const idempotencyKey = `visualise-source:${item.id}`
+  const workflowRunId = `lv_${crypto.randomUUID()}`
+  const jobPayload = {
     recommendation_id: item.id,
     source_url: item.video_url || null,
     source_artifact_id: sourceArtifactId,
     source_type: item.content_type || 'article',
     title: item.video_title,
     creator: item.creator || null,
-    custom_prompt_required: true,
     expected_roles: ['html', 'pdf'],
-    workflow_version: 2,
+    workflow_version: LITE_VISUAL_WORKFLOW_VERSION,
+    workflow_contract: LITE_VISUAL_WORKFLOW_CONTRACT,
+    canonical_body: 'semantic-html',
+    authoring_skills: ['intent', 'frontend-design'],
+    asset_policy: 'code-only',
+    allowed_rendering: ['semantic-html', 'source-specific-css', 'native-table', 'native-equation', 'minimal-inline-svg'],
+    forbidden_rendering: ['template', 'preset-theme', 'preset-palette', 'mind-map', 'raster-image', 'generated-image', 'external-image-agent', 'interactive-widget'],
     notes_extraction: 'manual_only',
-    stages: ['resolve_source', 'evidence_packet', 'visual_mind', 'html', 'pdf', 'upload', 'verify'],
-    cache: { evidence: 'source_checksum', visuals: 'source_checksum+style_lock+visual_contract_version' },
+    stages: [...LITE_VISUAL_STAGES],
+    source_extraction: { schema: LITE_VISUAL_SOURCE_EXTRACTION_SCHEMA, command: '/home/mahmud/.hermes/skills/lite-visual/scripts/extract_source.py', output: 'source.txt', manifest: 'source-extraction.json', complete_status: 'complete' },
+    checkpoint_requirements: LITE_VISUAL_CHECKPOINT_REQUIREMENTS,
+    cache: { source: 'source_checksum', extraction: 'source_checksum+extractor_version' },
+    recovery: { checkpoint_endpoint: '', resume_from: 'workflow_step' },
     ...(item.content_type === 'book' ? {
-      visual_mode: 'book_annotation_companion',
+      companion_mode: 'chapter_reading_companion',
       book_mode: true,
       chapter_outputs: true,
       chapter_artifact_contract: { metadata: ['chapter_key', 'chapter_title', 'chapter_number', 'pair_id', 'role'] },
     } : {}),
-  }), idempotencyKey).run()
+  }
+  const existing = await c.env.DB.prepare(`SELECT id,status,workflow_step,workflow_run_id,payload_json FROM agent_jobs WHERE idempotency_key=?`).bind(idempotencyKey).first<{ id: string; status: string; workflow_step?: string | null; workflow_run_id?: string | null; payload_json?: string | null }>()
+  if (existing && ['pending', 'retry', 'running'].includes(existing.status)) return c.json({ ok: true, status: existing.status === 'running' ? 'working' : 'queued', job_status: existing.status, workflow_step: existing.workflow_step || 'resolve_source', job_id: existing.id, recommendation_id: item.id }, 202)
+  const jobId = existing?.id || `job_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
+  jobPayload.recovery.checkpoint_endpoint = `/agent/jobs/${jobId}/checkpoint`
+  if (existing) {
+    let previousPayload: Record<string, unknown> = {}
+    try { previousPayload = JSON.parse(existing.payload_json || '{}') } catch {}
+    const resume = resolveLiteVisualResume(previousPayload, existing.workflow_step)
+    const nextWorkflowRunId = resume.is_current && existing.workflow_run_id ? existing.workflow_run_id : workflowRunId
+    await c.env.DB.prepare(`UPDATE agent_jobs SET status='retry',attempts=0,error=NULL,result_json=json_object('resume_from',?),lease_owner=NULL,lease_expires_at=NULL,workflow_step=?,payload_json=?,recommendation_id=?,trigger_kind='explicit_user_action',workflow_run_id=?,updated_at=datetime('now') WHERE id=?`).bind(resume.resume_from, resume.resume_from, JSON.stringify(jobPayload), item.id, nextWorkflowRunId, existing.id).run()
+    return c.json({ ok: true, status: 'queued', job_status: 'retry', resume_from: resume.resume_from, upgraded_workflow: !resume.is_current, job_id: existing.id, recommendation_id: item.id }, 202)
+  }
+  await c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind,workflow_run_id,workflow_step) VALUES (?,'visualise_source',?,?,?,'explicit_user_action',?,'resolve_source')`).bind(jobId, JSON.stringify({
+  ...jobPayload,
+  }), idempotencyKey, item.id, workflowRunId).run()
   return c.json({ ok: true, status: 'queued', job_id: jobId, recommendation_id: item.id }, 202)
 })
 
@@ -291,12 +318,12 @@ app.get('/:id/record', async (c) => {
     COALESCE(n.round_label, r.round) round_label
     FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(recommendationId).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
-  const [sessions, notes, sections, artifacts, drafts, cards, outcome, memories, proposals, jobs, threads, units, anchors, annotations, relations, consolidation, evidence, disposition] = await Promise.all([
+  const [sessions, notes, sections, artifacts, drafts, cards, outcome, memories, proposals, jobs, threads, units, anchors, annotations, relations, consolidation, disposition] = await Promise.all([
     c.env.DB.prepare(`SELECT id,status,intent,reflection,thread_id,target_kind,target_artifact_id,started_at,returned_at,completed_at,duration_seconds FROM learning_sessions WHERE recommendation_id=? ORDER BY started_at DESC`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT n.id,n.recommendation_id,n.title,n.kind,n.status,n.revision,n.source_url,n.source_artifact_id,n.provenance_json,n.updated_at
       FROM notes n WHERE n.recommendation_id=? ORDER BY n.updated_at DESC`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT s.note_id,s.section_key,s.label,s.content,s.direction,s.position FROM note_sections s JOIN notes n ON n.id=s.note_id WHERE n.recommendation_id=? ORDER BY s.note_id,s.position`).bind(recommendationId).all<any>(),
-    c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.r2_key,a.metadata_json,a.created_at,r.notebook_url
+    c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.r2_key,a.size_bytes,a.metadata_json,a.created_at,r.notebook_url
       FROM artifacts a LEFT JOIN recommendations r ON r.id=json_extract(a.metadata_json,'$.recommendation_id')
       WHERE json_extract(a.metadata_json,'$.recommendation_id')=?
          OR a.id=json_extract((SELECT source_metadata_json FROM recommendation_meta WHERE recommendation_id=?),'$.artifact_id')
@@ -313,7 +340,6 @@ app.get('/:id/record', async (c) => {
     c.env.DB.prepare(`SELECT * FROM source_annotations WHERE recommendation_id=? AND status='active' ORDER BY created_at DESC LIMIT 200`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT ur.* FROM unit_relations ur JOIN learning_units u ON u.id=ur.source_unit_id WHERE u.recommendation_id=? ORDER BY ur.created_at`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT * FROM consolidation_runs WHERE recommendation_id=? ORDER BY requested_at DESC LIMIT 1`).bind(recommendationId).first<any>(),
-    c.env.DB.prepare(`SELECT e.* FROM learning_evidence e LEFT JOIN learning_units u ON u.id=e.unit_id WHERE u.recommendation_id=? OR e.thread_id IN (SELECT thread_id FROM thread_sources WHERE recommendation_id=?) ORDER BY e.occurred_at DESC LIMIT 100`).bind(recommendationId,recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT * FROM source_learning_dispositions WHERE recommendation_id=? ORDER BY updated_at DESC LIMIT 1`).bind(recommendationId).first<any>(),
   ])
   const noteSections = new Map<string, any[]>()
@@ -332,8 +358,13 @@ app.get('/:id/record', async (c) => {
   const cardRows = (cards.results || []).map((card: any) => ({ ...card }))
   const today = new Date().toISOString().slice(0, 10)
   const artifactsRows = artifacts.results || []
-  const htmlArtifact = artifactsRows.find((a: any) => /html/.test(String(a.media_type || '')) || String(a.filename || '').toLowerCase().endsWith('.html')) || null
-  const pdfArtifact = artifactsRows.find((a: any) => /pdf/.test(String(a.media_type || '')) || String(a.filename || '').toLowerCase().endsWith('.pdf')) || null
+  const selectedCompanions = selectLearningSourceRenditions(artifactsRows).get(recommendationId) || {}
+  const directLegacyArtifacts = artifactsRows.filter((artifact: any) => {
+    const metadata = parseJson(artifact.metadata_json) || {}
+    return !metadata.recommendation_id && !metadata.pair_id
+  })
+  const htmlArtifact = selectedCompanions.html || directLegacyArtifacts.find((artifact: any) => /html/.test(String(artifact.media_type || '')) || String(artifact.filename || '').toLowerCase().endsWith('.html')) || null
+  const pdfArtifact = selectedCompanions.pdf || directLegacyArtifacts.find((artifact: any) => /pdf/.test(String(artifact.media_type || '')) || String(artifact.filename || '').toLowerCase().endsWith('.pdf')) || null
   const cardCount = cardRows.length
   const dueCount = cardRows.filter((card: any) => card.due_at && String(card.due_at) <= today).length
   const noteCount = (notes.results || []).length
@@ -343,7 +374,61 @@ app.get('/:id/record', async (c) => {
   const round = displayRound({ round_label: roundLabel, id: branchId }, { consumed: item.status === 'consumed' ? 1 : 0, notes: noteCount, cards: cardCount, due: dueCount, recallStrength: null })
   const branchInfo = branchLabel ? { id: branchId, label: branchLabel, round: roundLabel || round, status: String(item.branch_status || '').trim().toLowerCase() || 'love' } : null
   const companions = { html: htmlArtifact ? { id: htmlArtifact.id, filename: htmlArtifact.filename, size_bytes: htmlArtifact.size_bytes } : null, pdf: pdfArtifact ? { id: pdfArtifact.id, filename: pdfArtifact.filename, size_bytes: pdfArtifact.size_bytes } : null }
-  return c.json({ item: { ...item, branch: branchInfo, round: roundLabel || round, branch_label: branchLabel, branch_status: item.branch_status || 'love', round_label: roundLabel }, sessions: sessions.results || [], threads: threads.results || [], annotations: annotationRows, learning_units: unitRows, learning_evidence: evidence.results || [], disposition: disposition || null, consolidation: consolidation ? { ...consolidation, steps: consolidationSteps.results || [] } : null, notes: noteRows, artifacts: artifactsRows, companions, srs: { drafts: (drafts.results || []).map((draft: any) => ({ ...draft, provenance: parseList(draft.provenance_json), provenance_json: undefined })), cards: cardRows, recall_summary: { count: cardCount, due: dueCount } }, outcome: outcome || null, memory_influences: memoryInfluences, proposals: (proposals.results || []).map((proposal: any) => ({ ...proposal, current: parseJson(proposal.current_json), proposed: parseJson(proposal.proposed_json), current_json: undefined, proposed_json: undefined })), jobs: (jobs.results || []).map((job: any) => ({ ...job, result: parseJson(job.result_json), result_json: undefined })) })
+  const companionMetadata = htmlArtifact ? parseJson(htmlArtifact.metadata_json) || {} : {}
+  const companion = htmlArtifact && pdfArtifact ? { status: 'ready', pair_id: companionMetadata.pair_id || null, primary: { role: 'html', ...companions.html }, secondary: { role: 'pdf', ...companions.pdf } } : { status: 'not_ready', pair_id: null, primary: null, secondary: null }
+
+  const bookChapters = item.content_type === 'book'
+    ? await c.env.DB.prepare(`SELECT chapter_key,chapter_title,position,completed_at FROM book_visual_chapters WHERE recommendation_id=? ORDER BY position,chapter_key`).bind(recommendationId).all<any>()
+    : { results: [] }
+  const chapterList: any[] = []
+  for (const row of bookChapters.results || []) {
+    chapterList.push({
+      key: row.chapter_key,
+      title: row.chapter_title,
+      number: row.position,
+      completed: Boolean(row.completed_at),
+      completed_at: row.completed_at,
+      html: null,
+      pdf: null,
+    })
+  }
+  for (const art of artifactsRows) {
+    const meta = parseJson(art.metadata_json) || {}
+    if (meta.chapter_key) {
+      let ch = chapterList.find((c) => c.key === meta.chapter_key)
+      if (!ch) {
+        ch = { key: meta.chapter_key, title: meta.chapter_title || meta.chapter_key, number: meta.chapter_number || null, completed: false, completed_at: null, html: null, pdf: null }
+        chapterList.push(ch)
+      }
+      if (meta.role === 'html' || meta.role === 'pdf') {
+        ch[meta.role] = { id: art.id, filename: art.filename, size_bytes: art.size_bytes }
+      }
+    }
+  }
+  const visualObj = item.content_type === 'book'
+    ? { status: chapterList.length > 0 ? 'ready' : 'not_started', chapters: chapterList }
+    : companion
+
+  return c.json({
+    item: { ...item, branch: branchInfo, round: roundLabel || round, branch_label: branchLabel, branch_status: item.branch_status || 'love', round_label: roundLabel, visual: visualObj },
+    sessions: sessions.results || [],
+    threads: threads.results || [],
+    annotations: annotationRows,
+    learning_units: unitRows,
+    disposition: disposition || null,
+    consolidation: consolidation ? { ...consolidation, steps: consolidationSteps.results || [] } : null,
+    notes: noteRows,
+    artifacts: artifactsRows,
+    companion,
+    companions,
+    visual: visualObj,
+    book_chapters: chapterList,
+    srs: { drafts: (drafts.results || []).map((draft: any) => ({ ...draft, provenance: parseList(draft.provenance_json), provenance_json: undefined })), cards: cardRows, recall_summary: { count: cardCount, due: dueCount } },
+    outcome: outcome || null,
+    memory_influences: memoryInfluences,
+    proposals: (proposals.results || []).map((proposal: any) => ({ ...proposal, current: parseJson(proposal.current_json), proposed: parseJson(proposal.proposed_json), current_json: undefined, proposed_json: undefined })),
+    jobs: (jobs.results || []).map((job: any) => ({ ...job, result: parseJson(job.result_json), result_json: undefined })),
+  })
 })
 
 export default app

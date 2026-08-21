@@ -54,7 +54,7 @@ export const roots: RootDefinition[] = [
 
 const focus = (key: string, label: string, description: string): FocusDefinition => ({ key, label, description })
 
-/** The canonical registry contains 11 work modes, not the former 18 peer pages. */
+/** The canonical registry contains grouped work modes, not the former peer-page sprawl. */
 export const modes: Record<RootKey, ModeDefinition[]> = {
   home: [
     { key: 'today', label: 'Today', description: 'Decide what matters next.', defaultView: 'today' },
@@ -62,7 +62,7 @@ export const modes: Record<RootKey, ModeDefinition[]> = {
   library: [
     {
       key: 'triage', label: 'Triage', description: 'Capture, decide, and commit sources.', defaultView: 'queue', defaultFocus: 'queue',
-      focuses: [focus('queue', 'Queue', 'The five sources you committed to next.'), focus('inbox', 'Inbox', 'Every capture waiting for triage.'), focus('feeds', 'RSS Feeds', 'Subscriptions and imported feed entries.')],
+      focuses: [focus('queue', 'Queue', 'The five sources you committed to next.'), focus('feeds', 'RSS Feeds', 'Subscriptions and imported feed entries.')],
     },
     {
       key: 'catalog', label: 'Catalog', description: 'Find and filter source material.', defaultView: 'all', defaultFocus: 'all',
@@ -74,7 +74,8 @@ export const modes: Record<RootKey, ModeDefinition[]> = {
     },
   ],
   learn: [
-    { key: 'paths', label: 'Paths', description: 'Build and follow learning threads.', defaultView: 'paths' },
+    { key: 'paths', label: 'Threads', description: 'Build and follow finite learning paths.', defaultView: 'paths' },
+    { key: 'canon', label: 'Canon', description: 'Browse enduring three-book entry points across fields.', defaultView: 'canon' },
     {
       key: 'practice', label: 'Practice', description: 'Retrieve and make knowledge durable.', defaultView: 'notes', defaultFocus: 'notes',
       focuses: [focus('notes', 'Notes', 'Structured, editable bilingual notes.'), focus('recall', 'Recall', 'Due review plus drafts awaiting approval.')],
@@ -134,8 +135,8 @@ const legacyDestinations: Record<string, LegacyDestination> = {
   '/insights/overview': { root: 'home', mode: 'today' },
   '/curate/queue': { root: 'library', mode: 'triage', focus: 'queue' },
   '/library/queue': { root: 'library', mode: 'triage', focus: 'queue' },
-  '/curate/inbox': { root: 'library', mode: 'triage', focus: 'inbox' },
-  '/library/inbox': { root: 'library', mode: 'triage', focus: 'inbox' },
+  '/curate/inbox': { root: 'library', mode: 'catalog', focus: 'all' },
+  '/library/inbox': { root: 'library', mode: 'catalog', focus: 'all' },
   '/curate/feeds': { root: 'library', mode: 'triage', focus: 'feeds' },
   '/library/feeds': { root: 'library', mode: 'triage', focus: 'feeds' },
   '/curate/rss': { root: 'library', mode: 'triage', focus: 'feeds' },
@@ -155,6 +156,7 @@ const legacyDestinations: Record<string, LegacyDestination> = {
   '/library/files': { root: 'library', mode: 'assets', focus: 'files' },
   '/learn/hub': { root: 'learn', mode: 'paths' },
   '/learn/paths': { root: 'learn', mode: 'paths' },
+  '/learn/canon': { root: 'learn', mode: 'canon' },
   '/vault/notes': { root: 'learn', mode: 'practice', focus: 'notes' },
   '/learn/reflections': { root: 'learn', mode: 'practice', focus: 'notes' },
   '/learn/notes': { root: 'learn', mode: 'practice', focus: 'notes' },
@@ -184,7 +186,7 @@ const legacyDestinations: Record<string, LegacyDestination> = {
 const legacySegments: Record<RootKey, Record<string, LegacyDestination>> = {
   home: { today: { root: 'home', mode: 'today' } },
   library: {
-    queue: { root: 'library', mode: 'triage', focus: 'queue' }, inbox: { root: 'library', mode: 'triage', focus: 'inbox' },
+    queue: { root: 'library', mode: 'triage', focus: 'queue' }, inbox: { root: 'library', mode: 'catalog', focus: 'all' },
     feeds: { root: 'library', mode: 'triage', focus: 'feeds' }, rss: { root: 'library', mode: 'triage', focus: 'feeds' },
     all: { root: 'library', mode: 'catalog', focus: 'all' }, books: { root: 'library', mode: 'catalog', focus: 'books' },
     journal: { root: 'library', mode: 'catalog', focus: 'journal' }, hardcover: { root: 'library', mode: 'catalog', focus: 'journal' },
@@ -192,7 +194,7 @@ const legacySegments: Record<RootKey, Record<string, LegacyDestination>> = {
     files: { root: 'library', mode: 'assets', focus: 'files' },
   },
   learn: {
-    hub: { root: 'learn', mode: 'paths' }, paths: { root: 'learn', mode: 'paths' }, notes: { root: 'learn', mode: 'practice', focus: 'notes' },
+    hub: { root: 'learn', mode: 'paths' }, paths: { root: 'learn', mode: 'paths' }, canon: { root: 'learn', mode: 'canon' }, notes: { root: 'learn', mode: 'practice', focus: 'notes' },
     reflections: { root: 'learn', mode: 'practice', focus: 'notes' }, cards: { root: 'learn', mode: 'practice', focus: 'recall' },
     review: { root: 'learn', mode: 'practice', focus: 'recall' }, recall: { root: 'learn', mode: 'practice', focus: 'recall' },
   },
@@ -210,7 +212,7 @@ const legacySegments: Record<RootKey, Record<string, LegacyDestination>> = {
 const objectTypes: Record<RootKey, string[]> = {
   home: [],
   library: ['source', 'artifact', 'book', 'collection'],
-  learn: ['thread', 'level', 'note', 'unit', 'card', 'lesson'],
+  learn: ['thread', 'level', 'note', 'unit', 'card', 'lesson', 'canon-domain'],
   map: ['node', 'branch'],
   settings: [],
 }
@@ -305,6 +307,7 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const oldTypedPath = oldThread ? `/learn/thread/${oldThread[1]}` : rawPath
   const lessonPath = oldTypedPath.match(/^\/learn\/(?:thread\/([^/]+)\/lesson|t\/([^/]+)\/l)\/([^/]+)$/)
   const levelPath = oldTypedPath.match(/^\/learn\/(?:thread\/([^/]+)\/level|t\/([^/]+)\/v)\/([^/]+)$/)
+  const canonDomainPath = oldTypedPath.match(/^\/learn\/canon\/([^/]+)$/)
   const exactAlias = legacyDestinations[rawPath]
   const pathParts = oldTypedPath.replace(/^\//, '').split('/').filter(Boolean)
   const candidateRoot = (exactAlias?.root || pathParts[0]) as RootKey
@@ -319,14 +322,14 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const pathSegment = pathParts[1]
   const segmentState = pathSegment ? (legacySegments[root][pathSegment] || undefined) : undefined
   const modePrefixedObject = !exactAlias && pathParts.length >= 4 && isModeOrLeaf(root, pathSegment)
-  const objectRoute = !exactAlias && (Boolean(lessonPath) || Boolean(levelPath) || modePrefixedObject || (pathParts.length >= 3 && !isModeOrLeaf(root, pathSegment)))
-  const objectType = lessonPath ? 'lesson' : levelPath ? 'level' : objectRoute ? pathParts[modePrefixedObject ? 2 : 1] : undefined
+  const objectRoute = !exactAlias && (Boolean(lessonPath) || Boolean(levelPath) || Boolean(canonDomainPath) || modePrefixedObject || (pathParts.length >= 3 && !isModeOrLeaf(root, pathSegment)))
+  const objectType = lessonPath ? 'lesson' : levelPath ? 'level' : canonDomainPath ? 'canon-domain' : objectRoute ? pathParts[modePrefixedObject ? 2 : 1] : undefined
   const objectStart = modePrefixedObject ? 3 : 2
   let objectId: string | undefined
   let parentObjectId: string | undefined
   if (objectRoute) {
     const nestedPath = lessonPath || levelPath
-    const rawSegment = nestedPath ? nestedPath[3] : pathParts.slice(objectStart).join('/')
+    const rawSegment = canonDomainPath ? canonDomainPath[1] : nestedPath ? nestedPath[3] : pathParts.slice(objectStart).join('/')
     try {
       objectId = decodeURIComponent(rawSegment)
       parentObjectId = nestedPath ? decodeURIComponent(nestedPath[1] || nestedPath[2]) : undefined
@@ -350,7 +353,9 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const canonical = invalidObject || invalidModePath
     ? canonicalRoot(root, defaultState(root).mode, defaultState(root).focus)
     : objectRoute
-      ? lessonPath || levelPath
+      ? canonDomainPath
+        ? `/learn/canon/${encodeURIComponent(objectId || '')}`
+        : lessonPath || levelPath
         ? `/learn/t/${encodeURIComponent(parentObjectId || '')}/${lessonPath ? 'l' : 'v'}/${encodeURIComponent(objectId || '')}${queryFor(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)}`
         : canonicalObject(root, objectType!, objectId || '', state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
       : canonicalRoot(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)

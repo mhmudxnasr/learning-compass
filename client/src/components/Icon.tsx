@@ -1,6 +1,6 @@
 import { ComponentChildren } from 'preact'
 
-export type IconName = 'home' | 'library' | 'learn' | 'map' | 'settings' | 'search' | 'capture' | 'queue' | 'inbox' | 'rss' | 'source' | 'file' | 'book' | 'collection' | 'archive' | 'note' | 'recall' | 'path' | 'branch' | 'balance' | 'close' | 'more' | 'chevron' | 'external' | 'check' | 'clock' | 'sync' | 'menu' | 'back' | 'trash' | 'edit' | 'spark' | 'sun' | 'moon' | 'palette'
+export type IconName = 'home' | 'library' | 'learn' | 'map' | 'settings' | 'search' | 'capture' | 'queue' | 'inbox' | 'rss' | 'source' | 'file' | 'book' | 'collection' | 'archive' | 'note' | 'recall' | 'path' | 'branch' | 'balance' | 'close' | 'more' | 'chevron' | 'external' | 'check' | 'clock' | 'sync' | 'menu' | 'back' | 'trash' | 'edit' | 'spark' | 'sun' | 'moon' | 'palette' | 'lock' | 'warning' | 'copy'
 
 const paths: Record<IconName, ComponentChildren> = {
   home: <><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10M9.5 20v-6h5v6"/></>,
@@ -38,6 +38,9 @@ const paths: Record<IconName, ComponentChildren> = {
   sun: <><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></>,
   moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>,
   palette: <><path d="M12 2a10 10 0 1 0 10 10c0-1.5-1-2-2-2h-2a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.5A2.5 2.5 0 0 0 21 3.5 10 10 0 0 0 12 2Z"/><circle cx="7.5" cy="10.5" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16.5" cy="10.5" r="1"/></>,
+  lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></>,
+  warning: <><path d="m10.29 3.86-8.6 14.9A1.73 1.73 0 0 0 3.2 21.4h17.6a1.73 1.73 0 0 0 1.5-2.64l-8.6-14.9a1.73 1.73 0 0 0-3.01 0z"/><path d="M12 9v4M12 17h.01"/></>,
+  copy: <><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
 }
 
 export function Icon({ name, size = 20, class: classProp, className }: { name: IconName; size?: number; class?: string; className?: string }) {

@@ -59,7 +59,7 @@ app.get('/', async (c) => {
         .bind(`%${q}%`).all<any>(),
       DB.prepare("SELECT id, description, strength FROM patterns WHERE id LIKE ? OR description LIKE ? ORDER BY CASE strength WHEN 'locked' THEN 0 WHEN 'confirmed' THEN 1 ELSE 2 END LIMIT 8")
         .bind(`%${q}%`, `%${q}%`).all<any>(),
-      DB.prepare(`SELECT id,title,thread_type,status,guiding_question FROM learning_threads WHERE title LIKE ? OR guiding_question LIKE ? OR final_synthesis LIKE ? ORDER BY updated_at DESC LIMIT 8`).bind(like,like,like).all<any>(),
+      DB.prepare(`SELECT id,title,thread_type,status,guiding_question FROM learning_threads WHERE superseded_at IS NULL AND (title LIKE ? OR guiding_question LIKE ? OR final_synthesis LIKE ?) ORDER BY updated_at DESC LIMIT 8`).bind(like,like,like).all<any>(),
       DB.prepare(`SELECT id,unit_type,statement,user_synthesis,status,recommendation_id FROM learning_units WHERE statement LIKE ? OR user_synthesis LIKE ? ORDER BY updated_at DESC LIMIT 12`).bind(like,like).all<any>(),
       DB.prepare(`SELECT n.id,n.title,n.kind,n.recommendation_id FROM notes n LEFT JOIN note_sections s ON s.note_id=n.id WHERE n.title LIKE ? OR s.content LIKE ? GROUP BY n.id ORDER BY n.updated_at DESC LIMIT 8`).bind(like,like).all<any>(),
       DB.prepare(`SELECT id,filename,media_type,created_at FROM artifacts WHERE filename LIKE ? OR metadata_json LIKE ? ORDER BY created_at DESC LIMIT 8`).bind(like,like).all<any>(),
@@ -124,7 +124,7 @@ app.get('/', async (c) => {
         .bind(like).all<any>(),
       DB.prepare(`SELECT id, description, strength FROM patterns WHERE id LIKE ? OR description LIKE ? ORDER BY CASE strength WHEN 'locked' THEN 0 WHEN 'confirmed' THEN 1 ELSE 2 END LIMIT 8`)
         .bind(like, like).all<any>(),
-      DB.prepare(`SELECT id,title,thread_type,status,guiding_question FROM learning_threads WHERE title LIKE ? OR guiding_question LIKE ? OR final_synthesis LIKE ? ORDER BY updated_at DESC LIMIT 8`).bind(like,like,like).all<any>(),
+      DB.prepare(`SELECT id,title,thread_type,status,guiding_question FROM learning_threads WHERE superseded_at IS NULL AND (title LIKE ? OR guiding_question LIKE ? OR final_synthesis LIKE ?) ORDER BY updated_at DESC LIMIT 8`).bind(like,like,like).all<any>(),
       DB.prepare(`SELECT id,unit_type,statement,user_synthesis,status,recommendation_id FROM learning_units WHERE statement LIKE ? OR user_synthesis LIKE ? ORDER BY updated_at DESC LIMIT 12`).bind(like,like).all<any>(),
       DB.prepare(`SELECT n.id,n.title,n.kind,n.recommendation_id FROM notes n LEFT JOIN note_sections s ON s.note_id=n.id WHERE n.title LIKE ? OR s.content LIKE ? GROUP BY n.id ORDER BY n.updated_at DESC LIMIT 8`).bind(like,like).all<any>(),
       DB.prepare(`SELECT id,filename,media_type,created_at FROM artifacts WHERE filename LIKE ? OR metadata_json LIKE ? ORDER BY created_at DESC LIMIT 8`).bind(like,like).all<any>(),

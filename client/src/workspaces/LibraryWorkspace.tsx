@@ -12,7 +12,6 @@ import {
   CollectionsView,
   FeedsView,
   FilesView,
-  InboxView,
   ObjectRouteView,
   QueueView,
   type LibraryViewHandlers,
@@ -37,13 +36,11 @@ import {
 function endpointFor(view: string, objectType?: string, objectId?: string) {
   if (objectType && objectId) {
     const id = encodeURIComponent(objectId)
-    if (objectType === 'source') return `/capture/${id}/record`
+    if (objectType === 'source' || objectType === 'book') return `/capture/${id}/record`
     if (objectType === 'artifact') return '/artifacts'
-    if (objectType === 'book') return '/recommendations/books'
     if (objectType === 'collection') return '/collections'
   }
   switch (asView(view)) {
-    case 'inbox': return '/capture'
     case 'feeds': return '/capture/feeds'
     case 'all': return '/recommendations/list?limit=200'
     case 'files': return '/artifacts'
@@ -72,18 +69,16 @@ function selectionFor(type: LibraryObjectType, item: LibraryRecord): LibrarySele
 }
 
 function objectItem(type: LibraryObjectType, data: LibraryRecord, objectId: string) {
-  if (type === 'source') return data.item || null
+  if (type === 'source' || type === 'book') return data.item || listFrom<LibraryRecord>(data, 'books').find((item) => String(item.id) === objectId) || null
   if (type === 'artifact') return listFrom<LibraryRecord>(data, 'artifacts').find((item) => String(item.id) === objectId) || null
-  if (type === 'book') return listFrom<LibraryRecord>(data, 'books').find((item) => String(item.id) === objectId) || null
   if (type === 'collection') return listFrom<LibraryRecord>(data, 'collections').find((item) => String(item.id) === objectId) || null
   return null
 }
 
 type LibraryPrimaryMode = 'triage' | 'catalog' | 'assets'
 
-const triageFilters: Array<{ key: Extract<LibraryView, 'queue' | 'inbox' | 'feeds'>; label: string; description: string }> = [
+const triageFilters: Array<{ key: Extract<LibraryView, 'queue' | 'feeds'>; label: string; description: string }> = [
   { key: 'queue', label: 'Queue', description: 'Committed next' },
-  { key: 'inbox', label: 'Inbox', description: 'Captured candidates' },
   { key: 'feeds', label: 'Feeds', description: 'Subscriptions & articles' },
 ]
 
@@ -146,7 +141,7 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
   const activeRoute = route || localRoute
   const normalizedMode = activeRoute.mode || activeRoute.query.get('mode') || ''
   const normalizedFocus = activeRoute.focus || activeRoute.query.get('focus') || ''
-  const compatibleView = normalizedFocus || (/^(queue|inbox|feeds|all|files|books|journal|collections|archive)$/.test(normalizedMode) ? normalizedMode : '') || (/^(queue|inbox|feeds|all|files|books|journal|collections|archive)$/.test(activeRoute.view) ? activeRoute.view : '')
+  const compatibleView = normalizedFocus || (/^(queue|feeds|all|files|books|journal|collections|archive)$/.test(normalizedMode) ? normalizedMode : '') || (/^(queue|feeds|all|files|books|journal|collections|archive)$/.test(activeRoute.view) ? activeRoute.view : '')
   const view = compatibleView ? asView(compatibleView) : normalizedMode === 'catalog' ? 'all' : normalizedMode === 'assets' ? 'files' : 'queue'
   const objectType = activeRoute.objectType as LibraryObjectType | undefined
   const endpoint = endpointFor(view, objectType, activeRoute.objectId)
@@ -176,10 +171,9 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
           thread_title: linkedThread?.title || selection.data.thread_title,
         }
       }
-      onInspect?.(selection)
       onSelect?.(selection)
     }
-  }, [activeRoute.objectId, objectType, data, onInspect, onSelect])
+  }, [activeRoute.objectId, objectType, data, onSelect])
 
   const go = (href: string) => {
     onNavigate?.(href)
@@ -245,7 +239,7 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
 
   const addBook = async (payload: { title: string; author: string; isbn: string }) => {
     setWorking('book'); setNotice('')
-    try { await api('/recommendations/books', { method: 'POST', body: JSON.stringify(payload) }); setNotice('Book added to Inbox.'); reload() }
+    try { await api('/recommendations/books', { method: 'POST', body: JSON.stringify(payload) }); setNotice('Book added to Library.'); reload() }
     catch (actionError) { setNotice(actionMessage(actionError)) }
     finally { setWorking('') }
   }
@@ -287,7 +281,7 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     setNotice('')
     try {
       await api('/capture/feeds', { method: 'POST', body: JSON.stringify({ url, limit: 5 }) })
-      setNotice('Feed subscribed and latest entries imported to Inbox.')
+      setNotice('Feed subscribed and latest entries added to Library.')
       reload()
     } catch (actionError) {
       setNotice(actionMessage(actionError))
@@ -301,7 +295,7 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     setNotice('')
     try {
       const res = await api<{ ok: boolean; imported: number }>('/capture/feeds/sync', { method: 'POST', body: JSON.stringify({ limit: 5 }) })
-      setNotice(`Feeds checked. ${res.imported || 0} new ${res.imported === 1 ? 'entry' : 'entries'} imported to Inbox.`)
+      setNotice(`Feeds checked. ${res.imported || 0} new ${res.imported === 1 ? 'entry' : 'entries'} added to Library.`)
       reload()
     } catch (actionError) {
       setNotice(actionMessage(actionError))
@@ -316,7 +310,7 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     setNotice('')
     try {
       const res = await api<{ ok: boolean; imported?: number }>(`/capture/feeds/${encodeURIComponent(feedId)}/sync`, { method: 'POST', body: JSON.stringify({ limit: 5 }) })
-      setNotice(`Feed checked. ${res.imported || 0} new ${res.imported === 1 ? 'entry' : 'entries'} imported to Inbox.`)
+      setNotice(`Feed checked. ${res.imported || 0} new ${res.imported === 1 ? 'entry' : 'entries'} added to Library.`)
       reload()
     } catch (actionError) {
       setNotice(actionMessage(actionError))
@@ -407,8 +401,7 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     return <div class="library-workspace workspace-surface">{modeSwitcher}<ObjectRouteView type={objectType} data={objectData} handlers={handlers} onBack={() => go(viewHref(backView))}/></div>
   }
 
-  const content = view === 'inbox' ? <InboxView data={loaded} handlers={handlers}/> :
-    view === 'queue' ? <QueueView data={loaded} handlers={handlers}/> :
+  const content = view === 'queue' ? <QueueView data={loaded} handlers={handlers}/> :
       view === 'feeds' ? <FeedsView data={loaded} handlers={handlers}/> :
         view === 'all' ? <AllSourcesView data={loaded} handlers={handlers}/> :
           view === 'files' ? <FilesView data={loaded} handlers={handlers}/> :

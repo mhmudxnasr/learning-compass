@@ -60,7 +60,7 @@ export function StudioShell({ route, children, inspector, onInspectorClose, onCa
       <nav aria-label="Five workspaces">
         <div class="rail-top" aria-label="Global tools">
           <button type="button" class="rail-command" onClick={onSearch} aria-keyshortcuts="Control+K Meta+K" title="Search (Ctrl/Command K)"><Icon name="search" size={19}/><span class="visually-hidden">Search</span></button>
-          <button type="button" class="rail-command rail-command-capture" onClick={onCapture} title="Capture to Inbox"><Icon name="capture" size={20}/><span class="visually-hidden">Capture to Inbox</span></button>
+      <button type="button" class="rail-command rail-command-capture" onClick={onCapture} title="Save source"><Icon name="capture" size={20}/><span class="visually-hidden">Save source</span></button>
         </div>
         {roots.map((item) => <a key={item.key} href={routeHref(item.key)} class={route.root === item.key ? 'active' : ''} aria-current={route.root === item.key ? 'page' : undefined} title={item.label} aria-label={item.label}>
           <Icon name={rootIcons[item.key]} size={20}/>
@@ -76,8 +76,8 @@ export function StudioShell({ route, children, inspector, onInspectorClose, onCa
         <button type="button" class="button secondary" onClick={onSearch} aria-keyshortcuts="Control+K Meta+K"><Icon name="search" size={16}/> Search</button>
         <button type="button" class="button primary" onClick={onCapture}><Icon name="capture" size={17}/> Capture</button>
       </div>
-      {route.recoveredFrom && !route.notFound && <div class="route-notice" role="status">Old link restored to this workspace: <code>{route.recoveredFrom}</code></div>}
-      {route.notFound && <div class="route-notice route-warning" role="alert">That destination no longer exists. You are in the nearest real workspace instead: <code>{route.recoveredFrom}</code></div>}
+      {route.recoveredFrom && !route.notFound && <div class="route-notice route-recovered" role="status"><Icon name="sync" size={14}/><span><strong>Workspace restored</strong><small>Opened from an older link</small></span><code>{route.recoveredFrom}</code></div>}
+      {route.notFound && <div class="route-notice route-warning" role="alert"><Icon name="back" size={14}/><span><strong>That destination moved</strong><small>You’re in the nearest available workspace</small></span><code>{route.recoveredFrom}</code></div>}
       <main id="workspace-canvas" class="workspace-canvas" tabIndex={-1}>{children}</main>
     </section>
 

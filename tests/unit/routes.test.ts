@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { modes, objectHref, parseRoute, roots, routeHref, views } from '../../client/src/app/router.ts'
@@ -8,6 +9,15 @@ test('Compass ignores started picks whose recommendation is already completed or
   assert.equal(compassPickIsUnresolved('started', 'rejected'), false)
   assert.equal(compassPickIsUnresolved('started', 'active'), true)
   assert.equal(compassPickIsUnresolved('ready', 'consumed'), false)
+})
+
+test('Compass reports comparative selection and current learning load', () => {
+  const source = readFileSync(new URL('../../src/api/compass.ts', import.meta.url), 'utf8')
+  assert.match(source, /selection_explanation: selectionExplanation/)
+  assert.match(source, /alternatives, learning_load: learningLoad/)
+  assert.match(source, /start_recommended:/)
+  assert.match(source, /srs_cards WHERE due_at<=date\('now'\)/)
+  assert.match(source, /consolidation_runs WHERE state NOT IN \('closed','waived'\)/)
 })
 test('Compass derives differentiated Worker-owned features from metadata and evidence', () => {
   const strong = deriveCandidateFeatures({
@@ -144,15 +154,15 @@ test('Compass uses learning balance as a bounded branch signal', () => {
   assert.equal(redirected._branch_state, 'at-risk')
 })
 
-test('the router exposes five roots and eleven grouped modes with focus state', () => {
+test('the router exposes five roots and twelve grouped modes with focus state', () => {
   assert.deepEqual(roots.map((root) => root.key), ['home', 'library', 'learn', 'map', 'settings'])
   assert.equal(roots.length, 5)
   const declaredModes = roots.flatMap((root) => modes[root.key].map((mode) => ({ root: root.key, ...mode })))
-  assert.equal(declaredModes.length, 11)
-  assert.equal(new Set(declaredModes.map((mode) => `${mode.root}/${mode.key}`)).size, 11)
+  assert.equal(declaredModes.length, 12)
+  assert.equal(new Set(declaredModes.map((mode) => `${mode.root}/${mode.key}`)).size, 12)
   assert.ok(declaredModes.every((mode) => mode.label.trim() && mode.description.trim()))
-  assert.equal(views.library.length, 9)
-  assert.equal(views.learn.length, 3)
+  assert.equal(views.library.length, 8)
+  assert.equal(views.learn.length, 4)
   for (const root of roots) {
     assert.equal(routeHref(root.key), `#/${root.key}`)
     assert.equal(routeHref(root.key, root.defaultMode), `#/${root.key}`)
@@ -165,6 +175,7 @@ test('the router exposes five roots and eleven grouped modes with focus state', 
   assert.equal(routeHref('library', 'books'), '#/library?mode=catalog&focus=books')
   assert.equal(routeHref('library', 'journal'), '#/library?mode=catalog&focus=journal')
   assert.equal(routeHref('learn', 'notes'), '#/learn?mode=practice&focus=notes')
+  assert.equal(routeHref('learn', 'canon'), '#/learn?mode=canon')
   assert.equal(routeHref('map', 'branches'), '#/map?mode=review&focus=branches')
   assert.equal(routeHref('settings', 'profile'), '#/settings?focus=profile')
   assert.equal(routeHref('learn', 'practice', 'notes'), '#/learn?mode=practice&focus=notes')
@@ -196,6 +207,12 @@ test('root modes parse from query state while typed object links keep their iden
   assert.equal(oldThread.canonical, '/learn/thread/path%201')
   assert.equal(oldThread.objectType, 'thread')
   assert.equal(oldThread.objectId, 'path 1')
+
+  const canon = parseRoute('#/learn/canon/behavioral-psychology')
+  assert.equal(canon.mode, 'canon')
+  assert.equal(canon.objectType, 'canon-domain')
+  assert.equal(canon.objectId, 'behavioral-psychology')
+  assert.equal(canon.canonical, '/learn/canon/behavioral-psychology')
 
   const lesson = parseRoute('#/learn/thread/thread%201/lesson/lesson%202')
   assert.equal(lesson.objectType, 'lesson')

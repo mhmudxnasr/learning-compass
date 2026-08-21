@@ -21,8 +21,8 @@ const CAPABILITIES = [
   ['GET', '/agent/activity', 'Read recent Hermes receipts, audit events, and operational status.'],
   ['GET', '/agent/system', 'Read the user-visible runtime, storage, schedule, and service inventory.'],
   ['GET', '/dashboard/briefing', 'Read Momentum, active Queue files, weekly progress, and current insight.'],
-  ['GET', '/capture', 'Read the unlimited Inbox.'],
-  ['POST', '/capture', 'Capture a URL, text, or artifact into Inbox.'],
+  ['GET', '/capture', 'Read captured source records.'],
+  ['POST', '/capture', 'Save a URL, text, or artifact as a source record.'],
   ['GET', '/capture/feeds', 'Read RSS and Atom subscriptions.'],
   ['GET', '/capture/feeds/:id/entries', 'Read every article imported from one feed, paginated.'],
   ['POST', '/capture/feeds', 'Subscribe to an RSS or Atom feed and import its latest entries; optional limit caps the initial import.'],
@@ -30,7 +30,7 @@ const CAPABILITIES = [
   ['POST', '/capture/feeds/:id/sync', 'Check one web feed for new Inbox articles; optional limit caps imported entries.'],
   ['DELETE', '/capture/feeds/:id', 'Unsubscribe from a web feed without deleting captured articles.'],
   ['GET', '/capture/queue', 'Read the active queue.'],
-  ['POST', '/capture/:id/triage', 'Queue or exclude an Inbox item; queue cap is enforced.'],
+  ['POST', '/capture/:id/triage', 'Queue or exclude a captured source; queue cap is enforced.'],
   ['POST', '/capture/:id/visualise', 'Ask Hermes to create a Lite Visual HTML/PDF companion for a queued link.'],
   ['GET', '/capture/:id', 'Read one capture.'],
   ['GET', '/capture/:id/record', 'Read the canonical source record with exact feedback, extracted note sections, jobs, proposals, files, recall, sessions, memory influence, and outcome.'],
@@ -58,8 +58,8 @@ const CAPABILITIES = [
   ['GET', '/brain/profile/intelligence', 'Read typed profile assertions, health, and reversible revisions.'],
   ['PUT', '/brain/profile/assertions/:key', 'Create or replace a typed profile assertion as an explicit user edit.'],
   ['POST', '/brain/profile/revisions/:id/revert', 'Undo one typed profile revision.'],
-  ['GET', '/brain/branch-deck', 'Read the evidence-driven branch review deck with real map evidence for every branch.'],
-  ['POST', '/brain/branch-swipe', 'Keep, prune, prioritize, hold, add, or undo a branch; every decision writes a reversible typed profile signal.'],
+  ['GET', '/brain/branch-deck', 'Read the personal top-level branch index, category index, status, round, and linked activity.'],
+  ['POST', '/brain/branch-swipe', 'Activate, pause, prioritize, archive, add, edit, or undo a personal branch.'],
   ['POST', '/brain/branch-suggest', 'Request review-before-commit new-branch ideas grounded in live Compass context; nothing is written.'],
   ['POST', '/brain/priorities', 'Replace priorities.'],
   ['GET', '/brain/tree', 'Read the knowledge tree.'],
@@ -93,6 +93,14 @@ const CAPABILITIES = [
   ['GET', '/learning/core/hub', 'Read the Learning Hub with path progress and the current stage for every deliberate learning path.'],
   ['GET', '/learning/core/threads', 'Read Learning Threads.'],
   ['GET', '/learning/core/threads/:id/path', 'Read one complete Learning Thread workspace: direct Thread material plus each Level and its exact notes, files, recall cards, drafts, work items, sources, requirements, and evidence.'],
+  ['GET', '/learning/core/canon', 'Browse the evergreen three-book Canon by domain, curation state, validation state, family, or book search.'],
+  ['GET', '/learning/core/canon/domains/:id', 'Read one Canon domain with its three role-based book dossiers and replacement history.'],
+  ['GET', '/learning/core/canon/entries/:id', 'Read one exact Canon book selection and its linked source state.'],
+  ['POST', '/learning/core/canon/domains', 'Create a Canon family or domain connected to a verified non-pruned knowledge branch.'],
+  ['PATCH', '/learning/core/canon/domains/:id', 'Edit a Canon domain boundary, branch, curation state, or field-test state.'],
+  ['PUT', '/learning/core/canon/domains/:id/entries/:role', 'Create or replace one Foundation, Representative, or Boundary selection while preserving replacement history.'],
+  ['POST', '/learning/core/canon/entries/:id/capture', 'Explicitly save one Canon book as a source and inherit the domain branch.'],
+  ['POST', '/learning/core/canon/domains/:id/thread', 'Explicitly start a normal finite Learning Thread from one Canon domain.'],
   ['POST', '/learning/core/threads/:id/stages/:stageId/start', 'Start an available Learning Hub stage and make its next action explicit.'],
   ['GET', '/learning/core/weekly', 'Read the weekly closure review for stale Threads, cognitive loops, and due recall.'],
   ['GET', '/learning/core/counterevidence', 'Find important Thread Units without contradiction or qualification evidence.'],
@@ -113,11 +121,11 @@ const CAPABILITIES = [
   ['POST', '/learning/core/threads/:id/lessons/:lessonId/sources', 'Attach one verified study source directly to a course lesson.'],
   ['PATCH', '/learning/core/threads/:id/projects/:projectId', 'Update a Thread project state or notes.'],
   ['DELETE', '/learning/core/threads/:id/sources/:sourceId', 'Remove a source from a Thread without deleting it.'],
+  ['DELETE', '/learning/core/threads/:id', 'Irreversibly delete one exact Learning Thread after explicit confirmation.'],
   ['POST', '/learning/core/threads/:id/verify', 'Verify a Thread only after synthesis and evidence gates are satisfied.'],
   ['GET', '/learning/core/units', 'Read atomic anchored Learning Units.'],
   ['POST', '/learning/core/units', 'Create an anchored Learning Unit.'],
   ['POST', '/learning/core/units/:id/relations', 'Create a typed relationship between Learning Units.'],
-  ['POST', '/learning/core/evidence', 'Record retrieval, explanation, transfer, application, decision, or artifact evidence.'],
   ['GET', '/annotations', 'Read source-anchored passage annotations with durable locators.'],
   ['POST', '/annotations', 'Create a source-anchored passage annotation in the canonical evidence ledger.'],
   ['GET', '/annotations/:id', 'Read one source annotation and its linked derivations.'],
@@ -126,6 +134,7 @@ const CAPABILITIES = [
   ['GET', '/learning/core/consolidation/:sourceId', 'Read one source consolidation run and its steps.'],
   ['POST', '/learning/core/consolidation/:id/retry', 'Retry a repair-required consolidation run.'],
   ['POST', '/learning/core/consolidation/:id/waive', 'Explicitly waive a consolidation run with a reason.'],
+  ['POST', '/learning/core/consolidation/:id/reconcile', 'Close a complete stranded consolidation or recreate and link its missing extraction job.'],
   ['GET', '/feedback/proposals', 'Read pending and reviewed Hermes change proposals.'],
   ['POST', '/feedback/record', 'Resolve or capture a source, preserve feedback verbatim, update completion and rating, create idempotent analysis/extraction work, and return one exact receipt.'],
   ['POST', '/feedback/proposals/:id/approve', 'Approve a proposed profile or map change for Hermes application.'],
@@ -149,6 +158,7 @@ const CAPABILITIES = [
   ['GET', '/agent/jobs', 'Read durable jobs.'],
   ['GET', '/agent/jobs/health', 'Read Hermes job queue health and stale lease counts.'],
   ['POST', '/agent/jobs/:id/claim', 'Claim a leased job.'],
+  ['POST', '/agent/jobs/:id/checkpoint', 'Advance one resumable workflow to its next declared step.'],
   ['POST', '/agent/jobs/:id/complete', 'Complete a leased job with structured output.'],
   ['POST', '/agent/jobs/:id/fail', 'Fail a leased job with retryable error.'],
   ['POST', '/agent/jobs/:id/replay', 'Replay a failed or dead-lettered job from a clean attempt.'],
@@ -206,6 +216,9 @@ const CAPABILITIES = [
   ['GET', '/notebooklm/health', 'Read NotebookLM broker, grounding, fallback, and session health.'],
   ['POST', '/notebooklm/health', 'Record a NotebookLM broker heartbeat and grounding result.'],
   ['POST', '/notebooklm/recover', 'Record a NotebookLM session recovery request.'],
+  ['GET', '/notebooklm/learning/receipts', 'Read the latest NotebookLM source indexing, focused output plan, and provider artifact receipts for one source.'],
+  ['POST', '/notebooklm/learning/route', 'Create a focused source-grounded NotebookLM output plan after source indexing is verified.'],
+  ['POST', '/notebooklm/learning/receipts', 'Record truthful NotebookLM source or provider artifact lifecycle evidence without changing learning progress.'],
 ] as const
 
 const CAPABILITY_PATTERNS = CAPABILITIES.map(([method, path]) => ({
@@ -307,14 +320,7 @@ app.get('/context', async (c) => {
   const activeQueue = await load<any[]>('active_queue', [], () => loadCaptureQueue(DB, 50))
   const brief = await load<any>('brief', null, () => loadHermesBrief(DB))
   const profileAssertions = await load<any>('profile_assertions', { results: [] }, () => DB.prepare("SELECT assertion_key,category,scope,value_json,weight,confidence,status,source_kind,version,updated_at FROM profile_assertions WHERE status IN ('active','hypothesis') ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,confidence DESC,updated_at DESC LIMIT 100").all())
-  const gaps = await load<any>('learning_gaps', { results: [] }, () => DB.prepare(`
-    SELECT t.id thread_id,t.title thread_title,t.status thread_status,t.guiding_question,
-           r.id requirement_id,r.requirement_key,r.label,r.evidence_type,r.minimum_count,r.minimum_score,r.stage_id,r.status
-    FROM thread_evidence_requirements r
-    JOIN learning_threads t ON t.id=r.thread_id
-    WHERE t.status NOT IN ('verified','abandoned') AND r.status='open'
-    ORDER BY CASE t.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,t.priority DESC,t.updated_at DESC,r.rowid
-    LIMIT 20`).all())
+  const gaps = await load<any>('learning_gaps', { results: [] }, () => Promise.resolve({ results: [] }))
   const verifiedThreads = await load<any>('verified_threads', { results: [] }, () => DB.prepare(`
     SELECT id,title,thread_type,guiding_question,definition_of_done,final_synthesis,verified_at,completed_at
     FROM learning_threads WHERE status='verified' ORDER BY COALESCE(verified_at,completed_at,updated_at) DESC LIMIT 50`).all())
@@ -350,8 +356,9 @@ app.get('/context', async (c) => {
       ) dr ON dr.branch = t.id OR dr.branch LIKE (t.id || '-%')
       WHERE t.type IN ('branch', 'category')
       GROUP BY t.id
-      HAVING last_consumed IS NULL OR last_consumed < date('now', '-30 days')
-      ORDER BY last_consumed ASC
+      HAVING MAX(COALESCE(dm.last_consumed, dr.last_consumed)) IS NULL
+         OR MAX(COALESCE(dm.last_consumed, dr.last_consumed)) < date('now', '-30 days')
+      ORDER BY MAX(COALESCE(dm.last_consumed, dr.last_consumed)) ASC
       LIMIT 5
     `).all()
   })

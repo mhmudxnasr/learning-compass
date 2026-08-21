@@ -8,6 +8,7 @@ import { join } from 'node:path'
 const { chromium } = createRequire(import.meta.url)('playwright')
 
 const roots = ['home', 'library', 'learn', 'map', 'settings']
+const publicLearningUpdatePath = '/updates/learning-materials'
 const rootRoutes = [
   { root: 'home', href: '#/home', expected: '.folio-home-workspace' },
   { root: 'library', href: '#/library', expected: '.folio-queue-view' },
@@ -21,7 +22,7 @@ const rootRoutes = [
 const modeRoutes = [
   { root: 'home', href: '#/home', mode: 'today', expected: '.folio-home-workspace' },
   { root: 'library', href: '#/library?mode=triage&focus=queue', mode: 'triage', focus: 'queue', expected: '.folio-queue-view' },
-  { root: 'library', href: '#/library?mode=triage&focus=inbox', mode: 'triage', focus: 'inbox', expected: '.folio-inbox-view' },
+
   { root: 'library', href: '#/library?mode=triage&focus=feeds', mode: 'triage', focus: 'feeds', expected: '.folio-feeds-view' },
   { root: 'library', href: '#/library?mode=catalog&focus=all', mode: 'catalog', focus: 'all', expected: '.folio-all-view' },
   { root: 'library', href: '#/library?mode=catalog&focus=books', mode: 'catalog', focus: 'books', expected: '.folio-books-view' },
@@ -30,6 +31,7 @@ const modeRoutes = [
   { root: 'library', href: '#/library?mode=catalog&focus=archive', mode: 'catalog', focus: 'archive', expected: '.folio-archive-view' },
   { root: 'library', href: '#/library?mode=assets&focus=files', mode: 'assets', focus: 'files', expected: '.folio-files-view' },
   { root: 'learn', href: '#/learn', mode: 'paths', expected: '.folio-paths' },
+  { root: 'learn', href: '#/learn?mode=canon', mode: 'canon', expected: '.canon-atlas-workspace' },
   { root: 'learn', href: '#/learn?mode=practice&focus=notes', mode: 'practice', focus: 'notes', expected: '.folio-notes' },
   { root: 'learn', href: '#/learn?mode=practice&focus=recall', mode: 'practice', focus: 'recall', expected: '.folio-recall' },
   { root: 'map', href: '#/map', mode: 'atlas', expected: '.atlas-empty-state, .atlas-canvas-view' },
@@ -87,9 +89,19 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
 
-  const requestJson = async (path, options = {}) => {
+  const requestJson = async (path, options = {}, retry = true) => {
     const response = await fetch(`${baseUrl}${path}`, { headers: { 'content-type': 'application/json' }, ...options })
-    const body = await response.json()
+    const method = (options.method || 'GET').toUpperCase()
+    let body
+    try {
+      body = await response.json()
+    } catch (error) {
+      if (retry && ['GET', 'HEAD'].includes(method)) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        return requestJson(path, options, false)
+      }
+      throw error
+    }
     if (!response.ok) throw new Error(`${options.method || 'GET'} ${path} failed: ${JSON.stringify(body)}`)
     return body
   }
@@ -111,6 +123,31 @@ try {
   const seededProfile = await requestJson('/brain/profile?recent_limit=50')
   if (!seededProfile.profile) throw new Error(`profile fixture did not persist: ${JSON.stringify(seededProfile)}`)
 
+  const canonHeaders = { 'content-type': 'application/json', 'x-real-ip': 'e2e-canon' }
+  const requestCanonJson = (path, options = {}) => requestJson(path, { ...options, headers: { ...canonHeaders, ...(options.headers || {}) } })
+  const canonFamily = await requestCanonJson('/learning/core/canon/domains', { method: 'POST', body: JSON.stringify({ title: 'Mind & Society', kind: 'family', branch_id: 'fixture-branch-id', boundary: 'Fields for understanding minds, groups, and institutions.', sort_order: 1 }) })
+  const canonDomain = await requestCanonJson('/learning/core/canon/domains', { method: 'POST', body: JSON.stringify({ title: 'Behavioral Psychology', slug: 'behavioral-psychology', parent_id: canonFamily.id, branch_id: 'fixture-branch-id', boundary: 'Evidence-led accounts of observable behavior and learning; excludes clinical self-treatment.', orientation: 'Compare mechanisms, applications, and critiques.', sort_order: 1 }) })
+  const canonPendingDomain = await requestCanonJson('/learning/core/canon/domains', { method: 'POST', body: JSON.stringify({ title: 'Social Psychology', slug: 'social-psychology', parent_id: canonFamily.id, branch_id: 'fixture-branch-id', boundary: 'How people think and act in social settings.', orientation: 'Compare individual, group, and cultural mechanisms.', sort_order: 2 }) })
+  const emptyCanonThread = await fetch(`${baseUrl}/learning/core/canon/domains/${canonPendingDomain.id}/thread`, { method: 'POST', headers: canonHeaders })
+  if (emptyCanonThread.status !== 409) throw new Error(`Canon created an empty Thread from an unfinished field (${emptyCanonThread.status})`)
+  const canonEntryBody = (role, suffix) => ({
+    title: `E2E Canon Book ${suffix}`, author: 'E2E Author', canonical_url: `https://example.com/canon-${suffix.toLowerCase()}`,
+    why_slot: `${role} earns this permanent role through a distinct contribution.`, beginner_case: 'A newcomer can enter through concrete examples.',
+    expert_case: 'Experienced practitioners still use its core model.', unique_contribution: `The ${role} contribution is not duplicated by the other slots.`,
+    limitations: 'Its scope is deliberately bounded.', difficulty: 'Moderate; no specialist prerequisites.', rejected_alternative: `Alternative ${suffix}`,
+    rejection_reason: 'It overlaps more heavily with another slot.', evidence: [{ claim: 'E2E source-grounded selection evidence.', url: `https://example.com/evidence-${suffix.toLowerCase()}` }], editorial_status: 'approved',
+  })
+  const canonFoundation = await requestCanonJson(`/learning/core/canon/domains/${canonDomain.id}/entries/foundation`, { method: 'PUT', body: JSON.stringify(canonEntryBody('foundation', 'A')) })
+  const prematureComplete = await fetch(`${baseUrl}/learning/core/canon/domains/${canonDomain.id}`, { method: 'PATCH', headers: canonHeaders, body: JSON.stringify({ curation_status: 'complete' }) })
+  if (prematureComplete.status !== 409) throw new Error(`Canon accepted a complete domain without three approved dossiers (${prematureComplete.status})`)
+  const canonCapture = await requestCanonJson(`/learning/core/canon/entries/${canonFoundation.id}/capture`, { method: 'POST' })
+  if (canonCapture.state !== 'captured' || canonCapture.branch_id !== 'fixture-branch-id') throw new Error('Canon capture did not preserve captured-source and branch contracts')
+  await requestCanonJson(`/learning/core/canon/domains/${canonDomain.id}/entries/representative`, { method: 'PUT', body: JSON.stringify(canonEntryBody('representative', 'B')) })
+  await requestCanonJson(`/learning/core/canon/domains/${canonDomain.id}/entries/boundary`, { method: 'PUT', body: JSON.stringify(canonEntryBody('boundary', 'C')) })
+  await requestCanonJson(`/learning/core/canon/domains/${canonDomain.id}`, { method: 'PATCH', body: JSON.stringify({ curation_status: 'complete' }) })
+  const canonRead = await requestCanonJson(`/learning/core/canon/domains/${canonDomain.id}`)
+  if (canonRead.entries.length !== 3 || canonRead.domain.curation_status !== 'complete') throw new Error('Canon domain did not expose its approved trio')
+
   browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 const errors = []
@@ -123,14 +160,14 @@ if (rootHrefs.length !== roots.length || roots.some((root) => !rootHrefs.include
 if (await page.locator('.root-rail nav[aria-label="Five workspaces"] a').count() !== roots.length) throw new Error('root rail must contain exactly five global destinations')
 if (await page.locator('.root-rail + .context-pane, .context-pane').count()) throw new Error('desktop shell rendered a permanent context pane')
 const desktopRail = page.locator('.root-rail')
-if (await desktopRail.getByRole('button', { name: 'Search', exact: true }).count() !== 1 || await desktopRail.getByRole('button', { name: 'Capture to Inbox', exact: true }).count() !== 1) throw new Error('desktop rail is missing global Search or Capture')
+if (await desktopRail.getByRole('button', { name: 'Search', exact: true }).count() !== 1 || await desktopRail.getByRole('button', { name: 'Save source', exact: true }).count() !== 1) throw new Error('desktop rail is missing global Search or Save source')
 await desktopRail.getByRole('button', { name: 'Search', exact: true }).click()
 await page.locator('.search-dialog').waitFor({ state: 'visible' })
 await page.keyboard.press('Escape')
-await desktopRail.getByRole('button', { name: 'Capture to Inbox', exact: true }).click()
+await desktopRail.getByRole('button', { name: 'Save source', exact: true }).click()
 await page.locator('.capture-dialog').waitFor({ state: 'visible' })
-if (!(await page.locator('.capture-dialog').innerText()).includes('unlimited Inbox')) throw new Error('global Capture does not explain the Inbox contract')
-await page.getByRole('button', { name: 'Close capture' }).click()
+if (!(await page.locator('.capture-dialog').innerText()).includes('source records')) throw new Error('global Save source does not explain the source-ledger contract')
+await page.getByRole('button', { name: 'Close capture dialog' }).click()
 
 for (const route of rootRoutes) {
   await page.goto(`${baseUrl}/${route.href}`, { waitUntil: 'networkidle' })
@@ -190,6 +227,25 @@ for (const route of modeRoutes) {
 }
 
   if (count !== modeRoutes.length) throw new Error(`expected ${modeRoutes.length} internal mode states, checked ${count}`)
+
+  await page.goto(`${baseUrl}/#/learn?mode=canon`, { waitUntil: 'networkidle' })
+  await page.locator('.canon-atlas-workspace').waitFor({ state: 'visible', timeout: 15000 })
+  if (!(await page.getByRole('heading', { level: 1, name: 'Canon' }).count())) throw new Error(`Canon atlas is missing its learner-facing title: ${await page.locator('h1').allTextContents()}`)
+  if (!(await page.getByRole('heading', { level: 2, name: 'Ready to explore' }).count()) || !(await page.getByRole('heading', { level: 2, name: 'Coming next' }).count())) throw new Error('Canon atlas did not separate usable paths from unfinished coverage')
+  if (!(await page.getByRole('button', { name: 'Surprise me with a ready field' }).count())) throw new Error('Canon did not constrain surprise discovery to ready fields')
+  if (!(await page.getByRole('link', { name: 'Explore Canon field Behavioral Psychology' }).count())) throw new Error('Canon atlas omitted the ready field row')
+  await page.getByRole('link', { name: 'Explore Canon field Behavioral Psychology' }).click()
+  await page.locator('.canon-domain-detail').waitFor({ state: 'visible' })
+  if (!page.url().includes('#/learn/canon/behavioral-psychology')) throw new Error('Canon domain did not preserve its canonical typed route')
+  for (const role of ['Foundation', 'Representative', 'Boundary']) if (!(await page.getByRole('heading', { level: 2, name: role }).count())) throw new Error(`Canon domain omitted its permanent ${role} slot`)
+  if (await page.locator('.canon-book-section').count() !== 3 || await page.getByText('Strongest rejected alternative').count() !== 3) throw new Error('Canon domain did not render three progressive selection dossiers')
+  if (!(await page.getByRole('button', { name: 'Create three-book Thread' }).isEnabled())) throw new Error('Canon did not enable Thread creation after a ready book was captured')
+  const canonThread = await requestCanonJson(`/learning/core/canon/domains/${canonDomain.id}/thread`, { method: 'POST' })
+  const canonThreadRead = await requestCanonJson(`/learning/core/threads/${canonThread.id}/path`)
+  if (!canonThreadRead.thread.title.includes('Behavioral Psychology')) throw new Error('Canon domain did not create a normal finite Thread')
+  await page.goto(`${baseUrl}/#/learn/canon/social-psychology`, { waitUntil: 'networkidle' })
+  await page.locator('.canon-pending-panel').waitFor({ state: 'visible' })
+  if (await page.locator('.canon-book-section').count() || await page.getByRole('button', { name: 'Create three-book Thread' }).count()) throw new Error('unfinished Canon field exposed a false reading path or Thread action')
 
   await page.goto(`${baseUrl}/#/settings?focus=preferences`, { waitUntil: 'networkidle' })
   for (const section of ['visual-presets-heading', 'interface-tokens', 'theme-section', 'font-section', 'learning-preferences', 'atlas-preferences']) {
@@ -296,6 +352,19 @@ const desktopScreenshot = await page.screenshot({ path: join(persistDir, 'home-d
 if (!desktopScreenshot.length) throw new Error('desktop visual smoke screenshot was empty')
 if (await page.locator('.root-rail nav a').count() !== 5) throw new Error('desktop root rail should expose five destinations')
 
+const updateResponse = await page.goto(`${baseUrl}${publicLearningUpdatePath}`, { waitUntil: 'networkidle' })
+if (!updateResponse?.ok()) throw new Error(`public learning update returned ${updateResponse?.status()}`)
+if (!updateResponse.headers()['content-type']?.startsWith('text/html')) throw new Error('public learning update is not served as HTML')
+if (!updateResponse.headers()['content-security-policy']?.includes("script-src 'none'")) throw new Error('public learning update is missing its no-script policy')
+if (await page.locator('h1').count() !== 1 || !(await page.getByRole('heading', { level: 1, name: /One lesson/ }).isVisible())) throw new Error('public learning update does not have one clear page title')
+if (await page.getByRole('link', { name: 'Open Learn' }).count() < 2) throw new Error('public learning update does not expose its Learn action at the top and close')
+if (await page.locator('.format-row').count() !== 4 || !(await page.getByText('NotebookLM gets a job, not a format list.').isVisible())) throw new Error('public learning update does not explain all four material roles and focused AI')
+const updateDesktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+if (updateDesktopOverflow > 2) throw new Error(`public learning update desktop overflow ${updateDesktopOverflow}px`)
+const updateDesktopScreenshot = await page.screenshot({ path: join(persistDir, 'learning-materials-update-desktop.png'), fullPage: true })
+if (!updateDesktopScreenshot.length) throw new Error('public learning update desktop screenshot was empty')
+await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
+
 const legacyAliases = [
   { path: '/today', root: 'home', mode: 'today' },
   { path: '/today/briefing', root: 'home', mode: 'today' },
@@ -303,8 +372,8 @@ const legacyAliases = [
   { path: '/insights/overview', root: 'home', mode: 'today' },
   { path: '/curate/queue', root: 'library', mode: 'triage', focus: 'queue' },
   { path: '/library/queue', root: 'library', mode: 'triage', focus: 'queue' },
-  { path: '/curate/inbox', root: 'library', mode: 'triage', focus: 'inbox' },
-  { path: '/library/inbox', root: 'library', mode: 'triage', focus: 'inbox' },
+  { path: '/curate/inbox', root: 'library', mode: 'catalog', focus: 'all' },
+  { path: '/library/inbox', root: 'library', mode: 'catalog', focus: 'all' },
   { path: '/curate/feeds', root: 'library', mode: 'triage', focus: 'feeds' },
   { path: '/library/feeds', root: 'library', mode: 'triage', focus: 'feeds' },
   { path: '/curate/rss', root: 'library', mode: 'triage', focus: 'feeds' },
@@ -350,7 +419,7 @@ function legacySurface(alias) {
   if (alias.root === 'library') {
     if (alias.mode === 'assets') return '.folio-files-view'
     if (alias.focus === 'queue') return '.folio-queue-view'
-    if (alias.focus === 'inbox') return '.folio-inbox-view'
+
     if (alias.focus === 'feeds') return '.folio-feeds-view'
     if (alias.focus === 'books') return '.folio-books-view'
     if (alias.focus === 'journal') return '.hardcover-journal-view'
@@ -431,14 +500,14 @@ await page.goto(`${baseUrl}/#/learn`, { waitUntil: 'networkidle' })
 await page.locator('.folio-paths').waitFor({ state: 'visible' })
 if (!(await page.getByRole('link', { name: 'Open learning Thread Systems Thinking' }).count())) throw new Error('Learn Paths did not render the authored path')
 await page.goto(`${baseUrl}/#/learn/thread/${hubThread.id}`, { waitUntil: 'networkidle' })
-await page.locator('.folio-thread').waitFor({ state: 'visible' })
-if (!(await page.getByRole('heading', { level: 1, name: 'Orientation' }).count())) throw new Error('typed Thread route is missing its Level h1')
+await page.locator('.thread-command-center').waitFor({ state: 'visible' })
+if (!(await page.getByRole('heading', { level: 1, name: 'Systems Thinking' }).count())) throw new Error('typed Thread route is missing its Thread h1')
 if ((await page.locator('.course-stage-context').getByRole('link', { name: 'Threads' }).getAttribute('href')) !== '#/learn') throw new Error('Thread breadcrumb does not return to the Threads index')
-if (!(await page.getByLabel('Study progress').count()) || !(await page.getByLabel('Proof progress').count())) throw new Error('Level progress does not separate study from proof')
-if (!(await page.getByText('1 of 1 proof actions complete').count())) throw new Error('Level finish line omitted proof progress')
-if (await page.locator('.learning-material-ledger').evaluate((node) => node.hasAttribute('open'))) throw new Error('Thread material ledger should be collapsed by default')
-await page.locator('.learning-material-ledger > summary').click()
-if (!(await page.getByText('Direct Thread material').count()) || !(await page.getByRole('link', { name: 'Path-level reflection' }).count()) || !(await page.getByRole('link', { name: 'What is the Thread question?' }).count())) throw new Error(`Learn Thread did not render direct Thread material: ${await page.locator('.folio-thread').innerText()}`)
+if (!(await page.getByLabel('Study progress').count()) || !(await page.getByLabel('Proof progress').count()) || !(await page.getByLabel('Verification progress').count())) throw new Error('Thread overview does not separate Study, Proof, and Verification')
+for (const tab of ['Overview', 'Curriculum', 'Evidence', 'Materials']) if (!(await page.getByRole('link', { name: tab, exact: true }).count())) throw new Error(`Thread command center omitted ${tab}`)
+await page.getByRole('link', { name: 'Materials', exact: true }).click()
+await page.locator('.learning-material-ledger').waitFor({ state: 'visible' })
+if (!(await page.getByText('Direct Thread material').count()) || !(await page.getByRole('link', { name: 'Path-level reflection' }).count()) || !(await page.getByRole('link', { name: 'What is the Thread question?' }).count())) throw new Error(`Learn Thread did not render direct Thread material: ${await page.locator('.thread-command-center').innerText()}`)
 if (!(await page.getByText('Thread material index').count()) || !(await page.getByText('1 notes · 1 files · 1 cards · 0 drafts').count())) throw new Error('Learn Thread did not aggregate its Level material index')
 if (!page.url().includes(`#/learn/thread/${hubThread.id}`)) throw new Error('typed Thread route did not preserve identity')
 if (await page.locator('.orbit-bar, .page-head, .subnav, .main-focus').count()) throw new Error('focused Learning Thread rendered retired shell selectors')
@@ -448,6 +517,78 @@ if (await page.locator('.course-level-materials').evaluate((node) => node.hasAtt
 await page.locator('.course-level-materials > summary').click()
 if (!(await page.getByRole('link', { name: 'Stage-level checkpoint' }).count()) || !(await page.getByRole('link', { name: 'hub-level.txt' }).count()) || !(await page.getByRole('link', { name: 'What comes before the theory?' }).count())) throw new Error(`Level route did not render its owned materials: ${await page.locator('.folio-thread').innerText()}`)
 if (!page.url().includes(`#/learn/t/${hubThread.id}/v/${hubStage.id}`)) throw new Error('typed Level route did not preserve Thread and Level identity')
+const materialHeaders = { 'content-type': 'application/json', 'x-real-ip': 'e2e-learning-materials' }
+const requestMaterialJson = (path, options = {}) => requestJson(path, { ...options, headers: { ...materialHeaders, ...(options.headers || {}) } })
+const materialThread = await requestMaterialJson('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Material launcher fixture', thread_type: 'understand', guiding_question: 'Which material should I open first?', definition_of_done: 'Open the recommended lesson material.', activate: true }) })
+const materialStage = await requestMaterialJson(`/learning/core/threads/${materialThread.id}/stages`, { method: 'POST', body: JSON.stringify({ title: 'Level 1 — Study', objective: 'Use the right rendition for the task.', position: 0 }) })
+const materialLesson = await requestMaterialJson(`/learning/core/threads/${materialThread.id}/stages/${materialStage.id}/lessons`, { method: 'POST', body: JSON.stringify({ title: 'Choose the right material', objective: 'Start with the guided companion and keep alternatives close.', position: 0, estimated_minutes: 18 }) })
+const materialLessonNote = await requestMaterialJson('/notes', { method: 'POST', body: JSON.stringify({ title: 'Lesson-owned observation', lesson_id: materialLesson.id, sections: [{ section_key: 'body', label: 'Notes', content: 'This belongs only to the lesson.', direction: 'auto' }] }) })
+const materialLessonCard = await requestMaterialJson('/learning/srs/create', { method: 'POST', body: JSON.stringify({ lesson_id: materialLesson.id, question: 'Which scope owns this card?', answer: 'The exact lesson.' }) })
+const materialLessonUpload = new FormData()
+materialLessonUpload.append('file', new Blob(['lesson-owned file'], { type: 'text/plain' }), 'lesson-owned.txt')
+materialLessonUpload.append('metadata', JSON.stringify({ lesson_id: materialLesson.id }))
+const materialLessonUploadResponse = await fetch(`${baseUrl}/artifacts`, { method: 'POST', headers: { 'x-real-ip': 'e2e-learning-materials' }, body: materialLessonUpload })
+const materialLessonFile = await materialLessonUploadResponse.json()
+if (!materialLessonUploadResponse.ok) throw new Error(`Lesson-owned file upload failed: ${JSON.stringify(materialLessonFile)}`)
+const materialScopedPath = await requestMaterialJson(`/learning/core/threads/${materialThread.id}/path`)
+const materialScopedLesson = materialScopedPath.stages[0].lessons.find((lesson) => lesson.id === materialLesson.id)
+if (!materialScopedLesson?.notes.some((note) => note.id === materialLessonNote.id) || !materialScopedLesson.files.some((file) => file.id === materialLessonFile.id) || !materialScopedLesson.cards.some((card) => card.id === materialLessonCard.card_id)) throw new Error('Thread path omitted exact Lesson-owned capture')
+if (materialScopedPath.notes.some((note) => note.id === materialLessonNote.id) || materialScopedPath.stages[0].notes.some((note) => note.id === materialLessonNote.id)) throw new Error('Lesson-owned capture leaked into a parent scope')
+await requestMaterialJson('/recommendations/push', { method: 'POST', body: JSON.stringify([{ id: 'material_launcher_source', video_title: 'Source with learning companions', video_url: 'https://example.com/material-launcher-original', creator: 'E2E', content_type: 'article', status: 'active' }]) })
+await requestMaterialJson('/recommendations/action', { method: 'POST', body: JSON.stringify({ id: 'material_launcher_source', status: 'active', notebook_url: 'https://notebooklm.google.com/notebook/material-launcher' }) })
+await requestMaterialJson('/notebooklm/learning/receipts', { method: 'POST', body: JSON.stringify({ kind: 'source', recommendation_id: 'material_launcher_source', notebook_id: 'material-launcher', notebook_url: 'https://notebooklm.google.com/notebook/material-launcher', status: 'pending' }) })
+await requestMaterialJson('/notebooklm/learning/receipts', { method: 'POST', body: JSON.stringify({ kind: 'source', recommendation_id: 'material_launcher_source', notebook_id: 'material-launcher', notebook_url: 'https://notebooklm.google.com/notebook/material-launcher', status: 'indexed', provider_source_id: 'provider-material-source' }) })
+const materialNotebookPlan = await requestMaterialJson('/notebooklm/learning/route', { method: 'POST', body: JSON.stringify({ recommendation_id: 'material_launcher_source' }) })
+await requestMaterialJson('/notebooklm/learning/receipts', { method: 'POST', body: JSON.stringify({ kind: 'artifact', recommendation_id: 'material_launcher_source', notebook_id: 'material-launcher', notebook_url: 'https://notebooklm.google.com/notebook/material-launcher', plan_id: materialNotebookPlan.plan_id, format: 'quiz', status: 'pending', provider_task_id: 'provider-material-quiz-task', source_grounded: true, custom_prompt_applied: true }) })
+await requestMaterialJson('/notebooklm/learning/receipts', { method: 'POST', body: JSON.stringify({ kind: 'artifact', recommendation_id: 'material_launcher_source', notebook_id: 'material-launcher', notebook_url: 'https://notebooklm.google.com/notebook/material-launcher', plan_id: materialNotebookPlan.plan_id, format: 'quiz', status: 'ready', provider_artifact_id: 'provider-material-quiz', source_grounded: true, custom_prompt_applied: true, question_count: 6, hints_before_explanations: true, transfer_question_count: 1 }) })
+await requestMaterialJson(`/learning/core/threads/${materialThread.id}/lessons/${materialLesson.id}/sources`, { method: 'POST', body: JSON.stringify({ recommendation_id: 'material_launcher_source', branch_id: 'fixture-branch-id', role: 'primary', expected_contribution: 'Explain the source through a verified reading companion.', position: 0 }) })
+const materialPairId = 'material-launcher-pair'
+const materialHtmlUpload = new FormData()
+materialHtmlUpload.append('file', new Blob(['<!doctype html><html lang="ar" dir="rtl"><body><main><h1>رفيق القراءة</h1></main></body></html>'], { type: 'text/html' }), 'material-launcher.html')
+materialHtmlUpload.append('metadata', JSON.stringify({ recommendation_id: 'material_launcher_source', pair_id: materialPairId, role: 'html', recommended_start: 'html', revision: '2', language: 'ar' }))
+const materialHtmlResponse = await fetch(`${baseUrl}/artifacts`, { method: 'POST', headers: { 'x-real-ip': 'e2e-learning-materials' }, body: materialHtmlUpload })
+const materialHtml = await materialHtmlResponse.json()
+if (!materialHtmlResponse.ok) throw new Error(`material launcher HTML upload failed: ${JSON.stringify(materialHtml)}`)
+const materialPdfUpload = new FormData()
+materialPdfUpload.append('file', new Blob(['%PDF-1.4\n% material launcher fixture\n'], { type: 'application/pdf' }), 'material-launcher.pdf')
+materialPdfUpload.append('metadata', JSON.stringify({ recommendation_id: 'material_launcher_source', pair_id: materialPairId, role: 'pdf', recommended_start: 'html', revision: '2', language: 'ar', page_count: 12 }))
+const materialPdfResponse = await fetch(`${baseUrl}/artifacts`, { method: 'POST', headers: { 'x-real-ip': 'e2e-learning-materials' }, body: materialPdfUpload })
+const materialPdf = await materialPdfResponse.json()
+if (!materialPdfResponse.ok) throw new Error(`material launcher PDF upload failed: ${JSON.stringify(materialPdf)}`)
+await page.goto(`${baseUrl}/#/learn/t/${materialThread.id}/l/${materialLesson.id}`, { waitUntil: 'networkidle' })
+await page.locator('.course-lesson-page').waitFor({ state: 'visible', timeout: 15000 })
+if (!(await page.getByRole('heading', { level: 2, name: 'Start the Level first' }).count()) || (await page.getByRole('button', { name: 'Mark lesson complete' }).isEnabled())) throw new Error('Lesson deep link bypassed the explicit Level start gate')
+const blockedLessonUpdate = await fetch(`${baseUrl}/learning/core/threads/${materialThread.id}/lessons/${materialLesson.id}`, { method: 'PATCH', headers: { ...materialHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) })
+if (blockedLessonUpdate.status !== 409) throw new Error('API allowed Lesson completion before its Level was started')
+await page.goto(`${baseUrl}/#/learn/t/${materialThread.id}/v/${materialStage.id}`, { waitUntil: 'networkidle' })
+await page.getByRole('button', { name: 'Start Level' }).click()
+await page.getByText('In progress', { exact: true }).first().waitFor({ state: 'visible' })
+await page.goto(`${baseUrl}/#/learn/t/${materialThread.id}/l/${materialLesson.id}`, { waitUntil: 'networkidle' })
+await page.getByRole('button', { name: 'Start lesson' }).click()
+await page.getByRole('button', { name: 'Mark lesson complete' }).waitFor({ state: 'visible' })
+await page.locator('.course-level-materials > summary').click()
+for (const ownedMaterial of ['Lesson-owned observation', 'lesson-owned.txt', 'Which scope owns this card?']) if (!(await page.getByText(ownedMaterial, { exact: true }).count())) throw new Error(`Lesson workspace omitted ${ownedMaterial}`)
+const primaryMaterial = page.locator('.course-material-primary')
+if (await primaryMaterial.count() !== 1 || (await primaryMaterial.getAttribute('href')) !== `/artifacts/${materialHtml.id}`) throw new Error('Lesson launcher did not make the recommended HTML companion the single primary action')
+const primaryMaterialText = await primaryMaterial.innerText()
+const normalizedPrimaryMaterialText = primaryMaterialText.toLowerCase()
+if (!normalizedPrimaryMaterialText.includes('recommended start') || !normalizedPrimaryMaterialText.includes('read the html companion') || !normalizedPrimaryMaterialText.includes('arabic') || !normalizedPrimaryMaterialText.includes('revision 2')) throw new Error(`Lesson launcher omitted primary purpose or metadata: ${primaryMaterialText}`)
+const materialAlternatives = page.locator('.course-material-option')
+if (await materialAlternatives.count() !== 3) throw new Error('Lesson launcher did not retain Original, PDF, and NotebookLM as alternatives')
+const materialLauncherText = await page.locator('.course-material-launcher').innerText()
+for (const copy of ['Read at the original source.', 'Read or annotate the exact A4 print edition on a tablet.', 'Open the Quiz made from this source.', 'Ready', '12 pages']) {
+  if (!materialLauncherText.toLowerCase().includes(copy.toLowerCase())) throw new Error(`Lesson launcher is missing purpose or metadata: ${copy}. Rendered: ${materialLauncherText}`)
+}
+if (await page.locator('.course-source-links, .course-sources .folio-file-badge').count()) throw new Error('Lesson launcher still renders the old equal material badges')
+await page.setViewportSize({ width: 390, height: 844 })
+await page.goto(`${baseUrl}/#/learn/t/${materialThread.id}/l/${materialLesson.id}`, { waitUntil: 'networkidle' })
+if (!(await page.locator('.course-material-primary').isVisible()) || await page.locator('.course-material-option').count() !== 3) throw new Error('Lesson launcher lost its primary action or alternatives on mobile')
+if (await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth) > 2) throw new Error('Lesson material launcher introduced mobile horizontal overflow')
+await page.setViewportSize({ width: 1440, height: 900 })
+for (const artifact of [materialHtml, materialPdf, materialLessonFile]) {
+  const cleanup = await fetch(`${baseUrl}/artifacts/${artifact.id}`, { method: 'DELETE', headers: { 'x-real-ip': 'e2e-learning-materials' } })
+  if (!cleanup.ok) throw new Error(`material launcher fixture cleanup failed for ${artifact.id}`)
+}
 const [capabilities, systemInventory] = await Promise.all([
   requestJson('/agent/capabilities'),
   requestJson('/agent/system'),
@@ -467,7 +608,7 @@ const profileBody = await page.locator('.workspace-canvas').innerText()
 for (const value of ['Profile rendering fixture', 'Deep systems thinking', 'Reaction style', 'Priorities', 'Mastered knowledge', 'Exclusions', 'Learned patterns', 'Creator history', 'Taste affinities', 'Recent reflections', 'Recent ratings']) {
   if (!profileBody.toLowerCase().includes(value.toLowerCase())) throw new Error(`profile page is missing rendered value or section: ${value}`)
 }
-if (!profileBody.includes('Readable fixture branch') || profileBody.includes('fixture-branch-id')) throw new Error('profile taste affinities leaked an internal branch id instead of the branch label')
+if (!profileBody.includes('Readable fixture branch') || profileBody.includes('fixture-branch-id')) throw new Error(`profile taste affinities leaked an internal branch id instead of the branch label (label=${profileBody.includes('Readable fixture branch')}, id=${profileBody.includes('fixture-branch-id')})`)
 if (profileBody.includes('Priority topics configured.')) throw new Error('profile page still renders the fake priority placeholder')
 if (profileBody.includes('{"malformed":')) throw new Error('profile page exposed raw JSON in its normal view')
 if (await page.locator('.profile-tag-list').count() < 1) throw new Error('profile page did not render visual topic tags')
@@ -489,7 +630,7 @@ if (manifest.id !== '/' || manifest.start_url !== '/#/home' || manifest.display 
 if (!manifest.icons?.some((icon) => icon.sizes === '192x192' && icon.type === 'image/png')) throw new Error('manifest is missing the 192px Android launcher icon')
 if (!manifest.icons?.some((icon) => icon.sizes === '512x512' && icon.type === 'image/png')) throw new Error('manifest is missing the 512px Android launcher icon')
 if (!manifest.icons?.some((icon) => icon.purpose === 'maskable')) throw new Error('manifest is missing a maskable Android launcher icon')
-if (manifest.share_target?.action !== '/api/share-target') throw new Error('manifest lost the Android share-to-Inbox target')
+if (manifest.share_target?.action !== '/api/share-target') throw new Error('manifest lost the Android source share target')
 if (!manifest.shortcuts?.some((shortcut) => shortcut.url?.includes('action=capture'))) throw new Error('manifest is missing the Android Capture shortcut')
 if (await page.locator('link[rel="manifest"][href="/manifest.json"]').count() !== 1) throw new Error('application shell does not link the install manifest')
 await page.evaluate(() => navigator.serviceWorker?.ready)
@@ -511,11 +652,11 @@ await page.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout:
 await page.context().setOffline(false)
 const offlineCompanionDelete = await fetch(`${baseUrl}${offlineCompanionPath}`, { method: 'DELETE' })
 if (!offlineCompanionDelete.ok) throw new Error('offline HTML companion fixture cleanup failed')
-await page.goto(`${baseUrl}/#/library?mode=triage&focus=inbox&action=capture`, { waitUntil: 'networkidle' })
+await page.goto(`${baseUrl}/#/library?mode=catalog&focus=all&action=capture`, { waitUntil: 'networkidle' })
 await page.locator('.capture-dialog').waitFor({ state: 'visible' })
-await page.getByRole('button', { name: 'Close capture' }).click()
+await page.getByRole('button', { name: 'Close capture dialog' }).click()
 await page.locator('.capture-dialog').waitFor({ state: 'detached' })
-if (!page.url().includes('#/library?mode=triage&focus=inbox') || page.url().includes('action=capture')) throw new Error('Android Capture shortcut did not return to the canonical Inbox route')
+if (!page.url().includes('#/library?mode=catalog&focus=all') || page.url().includes('action=capture')) throw new Error('Android Capture shortcut did not return to All sources')
 if (!Array.isArray(artifacts.artifacts)) throw new Error('artifact library contract is invalid')
 if (!Array.isArray(feeds.feeds)) throw new Error('feed subscriptions contract is invalid')
 if (!Array.isArray(manualArchive.recommendations)) throw new Error('manual archive contract is invalid')
@@ -531,7 +672,7 @@ if (balance.branches?.[0]?.id) {
 await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
 await page.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout: 15000 })
 const homeBody = await page.locator('.workspace-canvas').innerText()
-for (const value of ['Current source', 'Active Thread', 'Queue', 'Due recall', 'Capture signal']) {
+for (const value of ['Current source', 'Active Thread', 'Queue', 'RSS Feeds', 'Capture signal']) {
   if (!homeBody.toLowerCase().includes(value.toLowerCase())) throw new Error(`Home is missing ${value}: ${homeBody}`)
 }
 if (await page.locator('.folio-home-focus').count() !== 1) throw new Error('Home must expose exactly one current-source focus')
@@ -547,9 +688,9 @@ if (artifacts.artifacts.length === 0) {
 }
 
 const captured = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hermes-e2e', title: 'Hermes automation test' }) })
-const [capturedInbox, queueBeforeTriage] = await Promise.all([requestJson('/capture'), requestJson('/capture/queue')])
-if (!capturedInbox.items.some((item) => item.id === captured.id)) throw new Error('new capture did not enter Inbox')
-if (queueBeforeTriage.items.some((item) => item.id === captured.id)) throw new Error('new capture bypassed Inbox and entered Queue')
+const [capturedSources, queueBeforeTriage] = await Promise.all([requestJson('/capture'), requestJson('/capture/queue')])
+if (!capturedSources.items.some((item) => item.id === captured.id)) throw new Error('new capture did not enter All sources')
+if (queueBeforeTriage.items.some((item) => item.id === captured.id)) throw new Error('new capture bypassed deliberate triage and entered Queue')
 const preRecord = await requestJson(`/capture/${captured.id}/record`)
 if (!preRecord.item) throw new Error('source record API did not return the captured source')
 const thread = await requestJson('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Test a decision with evidence', thread_type: 'decide', guiding_question: 'Should this mechanism be used?', definition_of_done: 'Record a source-backed decision and synthesis.', activate: true }) })
@@ -558,10 +699,9 @@ await requestJson(`/capture/${captured.id}/triage`, { method: 'POST', body: JSON
 await requestJson(`/learning/core/threads/${thread.id}/sources`, { method: 'POST', body: JSON.stringify({ recommendation_id: captured.id, role: 'primary', expected_contribution: 'Supply the mechanism and its limits.' }) })
 await page.goto(`${baseUrl}/#/library/source/${encodeURIComponent(captured.id)}`, { waitUntil: 'networkidle' })
 await page.locator('.folio-object-view').waitFor({ state: 'visible', timeout: 15000 })
-await page.locator('.object-inspector').waitFor({ state: 'visible', timeout: 15000 })
 if (!(await page.getByRole('heading', { name: 'Source access' }).isVisible())) throw new Error('typed source route is missing source access')
 if (!page.url().includes(`#/library/source/${captured.id}`)) throw new Error('typed source route did not preserve the captured source identity')
-if (await page.locator('.object-inspector').count() !== 1 || !(await page.locator('.inspector-route').innerText()).includes(`/library/source/${captured.id}`)) throw new Error('typed source route did not open its inspector plumbing')
+if (await page.locator('.object-inspector').count()) throw new Error('typed source route rendered a redundant side inspector beside its full-page record')
 const started = await requestJson('/sessions/start', { method: 'POST', body: JSON.stringify({ recommendation_id: captured.id, thread_id: thread.id, target_kind: 'original' }) })
 const returned = await requestJson(`/sessions/${started.session_id}/return`, { method: 'POST', body: JSON.stringify({ reflection: 'The mechanism is useful and I will apply it.', rating: 7, disposition: 'apply', complete: true, auto_enqueue: true }) })
 if (returned.status !== 'completed' || returned.disposition !== 'apply' || !returned.reflection_note_id || !returned.recall_eligible || !returned.consolidation?.id) throw new Error('explicit application disposition did not start consolidation')
@@ -591,15 +731,16 @@ const revertedProposal = (await requestJson('/feedback/proposals')).proposals.fi
 if (revertedProposal?.status !== 'reverted') throw new Error('Activity did not revert the automatic profile change')
 if ((await requestJson('/agent/jobs?status=pending')).jobs.some((job) => job.job_type === 'apply_feedback_proposal')) throw new Error('proposal approval created a redundant application job')
 const extractJob = await claim('extract_notes')
+const sourceNoteBody = `The fixture preserves one complete source-shaped note instead of imposing generic Foundation or Case Study sections. It explains the test mechanism in source order, keeps its limitation visible, and gives the retained idea one exact locator. The mechanism requires checking available evidence before applying a rule; otherwise confidence outruns the source. The note stays readable prose rather than a collection of generated cards.\n\n> الفكرة الأساسية هي مراجعة الدليل المتاح قبل تطبيق الآلية.\n\nThe source-specific limitation is that this fixture demonstrates the contract rather than a real-world causal result.`
+const sourceNoteWordCount = sourceNoteBody.match(/[\p{L}\p{N}]+/gu)?.length || 0
 await requestJson(`/agent/jobs/${extractJob.id}/complete`, { method: 'POST', body: JSON.stringify({ worker: 'e2e',
-  note: { id: 'e2e_source_note', recommendation_id: captured.id, title: 'Hermes source note', kind: 'guide', source_url: 'https://example.com/hermes-e2e', sections: [
-    { section_key: 'foundation', label: 'Foundation', content: '---\ntype: guide tags: testing status/completed\ntype/guide testing status/completed ---\n\nSource (https://example.com/hermes-e2e)\n\nA test mechanism. *الفكرة الأساسية إن الميكانيزم ده بيشتغل كده.*' },
-    { section_key: 'case_studies', label: 'Case Studies', content: 'The example shows the mechanism in practice. *المثال موضح الفكرة وهي شغالة على أرض الواقع.*' },
-    { section_key: 'exploitation', label: 'Exploitation', content: 'The weakness is overconfidence. *الثغرة هنا إن الواحد يثق زيادة عن اللزوم.*' },
-    { section_key: 'defense', label: 'Defense', content: 'Check the evidence before acting. *من الآخر راجع الدليل قبل ما تتحرك.*' },
+  extraction: { contract: 'source_note_v2', complete: true, adapter: 'direct_text', source_hash: 'a'.repeat(64), source_word_count: 200, note_word_count: sourceNoteWordCount, coverage_status: 'complete' },
+  note: { id: 'e2e_source_note', recommendation_id: captured.id, title: 'Hermes extraction fixture', kind: 'guide', abstract: 'A source-shaped extraction contract fixture.', source_url: 'https://example.com/hermes-e2e', sections: [
+    { section_key: 'body', label: 'Source note', content: sourceNoteBody },
   ] },
-  srs_drafts: [{ question: 'What is the test mechanism?', answer: 'A test mechanism.', topic: 'Testing' }],
-  learning_units: [{ id: 'e2e_unit', unit_type: 'method', statement: 'Check the available evidence before applying the mechanism.', user_synthesis: 'I should test the evidence before using it.', stance: 'accept', confidence: 0.9, role: 'core', anchors: [{ anchor_type: 'section', locator: 'Foundation', excerpt: 'A test mechanism.' }] }],
+  srs_drafts: [{ id: 'e2e_draft', unit_id: 'e2e_unit', card_type: 'decision', question: 'What should be checked before applying the mechanism?', answer: 'Check the available source evidence and its limits.', topic: 'Testing', source_anchor: 'Fixture body' }],
+  recall: { status: 'drafted', count: 1 },
+  learning_units: [{ id: 'e2e_unit', unit_type: 'method', statement: 'Check the available evidence before applying the mechanism.', user_synthesis: 'I should test the evidence before using it.', stance: 'accept', confidence: 0.9, role: 'core', anchors: [{ anchor_type: 'section', locator: 'Fixture body', excerpt: 'checking available evidence before applying a rule' }] }],
   reflection: { content: 'Handwritten margin note from page 2.', recommendation_id: captured.id, source_url: 'https://example.com/hermes-e2e' },
 }) })
 const extractedNotes = (await requestJson('/notes')).notes
@@ -608,12 +749,11 @@ const guideNotes = (await requestJson('/notes?kind=guide')).notes
 if (!guideNotes.some((note) => note.id === 'e2e_source_note') || guideNotes.some((note) => note.kind === 'reflection')) throw new Error('guide notes library leaked reflections into the extracted scope')
 const consolidatedRecord = await requestJson(`/capture/${captured.id}/record`)
 if (consolidatedRecord.consolidation?.state !== 'closed' || !consolidatedRecord.learning_units.some((unit) => unit.id === 'e2e_unit' && unit.anchors.length === 1) || !consolidatedRecord.threads.some((item) => item.id === thread.id)) throw new Error('learning core did not preserve the thread, anchored unit, and terminal consolidation receipt')
-await requestJson('/learning/core/evidence', { method: 'POST', body: JSON.stringify({ thread_id: thread.id, unit_id: 'e2e_unit', evidence_type: 'decision', result: 'recorded', response: 'Use the mechanism only when its evidence checks pass.', score: 1 }) })
-await requestJson(`/learning/core/threads/${thread.id}`, { method: 'PATCH', body: JSON.stringify({ final_synthesis: 'The mechanism is useful only when its evidence and failure modes are checked first.' }) })
+await requestJson(`/learning/core/threads/${thread.id}`, { method: 'PATCH', body: JSON.stringify({ final_synthesis: 'The mechanism is useful only when its failure modes are checked first.' }) })
 const verifiedThread = await requestJson(`/learning/core/threads/${thread.id}/verify`, { method: 'POST' })
-if (verifiedThread.status !== 'verified') throw new Error('evidence-backed Thread did not verify')
+if (verifiedThread.status !== 'verified') throw new Error('Thread did not verify')
 await page.goto(`${baseUrl}/#/learn?mode=practice&focus=notes`, { waitUntil: 'networkidle' })
-await page.locator('.folio-note-row strong', { hasText: 'Hermes source note' }).waitFor({ state: 'visible', timeout: 15000 })
+await page.locator('.note-ledger-copy strong', { hasText: 'Hermes extraction fixture' }).waitFor({ state: 'visible', timeout: 15000 })
 if (await page.getByText('Handwritten margin note').count()) throw new Error('Notes library leaked personal reflection content into the extracted library')
 await page.goto(`${baseUrl}/#/learn/note/e2e_source_note`, { waitUntil: 'networkidle' })
 await page.locator('.folio-note-reading').waitFor({ state: 'visible', timeout: 15000 })
@@ -664,6 +804,16 @@ if (await page.locator('.folio-home-header > .folio-button').isVisible()) throw 
 if (await page.locator('.context-pane, .context-scrim, .navigation-sheet').count()) throw new Error('mobile shell rendered a redundant navigation sheet or context pane')
 const mobileRootHrefs = await page.locator('.mobile-dock a').evaluateAll((links) => [...new Set(links.map((link) => link.getAttribute('href')))])
 if (mobileRootHrefs.length !== roots.length || roots.some((root) => !mobileRootHrefs.includes(`#/${root}`))) throw new Error('mobile dock does not expose the five stable roots')
+
+await page.goto(`${baseUrl}${publicLearningUpdatePath}`, { waitUntil: 'networkidle' })
+const updateMobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+if (updateMobileOverflow > 2) throw new Error(`public learning update mobile overflow ${updateMobileOverflow}px`)
+const updateMobileAction = await page.getByRole('link', { name: 'Open Learn' }).first().boundingBox()
+if (!updateMobileAction || updateMobileAction.height < 44) throw new Error('public learning update mobile action is smaller than 44px')
+if (!(await page.locator('.source-folio').isVisible()) || await page.locator('.format-row').count() !== 4) throw new Error('public learning update loses its material explanation on mobile')
+const updateMobileScreenshot = await page.screenshot({ path: join(persistDir, 'learning-materials-update-mobile.png'), fullPage: true })
+if (!updateMobileScreenshot.length) throw new Error('public learning update mobile screenshot was empty')
+await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
 for (const route of modeRoutes) {
   await page.goto(`${baseUrl}/${route.href}`, { waitUntil: 'networkidle' })
   await page.locator(route.expected).waitFor({ state: 'attached', timeout: 15000 })

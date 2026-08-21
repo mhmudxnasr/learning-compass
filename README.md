@@ -2,7 +2,7 @@
 
 Learning Compass is a private, single-user learning system. It collects material from many sources, keeps the active queue small, tracks learning at the original source, turns reflection into structured notes and recall cards, and uses that history to maintain a personal knowledge map.
 
-Consumption normally happens at the real source. A verified Lite Visual companion is the deliberate exception: it is an Arabic, complete-source reading substitute rendered as linked HTML and PDF from one canonical body. Learning Compass manages deciding what matters, remembering where you stopped, processing what you learned, and resurfacing it later.
+Consumption normally happens at the real source. A verified Lite Visual companion is the deliberate exception: it is an Arabic complete-source substitute whose semantic HTML article is canonical and whose linked A4 PDF is printed from that exact file. Learning Compass manages deciding what matters, remembering where you stopped, processing what you learned, and resurfacing it later.
 
 ## The learning loop
 
@@ -11,8 +11,8 @@ capture → curate → consume externally → reflect → extract notes
         → approve recall cards → review → update map → resurface
 ```
 
-1. **Capture:** URLs, text, PDFs, HTML, videos, Telegram shares, and RSS/Atom entries enter one unlimited Inbox.
-2. **Curate:** an item can be archived, excluded, grouped, or promoted to the active Queue. The Queue normally holds no more than five items.
+1. **Capture:** URLs, text, PDFs, HTML, videos, Telegram shares, and RSS/Atom entries become ordinary source records in Library.
+2. **Commit:** an item can be archived, excluded, grouped, or promoted to the active Queue. The Queue normally holds no more than five items.
 3. **Consume:** opening an item starts or resumes a learning session, then hands off to the original source.
 4. **Return:** the user records a five-part reflection and may complete and rate the session in the same action.
 5. **Process:** structured notes are stored in D1. Large source files and generated reading companions live in R2.
@@ -61,7 +61,7 @@ Obsidian is an export target, not a second writable database. It must never over
 
 | Choice | Reason |
 |---|---|
-| Unlimited Inbox, five-item Queue | Capture should be frictionless; commitment should be scarce. |
+| Source records in Library, five-item Queue | Saving should be frictionless; commitment should be scarce. |
 | Consumption at the original source | The system tracks learning without becoming a worse reader for every media format. |
 | Editable recall drafts before approval | Generated questions are suggestions until the learner confirms they are accurate and useful. |
 | Leased, idempotent background jobs | A crash or retry must not duplicate notes, cards, artifacts, or taste signals. |
@@ -73,7 +73,7 @@ Obsidian is an export target, not a second writable database. It must never over
 client/
   src/app/App.tsx             application shell and workspace composition
   src/api.ts                  browser API and offline helpers
-  src/app/router.ts           canonical five-destination registry (11 grouped modes + focus filters)
+  src/app/router.ts           canonical five-destination registry (12 grouped modes + focus filters)
   src/features/atlas/         lazy-loaded knowledge graph
 
 src/
@@ -291,11 +291,17 @@ Add offline mutation recovery, large-data tests, bilingual direction handling, r
 - Consumption happens at the original source or a verified canonical Lite Visual companion.
 - Returning with reflection creates one linked structured reflection.
 - Every reflection produces confirmation-gated Taste Mapper proposals.
-- Ratings of 7–10 automatically create a separate extracted note and editable recall drafts; approval is required before Recall.
+- Explicit retain/apply consolidation creates one source-proportional synthesis and zero to four anchored Unit-linked recall drafts—or records why no card is useful. Rating alone never generates recall; approval is required before Review.
 - Feedback processing does not request a new recommendation.
 - Completed sources can be explicitly attached to existing knowledge-map nodes; ambiguous matches stay unresolved instead of creating speculative branches.
 - An abstained Compass Pick with a verified or restricted reachable source can be explicitly added to the Queue anyway; the override bypasses only the automatic threshold, and the five-item Queue cap still applies.
-- One Lite Visual source creates one linked Arabic HTML/PDF reading-companion pair from one complete canonical body and counts as one taste signal. Text preserves the full explanation; visuals are selected where seeing improves understanding. Source-specific accessible color is encouraged, while prose dumps, image-only atlases, reusable themes, generic mockups/widgets, transcript padding, and repeated decorative elements are forbidden.
+- One Lite Visual source creates one atomic Arabic HTML/PDF reading-companion pair and counts as one taste signal. `extract_source.py` routes articles, YouTube/audio, PDF/OCR, EPUB, documents, and text into one hash-bound `source.txt`; valid cache hits return in milliseconds, while first network/transcription runs report their real elapsed time. HTML is the complete canonical body; PDF is its exact print rendition. Every artifact is designed fresh after Intent and Frontend Design reasoning and uses only semantic HTML, source-specific CSS, native structures/equations, and rare justified inline SVG. Templates, preset themes/palettes/layouts, mind maps, raster/generated images, image agents, scripts, widgets, transcript padding, and decorative media are forbidden.
+
+```bash
+python3 /home/mahmud/.hermes/skills/lite-visual/scripts/extract_source.py '<URL-or-file>' \
+  --output /abs/work/source.txt \
+  --manifest /abs/work/source-extraction.json
+```
 - D1 remains canonical; R2 stores large artifacts; Obsidian remains an archive export.
 - Every registered destination resolves to a purposeful view.
 

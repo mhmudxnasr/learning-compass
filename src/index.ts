@@ -23,17 +23,21 @@ import artifactsApi from './api/artifacts'
 import discoveryApi from './api/discovery'
 import notebooklmApi from './api/notebooklm'
 import { normalizeYouTubeUrl, isValidUrl } from './lib'
-import { createInboxCapture } from './services/capture'
+import { createCapture } from './services/capture'
 import { syncAllFeeds } from './services/rss'
 import notificationsApi from './api/notifications'
 import { deliverScheduledReminders } from './api/notifications'
 import compassApi from './api/compass'
 import analyticsApi from './api/analytics'
 import learningCoreApi from './api/learning-core'
+import canonApi from './api/canon'
 import annotationsApi from './api/annotations'
 import hardcoverApi from './api/hardcover'
 
 const app = new Hono<{ Bindings: Bindings }>()
+const PUBLIC_LEARNING_UPDATE_PATH = '/updates/learning-materials'
+const PUBLIC_LEARNING_UPDATE_FILE_PATH = `${PUBLIC_LEARNING_UPDATE_PATH}.html`
+const isPublicLearningUpdatePath = (path: string) => path === PUBLIC_LEARNING_UPDATE_PATH || path === PUBLIC_LEARNING_UPDATE_FILE_PATH
 
 const RATE_LIMIT_WINDOW = 60000
 const RATE_LIMIT_MAX_READS = 300
@@ -94,7 +98,7 @@ app.use('/*', async (c, next) => {
   if (c.req.method === 'GET' || c.req.method === 'HEAD') {
     const path = new URL(c.req.url).pathname
     const already = c.res.headers.get('Cache-Control')
-    const isAsset = path === '/' || path === '/ui' || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path.startsWith('/assets/') || path.startsWith('/icons/')
+    const isAsset = path === '/' || path === '/ui' || isPublicLearningUpdatePath(path) || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path.startsWith('/assets/') || path.startsWith('/icons/')
     if (!isAsset && !already) c.res.headers.set('Cache-Control', 'no-store')
   }
 })
@@ -115,7 +119,7 @@ app.use('/*', async (c, next) => {
   const method = c.req.method.toUpperCase()
   if (method === 'GET' || method === 'OPTIONS' || method === 'HEAD') {
     const path = new URL(c.req.url).pathname
-    if (path === '/' || path === '/sw.js' || path.startsWith('/assets/') || path.startsWith('/icons/')) return next()
+    if (path === '/' || isPublicLearningUpdatePath(path) || path === '/sw.js' || path.startsWith('/assets/') || path.startsWith('/icons/')) return next()
     const ip = getClientIp(c)
     const { allowed, retryAfter } = checkRateLimit(ip, false)
     if (!allowed) {
@@ -138,7 +142,7 @@ app.use('/*', async (c, next) => {
   const method = c.req.method.toUpperCase()
   if (method === 'OPTIONS' || method === 'HEAD') return next()
   const path = new URL(c.req.url).pathname
-  const staticPath = path === '/' || path === '/ui' || path === '/health' || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path === '/favicon.ico' || path === '/api/telegram' || path.startsWith('/assets/') || path.startsWith('/icons/')
+  const staticPath = path === '/' || path === '/ui' || isPublicLearningUpdatePath(path) || path === '/health' || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path === '/favicon.ico' || path === '/api/telegram' || path.startsWith('/assets/') || path.startsWith('/icons/')
   if (staticPath) return next()
   const token = c.req.header('x-api-token') || (!c.env.REQUIRE_API_AUTH ? c.req.query('token') : undefined)
   const expected = c.env.API_TOKEN
@@ -215,6 +219,7 @@ app.route('/brain', brainApi)
 app.route('/html', vaultApi)
 app.route('/learning', learningApi)
 app.route('/learning/core', learningCoreApi)
+app.route('/learning/core/canon', canonApi)
 app.route('/annotations', annotationsApi)
 app.route('/hardcover', hardcoverApi)
 app.route('/stats', statsApi)
@@ -250,6 +255,15 @@ app.get('/ui', async (c) => {
   headers.set('Cache-Control', 'no-cache, no-store, must-revalidate')
   return new Response(asset.body, { status: asset.status, headers })
 })
+app.get(PUBLIC_LEARNING_UPDATE_PATH, async (c) => {
+  const asset = await c.env.ASSETS.fetch(c.req.raw)
+  const headers = new Headers(asset.headers)
+  headers.set('Content-Type', 'text/html; charset=utf-8')
+  headers.set('Cache-Control', 'no-cache, no-store, must-revalidate')
+  headers.set('Content-Security-Policy', "default-src 'self'; script-src 'none'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+  return new Response(asset.body, { status: asset.status, headers })
+})
+app.get(PUBLIC_LEARNING_UPDATE_FILE_PATH, (c) => c.redirect(PUBLIC_LEARNING_UPDATE_PATH, 308))
 app.get('/assets/*', (c) => c.env.ASSETS.fetch(c.req.raw))
 app.get('/icons/*', (c) => c.env.ASSETS.fetch(c.req.raw))
 app.get('/icon.svg', (c) => c.env.ASSETS.fetch(c.req.raw))
@@ -284,13 +298,13 @@ app.post('/api/share-target', async (c) => {
 
     const candidateUrl = url || text
     if (!candidateUrl || !isValidUrl(candidateUrl)) {
-      return c.redirect('/#/library?mode=triage&focus=inbox', 303)
+      return c.redirect('/#/library?mode=catalog&focus=all', 303)
     }
 
     const vt = title || candidateUrl.split('/').pop()?.replace(/-/g, ' ') || 'Shared item'
-    await createInboxCapture(DB, { source: candidateUrl, title: vt })
+    await createCapture(DB, { source: candidateUrl, title: vt })
   } catch { /* best effort */ }
-  return c.redirect('/#/library?mode=triage&focus=inbox', 303)
+  return c.redirect('/#/library?mode=catalog&focus=all', 303)
 })
 
 // YouTube metadata enrichment
@@ -338,10 +352,10 @@ app.post('/api/telegram', async (c) => {
   if (urlMatch) {
     const url = urlMatch[0]
     const label = text.replace(url, '').trim()
-    const result = await createInboxCapture(DB, { source: url, title: label || undefined })
+    const result = await createCapture(DB, { source: url, title: label || undefined })
     await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: result.duplicate ? `Already captured: ${label || url}` : `Saved to Inbox: ${label || url}`, reply_to_message_id: msg.message_id })
+      body: JSON.stringify({ chat_id: chatId, text: result.duplicate ? `Already captured: ${label || url}` : `Saved as a source: ${label || url}`, reply_to_message_id: msg.message_id })
     })
   } else if (text === '/queue') {
     const active = await DB.prepare(`SELECT r.video_title,r.content_type

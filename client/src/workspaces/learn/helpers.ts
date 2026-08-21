@@ -18,7 +18,6 @@ export function statusLabel(value?: string | null) {
     draft: 'Planned',
     available: 'Available',
     in_progress: 'In progress',
-    evidence_pending: 'Evidence pending',
     locked: 'Locked',
     waived: 'Waived',
   } as Record<string, string>)[value || ''] || labelize(value || 'Not recorded')
@@ -29,7 +28,6 @@ export function roleLabel(value?: string | null) {
     foundation: 'Foundation',
     case: 'Case study',
     companion: 'Reading companion',
-    counterevidence: 'Counterevidence',
     reference: 'Reference',
     primary: 'Primary',
     supporting: 'Supporting',
@@ -45,18 +43,7 @@ export function itemLabel(value?: string | null) {
     exercise: 'Exercise',
     application: 'Application',
     reflection: 'Reflection',
-  } as Record<string, string>)[value || ''] || labelize(value || 'Proof')
-}
-
-export function evidenceLabel(value?: string | null) {
-  return ({
-    free_recall: 'Free recall',
-    explanation: 'Explanation',
-    transfer: 'Transfer',
-    application: 'Application',
-    decision: 'Decision',
-    artifact: 'Artifact',
-  } as Record<string, string>)[value || ''] || labelize(value || 'Evidence')
+  } as Record<string, string>)[value || ''] || labelize(value || 'Item')
 }
 
 export function directionValue(value?: string | null): 'auto' | 'ltr' | 'rtl' {

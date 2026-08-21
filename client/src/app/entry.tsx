@@ -3,6 +3,7 @@ import { App } from './App'
 import { initAndroidExperience } from './android'
 import { hydrateThemeFromServer, initTheme } from '../theme'
 import '../studio.css'
+import '../notes-recall.css'
 
 const IMPORT_RECOVERY_KEY = 'learning-compass:dynamic-import-recovery'
 

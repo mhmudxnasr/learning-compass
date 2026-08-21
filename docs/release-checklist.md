@@ -15,6 +15,7 @@
 - On Android, verify the install card appears only when `beforeinstallprompt` is available, Not now suppresses it for 30 days, standalone launch reuses the existing app window, and a shared URL lands in Inbox.
 - Deploy with `npx wrangler deploy --config wrangler.toml`.
 - Smoke-test `/health`, `/dashboard/briefing`, `/capture`, `/capture/feeds`, `/notes`, `/learning/srs/due`, `/learning/core/integrity/health`, `/learning/core/threads`, `/learning/core/consolidation/open`, `/agent/jobs`, `/agent/briefing`, `/agent/activity`, `/agent/capabilities`, `/agent/system`, `/search/evidence`, and `/hardcover`.
+- Confirm `/updates/learning-materials` returns the public release folio with its restrictive content policy, one `Open Learn` action path, and no horizontal overflow at desktop or phone widths.
 - When Hardcover is configured, confirm `HARDCOVER_API_TOKEN` appears only as a Worker secret, run one explicit `/hardcover/sync`, verify count-only readback, and confirm canonical import remains blocked until a valid branch is selected.
 - If `REQUIRE_API_AUTH=true`, verify an unauthenticated read is rejected and the authorized `x-api-token` path succeeds. If Telegram is enabled, verify the secret header, allowed chat restriction, and duplicate `update_id` behavior before accepting captures.
 - Verify Settings → System renders every allow-listed operation, the exact configured schedule, on-demand-only workflows, storage ownership, service health, and safety boundaries without horizontal overflow.

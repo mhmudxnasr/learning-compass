@@ -3,10 +3,10 @@ import type { NoteRecord } from './types'
 export type ReadingDirection = 'ltr' | 'rtl'
 
 export type NoteReaderBlock =
-  | { kind: 'heading'; level: 2 | 3; text: string; direction: ReadingDirection }
-  | { kind: 'paragraph'; text: string; direction: ReadingDirection }
+  | { kind: 'heading'; level: 2 | 3 | 4; text: string; direction: ReadingDirection; id: string }
   | { kind: 'quote'; text: string; direction: ReadingDirection }
   | { kind: 'list'; ordered: boolean; start?: number; items: string[]; direction: ReadingDirection }
+  | { kind: 'paragraph'; text: string; direction: ReadingDirection }
 
 export interface NoteReaderSection {
   key: string
@@ -15,8 +15,16 @@ export interface NoteReaderSection {
   blocks: NoteReaderBlock[]
 }
 
+export interface NoteOutlineItem {
+  id: string
+  label: string
+  level: number
+  sectionKey: string
+}
+
 export interface NoteReaderDocument {
   sections: NoteReaderSection[]
+  outline: NoteOutlineItem[]
   contentSourceUrl?: string
   wordCount: number
   readingMinutes: number
@@ -35,10 +43,7 @@ function stripFrontMatter(content: string): string {
   const lines = content.replace(/\r\n?/g, '\n').split('\n')
   const first = lines.findIndex((line) => line.trim())
   if (first < 0 || lines[first].trim() !== '---') return content
-
-  const boundary = lines.slice(first + 1, first + 41).findIndex((line) => (
-    line.trim() === '---' || /\s---\s*$/.test(line)
-  ))
+  const boundary = lines.slice(first + 1, first + 41).findIndex((line) => line.trim() === '---' || /\s---\s*$/.test(line))
   if (boundary < 0) return content
   return lines.slice(first + boundary + 2).join('\n')
 }
@@ -59,16 +64,22 @@ function extractContentSource(content: string): { content: string; sourceUrl?: s
   return { content: cleaned.join('\n').trim(), sourceUrl }
 }
 
-function blockDirection(text: string, sectionDirection?: string | null): ReadingDirection {
+export function blockDirection(text: string, sectionDirection?: string | null): ReadingDirection {
+  const natural = directionForText(text)
+  if (natural === 'rtl') return 'rtl'
   if (sectionDirection === 'ltr' || sectionDirection === 'rtl') return sectionDirection
-  return directionForText(text)
+  return natural
 }
 
 function isStructuralLine(line: string): boolean {
   return /^\s{0,3}(?:#{1,6}\s+|>\s?|\d+[.)]\s+|[-*+]\s+|[-*_]{3,}\s*$)/.test(line)
 }
 
-export function parseNoteBlocks(content: string, sectionDirection?: string | null): NoteReaderBlock[] {
+function slugify(text: string): string {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'heading'
+}
+
+export function parseNoteBlocks(content: string, sectionDirection?: string | null, sectionKey = 'sec'): NoteReaderBlock[] {
   const lines = content.replace(/\r\n?/g, '\n').split('\n')
   const blocks: NoteReaderBlock[] = []
   let index = 0
@@ -82,8 +93,9 @@ export function parseNoteBlocks(content: string, sectionDirection?: string | nul
 
     const heading = line.match(/^#{1,6}\s+(.+)$/)
     if (heading) {
-      const level = line.startsWith('# ') || line.startsWith('## ') ? 2 : 3
-      blocks.push({ kind: 'heading', level, text: heading[1].trim(), direction: blockDirection(heading[1], sectionDirection) })
+      const level = line.startsWith('# ') || line.startsWith('## ') ? 2 : line.startsWith('### ') ? 3 : 4
+      const text = heading[1].trim()
+      blocks.push({ kind: 'heading', level, text, direction: blockDirection(text, sectionDirection), id: `${sectionKey}-${slugify(text)}` })
       index += 1
       continue
     }
@@ -99,18 +111,17 @@ export function parseNoteBlocks(content: string, sectionDirection?: string | nul
       continue
     }
 
-    const listItem = line.match(/^(\d+)[.)]\s+(.+)$|^[-*+]\s+(.+)$/)
-    if (listItem) {
-      const ordered = Boolean(listItem[1])
-      const start = ordered ? Number(listItem[1]) : undefined
+    const orderedMatch = line.match(/^(\d+)[.)]\s+(.+)$/)
+    const unorderedMatch = line.match(/^[-*+]\s+(.+)$/)
+    if (orderedMatch || unorderedMatch) {
+      const ordered = Boolean(orderedMatch)
+      const start = orderedMatch ? Number(orderedMatch[1]) : undefined
       const items: string[] = []
       while (index < lines.length) {
         const candidate = lines[index].trim()
-        const match = ordered
-          ? candidate.match(/^\d+[.)]\s+(.+)$/)
-          : candidate.match(/^[-*+]\s+(.+)$/)
+        const match = ordered ? candidate.match(/^\d+[.)]\s+(.+)$/) : candidate.match(/^[-*+]\s+(.+)$/)
         if (!match) break
-        let item = match[1].trim()
+        let item = match[ordered ? 1 : 1].trim()
         index += 1
         while (index < lines.length && lines[index].trim() && !isStructuralLine(lines[index])) {
           item += ` ${lines[index].trim()}`
@@ -119,8 +130,7 @@ export function parseNoteBlocks(content: string, sectionDirection?: string | nul
         items.push(item)
         if (!lines[index]?.trim()) break
       }
-      const text = items.join(' ')
-      blocks.push({ kind: 'list', ordered, start, items, direction: blockDirection(text, sectionDirection) })
+      blocks.push({ kind: 'list', ordered, start, items, direction: blockDirection(items.join(' '), sectionDirection) })
       continue
     }
 
@@ -139,25 +149,21 @@ export function parseNoteBlocks(content: string, sectionDirection?: string | nul
 
 export function buildNoteReaderDocument(note: NoteRecord): NoteReaderDocument {
   let contentSourceUrl: string | undefined
-  const sections = (note.sections || []).flatMap((section) => {
+  const outline: NoteOutlineItem[] = []
+  const sections = (note.sections || []).flatMap((section, sectionIndex) => {
     const cleaned = extractContentSource(stripFrontMatter(section.content || ''))
     contentSourceUrl ||= cleaned.sourceUrl
-    const blocks = parseNoteBlocks(cleaned.content, section.direction)
+    const sectionKey = section.section_key || `sec-${sectionIndex}`
+    const blocks = parseNoteBlocks(cleaned.content, section.direction, sectionKey)
     if (!blocks.length) return []
+    if ((note.sections || []).filter((item) => item.content?.trim()).length > 1) {
+      outline.push({ id: `section-${sectionKey}`, label: section.label || `Section ${sectionIndex + 1}`, level: 1, sectionKey })
+    }
+    for (const block of blocks) if (block.kind === 'heading') outline.push({ id: block.id, label: block.text, level: block.level, sectionKey })
     const combined = blocks.flatMap((block) => block.kind === 'list' ? block.items : [block.text]).join(' ')
-    return [{
-      key: section.section_key,
-      label: section.label,
-      direction: blockDirection(combined, section.direction),
-      blocks,
-    }]
+    return [{ key: sectionKey, label: section.label, direction: blockDirection(combined, section.direction), blocks }]
   })
   const allText = sections.flatMap((section) => section.blocks.flatMap((block) => block.kind === 'list' ? block.items : [block.text])).join(' ')
   const wordCount = allText.match(/[\p{L}\p{N}]+/gu)?.length || 0
-  return {
-    sections,
-    contentSourceUrl,
-    wordCount,
-    readingMinutes: Math.max(1, Math.ceil(wordCount / 180)),
-  }
+  return { sections, outline, contentSourceUrl, wordCount, readingMinutes: Math.max(1, Math.ceil(wordCount / 180)) }
 }

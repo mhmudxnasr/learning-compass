@@ -47,7 +47,7 @@ test('rejects local and private feed URLs', () => {
   assert.equal(validateFeedUrl('https://example.com/feed.xml'), 'https://example.com/feed.xml')
 })
 
-test('RSS import explicitly requests Inbox state rather than Queue state', () => {
+test('RSS import explicitly requests captured state rather than Queue state', () => {
   const source = readFileSync(new URL('../../src/services/rss.ts', import.meta.url), 'utf8')
-  assert.match(source, /createInboxCapture\(DB, \{ source: entry\.url, title: entry\.title, initialLearningState: 'inbox' \}\)/)
+  assert.match(source, /createCapture\(DB, \{ source: entry\.url, title: entry\.title, initialLearningState: 'captured' \}\)/)
 })

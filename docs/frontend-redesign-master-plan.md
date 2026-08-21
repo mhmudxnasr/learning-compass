@@ -35,7 +35,7 @@ The design borrows Capacities' strongest structural principles—an object-orien
 
 ### Stable route model
 
-The global route registry exposes five root destinations and 11 grouped modes, with subordinate focus filters:
+The global route registry exposes five root destinations and 12 grouped modes, with subordinate focus filters:
 
 - `#/home`
 - `#/library`
@@ -361,7 +361,7 @@ git diff --check
 
 Observed completion evidence:
 
-- Five stable root destinations, 11 grouped modes, subordinate focus filters, and no peer destination registry.
+- Five stable root destinations, 12 grouped modes, subordinate focus filters, and no peer destination registry.
 - Every legacy destination and alias canonicalizes to the correct saved view or typed object without losing IDs.
 - Search opens the exact Source, Thread, Note, Unit, Branch/Node, Artifact, assertion, or memory instead of dropping identity at a workspace root.
 - Invalid hashes render recovery rather than unrelated Home data.

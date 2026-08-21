@@ -6,19 +6,19 @@ const captureService = readFileSync(new URL('../../src/services/capture.ts', imp
 const captureApi = readFileSync(new URL('../../src/api/capture.ts', import.meta.url), 'utf8')
 const captureDialog = readFileSync(new URL('../../client/src/shell/CaptureDialog.tsx', import.meta.url), 'utf8')
 
-test('capture defaults to the unlimited Inbox rather than bypassing triage', () => {
-  assert.match(captureService, /input\.initialLearningState \|\| 'inbox'/)
+test('capture defaults to a captured source record rather than bypassing Queue', () => {
+  assert.match(captureService, /input\.initialLearningState \|\| 'captured'/)
   assert.doesNotMatch(captureService, /input\.initialLearningState \|\| 'queued'/)
 })
 
-test('global Capture describes the same Inbox contract as the API', () => {
-  assert.match(captureDialog, /Captured to Inbox\./)
-  assert.match(captureDialog, /Capture to Inbox/)
+test('global Capture describes the same source-record contract as the API', () => {
+  assert.match(captureDialog, /Source saved\./)
+  assert.match(captureDialog, /Save source/)
   assert.doesNotMatch(captureDialog, /Captured to Queue\.|Capture to Queue/)
 })
 
-test('Inbox sources can be branch-mapped but Queue rejects unmapped sources', () => {
-  assert.match(captureApi, /\['inbox','queued','in_progress'\]/)
+test('Captured sources can be branch-mapped but Queue rejects unmapped sources', () => {
+  assert.match(captureApi, /\['captured','queued','in_progress'\]/)
   assert.match(captureApi, /branch_mapping_required/)
   assert.match(captureApi, /!item\.branch_id \|\| !item\.branch_exists/)
   assert.doesNotMatch(captureApi, /'branch_mapping_source','agy'/)

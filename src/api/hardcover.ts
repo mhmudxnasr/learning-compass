@@ -79,7 +79,7 @@ app.post('/books/:id/import', async (c) => {
       .bind(recommendationId, book.title, book.author || null, url, `book_hardcover_${hardcoverBookId}`).run()
   }
   await c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,branch_id,learning_state,progress_percent,source_metadata_json,updated_at)
-    VALUES (?,?, 'inbox', ?, ?, datetime('now'))
+    VALUES (?,?, 'captured', ?, ?, datetime('now'))
     ON CONFLICT(recommendation_id) DO UPDATE SET branch_id=excluded.branch_id,
       progress_percent=COALESCE(excluded.progress_percent,recommendation_meta.progress_percent),
       source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json),updated_at=datetime('now')`)

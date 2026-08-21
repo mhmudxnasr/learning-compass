@@ -1,5 +1,15 @@
 import { Hono } from 'hono'
 import { Bindings } from '../lib'
+import {
+  NOTEBOOKLM_LEARNING_CONTRACT,
+  buildNotebookLearningPlan,
+  loadNotebookLearningState,
+  notebookLearningTarget,
+  normalizeNotebookLearningFormat,
+  validateNotebookLearningReceipt,
+  type NotebookLearningPlan,
+  type NotebookLearningReceiptInput,
+} from '../services/notebooklm-learning'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -49,6 +59,29 @@ async function saveHealth(DB: D1Database, patch: Record<string, unknown>) {
   return value
 }
 
+async function notebookRecommendation(DB: D1Database, recommendationId: string) {
+  return DB.prepare('SELECT id,video_title,notebook_url FROM recommendations WHERE id=?').bind(recommendationId).first<{ id: string; video_title: string; notebook_url: string | null }>()
+}
+
+async function storeLearningReceipt(DB: D1Database, intent: string, recommendationId: string, receipt: Record<string, unknown>, agentName: string) {
+  const id = `receipt_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`
+  const providerStatus = String(receipt.status || '')
+  const statusCode = providerStatus === 'pending' ? 202 : providerStatus === 'failed' ? 502 : 200
+  const verified = providerStatus === 'indexed' || providerStatus === 'ready' || intent === 'notebooklm_learning_plan'
+  await DB.prepare(`INSERT INTO agent_receipts (id,request_id,agent_name,intent,target,status_code,verified,receipt_json)
+    VALUES (?,?,?,?,?,?,?,?)`).bind(
+    id,
+    String(receipt.provider_task_id || receipt.provider_source_id || id).slice(0, 200),
+    agentName.slice(0, 120),
+    intent,
+    notebookLearningTarget(recommendationId),
+    statusCode,
+    verified ? 1 : 0,
+    JSON.stringify({ contract_version: NOTEBOOKLM_LEARNING_CONTRACT, ...receipt }),
+  ).run()
+  return id
+}
+
 app.get('/health', async (c) => c.json(await brokerHealth(c.env.DB)))
 
 // Hermes host-side broker posts a heartbeat; the Worker never pretends to own the browser session.
@@ -82,6 +115,103 @@ app.post('/recover', async (c) => {
   return c.json({ ok: true, recovery_requested: true, worker_receipt: health, message: 'Worker recorded recovery; the Hermes host must restart or re-authenticate the broker session.' })
 })
 
+app.get('/learning/receipts', async (c) => {
+  const recommendationId = String(c.req.query('recommendation_id') || '').trim()
+  if (!recommendationId) return c.json({ error: 'recommendation_id required' }, 400)
+  const recommendation = await notebookRecommendation(c.env.DB, recommendationId)
+  if (!recommendation) return c.json({ error: 'recommendation not found' }, 404)
+  const state = await loadNotebookLearningState(c.env.DB, recommendationId, recommendation.notebook_url)
+  return c.json({
+    contract_version: NOTEBOOKLM_LEARNING_CONTRACT,
+    recommendation_id: recommendationId,
+    notebook_url: recommendation.notebook_url || null,
+    linked: state.linked,
+    indexed: state.indexed,
+    index_status: state.index_status,
+    output_status: state.output_status,
+    primary_format: state.primary_format,
+    outputs: state.outputs,
+    source: state.source,
+    plan: state.plan,
+    artifacts: state.artifacts,
+  })
+})
+
+app.post('/learning/route', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  const recommendationId = String(body.recommendation_id || '').trim()
+  if (!recommendationId) return c.json({ error: 'recommendation_id required' }, 400)
+  const recommendation = await notebookRecommendation(c.env.DB, recommendationId)
+  if (!recommendation) return c.json({ error: 'recommendation not found' }, 404)
+  if (!recommendation.notebook_url) return c.json({ error: 'notebook_url_not_linked', message: 'Persist and verify the source-specific NotebookLM URL before routing Studio work.' }, 409)
+  const state = await loadNotebookLearningState(c.env.DB, recommendationId, recommendation.notebook_url)
+  if (state.source?.status !== 'indexed') return c.json({ error: 'source_not_indexed', source_status: state.source?.status || null, message: 'Record an indexed source receipt before routing Studio work.' }, 409)
+  if (state.source.notebook_url !== recommendation.notebook_url) return c.json({ error: 'notebook_url_mismatch', message: 'The indexed source receipt does not match the canonical recommendation notebook URL.' }, 409)
+  let plan: NotebookLearningPlan
+  try {
+    plan = buildNotebookLearningPlan({
+      recommendation_id: recommendationId,
+      purpose: body.purpose,
+      requested_formats: body.requested_formats,
+      concept_features: body.concept_features,
+    })
+  } catch (error: any) { return c.json({ error: 'invalid_learning_route', message: error?.message || 'Invalid NotebookLM learning route.' }, 422) }
+  const planId = await storeLearningReceipt(c.env.DB, 'notebooklm_learning_plan', recommendationId, {
+    recommendation_id: recommendationId,
+    notebook_id: state.source.notebook_id,
+    notebook_url: recommendation.notebook_url,
+    source_receipt_id: state.source.id,
+    plan,
+  }, c.req.header('x-agent-name') || 'notebooklm')
+  return c.json({ ok: true, plan_id: planId, ...plan }, 201)
+})
+
+app.post('/learning/receipts', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({})) as NotebookLearningReceiptInput
+  if (body.kind !== 'source' && body.kind !== 'artifact') return c.json({ error: 'kind must be source or artifact' }, 400)
+  const recommendationId = String(body.recommendation_id || '').trim()
+  if (!recommendationId) return c.json({ error: 'recommendation_id required' }, 400)
+  const recommendation = await notebookRecommendation(c.env.DB, recommendationId)
+  if (!recommendation) return c.json({ error: 'recommendation not found' }, 404)
+  if (!recommendation.notebook_url) return c.json({ error: 'notebook_url_not_linked', message: 'Persist the source-specific NotebookLM URL before recording provider receipts.' }, 409)
+  if (String(body.notebook_url || '').trim() !== recommendation.notebook_url) return c.json({ error: 'notebook_url_mismatch', message: 'Receipt notebook_url must match the canonical recommendation notebook URL.' }, 409)
+
+  const state = await loadNotebookLearningState(c.env.DB, recommendationId, recommendation.notebook_url)
+  let plan: NotebookLearningPlan | undefined
+  if (body.kind === 'artifact') {
+    const planReceipt = state.plan?.id === body.plan_id ? state.plan : null
+    plan = planReceipt?.plan as NotebookLearningPlan | undefined
+    if (!plan) return c.json({ error: 'learning_plan_not_current', message: 'Route a new plan from the latest indexed source receipt.' }, 409)
+    if (state.source?.status !== 'indexed') return c.json({ error: 'source_not_indexed', source_status: state.source?.status || null }, 409)
+  }
+  const validation = validateNotebookLearningReceipt(body, plan)
+  if (!validation.ok) return c.json({ error: 'invalid_notebooklm_learning_receipt', failures: validation.failures }, 422)
+
+  const normalized = body.kind === 'artifact' ? normalizeNotebookLearningFormat(body.format) : null
+  if (body.kind === 'artifact' && (body.status === 'ready' || body.status === 'failed')) {
+    const previous = normalized ? state.artifacts[normalized] : null
+    if (!previous || previous.plan_id !== body.plan_id || previous.status !== 'pending') {
+      return c.json({ error: 'artifact_lifecycle_conflict', message: 'A ready or failed receipt must follow the pending submission receipt for the same plan and format.' }, 409)
+    }
+  }
+  const allowedFields = body.kind === 'source'
+    ? ['kind', 'recommendation_id', 'notebook_id', 'notebook_url', 'status', 'provider_source_id', 'evidence', 'error']
+    : ['kind', 'recommendation_id', 'notebook_id', 'notebook_url', 'plan_id', 'format', 'status', 'provider_task_id', 'provider_artifact_id', 'published_artifact_id', 'source_grounded', 'custom_prompt_applied', 'language', 'question_count', 'hints_before_explanations', 'transfer_question_count', 'error']
+  const receipt: Record<string, unknown> = {
+    ...Object.fromEntries(allowedFields
+      .filter((field) => Object.prototype.hasOwnProperty.call(body, field))
+      .map((field) => [field, (body as any)[field]])),
+    recommendation_id: recommendationId,
+    notebook_id: String(body.notebook_id || '').trim(),
+    notebook_url: recommendation.notebook_url,
+    ...(normalized ? { format: normalized } : {}),
+    observed_at: new Date().toISOString(),
+  }
+  const intent = body.kind === 'source' ? 'notebooklm_source_receipt' : 'notebooklm_artifact_receipt'
+  const receiptId = await storeLearningReceipt(c.env.DB, intent, recommendationId, receipt, c.req.header('x-agent-name') || 'notebooklm')
+  return c.json({ ok: true, receipt_id: receiptId, receipt: { id: receiptId, ...receipt } }, 201)
+})
+
 app.get('/status', async (c) => {
   const db = c.env.DB
   
@@ -106,6 +236,13 @@ app.get('/status', async (c) => {
     verification_engine: 'Dialectic Divergence Optimization (Zero-Hallucination)',
     sync_mode: 'hermes_feedback_resolution',
     generation_mode: 'on_demand_chat_only',
+    learning_router_mode: 'explicit_source_grounded_learning_router',
+    learning_output_policy: {
+      contract_version: NOTEBOOKLM_LEARNING_CONTRACT,
+      default: 'quiz',
+      maximum_outputs_per_plan: 3,
+      receipts: ['indexed', 'pending', 'ready', 'failed'],
+    },
     stats: {
       mastered_items_synced: masteredCount,
       user_reflections_synced: reflectionsCount,

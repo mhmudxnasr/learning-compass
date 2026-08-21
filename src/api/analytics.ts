@@ -202,7 +202,7 @@ app.get('/compass/full-context', async (c) => {
       DB.prepare(`SELECT name,work,reason FROM blacklist`).all<any>(),
       DB.prepare(`SELECT r.id,r.video_title title,r.content_type format,r.creator,r.consumed_date,m.branch_id topic FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='consumed' AND r.consumed_date IS NOT NULL ORDER BY r.consumed_date DESC LIMIT 10`).all<any>(),
       DB.prepare(`SELECT assertion_key,category,value_json,confidence,status FROM profile_assertions WHERE status='active' ORDER BY confidence DESC`).all<any>(),
-      DB.prepare(`SELECT id,title,guiding_question,status,priority FROM learning_threads WHERE status NOT IN ('verified','abandoned') ORDER BY priority DESC,updated_at DESC`).all<any>(),
+      DB.prepare(`SELECT id,title,guiding_question,status,priority FROM learning_threads WHERE superseded_at IS NULL AND status NOT IN ('verified','abandoned') ORDER BY priority DESC,updated_at DESC`).all<any>(),
     ])
     return c.json({
       active_items: active.results || [],

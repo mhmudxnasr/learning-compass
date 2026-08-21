@@ -14,6 +14,11 @@ export interface PathRecord {
   completed_stage_count: number
   current_stage_title?: string | null
   current_stage_status?: string | null
+  lesson_count?: number
+  completed_lesson_count?: number
+  proof_count?: number
+  completed_proof_count?: number
+  needs_material_count?: number
   updated_at?: string | null
 }
 
@@ -29,7 +34,6 @@ export interface ThreadItem {
   description?: string | null
   required?: number | boolean
   status: 'open' | 'satisfied' | 'waived' | string
-  evidence_type?: string | null
   position?: number
 }
 
@@ -40,13 +44,14 @@ export interface PathArtifact {
   size_bytes?: number | null
   created_at?: string | null
   metadata?: Record<string, unknown>
+  metadata_json?: string | null
   thread_id?: string | null
   stage_id?: string | null
   owner_scope?: LearningOwnerScope
 }
 
 export interface LearningOwnerScope {
-  kind: 'thread' | 'level'
+  kind: 'thread' | 'level' | 'lesson'
   id: string
   title: string
 }
@@ -60,7 +65,19 @@ export interface PathSource {
   content_type?: string | null
   video_url?: string | null
   notebook_url?: string | null
+  notebook_learning?: {
+    linked: boolean
+    indexed: boolean
+    index_status: 'unlinked' | 'linked' | 'pending' | 'indexed' | 'failed'
+    output_status: 'none' | 'pending' | 'ready' | 'failed'
+    primary_format?: string | null
+    outputs?: Array<{ format: string; status: 'pending' | 'ready' | 'failed' }>
+  } | null
   learning_state?: string | null
+  branch_id?: string | null
+  branch_label?: string | null
+  branch_status?: string | null
+  round_label?: string | null
   artifacts?: { html?: PathArtifact; pdf?: PathArtifact }
 }
 
@@ -78,25 +95,25 @@ export interface NoteRecord {
   kind?: string | null
   status?: string | null
   recommendation_id?: string | null
+  branch_id?: string | null
+  branch_label?: string | null
+  round_label?: string | null
+  category?: string | null
   thread_id?: string | null
   stage_id?: string | null
+  lesson_id?: string | null
   source_url?: string | null
+  abstract?: string | null
+  extraction_contract?: string | null
+  source_word_count?: number | null
+  note_word_count?: number | null
+  coverage_status?: string | null
+  rec_title?: string | null
+  rec_video_url?: string | null
   created_at?: string | null
   updated_at?: string | null
   sections: NoteSection[]
   owner_scope?: LearningOwnerScope
-}
-
-export interface StageEvidence {
-  id: string
-  stage_id?: string | null
-  item_id?: string | null
-  evidence_type?: string | null
-  result?: string | null
-  response?: string | null
-  prompt?: string | null
-  score?: number | null
-  occurred_at?: string | null
 }
 
 export type NextAction =
@@ -119,13 +136,11 @@ export interface PathStage {
   lessons: ThreadLesson[]
   projects: ThreadProject[]
   sources: PathSource[]
-  requirements: Array<{ id: string; label?: string | null; status?: string | null; evidence_type?: string | null }>
-  evidence: StageEvidence[]
   notes: NoteRecord[]
   files: PathArtifact[]
   cards: RecallCard[]
   recall_drafts: RecallDraft[]
-  progress: { completed: number; total: number }
+  progress: { completed: number; total: number; study_completed?: number; study_total?: number; proof_completed?: number; proof_total?: number; project_completed?: number; project_total?: number }
   next_action?: NextAction
 }
 
@@ -140,6 +155,10 @@ export interface ThreadLesson {
   estimated_minutes?: number | null
   status: 'not_started' | 'in_progress' | 'completed' | string
   sources?: PathSource[]
+  notes?: NoteRecord[]
+  files?: PathArtifact[]
+  cards?: RecallCard[]
+  recall_drafts?: RecallDraft[]
   why_learn?: string | null
   why_now?: string | null
   takeaway?: string | null
@@ -149,6 +168,7 @@ export interface ThreadProject {
   id: string
   thread_id: string
   stage_id?: string | null
+  lesson_id?: string | null
   type: 'level' | 'final'
   title: string
   description: string
@@ -159,6 +179,19 @@ export interface ThreadProject {
   notes?: string | null
 }
 
+export interface StageEvidence {
+  id: string
+  thread_id?: string | null
+  stage_id?: string | null
+  item_id?: string | null
+  evidence_type: string
+  result: string
+  response?: string | null
+  score?: number | null
+  proof_ref?: string | null
+  occurred_at?: string | null
+}
+
 export interface PathResponse {
   thread: {
     id: string
@@ -167,7 +200,11 @@ export interface PathResponse {
     guiding_question?: string | null
     why_now?: string | null
     definition_of_done?: string | null
+    final_synthesis?: string | null
     status: string
+    superseded_by_type?: string | null
+    superseded_by_id?: string | null
+    superseded_at?: string | null
     evidence_requirements?: Array<{ key?: string; label?: string; evidence_type?: string }>
     updated_at?: string | null
   }
@@ -199,6 +236,10 @@ export interface RecallCard {
   thread_id?: string | null
   stage_id?: string | null
   unit_id?: string | null
+  unit_statement?: string | null
+  unit_type?: string | null
+  card_type?: string | null
+  source_anchor?: string | null
   repetitions?: number | null
   owner_scope?: LearningOwnerScope
 }
@@ -216,6 +257,10 @@ export interface RecallDraft {
   thread_id?: string | null
   stage_id?: string | null
   unit_id?: string | null
+  unit_statement?: string | null
+  unit_type?: string | null
+  card_type?: string | null
+  source_anchor?: string | null
   created_at?: string | null
   updated_at?: string | null
   owner_scope?: LearningOwnerScope
@@ -233,4 +278,20 @@ export interface DraftsResponse {
 
 export interface CardsResponse {
   cards: RecallCard[]
+}
+
+export interface LearningUnitSummary {
+  id: string
+  unit_type: string
+  statement: string
+  stance?: string | null
+  confidence?: number | null
+  anchors: Array<{ anchor_type: string; locator: string; excerpt?: string | null }>
+}
+
+export interface NoteDossierResponse {
+  note: NoteRecord
+  related_notes: NoteRecord[]
+  units: LearningUnitSummary[]
+  recall: { drafts: RecallDraft[]; cards: RecallCard[] }
 }

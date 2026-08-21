@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { Bindings, normalizeRating, safeError } from '../lib'
 import { defaultSettings, loadSettings, normalizeSettings, type TasteMapSettings } from '../services/settings'
-import { createInboxCapture } from '../services/capture'
+import { createCapture } from '../services/capture'
 import { activateWaitingRun } from './discovery'
 import { loadFeedbackContext } from '../services/feedback-context'
 import { createConsolidationRun, normalizeDisposition, recordLearningEvent } from '../services/learning-core'
@@ -52,8 +52,8 @@ app.post('/sessions/start', async (c) => {
   if (!recommendation) return c.json({ error: 'active recommendation not found' }, 404)
   const targetKind = ['original', 'html', 'pdf', 'notebooklm', 'artifact'].includes(body.target_kind || '') ? body.target_kind! : 'original'
   const activeThread = body.thread_id
-    ? await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=? AND status NOT IN ('verified','abandoned')`).bind(body.thread_id).first<{ id: string }>()
-    : await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE status='active' ORDER BY priority DESC,updated_at DESC LIMIT 1`).first<{ id: string }>()
+    ? await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=? AND superseded_at IS NULL AND status NOT IN ('verified','abandoned')`).bind(body.thread_id).first<{ id: string }>()
+    : await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE superseded_at IS NULL AND status='active' ORDER BY priority DESC,updated_at DESC LIMIT 1`).first<{ id: string }>()
   const threadId = activeThread?.id || null
   if (body.thread_id || threadId) {
     const thread = activeThread
@@ -90,7 +90,7 @@ app.post('/feedback/record', async (c) => {
   if (!recommendation) {
     const source = body.source_url?.trim() || body.title?.trim()
     if (!source) return c.json({ error: 'recommendation_id, source_url, or exact title required' }, 400)
-    const captured = await createInboxCapture(c.env.DB, { source, title: body.title })
+    const captured = await createCapture(c.env.DB, { source, title: body.title })
     recommendation = await c.env.DB.prepare(`SELECT * FROM recommendations WHERE id=?`).bind(captured.id).first<any>()
   }
   if (!recommendation) return c.json({ error: 'source could not be resolved' }, 404)
@@ -107,7 +107,7 @@ app.post('/feedback/record', async (c) => {
   else statements.push(c.env.DB.prepare(`UPDATE learning_sessions SET reflection=?,returned_at=datetime('now'),status=?,completed_at=CASE WHEN ? THEN COALESCE(completed_at,datetime('now')) ELSE completed_at END WHERE id=?`).bind(feedback, complete ? 'completed' : 'returned', complete ? 1 : 0, sessionId))
   if (!reflectionNote) {
     statements.push(c.env.DB.prepare(`INSERT INTO notes (id,recommendation_id,title,kind,source_url,status,revision) VALUES (?,?,?,?,?,'draft',1)`).bind(reflectionNoteId, recommendation.id, recommendation.video_title || body.title || 'Learning reflection', 'reflection', recommendation.video_url || body.source_url || null))
-    for (const [position, [sectionKey, label, content]] of [['reaction', 'Reaction', feedback], ['foundation', 'Foundation', ''], ['case_studies', 'Case Studies', ''], ['exploitation', 'Exploitation', ''], ['defense', 'Defense', '']].entries()) statements.push(c.env.DB.prepare(`INSERT INTO note_sections (id,note_id,section_key,label,content,direction,position) VALUES (?,?,?,?,?,'auto',?)`).bind(`${reflectionNoteId}_${sectionKey}`, reflectionNoteId, sectionKey, label, content, position))
+    statements.push(c.env.DB.prepare(`INSERT INTO note_sections (id,note_id,section_key,label,content,direction,position) VALUES (?,?,?,?,?,'auto',0)`).bind(`${reflectionNoteId}_reaction`, reflectionNoteId, 'reaction', 'My reflection', feedback))
   } else {
     statements.push(c.env.DB.prepare(`UPDATE notes SET revision=?,updated_at=datetime('now') WHERE id=?`).bind(revision, reflectionNoteId))
     statements.push(c.env.DB.prepare(`UPDATE note_sections SET content=?,updated_at=datetime('now') WHERE note_id=? AND section_key='reaction'`).bind(feedback, reflectionNoteId))
@@ -117,7 +117,7 @@ app.post('/feedback/record', async (c) => {
   if (complete) statements.push(c.env.DB.prepare(`UPDATE compass_picks SET status='resolved',resolved_at=COALESCE(resolved_at,datetime('now')),updated_at=datetime('now') WHERE recommendation_id=? AND status IN ('ready','started')`).bind(recommendation.id))
   if (complete) statements.push(c.env.DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,actual_score,outcome_status,consumed_at,evaluated_at) VALUES (?,?,?,?,?,'consumed',date('now'),datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET actual_score=COALESCE(excluded.actual_score,recommendation_outcomes.actual_score),outcome_status='consumed',consumed_at=COALESCE(recommendation_outcomes.consumed_at,excluded.consumed_at),evaluated_at=datetime('now')`).bind(`outcome_${recommendation.id}`, recommendation.id, recommendation.creator || null, recommendation.content_type || null, rating.score))
   statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'process_feedback',?,?,?,'explicit_user_action') ON CONFLICT(idempotency_key) DO NOTHING`).bind(feedbackJobId, JSON.stringify({ recommendation_id: recommendation.id, session_id: sessionId, thread_id: body.thread_id || null, note_id: reflectionNoteId, reflection: feedback, rating: rating.score, disposition, ...structured, review_required: true, feedback_context_endpoint: '/feedback/context', feedback_context_scope: 'all_archived_feedback_profile_and_nodes' }), `feedback:${reflectionNoteId}:${revision}`, recommendation.id))
-  if (extractionJobId) statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'extract_notes',?,?,?,'explicit_user_action') ON CONFLICT(idempotency_key) DO NOTHING`).bind(extractionJobId, JSON.stringify({ recommendation_id: recommendation.id, session_id: sessionId, thread_id: body.thread_id || null, reflection_note_id: reflectionNoteId, reflection: feedback, rating: rating.score, disposition, source_url: recommendation.video_url || body.source_url || null, output_contract: 'learning_units_v1' }), `extract:${reflectionNoteId}:${revision}`, recommendation.id))
+  if (extractionJobId) statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'extract_notes',?,?,?,'explicit_user_action') ON CONFLICT(idempotency_key) DO NOTHING`).bind(extractionJobId, JSON.stringify({ recommendation_id: recommendation.id, session_id: sessionId, thread_id: body.thread_id || null, reflection_note_id: reflectionNoteId, reflection: feedback, rating: rating.score, disposition, source_url: recommendation.video_url || body.source_url || null, output_contract: 'source_note_v2' }), `extract:${reflectionNoteId}:${revision}`, recommendation.id))
   await c.env.DB.batch(statements)
   const consolidation = complete ? await createConsolidationRun(c.env.DB, { recommendationId: recommendation.id, sessionId, threadId: body.thread_id || session?.thread_id || null, disposition, extractionJobId }) : null
   await recordLearningEvent(c.env.DB, { eventType: 'reflection_submitted', actorType: 'user', evidenceWeight: 1, idempotencyKey: `feedback-reflection:${reflectionNoteId}:${revision}`, threadId: body.thread_id || session?.thread_id || null, recommendationId: recommendation.id, sessionId, payload: { disposition, completion_state: structured.completion_state } })
@@ -169,13 +169,7 @@ app.post('/sessions/:id/return', async (c) => {
     reflectionNoteId = existingNote?.id || `reflection_${session.recommendation_id}`
     if (!existingNote) {
       reflectionNoteCreated = true
-      const sections = [
-        ['reaction', 'Reaction', reflection],
-        ['foundation', 'Foundation', ''],
-        ['case_studies', 'Case Studies', ''],
-        ['exploitation', 'Exploitation', ''],
-        ['defense', 'Defense', ''],
-      ]
+      const sections = [['reaction', 'My reflection', reflection]]
       statements.push(c.env.DB.prepare(`INSERT OR IGNORE INTO notes (id,recommendation_id,title,kind,source_url,status) VALUES (?,?,?,?,?,?)`).bind(reflectionNoteId, session.recommendation_id, session.video_title || 'Learning reflection', 'reflection', session.video_url || null, 'draft'))
       for (const [position, [sectionKey, label, content]] of sections.entries()) {
         statements.push(c.env.DB.prepare(`INSERT OR IGNORE INTO note_sections (id,note_id,section_key,label,content,direction,position) VALUES (?,?,?,?,?,?,?)`).bind(`${reflectionNoteId}_${sectionKey}`, reflectionNoteId, sectionKey, label, content, 'auto', position))
@@ -209,7 +203,7 @@ app.post('/sessions/:id/return', async (c) => {
           disposition,
           source_url: session.video_url || null,
           handwritten_annotations_are_reflection: true,
-          output_contract: 'learning_units_v1',
+          output_contract: 'source_note_v2',
       }), `session-extract:${session.id}`, session.recommendation_id, 'explicit_user_action'))
     }
   } else if (reflection && reflectionNoteId) {
@@ -287,14 +281,26 @@ async function hubNotes(db: D1Database, scope: { thread_id?: string; stage_id?: 
 }
 app.get('/notes', async (c) => {
   const kind = c.req.query('kind')
-  const notes = kind ? await c.env.DB.prepare(`SELECT * FROM notes WHERE kind=? ORDER BY updated_at DESC LIMIT 200`).bind(kind).all<any>() : await c.env.DB.prepare(`SELECT * FROM notes ORDER BY updated_at DESC LIMIT 200`).all<any>()
+  const notes = kind
+    ? await c.env.DB.prepare(`SELECT n.*, r.branch as rec_branch, r.round as rec_round, r.content_type as rec_content_type, r.video_title as rec_title FROM notes n LEFT JOIN recommendations r ON n.recommendation_id = r.id WHERE n.kind=? ORDER BY n.updated_at DESC LIMIT 200`).bind(kind).all<any>()
+    : await c.env.DB.prepare(`SELECT n.*, r.branch as rec_branch, r.round as rec_round, r.content_type as rec_content_type, r.video_title as rec_title FROM notes n LEFT JOIN recommendations r ON n.recommendation_id = r.id ORDER BY n.updated_at DESC LIMIT 200`).all<any>()
   const rows = notes.results || []
   if (!rows.length) return c.json({ notes: [] })
   const placeholders = rows.map(() => '?').join(',')
   const sections = await c.env.DB.prepare(`SELECT note_id,section_key,label,content,direction,position FROM note_sections WHERE note_id IN (${placeholders}) ORDER BY note_id,position`).bind(...rows.map((note) => note.id)).all<any>()
   const byNote = new Map<string, any[]>()
   for (const section of sections.results || []) byNote.set(section.note_id, [...(byNote.get(section.note_id) || []), section])
-  const output = rows.map((note) => ({ ...note, provenance: (() => { try { return JSON.parse(note.provenance_json || '[]') } catch { return [] } })(), provenance_json: undefined, sections: byNote.get(note.id) || [] }))
+  const output = rows.map((note) => ({
+    ...note,
+    branch_id: note.branch_id || note.rec_branch || null,
+    branch_label: note.rec_branch || note.branch_id || null,
+    round_label: note.rec_round || null,
+    content_type: note.rec_content_type || null,
+    source_url: note.source_url || note.rec_video_url || null,
+    provenance: (() => { try { return JSON.parse(note.provenance_json || '[]') } catch { return [] } })(),
+    provenance_json: undefined,
+    sections: byNote.get(note.id) || []
+  }))
   return c.json({ notes: output })
 })
 app.get('/notes/hub', async (c) => {
@@ -303,19 +309,70 @@ app.get('/notes/hub', async (c) => {
   const notes = await hubNotes(c.env.DB, { thread_id: threadId || undefined, stage_id: stageId || undefined })
   return c.json({ notes })
 })
+app.get('/notes/:id', async (c) => {
+  const noteId = c.req.param('id')
+  const note = await c.env.DB.prepare(`SELECT n.*, r.branch as rec_branch, r.round as rec_round, r.content_type as rec_content_type, r.video_title as rec_title, r.video_url as rec_video_url FROM notes n LEFT JOIN recommendations r ON n.recommendation_id = r.id WHERE n.id=?`).bind(noteId).first<any>()
+  if (!note) return c.json({ error: 'not found' }, 404)
+
+  const [sections, related, units, drafts, cards] = await Promise.all([
+    c.env.DB.prepare(`SELECT note_id,section_key,label,content,direction,position FROM note_sections WHERE note_id=? ORDER BY position`).bind(noteId).all<any>(),
+    note.recommendation_id
+      ? c.env.DB.prepare(`SELECT id,title,kind,status,updated_at FROM notes WHERE recommendation_id=? AND id<>? ORDER BY CASE kind WHEN 'reflection' THEN 0 WHEN 'guide' THEN 1 ELSE 2 END,updated_at DESC`).bind(note.recommendation_id, noteId).all<any>()
+      : Promise.resolve({ results: [] } as any),
+    note.recommendation_id
+      ? c.env.DB.prepare(`SELECT * FROM learning_units WHERE recommendation_id=? AND status NOT IN ('deleted','quarantined') ORDER BY created_at,id`).bind(note.recommendation_id).all<any>()
+      : Promise.resolve({ results: [] } as any),
+    c.env.DB.prepare(`SELECT d.*,u.statement unit_statement,u.unit_type FROM srs_drafts d LEFT JOIN learning_units u ON u.id=d.unit_id WHERE d.note_id=? ORDER BY d.created_at DESC`).bind(noteId).all<any>(),
+    c.env.DB.prepare(`SELECT card.*,u.statement unit_statement,u.unit_type FROM srs_cards card LEFT JOIN learning_units u ON u.id=card.unit_id WHERE card.note_id=? ORDER BY card.due_at,card.question`).bind(noteId).all<any>(),
+  ])
+
+  const relatedRows = related.results || []
+  const relatedSections = new Map<string, any[]>()
+  if (relatedRows.length) {
+    const placeholders = relatedRows.map(() => '?').join(',')
+    const rows = await c.env.DB.prepare(`SELECT note_id,section_key,label,content,direction,position FROM note_sections WHERE note_id IN (${placeholders}) ORDER BY note_id,position`).bind(...relatedRows.map((row: any) => row.id)).all<any>()
+    for (const section of rows.results || []) relatedSections.set(section.note_id, [...(relatedSections.get(section.note_id) || []), section])
+  }
+
+  const unitRows = units.results || []
+  const anchorsByUnit = new Map<string, any[]>()
+  if (unitRows.length) {
+    const placeholders = unitRows.map(() => '?').join(',')
+    const rows = await c.env.DB.prepare(`SELECT unit_id,anchor_type,locator,excerpt FROM unit_anchors WHERE unit_id IN (${placeholders}) ORDER BY unit_id,rowid`).bind(...unitRows.map((row: any) => row.id)).all<any>()
+    for (const anchor of rows.results || []) anchorsByUnit.set(anchor.unit_id, [...(anchorsByUnit.get(anchor.unit_id) || []), anchor])
+  }
+
+  const output = {
+    ...note,
+    branch_id: note.branch_id || note.rec_branch || null,
+    branch_label: note.rec_branch || note.branch_id || null,
+    round_label: note.rec_round || null,
+    content_type: note.rec_content_type || null,
+    provenance: (() => { try { return JSON.parse(note.provenance_json || '[]') } catch { return [] } })(),
+    provenance_json: undefined,
+    sections: sections.results || []
+  }
+  return c.json({
+    note: output,
+    related_notes: relatedRows.map((row: any) => ({ ...row, sections: relatedSections.get(row.id) || [] })),
+    units: unitRows.map((unit: any) => ({ ...unit, anchors: anchorsByUnit.get(unit.id) || [] })),
+    recall: { drafts: drafts.results || [], cards: cards.results || [] },
+  })
+})
 app.post('/notes', async (c) => {
   const body = await c.req.json<any>()
   if (!body.title?.trim()) return c.json({ error: 'title required' }, 400)
   const threadId = String(body.thread_id || '').trim().slice(0, 120) || null
   const stageId = String(body.stage_id || '').trim().slice(0, 120) || null
-  if (threadId && stageId) return c.json({ error: 'note cannot belong to both a Thread and a Level' }, 400)
-  if (threadId || stageId) {
-    try { await resolveLearningScope(c.env.DB, threadId ? { kind: 'thread', id: threadId } : { kind: 'level', id: stageId! }) }
+  const lessonId = String(body.lesson_id || '').trim().slice(0, 120) || null
+  if ([threadId, stageId, lessonId].filter(Boolean).length > 1) return c.json({ error: 'note must have exactly one learning owner' }, 400)
+  if (threadId || stageId || lessonId) {
+    try { await resolveLearningScope(c.env.DB, threadId ? { kind: 'thread', id: threadId } : stageId ? { kind: 'level', id: stageId } : { kind: 'lesson', id: lessonId! }) }
     catch (error: any) { return c.json({ error: error?.code || 'invalid_scope', message: error?.message || 'Invalid learning scope.' }, 400) }
   }
   const noteId = body.id || id('note')
   const provenance = Array.isArray(body.provenance) ? body.provenance.slice(0, 20).map((item: any) => ({ annotation_id: String(item.annotation_id || '').slice(0, 120), reason: String(item.reason || '').slice(0, 500), confidence: item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))) })).filter((item: any) => item.annotation_id) : []
-  const statements = [c.env.DB.prepare(`INSERT INTO notes (id,recommendation_id,title,kind,branch_id,source_url,status,thread_id,stage_id,provenance_json) VALUES (?,?,?,?,?,?,?,?,?,?)`).bind(noteId, body.recommendation_id || null, body.title.trim(), body.kind || 'note', body.branch_id || null, body.source_url || null, body.status || 'draft', threadId, stageId, JSON.stringify(provenance))]
+  const statements = [c.env.DB.prepare(`INSERT INTO notes (id,recommendation_id,title,kind,branch_id,source_url,status,thread_id,stage_id,lesson_id,provenance_json,abstract) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).bind(noteId, body.recommendation_id || null, body.title.trim(), body.kind || 'note', body.branch_id || null, body.source_url || null, body.status || 'draft', threadId, stageId, lessonId, JSON.stringify(provenance), String(body.abstract || '').trim() || null)]
   for (const [index, section] of (body.sections || []).entries()) statements.push(c.env.DB.prepare(`INSERT INTO note_sections (id,note_id,section_key,label,content,direction,position) VALUES (?,?,?,?,?,?,?)`).bind(id('section'), noteId, section.section_key, section.label, section.content || '', section.direction || 'auto', index))
   await c.env.DB.batch(statements)
   return c.json({ ok: true, id: noteId }, 201)
@@ -323,8 +380,16 @@ app.post('/notes', async (c) => {
 app.put('/notes/:id', async (c) => {
   const body = await c.req.json<any>()
   const provenance = Array.isArray(body.provenance) ? body.provenance.slice(0, 20).map((item: any) => ({ annotation_id: String(item.annotation_id || '').slice(0, 120), reason: String(item.reason || '').slice(0, 500), confidence: item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))) })).filter((item: any) => item.annotation_id) : null
-  const statements = [c.env.DB.prepare(`UPDATE notes SET title=COALESCE(?,title), branch_id=COALESCE(?,branch_id), provenance_json=COALESCE(?,provenance_json), revision=revision+1, updated_at=datetime('now') WHERE id=?`).bind(body.title || null, body.branch_id || null, provenance ? JSON.stringify(provenance) : null, c.req.param('id'))]
-  for (const section of body.sections || []) statements.push(c.env.DB.prepare(`UPDATE note_sections SET content=?,direction=?,updated_at=datetime('now') WHERE note_id=? AND section_key=?`).bind(section.content || '', section.direction || 'auto', c.req.param('id'), section.section_key))
+  const statements = [c.env.DB.prepare(`UPDATE notes SET title=COALESCE(?,title),branch_id=COALESCE(?,branch_id),source_url=COALESCE(?,source_url),abstract=COALESCE(?,abstract),provenance_json=COALESCE(?,provenance_json),revision=revision+1,updated_at=datetime('now') WHERE id=?`).bind(body.title || null, body.branch_id || null, body.source_url || null, body.abstract || null, provenance ? JSON.stringify(provenance) : null, c.req.param('id'))]
+  if (Array.isArray(body.sections)) {
+    const keys = body.sections.map((section: any) => String(section.section_key || '').trim()).filter(Boolean)
+    if (keys.length) statements.push(c.env.DB.prepare(`DELETE FROM note_sections WHERE note_id=? AND section_key NOT IN (${keys.map(() => '?').join(',')})`).bind(c.req.param('id'), ...keys))
+    else statements.push(c.env.DB.prepare(`DELETE FROM note_sections WHERE note_id=?`).bind(c.req.param('id')))
+    for (const [position, section] of body.sections.entries()) {
+      const sectionKey = String(section.section_key || `section_${position + 1}`).slice(0, 120)
+      statements.push(c.env.DB.prepare(`INSERT INTO note_sections (id,note_id,section_key,label,content,direction,position,updated_at) VALUES (?,?,?,?,?,?,?,datetime('now')) ON CONFLICT(note_id,section_key) DO UPDATE SET label=excluded.label,content=excluded.content,direction=excluded.direction,position=excluded.position,updated_at=datetime('now')`).bind(`${c.req.param('id')}_${sectionKey}`, c.req.param('id'), sectionKey, String(section.label || 'Note').trim() || 'Note', section.content || '', section.direction || 'auto', position))
+    }
+  }
   await c.env.DB.batch(statements)
   return c.json({ ok: true })
 })
@@ -342,7 +407,7 @@ app.post('/notes/:id/process', async (c) => {
   if (note.kind !== 'reflection') {
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE notes SET status='processing',updated_at=datetime('now') WHERE id=?`).bind(note.id),
-      c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'extract_notes',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(id('job'), JSON.stringify({ note_id: note.id, recommendation_id: note.recommendation_id, source_url: note.source_url || recommendation?.video_url || null, rating: Number(recommendation?.user_score || 0), reprocess_note_id: note.id, output_contract: 'learning_units_v1', note_language: 'en', preserve_source_language_quotes: true }), `extract-reprocess:${note.id}:${note.revision}`),
+      c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'extract_notes',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(id('job'), JSON.stringify({ note_id: note.id, recommendation_id: note.recommendation_id, source_url: note.source_url || recommendation?.video_url || null, rating: Number(recommendation?.user_score || 0), reprocess_note_id: note.id, output_contract: 'source_note_v2', note_language: 'en', preserve_source_language_quotes: true }), `extract-reprocess:${note.id}:${note.revision}`),
     ])
     return c.json({ ok: true, status: 'processing', kind: 'source' }, 202)
   }
@@ -359,7 +424,7 @@ app.get('/srs/drafts', async (c) => {
   if (threadId && stageId) return c.json({ error: 'Choose either a Thread or a Level scope.' }, 400)
   const where = threadId ? 'WHERE d.thread_id=? AND d.stage_id IS NULL' : stageId ? 'WHERE d.stage_id=?' : ''
   const statement = c.env.DB.prepare(`
-    SELECT d.*,
+    SELECT d.*,u.statement AS unit_statement,u.unit_type,
       COALESCE(
         (SELECT title FROM notes WHERE id = d.note_id LIMIT 1),
         (SELECT title FROM notes WHERE recommendation_id = d.recommendation_id AND d.recommendation_id IS NOT NULL LIMIT 1),
@@ -371,8 +436,10 @@ app.get('/srs/drafts', async (c) => {
         (SELECT branch_id FROM notes WHERE id = d.note_id LIMIT 1),
         d.topic,
         'General'
-      ) as branch
+      ) as branch,
+      COALESCE(d.source_anchor,(SELECT locator FROM unit_anchors WHERE unit_id=d.unit_id ORDER BY rowid LIMIT 1)) AS source_anchor
     FROM srs_drafts d
+    LEFT JOIN learning_units u ON u.id=d.unit_id
     ${where}
     ORDER BY d.created_at DESC
     LIMIT 200
@@ -386,7 +453,7 @@ app.get('/learning/srs/cards', async (c) => {
   if (threadId && stageId) return c.json({ error: 'Choose either a Thread or a Level scope.' }, 400)
   const where = threadId ? 'WHERE c.thread_id=? AND c.stage_id IS NULL' : stageId ? 'WHERE c.stage_id=?' : ''
   const statement = c.env.DB.prepare(`
-    SELECT c.*,
+    SELECT c.*,u.statement AS unit_statement,u.unit_type,
       COALESCE(
         (SELECT title FROM notes WHERE id = c.note_id LIMIT 1),
         (SELECT title FROM notes WHERE recommendation_id = c.recommendation_id AND c.recommendation_id IS NOT NULL LIMIT 1),
@@ -399,8 +466,10 @@ app.get('/learning/srs/cards', async (c) => {
         c.topic,
         'General'
       ) as branch,
-      COALESCE(c.note_id, (SELECT id FROM notes WHERE recommendation_id = c.recommendation_id AND c.recommendation_id IS NOT NULL LIMIT 1)) as note_id
+      COALESCE(c.note_id, (SELECT id FROM notes WHERE recommendation_id = c.recommendation_id AND c.recommendation_id IS NOT NULL LIMIT 1)) as note_id,
+      COALESCE(c.source_anchor,(SELECT locator FROM unit_anchors WHERE unit_id=c.unit_id ORDER BY rowid LIMIT 1)) AS source_anchor
     FROM srs_cards c
+    LEFT JOIN learning_units u ON u.id=c.unit_id
     ${where}
     ORDER BY c.due_at ASC, c.topic, c.question
     LIMIT 500
@@ -414,7 +483,7 @@ app.delete('/learning/srs/cards/:id', async (c) => {
 })
 app.put('/srs/drafts/:id', async (c) => {
   const body = await c.req.json<any>()
-  await c.env.DB.prepare(`UPDATE srs_drafts SET question=COALESCE(?,question),answer=COALESCE(?,answer),topic=COALESCE(?,topic),branch=COALESCE(?,branch),updated_at=datetime('now') WHERE id=?`).bind(body.question || null, body.answer || null, body.topic || null, body.branch || null, c.req.param('id')).run()
+  await c.env.DB.prepare(`UPDATE srs_drafts SET question=COALESCE(?,question),answer=COALESCE(?,answer),topic=COALESCE(?,topic),branch=COALESCE(?,branch),card_type=COALESCE(?,card_type),source_anchor=COALESCE(?,source_anchor),updated_at=datetime('now') WHERE id=?`).bind(body.question || null, body.answer || null, body.topic || null, body.branch || null, body.card_type || null, body.source_anchor || null, c.req.param('id')).run()
   return c.json({ ok: true })
 })
 app.post('/srs/drafts/:id/approve', async (c) => {
@@ -422,7 +491,7 @@ app.post('/srs/drafts/:id/approve', async (c) => {
   if (!draft) return c.json({ error: 'not found' }, 404)
   const approved = await c.env.DB.prepare(`UPDATE srs_drafts SET status='approved',updated_at=datetime('now') WHERE id=? AND status='draft'`).bind(draft.id).run()
   if (!approved.meta.changes) return c.json({ error: 'draft already processed' }, 409)
-  await c.env.DB.prepare(`INSERT INTO srs_cards (id,recommendation_id,note_id,question,answer,topic,branch,due_at,unit_id,thread_id,stage_id,scheduler_version) VALUES (?,?,?,?,?,?,?,date('now'),?,?,?,'fsrs-6-ts-fsrs-5.4.1')`).bind(id('card'), draft.recommendation_id, draft.note_id || null, draft.question, draft.answer, draft.topic, draft.branch || null, draft.unit_id || null, draft.thread_id || null, draft.stage_id || null).run()
+  await c.env.DB.prepare(`INSERT INTO srs_cards (id,recommendation_id,note_id,question,answer,topic,branch,due_at,unit_id,thread_id,stage_id,scheduler_version,card_type,source_anchor) VALUES (?,?,?,?,?,?,?,date('now'),?,?,?,'fsrs-6-ts-fsrs-5.4.1',?,?)`).bind(id('card'), draft.recommendation_id, draft.note_id || null, draft.question, draft.answer, draft.topic, draft.branch || null, draft.unit_id || null, draft.thread_id || null, draft.stage_id || null, draft.card_type || null, draft.source_anchor || null).run()
   return c.json({ ok: true })
 })
 app.post('/srs/drafts/:id/reject', async (c) => {
@@ -485,7 +554,14 @@ app.put('/settings/:key', async (c) => {
     const key = c.req.param('key') as keyof TasteMapSettings
     if (!['appearance', 'learning', 'srs_drafts', 'ai_curation', 'profile_proposals', 'profile_automation', 'recommendation_engine', 'atlas'].includes(key)) return c.json({ error: 'unknown settings key' }, 400)
     const current = await loadSettings(c.env.DB)
-    const value = await c.req.json()
+    const value = await c.req.json<any>()
+    if (key === 'recommendation_engine' && value?.mode && value.mode !== current.recommendation_engine.mode) {
+      return c.json({
+        error: 'engine_rollout_managed',
+        message: 'Use /analytics/hermes/engine/activate or /analytics/hermes/engine/rollback so rollout gates and receipts cannot be bypassed.',
+        current: current.recommendation_engine,
+      }, 409)
+    }
     const resolved = normalizeSettings({ ...current, [key]: { ...(current[key] as Record<string, unknown>), ...(value && typeof value === 'object' && !Array.isArray(value) ? value : {}) } })
     await c.env.DB.prepare(`INSERT INTO user_settings (setting_key,value_json) VALUES (?,?) ON CONFLICT(setting_key) DO UPDATE SET value_json=excluded.value_json,updated_at=datetime('now')`).bind(key, JSON.stringify(resolved[key])).run()
     return c.json({ ok: true, key, value: resolved[key], resolved })

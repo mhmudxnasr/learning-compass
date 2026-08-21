@@ -585,8 +585,13 @@ app.get('/branch-deck', async (c) => {
   const { DB } = c.env
   c.header('Cache-Control', 'no-store')
   try {
-    const [existingNodes, priorities, explored, mastered, balance, mappedByBranch, unmappedRows, learningUnitsByBranch] = await Promise.all([
-      DB.prepare("SELECT id, type, label, status, super_category, parent_id, round_label, meta_json FROM tree_nodes WHERE type IN ('root','category','branch','leaf') ORDER BY CASE WHEN status = 'love' THEN 0 WHEN status = 'active' THEN 1 WHEN status = 'fresh' THEN 2 WHEN status = 'locked' THEN 3 WHEN status = 'held' THEN 4 ELSE 5 END, id ASC").all<any>(),
+    const [existingNodes, categories, priorities, explored, mastered, balance, mappedByBranch, unmappedRows, learningUnitsByBranch] = await Promise.all([
+      DB.prepare(`SELECT id, type, label, status, super_category, parent_id, round_label, meta_json
+        FROM tree_nodes
+        WHERE type='branch'
+          AND (parent_id='root' OR parent_id IN (SELECT id FROM tree_nodes WHERE type='category'))
+        ORDER BY CASE WHEN status = 'love' THEN 0 WHEN status = 'active' THEN 1 WHEN status = 'fresh' THEN 2 WHEN status = 'locked' THEN 3 WHEN status = 'held' THEN 4 ELSE 5 END, label COLLATE NOCASE`).all<any>(),
+      DB.prepare("SELECT id,label,status,super_category FROM tree_nodes WHERE type='category' AND status!='pruned' ORDER BY label COLLATE NOCASE").all<any>(),
       DB.prepare("SELECT rank, branch_id, label, rationale FROM priorities ORDER BY rank ASC").all<any>(),
       DB.prepare("SELECT id, name, lifecycle_state, is_pruned FROM branch_exploration").all<any>(),
       DB.prepare("SELECT id, label, kind FROM mastered").all<any>(),
@@ -657,8 +662,15 @@ app.get('/branch-deck', async (c) => {
           id: node.id,
           label: cleanedLabel,
           type: node.type,
-          round_label: node.round_label || (node.id.startsWith('r1-') ? 'R1' : node.id.startsWith('r2-') ? 'R2' : 'Branch'),
+          round_label: displayRound(node, {
+            consumed: Number(balanceNode?.consumed_count ?? 0),
+            notes: Number(balanceNode?.notes_count ?? 0),
+            cards: Number(balanceNode?.srs_total ?? 0),
+            due: Number(balanceNode?.srs_due ?? 0),
+            recallStrength: balanceNode?.recall_strength != null ? Number(balanceNode.recall_strength) : null,
+          }),
           super_category: node.super_category || 'cat-mind',
+          category_label: (categories.results || []).find((category: any) => category.id === node.super_category)?.label || categoryName,
           parent_id: node.parent_id || 'root',
           status: prunedSet.has(node.id) ? 'pruned' : (node.status || 'active'),
           description: meta.notes || meta.description || `A focused area for understanding ${cleanedLabel}: what it means, how it works, and where it appears in real decisions or situations. It belongs to the ${categoryName} part of the map, but this branch is not a claim of mastery or a finished conclusion; sources should establish its useful scope and distinguish it from nearby topics.`,
@@ -686,6 +698,11 @@ app.get('/branch-deck', async (c) => {
 
     return c.json({
       existing,
+      categories: (categories.results || []).map((category: any) => ({
+        id: category.id,
+        label: cleanBranchLabel(category.label),
+        status: category.status || 'active',
+      })),
       suggestions: [],
       total: existing.length,
       priorities_count: priorityMap.size,
@@ -739,9 +756,9 @@ app.post('/branch-explanations', async (c) => {
 app.post('/branch-swipe', async (c) => {
   const { DB } = c.env
   try {
-    const { id, action, label, super_category, round_label, rationale, description, leaves_sample, contrast_hook, parent_id, restore_status, restore_priority_rank } = await c.req.json<{
+    const { id, action, label, super_category, round_label, rationale, description, leaves_sample, contrast_hook, parent_id, restore_status, restore_priority_rank, restore_action } = await c.req.json<{
       id: string
-      action: 'keep' | 'prune' | 'priority' | 'hold' | 'add' | 'undo'
+      action: 'keep' | 'prune' | 'priority' | 'hold' | 'add' | 'update' | 'undo'
       label?: string
       super_category?: string
       round_label?: string
@@ -752,23 +769,36 @@ app.post('/branch-swipe', async (c) => {
       parent_id?: string
       restore_status?: string
       restore_priority_rank?: number | null
+      restore_action?: 'keep' | 'prune' | 'priority' | 'hold' | 'add'
     }>()
 
     if (!id || !isNonEmptyStr(id, 100)) return c.json({ error: 'id required' }, 400)
-    if (!['keep', 'prune', 'priority', 'hold', 'add', 'undo'].includes(action)) return c.json({ error: 'invalid action' }, 400)
+    if (!['keep', 'prune', 'priority', 'hold', 'add', 'update', 'undo'].includes(action)) return c.json({ error: 'invalid action' }, 400)
 
     const branchLabel = label || id.replace(/[-_]/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
     const cat = super_category || 'cat-mind'
     const round = round_label || (id.startsWith('r1-') ? 'R1' : id.startsWith('r2-') ? 'R2' : 'R1')
-    const metaJson = JSON.stringify({
+    const suppliedMeta = {
       description: String(description || rationale || '').slice(0, 1000),
       leaves: Array.isArray(leaves_sample) ? leaves_sample.map((item) => String(item).slice(0, 120)).slice(0, 12) : [],
       contrast_hook: String(contrast_hook || '').slice(0, 500),
-    })
+    }
 
     const log = (summary: string, details: any) =>
       DB.prepare("INSERT INTO update_log (kind, summary, details_json) VALUES ('tree_change', ?, ?)")
         .bind(summary, JSON.stringify({ id, action, ...details })).run().catch(() => {})
+    type PriorityRow = { branch_id: string; label: string | null; rationale: string | null }
+    const readPriorityOrder = async (): Promise<PriorityRow[]> => {
+      const rows = await DB.prepare('SELECT branch_id,label,rationale FROM priorities ORDER BY rank ASC').all<PriorityRow>()
+      return rows.results || []
+    }
+    const writePriorityOrder = async (rows: PriorityRow[]) => {
+      await DB.batch([
+        DB.prepare('DELETE FROM priorities'),
+        ...rows.map((row, index) => DB.prepare('INSERT INTO priorities (rank,branch_id,label,rationale) VALUES (?,?,?,?)')
+          .bind(index + 1, row.branch_id, row.label, row.rationale)),
+      ])
+    }
 
     if (action === 'undo') {
       if (String(restore_status) === 'candidate') {
@@ -786,11 +816,16 @@ app.post('/branch-swipe', async (c) => {
         ? String(restore_status)
         : 'active'
       await DB.prepare("UPDATE tree_nodes SET status = ?, updated_at = datetime('now') WHERE id = ?").bind(restoredStatus, id).run()
-      // Reverse the explicit priority side effect.
-      await DB.prepare('DELETE FROM priorities WHERE branch_id = ?').bind(id).run()
-      if (typeof restore_priority_rank === 'number' && restore_priority_rank > 0) {
-        await DB.prepare("INSERT OR REPLACE INTO priorities (rank, branch_id, label, rationale) VALUES (?, ?, ?, ?)")
-          .bind(restore_priority_rank, id, branchLabel, rationale || 'Restored previous branch priority').run()
+      if (restore_action === 'priority' || restore_action === 'prune' || !restore_action) {
+        const priorities = (await readPriorityOrder()).filter((priority) => priority.branch_id !== id)
+        if (typeof restore_priority_rank === 'number' && restore_priority_rank > 0) {
+          priorities.splice(Math.min(restore_priority_rank - 1, priorities.length), 0, {
+            branch_id: id,
+            label: branchLabel,
+            rationale: rationale || 'Restored previous branch priority',
+          })
+        }
+        await writePriorityOrder(priorities)
       }
       if (restoredStatus !== 'pruned') {
         await DB.prepare("UPDATE branch_exploration SET is_pruned = 0, lifecycle_state = 'active', pruning_reason = NULL, updated_at = datetime('now') WHERE id = ?")
@@ -801,6 +836,21 @@ app.post('/branch-swipe', async (c) => {
         .bind(`user.profile.branch_preference.${id}`).run().catch(() => {})
       await log(`Branch ${branchLabel} restored to ${restoredStatus}`, { restoredStatus })
       }
+    } else if (action === 'update') {
+      const existing = await DB.prepare("SELECT label,status,super_category,parent_id,round_label,meta_json FROM tree_nodes WHERE id=? AND type='branch'").bind(id).first<any>()
+      if (!existing) return c.json({ error: 'branch not found' }, 404)
+      const nextParent = parent_id || super_category || existing.parent_id || 'root'
+      const category = await DB.prepare("SELECT id FROM tree_nodes WHERE id=? AND type='category' AND status!='pruned'").bind(nextParent).first<any>()
+      if (!category) return c.json({ error: 'valid category required' }, 400)
+      let nextMeta: Record<string, unknown> = {}
+      try { nextMeta = existing.meta_json ? JSON.parse(existing.meta_json) : {} } catch {}
+      if (description !== undefined || rationale !== undefined) nextMeta.description = suppliedMeta.description
+      if (Array.isArray(leaves_sample)) nextMeta.leaves = suppliedMeta.leaves
+      if (contrast_hook !== undefined) nextMeta.contrast_hook = suppliedMeta.contrast_hook
+      await DB.prepare(`UPDATE tree_nodes SET label=?,super_category=?,parent_id=?,meta_json=?,updated_at=datetime('now') WHERE id=?`)
+        .bind(branchLabel, nextParent, nextParent, JSON.stringify(nextMeta), id).run()
+      await DB.prepare('UPDATE priorities SET label=? WHERE branch_id=?').bind(branchLabel, id).run().catch(() => {})
+      await log(`Branch ${branchLabel} details updated`, { category: nextParent })
     } else if (action === 'keep') {
       await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'love', ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'love', updated_at = datetime('now')")
         .bind(id, branchLabel, cat, round).run()
@@ -811,23 +861,16 @@ app.post('/branch-swipe', async (c) => {
       await DB.prepare("INSERT INTO branch_exploration (id, name, path, lifecycle_state, confidence_score, is_pruned, pruning_reason, updated_at) VALUES (?, ?, ?, 'pruned', 0, 1, 'Pruned in Branch Deck', datetime('now')) ON CONFLICT(id) DO UPDATE SET is_pruned = 1, lifecycle_state = 'pruned', pruning_reason = 'Pruned in Branch Deck', updated_at = datetime('now')")
         .bind(id, branchLabel, id).run()
       // A pruned branch stops steering Compass priorities.
-      await DB.prepare('DELETE FROM priorities WHERE branch_id = ?').bind(id).run()
+      await writePriorityOrder((await readPriorityOrder()).filter((priority) => priority.branch_id !== id))
       await log(`Branch ${branchLabel} pruned`, {})
     } else if (action === 'priority') {
       await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'love', ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'love', updated_at = datetime('now')")
         .bind(id, branchLabel, cat, round).run()
-      // One explicit renumbered priority list: promote this branch to rank 1 and
-      // shift the rest down, instead of growing an unbounded MAX(rank)+1 tail.
-      // Move existing ranks through a temporary collision-free range first.
-      // A direct +1 update violates a UNIQUE(rank) constraint when ranks are
-      // contiguous, and the old swallowed batch failure made promotion look
-      // successful while writing no priority row.
-      await DB.batch([
-        DB.prepare('DELETE FROM priorities WHERE branch_id = ?').bind(id),
-        DB.prepare('UPDATE priorities SET rank = rank + 1000000'),
-        DB.prepare('UPDATE priorities SET rank = rank - 999999'),
-        DB.prepare('INSERT INTO priorities (rank, branch_id, label, rationale) VALUES (1, ?, ?, ?)')
-          .bind(id, branchLabel, rationale || 'Promoted in Branch Deck'),
+      const priorities = await readPriorityOrder()
+      const existingPriority = priorities.find((priority) => priority.branch_id === id)
+      await writePriorityOrder([
+        { branch_id: id, label: branchLabel, rationale: rationale || existingPriority?.rationale || 'Promoted in Branch Deck' },
+        ...priorities.filter((priority) => priority.branch_id !== id),
       ])
       await log(`Branch ${branchLabel} promoted to priority #1`, { rank: 1 })
     } else if (action === 'hold') {
@@ -835,8 +878,11 @@ app.post('/branch-swipe', async (c) => {
         .bind(id, branchLabel, cat, round).run()
       await log(`Branch ${branchLabel} held`, {})
     } else if (action === 'add') {
+      const nextParent = parent_id || cat
+      const category = await DB.prepare("SELECT id FROM tree_nodes WHERE id=? AND type='category' AND status!='pruned'").bind(nextParent).first<any>()
+      if (!category) return c.json({ error: 'valid category required' }, 400)
       await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, meta_json, updated_at) VALUES (?, 'branch', ?, ?, ?, 'active', ?, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET label = excluded.label, super_category = excluded.super_category, parent_id = excluded.parent_id, status = 'active', round_label = excluded.round_label, meta_json = excluded.meta_json, updated_at = datetime('now')")
-        .bind(id, branchLabel, cat, parent_id || 'root', round, metaJson).run()
+        .bind(id, branchLabel, nextParent, nextParent, round_label || null, JSON.stringify(suppliedMeta)).run()
       await log(`Branch ${branchLabel} added as active exploration`, {})
     }
 
@@ -846,7 +892,7 @@ app.post('/branch-swipe', async (c) => {
     let affinityScore: number | null = null
     if (action === 'undo') {
       await DB.prepare('DELETE FROM taste_vectors WHERE topic = ?').bind(id).run().catch(() => {})
-    } else if (action !== 'add') {
+    } else if (action !== 'add' && action !== 'update') {
       affinityScore = action === 'keep' || action === 'priority' ? 5.0 : action === 'prune' ? 0.5 : 2.5
       try {
         await DB.prepare("INSERT INTO taste_vectors (topic, affinity_score, consumption_count, last_consumed_at, updated_at) VALUES (?, ?, 1, datetime('now'), datetime('now')) ON CONFLICT(topic) DO UPDATE SET affinity_score = excluded.affinity_score, updated_at = datetime('now')")
@@ -858,7 +904,7 @@ app.post('/branch-swipe', async (c) => {
     // meaning. prune is an exclusion (Compass blocks it), priority is a priority
     // topic (Compass steers toward it), hold stays a weak hypothesis, add is an
     // active exploration signal. No feedback proposal is fabricated as "applied".
-    if (action !== 'undo') {
+    if (action !== 'undo' && action !== 'update') {
       try {
         await applyProfileAssertion(DB, {
           assertionKey: `user.profile.branch_preference.${id}`,
@@ -884,11 +930,13 @@ app.post('/branch-swipe', async (c) => {
     }
 
     // 3. Sync profile recent_signal
-    try {
-      const lastSwipes = await DB.prepare("SELECT summary FROM update_log WHERE kind = 'tree_change' ORDER BY ts DESC LIMIT 8").all<any>()
-      const summaries = (lastSwipes.results || []).map((r: any) => r.summary).join(' | ')
-      await DB.prepare("UPDATE profile SET recent_signal = ?, last_synced_at = datetime('now') WHERE id = 1").bind(`Branch decisions: ${summaries}`).run()
-    } catch {}
+    if (action !== 'update') {
+      try {
+        const lastSwipes = await DB.prepare("SELECT summary FROM update_log WHERE kind = 'tree_change' ORDER BY ts DESC LIMIT 8").all<any>()
+        const summaries = (lastSwipes.results || []).map((r: any) => r.summary).join(' | ')
+        await DB.prepare("UPDATE profile SET recent_signal = ?, last_synced_at = datetime('now') WHERE id = 1").bind(`Branch decisions: ${summaries}`).run()
+      } catch {}
+    }
 
     const profileState = await DB.prepare("SELECT last_synced_at, recent_signal FROM profile WHERE id = 1").first<any>().catch(() => null)
     const assertionState = await DB.prepare("SELECT updated_at FROM profile_assertions WHERE assertion_key = ?").bind(`user.profile.branch_preference.${id}`).first<any>().catch(() => null)
@@ -901,7 +949,7 @@ app.post('/branch-swipe', async (c) => {
       profile_sync: {
         synced_at: profileState?.last_synced_at || null,
         assertion_updated_at: assertionState?.updated_at || null,
-        context_refresh: 'Compass context will include this branch decision on its next read.',
+        context_refresh: action === 'update' ? 'Branch metadata updated without changing recommendation preferences.' : 'Compass context will include this branch decision on its next read.',
       },
     })
   } catch (err) {
