@@ -66,7 +66,7 @@ export const modes: Record<RootKey, ModeDefinition[]> = {
     },
     {
       key: 'catalog', label: 'Catalog', description: 'Find and filter source material.', defaultView: 'all', defaultFocus: 'all',
-      focuses: [focus('all', 'All sources', 'Every source in one searchable ledger.'), focus('books', 'Books', 'Books tracked deliberately, with chapter evidence.'), focus('journal', 'Reading journal', 'KOReader books, highlights, and notes mirrored through Hardcover.'), focus('collections', 'Collections', 'Focused groups of related learning objects.'), focus('archive', 'Archive', 'Completed and excluded sources kept for recovery.')],
+      focuses: [focus('all', 'All sources', 'Every source in one searchable ledger.'), focus('journal', 'Reading journal', 'KOReader books, highlights, and notes mirrored through Hardcover.'), focus('collections', 'Collections', 'Focused groups of related learning objects.'), focus('archive', 'Archive', 'Completed and excluded sources kept for recovery.')],
     },
     {
       key: 'assets', label: 'Assets', description: 'Open files and reading companions.', defaultView: 'files', defaultFocus: 'files',
@@ -75,7 +75,10 @@ export const modes: Record<RootKey, ModeDefinition[]> = {
   ],
   learn: [
     { key: 'paths', label: 'Threads', description: 'Build and follow finite learning paths.', defaultView: 'paths' },
-    { key: 'canon', label: 'Canon', description: 'Browse enduring three-book entry points across fields.', defaultView: 'canon' },
+    {
+      key: 'canon', label: 'Books', description: 'Read your shelf or explore the three-book Canon.', defaultView: 'atlas', defaultFocus: 'atlas',
+      focuses: [focus('shelf', 'Shelf', 'Tracked books, chapters, and reading companions.'), focus('atlas', 'Canon atlas', 'Three-book entry points across fields.')],
+    },
     {
       key: 'practice', label: 'Practice', description: 'Retrieve and make knowledge durable.', defaultView: 'notes', defaultFocus: 'notes',
       focuses: [focus('notes', 'Notes', 'Structured, editable bilingual notes.'), focus('recall', 'Recall', 'Due review plus drafts awaiting approval.')],
@@ -143,8 +146,9 @@ const legacyDestinations: Record<string, LegacyDestination> = {
   '/library/rss': { root: 'library', mode: 'triage', focus: 'feeds' },
   '/curate/discovery': { root: 'library', mode: 'catalog', focus: 'all' },
   '/library/all': { root: 'library', mode: 'catalog', focus: 'all' },
-  '/curate/books': { root: 'library', mode: 'catalog', focus: 'books' },
-  '/library/books': { root: 'library', mode: 'catalog', focus: 'books' },
+  '/curate/books': { root: 'learn', mode: 'canon', focus: 'shelf' },
+  '/library/books': { root: 'learn', mode: 'canon', focus: 'shelf' },
+  '/learn/books': { root: 'learn', mode: 'canon', focus: 'shelf' },
   '/library/journal': { root: 'library', mode: 'catalog', focus: 'journal' },
   '/library/hardcover': { root: 'library', mode: 'catalog', focus: 'journal' },
   '/curate/collections': { root: 'library', mode: 'catalog', focus: 'collections' },
@@ -211,8 +215,8 @@ const legacySegments: Record<RootKey, Record<string, LegacyDestination>> = {
 
 const objectTypes: Record<RootKey, string[]> = {
   home: [],
-  library: ['source', 'artifact', 'book', 'collection'],
-  learn: ['thread', 'level', 'note', 'unit', 'card', 'lesson', 'canon-domain'],
+  library: ['source', 'artifact', 'collection'],
+  learn: ['thread', 'level', 'note', 'unit', 'card', 'lesson', 'canon-domain', 'book'],
   map: ['node', 'branch'],
   settings: [],
 }
@@ -303,12 +307,14 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const raw = (rawHash || '/home').replace(/\/$/, '') || '/home'
   const [rawPath, queryString = ''] = raw.split('?')
   const originalQuery = new URLSearchParams(queryString)
+  const movedBookObject = rawPath.match(/^\/library\/book\/([^/]+)$/)
   const oldThread = rawPath.match(/^\/learn\/hub\/([^/]+)$/)
-  const oldTypedPath = oldThread ? `/learn/thread/${oldThread[1]}` : rawPath
+  const oldTypedPath = movedBookObject ? `/learn/book/${movedBookObject[1]}` : oldThread ? `/learn/thread/${oldThread[1]}` : rawPath
   const lessonPath = oldTypedPath.match(/^\/learn\/(?:thread\/([^/]+)\/lesson|t\/([^/]+)\/l)\/([^/]+)$/)
   const levelPath = oldTypedPath.match(/^\/learn\/(?:thread\/([^/]+)\/level|t\/([^/]+)\/v)\/([^/]+)$/)
   const canonDomainPath = oldTypedPath.match(/^\/learn\/canon\/([^/]+)$/)
-  const exactAlias = legacyDestinations[rawPath]
+  const movedBooksQuery = rawPath === '/library' && (originalQuery.get('focus') === 'books' || originalQuery.get('mode') === 'books')
+  const exactAlias = movedBooksQuery ? { root: 'learn' as const, mode: 'canon', focus: 'shelf' } : legacyDestinations[rawPath]
   const pathParts = oldTypedPath.replace(/^\//, '').split('/').filter(Boolean)
   const candidateRoot = (exactAlias?.root || pathParts[0]) as RootKey
   const knownRoot = roots.some((item) => item.key === candidateRoot)
@@ -341,8 +347,8 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const pathState = segmentState || (pathSegment && modeMeta(root, pathSegment) ? { root, mode: pathSegment } : undefined)
   const queryMode = originalQuery.get('mode') || undefined
   const queryFocus = originalQuery.get('focus') || undefined
-  const requestedMode = queryMode || exactAlias?.mode || pathState?.mode
-  const requestedFocus = queryFocus || exactAlias?.focus || pathState?.focus
+  const requestedMode = movedBookObject || movedBooksQuery ? 'canon' : queryMode || exactAlias?.mode || pathState?.mode
+  const requestedFocus = movedBookObject || movedBooksQuery ? 'shelf' : queryFocus || exactAlias?.focus || pathState?.focus
   const state = normalizeState(root, requestedMode, requestedFocus)
   const invalidObject = objectRoute && (!objectType || !objectTypes[root].includes(objectType))
   const invalidModePath = !objectRoute && pathParts.length > 1 && !exactAlias && !pathState && !modeMeta(root, pathSegment)
@@ -361,7 +367,7 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
       : canonicalRoot(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
   const rawComparable = rawPath + (queryString ? `?${queryString}` : '')
   const changed = canonical !== rawComparable
-  const recovered = Boolean(exactAlias || oldThread || (pathParts.length > 1 && !objectRoute && canonical !== rawComparable) || invalid)
+  const recovered = Boolean(exactAlias || movedBookObject || oldThread || (pathParts.length > 1 && !objectRoute && canonical !== rawComparable) || invalid)
   const route = {
     root,
     mode: state.mode,
@@ -387,6 +393,7 @@ function normalizeHrefState(root: RootKey, requestedMode?: string, requestedFocu
 
 /** Return a root URL; modes are groups and focus is local query state. */
 export function routeHref(root: RootKey, mode?: string, focusValue?: string) {
+  if (root === 'library' && (mode === 'books' || focusValue === 'books')) return routeHref('learn', 'canon', 'shelf')
   const state = normalizeHrefState(root, mode, focusValue)
   const explicitLeaf = Boolean(mode && !modeMeta(root, mode) && leafMeta(root, mode))
   const explicitFocus = Boolean(focusValue)

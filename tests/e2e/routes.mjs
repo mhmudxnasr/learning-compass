@@ -25,12 +25,12 @@ const modeRoutes = [
 
   { root: 'library', href: '#/library?mode=triage&focus=feeds', mode: 'triage', focus: 'feeds', expected: '.folio-feeds-view' },
   { root: 'library', href: '#/library?mode=catalog&focus=all', mode: 'catalog', focus: 'all', expected: '.folio-all-view' },
-  { root: 'library', href: '#/library?mode=catalog&focus=books', mode: 'catalog', focus: 'books', expected: '.folio-books-view' },
   { root: 'library', href: '#/library?mode=catalog&focus=journal', mode: 'catalog', focus: 'journal', expected: '.hardcover-journal-view' },
   { root: 'library', href: '#/library?mode=catalog&focus=collections', mode: 'catalog', focus: 'collections', expected: '.folio-collections-view' },
   { root: 'library', href: '#/library?mode=catalog&focus=archive', mode: 'catalog', focus: 'archive', expected: '.folio-archive-view' },
   { root: 'library', href: '#/library?mode=assets&focus=files', mode: 'assets', focus: 'files', expected: '.folio-files-view' },
   { root: 'learn', href: '#/learn', mode: 'paths', expected: '.folio-paths' },
+  { root: 'learn', href: '#/learn?mode=canon&focus=shelf', mode: 'canon', focus: 'shelf', expected: '.folio-books-view' },
   { root: 'learn', href: '#/learn?mode=canon', mode: 'canon', expected: '.canon-atlas-workspace' },
   { root: 'learn', href: '#/learn?mode=practice&focus=notes', mode: 'practice', focus: 'notes', expected: '.folio-notes' },
   { root: 'learn', href: '#/learn?mode=practice&focus=recall', mode: 'practice', focus: 'recall', expected: '.folio-recall' },
@@ -117,11 +117,29 @@ try {
       recent_signal: 'Prefer evidence-backed applied material.',
     },
     priorities: [[1, 'systems', 'Systems thinking', 'Build durable models.']],
-    tree_nodes: [{ id: 'fixture-branch-id', type: 'branch', label: 'Readable fixture branch', super_category: 'cat-mind', parent_id: 'root', status: 'love', round_label: 'R1' }],
+    tree_nodes: [
+      { id: 'fixture-branch-id', type: 'branch', label: 'Readable fixture branch', super_category: 'cat-mind', parent_id: 'root', status: 'love', round_label: 'R1' },
+      { id: 'pruned-fixture-branch', type: 'branch', label: 'Pruned fixture branch', super_category: 'cat-mind', parent_id: 'root', status: 'pruned', round_label: 'R2' },
+    ],
   }) })
   await requestJson('/brain/profile/sync-swipes', { method: 'POST', body: JSON.stringify({}) })
   const seededProfile = await requestJson('/brain/profile?recent_limit=50')
   if (!seededProfile.profile) throw new Error(`profile fixture did not persist: ${JSON.stringify(seededProfile)}`)
+
+  const directBookBody = { title: 'E2E Direct Book', author: 'E2E Author', url: 'https://example.com/direct-book' }
+  const bookHeaders = { 'content-type': 'application/json', 'x-real-ip': 'e2e-books' }
+  for (const [label, body] of [
+    ['missing', directBookBody],
+    ['invalid', { ...directBookBody, branch_id: 'missing-branch' }],
+    ['pruned', { ...directBookBody, branch_id: 'pruned-fixture-branch' }],
+  ]) {
+    const rejected = await fetch(`${baseUrl}/recommendations/books`, { method: 'POST', headers: bookHeaders, body: JSON.stringify(body) })
+    if (rejected.status !== 400) throw new Error(`manual book intake accepted a ${label} branch (${rejected.status})`)
+  }
+  const directBook = await requestJson('/recommendations/books', { method: 'POST', headers: bookHeaders, body: JSON.stringify({ ...directBookBody, branch_id: 'fixture-branch-id' }) })
+  if (directBook.book.branch_id !== 'fixture-branch-id' || directBook.book.round_label !== 'R1') throw new Error('manual book intake did not persist its verified branch and round')
+  const shelfRead = await requestJson('/recommendations/books')
+  if ((shelfRead.books || []).some((book) => !book.branch?.id || !book.branch?.round)) throw new Error('Books Shelf exposed a record without canonical branch and round context')
 
   const canonHeaders = { 'content-type': 'application/json', 'x-real-ip': 'e2e-canon' }
   const requestCanonJson = (path, options = {}) => requestJson(path, { ...options, headers: { ...canonHeaders, ...(options.headers || {}) } })
@@ -198,7 +216,7 @@ for (const route of modeRoutes) {
   if (route.focus && routeState.query.focus !== route.focus) throw new Error(`${route.href}: focus query was not preserved (${JSON.stringify(routeState.query)})`)
   if (route.root !== 'home' && await page.locator('.workspace-mode-switcher').count() !== 1) throw new Error(`${route.href}: missing the active root's internal mode switcher`)
   if (route.root === 'library' && (route.mode === 'triage' || route.mode === 'catalog') && await page.locator('.workspace-filter-switcher').count() !== 1) throw new Error(`${route.href}: missing the Library filter switcher`)
-  if ((route.root === 'learn' && route.mode === 'practice') || (route.root === 'map' && route.mode === 'review') || (route.root === 'settings' && route.mode === 'personal')) {
+  if ((route.root === 'learn' && (route.mode === 'canon' || route.mode === 'practice')) || (route.root === 'map' && route.mode === 'review') || (route.root === 'settings' && route.mode === 'personal')) {
     if (await page.locator('.workspace-filter-switcher').count() !== 1) throw new Error(`${route.href}: missing the active mode's focus switcher`)
   }
   if (route.root !== 'home' && !(await page.locator('.workspace-mode-switcher a.active, .workspace-mode-switcher a[aria-current="page"]').count())) throw new Error(`${route.href}: mode switcher did not mark its active mode`)
@@ -234,6 +252,8 @@ for (const route of modeRoutes) {
   if (!(await page.getByRole('heading', { level: 2, name: 'Ready to explore' }).count()) || !(await page.getByRole('heading', { level: 2, name: 'Coming next' }).count())) throw new Error('Canon atlas did not separate usable paths from unfinished coverage')
   if (!(await page.getByRole('button', { name: 'Surprise me with a ready field' }).count())) throw new Error('Canon did not constrain surprise discovery to ready fields')
   if (!(await page.getByRole('link', { name: 'Explore Canon field Behavioral Psychology' }).count())) throw new Error('Canon atlas omitted the ready field row')
+  const pendingCard = page.locator('.canon-entry-card').filter({ hasText: 'Social Psychology' })
+  if (await pendingCard.getByRole('link').count()) throw new Error('unfinished Canon field exposed a false path link')
   await page.getByRole('link', { name: 'Explore Canon field Behavioral Psychology' }).click()
   await page.locator('.canon-domain-detail').waitFor({ state: 'visible' })
   if (!page.url().includes('#/learn/canon/behavioral-psychology')) throw new Error('Canon domain did not preserve its canonical typed route')
@@ -246,6 +266,17 @@ for (const route of modeRoutes) {
   await page.goto(`${baseUrl}/#/learn/canon/social-psychology`, { waitUntil: 'networkidle' })
   await page.locator('.canon-pending-panel').waitFor({ state: 'visible' })
   if (await page.locator('.canon-book-section').count() || await page.getByRole('button', { name: 'Create three-book Thread' }).count()) throw new Error('unfinished Canon field exposed a false reading path or Thread action')
+
+  await page.goto(`${baseUrl}/#/learn/book/${encodeURIComponent(directBook.book.id)}?mode=canon&focus=shelf`, { waitUntil: 'networkidle' })
+  await page.locator('.studio-shell[data-root="learn"]').waitFor({ state: 'visible' })
+  await page.getByRole('button', { name: /back/i }).click()
+  await page.locator('.folio-books-view').waitFor({ state: 'visible' })
+  if (!page.url().includes('#/learn?mode=canon&focus=shelf')) throw new Error('book dossier Back action left the unified Learn Books workspace')
+
+  await page.goto(`${baseUrl}/#/library?mode=catalog&focus=books`, { waitUntil: 'networkidle' })
+  await page.locator('.studio-shell[data-root="learn"]').waitFor({ state: 'visible' })
+  await page.locator('.folio-books-view').waitFor({ state: 'visible' })
+  if (!(await page.locator('.workspace-filter-switcher a[aria-current="page"]').filter({ hasText: 'Shelf' }).count())) throw new Error('legacy Library Books query did not recover to Learn Books Shelf')
 
   await page.goto(`${baseUrl}/#/settings?focus=preferences`, { waitUntil: 'networkidle' })
   for (const section of ['visual-presets-heading', 'interface-tokens', 'theme-section', 'font-section', 'learning-preferences', 'atlas-preferences']) {
@@ -380,8 +411,9 @@ const legacyAliases = [
   { path: '/library/rss', root: 'library', mode: 'triage', focus: 'feeds' },
   { path: '/curate/discovery', root: 'library', mode: 'catalog', focus: 'all' },
   { path: '/library/all', root: 'library', mode: 'catalog', focus: 'all' },
-  { path: '/curate/books', root: 'library', mode: 'catalog', focus: 'books' },
-  { path: '/library/books', root: 'library', mode: 'catalog', focus: 'books' },
+  { path: '/curate/books', root: 'learn', mode: 'canon', focus: 'shelf' },
+  { path: '/library/books', root: 'learn', mode: 'canon', focus: 'shelf' },
+  { path: '/learn/books', root: 'learn', mode: 'canon', focus: 'shelf' },
   { path: '/library/hardcover', root: 'library', mode: 'catalog', focus: 'journal' },
   { path: '/curate/collections', root: 'library', mode: 'catalog', focus: 'collections' },
   { path: '/library/collections', root: 'library', mode: 'catalog', focus: 'collections' },
@@ -427,7 +459,7 @@ function legacySurface(alias) {
     if (alias.focus === 'archive') return '.folio-archive-view'
     return '.folio-all-view'
   }
-  if (alias.root === 'learn') return alias.focus === 'notes' ? '.folio-notes' : alias.focus === 'recall' ? '.folio-recall' : '.folio-paths'
+  if (alias.root === 'learn') return alias.mode === 'canon' ? '.folio-books-view' : alias.focus === 'notes' ? '.folio-notes' : alias.focus === 'recall' ? '.folio-recall' : '.folio-paths'
   if (alias.root === 'map') return alias.focus === 'branches' ? '.branch-desk' : alias.focus === 'balance' ? '.map-balance-view' : '.atlas-empty-state'
   if (alias.mode === 'system') return '.system-console'
   if (alias.mode === 'data') return '.data-settings-page'
@@ -846,7 +878,7 @@ for (const route of modeRoutes) {
   if (await page.locator('.mobile-dock a').count() !== roots.length) throw new Error(`${route.href}: mobile dock does not contain exactly five items`)
   if (route.root !== 'home' && (await page.locator('.workspace-mode-switcher').count() !== 1 || !(await page.locator('.workspace-mode-switcher').isVisible()))) throw new Error(`${route.href}: internal mode controls are missing on mobile`)
   if (route.root === 'library' && route.mode !== 'assets' && await page.locator('.workspace-filter-switcher').count() !== 1) throw new Error(`${route.href}: Library filter controls are missing on mobile`)
-  if ((route.root === 'learn' && route.mode === 'practice') || (route.root === 'map' && route.mode === 'review') || (route.root === 'settings' && route.mode === 'personal')) {
+  if ((route.root === 'learn' && (route.mode === 'canon' || route.mode === 'practice')) || (route.root === 'map' && route.mode === 'review') || (route.root === 'settings' && route.mode === 'personal')) {
     if (await page.locator('.workspace-filter-switcher').count() !== 1) throw new Error(`${route.href}: focus controls are missing on mobile`)
   }
   if (await page.locator('.context-pane, .context-scrim, .navigation-sheet').count()) throw new Error(`${route.href}: mobile rendered a redundant navigation sheet`)

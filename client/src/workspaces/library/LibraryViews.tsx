@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks'
 import { api, formatDate, labelize } from '../../api'
 import { Empty } from '../../components/States'
 import { Icon } from '../../components/Icon'
-import type { LibraryRecord, LibrarySelection } from './types'
+import type { LibraryRecord, LibrarySelection, LibraryViewHandlers } from './types'
 import {
   artifactLink,
   artifactSelection,
@@ -23,30 +23,7 @@ import {
   sourceTitle,
 } from './types'
 
-export type LibraryViewHandlers = {
-  onInspect: (selection: LibrarySelection) => void
-  onQueue: (item: LibraryRecord, override?: boolean) => void
-  onExclude: (item: LibraryRecord) => void
-  onStart: (event: MouseEvent, item: LibraryRecord, href: string, kind?: 'original' | 'html' | 'pdf' | 'artifact' | 'notebooklm', artifactId?: string) => void
-  onProcessArtifact: (item: LibraryRecord) => void
-  onDeleteArtifact: (item: LibraryRecord, skipConfirm?: boolean) => void
-  onDeleteRecommendationPermanently: (item: LibraryRecord) => void
-  onCompleteChapter: (book: LibraryRecord, chapter: LibraryRecord) => void
-  onAddBook: (payload: { title: string; author: string; isbn: string }) => void
-  onCreateCollection: (payload: { name: string; description: string }) => void
-  onDeleteCollection: (item: LibraryRecord) => void
-  onAddFeed?: (url: string) => void
-  onSyncFeeds?: () => void
-  onSyncFeed?: (feedId: string) => void
-  onDeleteFeed?: (feed: LibraryRecord) => void
-  onDeleteFeedEntry?: (feedId: string, item: LibraryRecord) => void
-  onClearFeedEntries?: (feedId: string) => void
-  onFeedbackSaved?: (sourceId: string, receipt: LibraryRecord) => void
-  feedbackReceipt?: { sourceId: string; result: LibraryRecord } | null
-  busyId?: string
-  blockedId?: string
-  notice?: string
-}
+export type { LibraryViewHandlers } from './types'
 
 function RecordMeta({ children }: { children: preact.ComponentChildren }) {
   return <span class="folio-record-meta">{children}</span>
@@ -866,25 +843,7 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
   )
 }
 
-export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
-  const [title, setTitle] = useState('')
-  const [author, setAuthor] = useState('')
-  const [isbn, setIsbn] = useState('')
-  const [expanded, setExpanded] = useState<string | null>(null)
-  const books = Array.isArray(data.books) ? data.books : []
-  const shelves = [
-    ['Captured', books.filter((book: LibraryRecord) => ['captured', 'inbox', ''].includes(String(book.learning_state || '')) && String(book.status || '') === 'active'), 'Books enter the source ledger here first.'],
-    ['Reading', books.filter((book: LibraryRecord) => String(book.learning_state || '') === 'in_progress'), 'Only deliberate reading belongs here.'],
-    ['Finished', books.filter((book: LibraryRecord) => String(book.status || '') === 'consumed'), 'Finished books remain available for reflection and evidence.'],
-  ] as Array<[string, LibraryRecord[], string]>
-  const submit = (event: Event) => { event.preventDefault(); if (title.trim() && author.trim()) { handlers.onAddBook({ title: title.trim(), author: author.trim(), isbn: isbn.trim() }); setTitle(''); setAuthor(''); setIsbn('') } }
-  return <div class="folio-library-view folio-books-view">
-    <div class="folio-view-intro"><div><p class="folio-kicker">Deliberate intake</p><h1>Books</h1><p>Books enter All sources, then move through the same Queue, session, reflection, and consolidation loop as every other source.</p></div><span class="folio-count-readout"><strong>{books.length}</strong><small>books</small></span></div>
-    <form class="folio-intake-form" onSubmit={submit}><div><h2>Add a book</h2><p>Record the reason before the title becomes a commitment.</p></div><label>Title<input value={title} onInput={(event) => setTitle((event.currentTarget as HTMLInputElement).value)} required/></label><label>Author<input value={author} onInput={(event) => setAuthor((event.currentTarget as HTMLInputElement).value)} required/></label><label>ISBN <span>(optional)</span><input value={isbn} onInput={(event) => setIsbn((event.currentTarget as HTMLInputElement).value)}/></label><button type="submit" class="folio-button folio-button-primary">Save book</button></form>
-    {shelves.map(([label, items, description]) => <section class="folio-shelf" key={label}><div class="folio-section-heading"><div><h2>{label}</h2><p>{description}</p></div><span>{items.length}</span></div>{items.length ? <div class="folio-record-list">{items.map((book) => { const expandedBook = expanded === book.id; const bookStatus = String(book.learning_state || book.status); const chapterCount = book.visual?.chapters?.length || 0; return <article class="folio-record folio-book-record" key={book.id}><div class="folio-record-main"><RecordMeta>{sourceCreator(book)} · {formatStatus(bookStatus)}</RecordMeta><RowTitle item={book} type="book" onInspect={handlers.onInspect}/><BranchContextBadges item={book}/>{book.why_this && <p class="folio-record-reason">{book.why_this}</p>}<div class="folio-row-actions"><button type="button" class="folio-button" onClick={() => setExpanded(expandedBook ? null : String(book.id))}>{expandedBook ? 'Hide chapters' : chapterCount > 0 ? `Chapters (${chapterCount})` : 'Show chapters'}</button>{String(book.learning_state || '') === 'inbox' && <button type="button" class="folio-button folio-button-primary" onClick={() => handlers.onQueue(book)} disabled={handlers.busyId === book.id}>Queue</button>}<a class="folio-button" href={objectHref('book', String(book.id))}>Book details</a>{bookStatus !== 'active' && <button type="button" class="folio-button danger-button" onClick={() => handlers.onDeleteRecommendationPermanently(book)} disabled={handlers.busyId === `permanent-delete:${book.id}`}>{handlers.busyId === `permanent-delete:${book.id}` ? 'Deleting forever…' : 'Delete permanently'}</button>}</div>{expandedBook && <BookChapters book={book} handlers={handlers}/>}</div></article> })}</div> : <p class="folio-shelf-empty">Nothing on this shelf yet.</p>}</section>)}
-    {handlers.notice && <p class="folio-action-status" role="status">{handlers.notice}</p>}
-  </div>
-}
+export { BooksView } from './BooksView'
 
 function BookChapters({ book, handlers }: { book: LibraryRecord; handlers: LibraryViewHandlers }) {
   const chapters = book.visual?.chapters || []

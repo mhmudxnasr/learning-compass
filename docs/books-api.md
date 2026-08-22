@@ -1,6 +1,12 @@
 # Books API contract
 
-Books are a separate product surface. A book record is owned by `GET /recommendations/books`; its chapter rows and chapter files are rendered in Books, not in the general source/File library.
+Books is one visible Learn workspace with **Shelf** and **Canon atlas** lenses. A captured book record is owned by `GET /recommendations/books`; its typed dossier, chapter rows, and chapter files stay under Learn → Books → Shelf rather than creating a competing Library tab. Canon retains its separate curated-domain model until a selection is explicitly captured.
+
+## Add a Shelf book
+
+`POST /recommendations/books`
+
+Requires `title`, `author`, and `branch_id`; `isbn`, `url`, and `why_this` are optional. The branch must exist, be a branch node, and not be pruned. The write atomically stores the canonical branch ID plus its label and round and creates a `captured` record. Missing, unknown, or pruned branches return HTTP 400.
 
 ## Read
 
@@ -55,6 +61,8 @@ Request `{ "completed": true|false }`. This changes chapter completion metadata 
 ## Hermes invariants
 
 - Read and mutate book chapters through the Books routes.
+- Require and verify a non-pruned branch for every manual Shelf intake; preserve its round everywhere the book renders.
+- Keep passive Shelf links separate from Queue-owned tracked Start/Resume actions.
 - Keep book chapter files book-scoped with `scope=book`.
 - Verify the owning book and chapter key before upload or completion.
 - Do not turn a book chapter into a standalone recommendation, captured Library source, Queue item, or general Files entry.

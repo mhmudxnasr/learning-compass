@@ -4,6 +4,8 @@ import { activateWaitingRun } from './discovery'
 import { normalizeQualityAssurance } from '../artifact-metadata'
 import { classifyRecommendationFeedback } from '../intelligence-v2'
 import { recordRecommendationSignal, syncRecommendationFeedbackSignals } from '../services/intelligence-v2'
+import { buildLearningBalance } from '../services/learning-balance'
+import { displayRound, roundEvidenceFromBalance } from '../services/branch-rounds'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -143,6 +145,8 @@ app.get('/books', async (c) => {
   const jobs = ids.length
     ? await c.env.DB.prepare(`SELECT id,job_type,status,error,payload_json,updated_at FROM agent_jobs WHERE job_type IN ('visualise_source','extract_notes') AND json_extract(payload_json,'$.recommendation_id') IN (${ids.map(() => '?').join(',')}) ORDER BY updated_at DESC`).bind(...ids).all<any>()
     : { results: [] }
+  const balance = ids.length ? await buildLearningBalance(c.env.DB, 90).catch(() => null) : null
+  const balanceByBranch = new Map((balance?.branches || []).map((branch: any) => [String(branch.id), branch]))
   const visuals = new Map<string, any>()
   for (const book of books) visuals.set(book.id, { status: 'not_started', html: null, pdf: null, extraction: null, chapters: [] })
   for (const row of artifacts.results || []) {
@@ -188,7 +192,8 @@ app.get('/books', async (c) => {
     books: books.map((book: any) => {
       const branchLabel = book.branch_label || book.branch
       const branchId = book.branch_id || branchLabel
-      const roundLabel = book.round_label || book.round
+      const balanceBranch = balanceByBranch.get(String(branchId || ''))
+      const roundLabel = book.round_label || book.round || (branchId ? displayRound({ id: branchId }, roundEvidenceFromBalance(balanceBranch)) : null)
       const branchInfo = branchLabel ? { id: branchId, label: branchLabel, round: roundLabel, status: book.branch_status || 'love' } : null
       return {
         ...book,
@@ -250,13 +255,15 @@ app.post('/books/:id/chapters', async (c) => {
 })
 
 app.post('/books', async (c) => {
-  let body: { title?: string; author?: string; isbn?: string; url?: string; why_this?: string }
+  let body: { title?: string; author?: string; branch_id?: string; isbn?: string; url?: string; why_this?: string }
   try { body = await c.req.json() } catch { return c.json({ error: 'Invalid JSON' }, 400) }
   const title = String(body.title || '').trim()
   const author = String(body.author || '').trim()
+  const branchId = String(body.branch_id || '').trim()
   const isbn = String(body.isbn || '').replace(/[-\s]/g, '')
   if (!isNonEmptyStr(title, 500)) return c.json({ error: 'title required' }, 400)
   if (!isNonEmptyStr(author, 300)) return c.json({ error: 'author required' }, 400)
+  if (!branchId) return c.json({ error: 'valid non-pruned branch_id required' }, 400)
   if (isbn && !/^(?:\d{9}[\dX]|\d{13})$/i.test(isbn)) return c.json({ error: 'isbn must be 10 or 13 characters' }, 400)
   const url = body.url?.trim() || `https://books.google.com/books?q=${encodeURIComponent(isbn || `${title} ${author}`)}`
   if (!isValidUrl(url)) return c.json({ error: 'invalid url' }, 400)
@@ -264,18 +271,23 @@ app.post('/books', async (c) => {
   const dedupKey = `book_${isbn || slug}`
   const id = `book_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   try {
-    await c.env.DB.prepare(`INSERT INTO recommendations
-      (id,video_title,creator,content_type,video_url,why_this,verified,status,user_rating,dedup_key,updated_at)
-      VALUES (?,?,?,?,?,?,datetime('now'),'active','unset',?,datetime('now'))
-      ON CONFLICT(dedup_key) DO UPDATE SET video_title=excluded.video_title,creator=excluded.creator,video_url=excluded.video_url,why_this=excluded.why_this,updated_at=datetime('now')`)
-      .bind(id, title, author, 'book', url, body.why_this?.trim() || null, dedupKey).run()
-    const item = await c.env.DB.prepare('SELECT id FROM recommendations WHERE dedup_key=?').bind(dedupKey).first<{ id: string }>()
-    if (!item) return c.json({ error: 'book could not be saved' }, 500)
-    await c.env.DB.prepare(`INSERT OR IGNORE INTO recommendation_meta
-      (recommendation_id,learning_state,source_metadata_json,updated_at) VALUES (?,'captured',?,datetime('now'))`)
-      .bind(item.id, JSON.stringify({ isbn: isbn || null, source: 'bookshelf' })).run()
-    const saved = await c.env.DB.prepare(`SELECT r.*,m.learning_state FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?`).bind(item.id).first<any>()
-    return c.json({ ok: true, book: saved, duplicate: item.id !== id }, item.id === id ? 201 : 200)
+    const branch = await c.env.DB.prepare(`SELECT id,label,status,round_label FROM tree_nodes WHERE id=? AND type='branch' AND status!='pruned'`).bind(branchId).first<{ id: string; label: string; status: string; round_label: string | null }>()
+    if (!branch) return c.json({ error: 'valid non-pruned branch_id required' }, 400)
+    const existing = await c.env.DB.prepare('SELECT id FROM recommendations WHERE dedup_key=?').bind(dedupKey).first<{ id: string }>()
+    const recommendationId = existing?.id || id
+    await c.env.DB.batch([
+      c.env.DB.prepare(`INSERT INTO recommendations
+        (id,video_title,creator,content_type,video_url,why_this,branch,round,verified,status,user_rating,dedup_key,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,datetime('now'),'active','unset',?,datetime('now'))
+        ON CONFLICT(dedup_key) DO UPDATE SET video_title=excluded.video_title,creator=excluded.creator,video_url=excluded.video_url,why_this=excluded.why_this,branch=excluded.branch,round=excluded.round,updated_at=datetime('now')`)
+        .bind(recommendationId, title, author, 'book', url, body.why_this?.trim() || null, branch.label, branch.round_label || 'R1', dedupKey),
+      c.env.DB.prepare(`INSERT INTO recommendation_meta
+        (recommendation_id,learning_state,branch_id,source_metadata_json,updated_at) VALUES (?,'captured',?,?,datetime('now'))
+        ON CONFLICT(recommendation_id) DO UPDATE SET branch_id=excluded.branch_id,source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json),updated_at=datetime('now')`)
+        .bind(recommendationId, branch.id, JSON.stringify({ isbn: isbn || null, source: 'bookshelf' })),
+    ])
+    const saved = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,n.label branch_label,n.round_label,n.status branch_status FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(recommendationId).first<any>()
+    return c.json({ ok: true, book: saved, duplicate: Boolean(existing) }, existing ? 200 : 201)
   } catch (error) { return c.json(safeError('Book save failed')(error), 500) }
 })
 

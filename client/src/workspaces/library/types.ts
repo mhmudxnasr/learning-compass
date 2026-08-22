@@ -16,12 +16,39 @@ export type LibrarySelection = {
 
 export type LibraryWorkspaceProps = {
   route?: Route
+  embedded?: boolean
   onInspect?: (selection: LibrarySelection | null) => void
   onSelect?: (selection: LibrarySelection | null) => void
   onNavigate?: (href: string) => void
 }
 
 export type LibraryActionResult = { ok: boolean; error?: string; code?: string }
+
+export type LibraryViewHandlers = {
+  onInspect: (selection: LibrarySelection) => void
+  onQueue: (item: LibraryRecord, override?: boolean) => void
+  onExclude: (item: LibraryRecord) => void
+  onStart: (event: MouseEvent, item: LibraryRecord, href: string, kind?: 'original' | 'html' | 'pdf' | 'artifact' | 'notebooklm', artifactId?: string) => void
+  onProcessArtifact: (item: LibraryRecord) => void
+  onDeleteArtifact: (item: LibraryRecord, skipConfirm?: boolean) => void
+  onDeleteRecommendationPermanently: (item: LibraryRecord) => void
+  onCompleteChapter: (book: LibraryRecord, chapter: LibraryRecord) => void
+  onAddBook: (payload: { title: string; author: string; branch_id: string; isbn?: string; why_this?: string; url?: string }) => Promise<void>
+  onCreateCollection: (payload: { name: string; description: string }) => void
+  onDeleteCollection: (item: LibraryRecord) => void
+  onAddFeed?: (url: string) => void
+  onSyncFeeds?: () => void
+  onSyncFeed?: (feedId: string) => void
+  onDeleteFeed?: (feed: LibraryRecord) => void
+  onDeleteFeedEntry?: (feedId: string, item: LibraryRecord) => void
+  onClearFeedEntries?: (feedId: string) => void
+  onFeedbackSaved?: (sourceId: string, receipt: LibraryRecord) => void
+  onReload?: () => void
+  feedbackReceipt?: { sourceId: string; result: LibraryRecord } | null
+  busyId?: string
+  blockedId?: string
+  notice?: string
+}
 
 export const viewLabels: Record<LibraryView, string> = {
   queue: 'Queue',
@@ -42,6 +69,7 @@ export const objectLabels: Record<LibraryObjectType, string> = {
 }
 
 export function objectHref(type: LibraryObjectType, id: string) {
+  if (type === 'book') return canonicalObjectHref('learn', type, id, 'canon', 'shelf')
   return canonicalObjectHref('library', type, id)
 }
 

@@ -170,6 +170,7 @@ function CanonAtlas() {
             class="button secondary canon-surprise-btn"
             type="button"
             onClick={pickRandomField}
+            disabled={!readyDomains.length}
             title="Explore a random discipline"
           >
             <Icon name="spark" size={15} />
@@ -207,9 +208,10 @@ function CanonAtlas() {
 
       {/* Filter and Search Bar */}
       <div class="canon-toolbar">
-        <div class="canon-filter-tabs" role="tablist" aria-label="Filter by knowledge area">
+        <div class="canon-filter-tabs" role="group" aria-label="Filter by knowledge area">
           <button
             type="button"
+            aria-pressed={familyId === 'all'}
             class={`canon-filter-tab ${familyId === 'all' ? 'is-active' : ''}`}
             onClick={() => setFamilyId('all')}
           >
@@ -221,6 +223,7 @@ function CanonAtlas() {
               <button
                 key={family.id}
                 type="button"
+                aria-pressed={familyId === family.id}
                 class={`canon-filter-tab ${familyId === family.id ? 'is-active' : ''}`}
                 onClick={() => setFamilyId(family.id)}
               >
@@ -343,7 +346,7 @@ function CanonFieldCard({ domain }: { domain: CanonDomain }) {
       <div class="canon-card-topbar">
         <div class="canon-card-title-group">
           <h3 id={`domain-${domain.id}`} class="canon-entry-title">
-            <a href={canonDomainHref(domain)}>{domain.title}</a>
+            {ready ? <a href={canonDomainHref(domain)}>{domain.title}</a> : domain.title}
           </h3>
           <span class={`canon-pill ${status.class}`}>{status.label}</span>
         </div>
@@ -395,12 +398,12 @@ function CanonFieldCard({ domain }: { domain: CanonDomain }) {
         )}
       </div>
 
-      <div class="canon-card-action-bar">
+      {ready && <div class="canon-card-action-bar">
           <a class="button secondary canon-view-btn" aria-label={`Explore Canon field ${domain.title}`} href={canonDomainHref(domain)}>
           <span>Explore 3-Book Path</span>
           <Icon name="chevron" size={14} />
         </a>
-      </div>
+      </div>}
     </article>
   )
 }
@@ -408,7 +411,7 @@ function CanonFieldCard({ domain }: { domain: CanonDomain }) {
 function CanonDomainDetail({ domainId }: { domainId: string }) {
   const data = useData<CanonDomainResponse>(`/learning/core/canon/domains/${encodeURIComponent(domainId)}`)
   const [working, setWorking] = useState('')
-  const [notice, setNotice] = useState('')
+  const [notice, setNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null)
 
   if (data.loading && !data.data) return <Loading label="Opening Canon Dossier" />
   if (data.error && !data.data) return <ErrorState message={data.error} retry={data.reload} />
@@ -435,20 +438,21 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
 
   const capture = async (entry: CanonEntry) => {
     setWorking(`capture:${entry.id}`)
-    setNotice('')
+    setNotice(null)
     try {
       const result = await api<{ id: string; state: string }>(
         `/learning/core/canon/entries/${encodeURIComponent(entry.id)}/capture`,
         { method: 'POST' }
       )
-      setNotice(
-        result.state === 'captured'
+      setNotice({
+        kind: 'success',
+        message: result.state === 'captured'
           ? `"${entry.title}" was saved to your Library under ${domain.branch_label || 'this branch'}.`
           : `"${entry.title}" is already in your Library.`
-      )
+      })
       data.reload()
     } catch (error: any) {
-      setNotice(error?.message || 'Could not save this book.')
+      setNotice({ kind: 'error', message: error?.message || 'Could not save this book.' })
     } finally {
       setWorking('')
     }
@@ -456,7 +460,7 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
 
   const startThread = async () => {
     setWorking('thread')
-    setNotice('')
+    setNotice(null)
     try {
       const result = await api<{ id: string }>(
         `/learning/core/canon/domains/${encodeURIComponent(domain.id)}/thread`,
@@ -464,7 +468,7 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
       )
       location.hash = `#/learn/thread/${encodeURIComponent(result.id)}`
     } catch (error: any) {
-      setNotice(error?.message || 'Could not create a Learning Thread from this discipline.')
+      setNotice({ kind: 'error', message: error?.message || 'Could not create a Learning Thread from this discipline.' })
       setWorking('')
     }
   }
@@ -511,9 +515,9 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
 
       {/* Notice Banner */}
       {notice && (
-        <div class="canon-notice-banner" role="status">
-          <Icon name="check" size={15} />
-          <span>{notice}</span>
+        <div class={`canon-notice-banner ${notice.kind === 'error' ? 'is-error' : ''}`} role={notice.kind === 'error' ? 'alert' : 'status'}>
+          <Icon name={notice.kind === 'error' ? 'warning' : 'check'} size={15} />
+          <span>{notice.message}</span>
         </div>
       )}
 
@@ -579,7 +583,7 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
 
                     <div class="canon-row-badges">
                       {entry.consumed && <span class="canon-pill state-complete">Consumed</span>}
-                      {entry.blacklisted && <span class="canon-pill state-danger">Blacklisted</span>}
+                      {entry.blacklisted && <span class="canon-pill state-danger">Excluded</span>}
                       <span class="canon-pill">{entry.difficulty}</span>
                     </div>
                   </div>
@@ -601,10 +605,10 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
                     {entry.recommendation_id ? (
                       <a
                         class="button secondary"
-                        href={`#/library/source/${encodeURIComponent(entry.recommendation_id)}`}
+                        href={`#/learn/book/${encodeURIComponent(entry.recommendation_id)}?mode=canon&focus=shelf`}
                       >
                         <Icon name="library" size={15} />
-                        <span>Open in Library</span>
+                        <span>Open on Shelf</span>
                       </a>
                     ) : (
                       <button
@@ -715,13 +719,13 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
           <p>
             {capturedCount
               ? `${capturedCount} of 3 books are saved to your Library. Launch a structured Learning Thread to track your reading and synthesis.`
-              : 'Launch a structured Learning Thread to follow this path with curated lessons and reflections.'}
+              : 'Save at least one book to your Shelf before creating a structured Learning Thread.'}
           </p>
         </div>
         <button
           class="button primary folio-primary"
           type="button"
-          disabled={working === 'thread'}
+          disabled={working === 'thread' || capturedCount === 0}
           onClick={startThread}
         >
           <Icon name="path" size={16} />

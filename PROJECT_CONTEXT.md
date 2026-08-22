@@ -11,7 +11,7 @@ The product is English-first. Notes Extractor source notes default to English wi
 ## Product model
 
 - **Learning Threads** are purpose-first objects for one question, decision, build, or capability. Start the available Level, complete its lessons directly, then continue; the Thread completes when every Level's lessons are complete. Projects, sources, notes, ratings, and recall are optional context and never gate or advance progression. Notes, files, recall cards, and drafts preserve exact Thread, Level, or Lesson ownership. Lesson sources visibly expose their persisted branch and round.
-- **Canon** is a separate evergreen Learn atlas, not a Thread or source shelf. Its normal view is learner-first: complete **Ready to explore** trios are usable destinations, unfinished domains remain non-actionable **Coming next** coverage, and detailed curation state stays behind disclosure. Each branch-verified domain has exactly three distinct roles—Foundation, Representative, and Boundary—with source-backed dossiers, replacement history, independent curation state, and independent field-test state. Canon books remain outside Queue and the captured-source catalog until explicitly captured; capture deduplicates and inherits the domain branch. Surprise discovery uses complete trios only, and a Canon domain can start a normal finite Thread only after the approved trio is complete and at least one selected book is captured.
+- **Books** is one visible Learn workspace with two lenses: **Shelf** for captured book records, chapters, and companions, and **Canon atlas** for evergreen curated field paths. Canon retains its separate data model and is not a Thread or captured shelf. Complete **Ready to explore** trios are usable destinations; unfinished domains remain non-actionable **Coming next** coverage. Each branch-verified domain has Foundation, Representative, and Boundary dossiers. Canon books enter the Shelf only through explicit branch-preserving capture. Queue alone owns tracked Start/Resume actions.
 - **Sources** are reusable inputs. Lesson `primary`, `case`, `challenge`, and `reference` roles are replacement-safe single slots; `optional` is additive so several distinct extensions may coexist. **Learning Units** are atomic claims, concepts, methods, examples, questions, applications, and counterclaims with exact anchors, user synthesis, stance, confidence, and typed relations. Notes are readable projections; Atlas is the navigation taxonomy.
 - **Learning progression** is separate from enjoyment and utility. `retain`, `apply`, `reference`, and `drop` are source dispositions; only direct lesson completion advances a Level or Thread.
 - **Recall** uses approved, versioned FSRS cards. Explicit retain/apply consolidation may create at most four source-anchored, Unit-linked drafts—or an explicit no-card reason. Rating never creates recall by itself; approval is required before Review, and failed reviews never advance mastery.
@@ -33,8 +33,8 @@ The shipped client is the **Botanical Folio / Evidence Ledger**: a green-and-cre
 | Root destination | Grouped modes and subordinate focuses |
 |---|---|
 | Home | Today |
-| Library | Triage (Queue, RSS Feeds), Catalog (All sources, Books, Reading journal, Collections, Archive), Assets (Files) |
-| Learn | Threads (legacy Paths aliases), Canon, Practice (Notes, Recall) |
+| Library | Triage (Queue, RSS Feeds), Catalog (All sources, Reading journal, Collections, Archive), Assets (Files) |
+| Learn | Threads (legacy Paths aliases), Books (Shelf, Canon atlas), Practice (Notes, Recall) |
 | Map | Atlas, Review (Branches, Balance) |
 | Settings | Personal (Learning profile, Preferences), Data & recovery, System |
 
@@ -74,4 +74,4 @@ npm run build
 git diff --check
 ```
 
-The current deployed release is Worker version `b30b7576-ef57-4b6a-90d8-bab1101531af` with rollback version `55aa7c6e-5263-4824-80ea-b20c978432f4`. It includes 52 migrations through `0050`, 199 unit tests, the five-root/12-mode client, structured Compass feedback, captured-source Library semantics, direct lesson completion, Canon, branch/round projections, and atomic Lite Visual publication. This documentation/Hermes synchronization is local and does not claim a new deployment. Future deployments require an explicit release task and the live checks in the release checklist.
+The current deployed release is Worker version `1ee941cd-fb90-426a-a9c9-7fbad9371285` with stable rollback version `ba847670-2967-4b7d-8cb8-140b3985440a`. It includes 52 migrations through `0050`, 200 unit tests, the five-root/12-mode client, the unified Learn → Books workspace, structured Compass feedback, captured-source Library semantics, direct lesson completion, Canon, complete branch/round projections, and atomic Lite Visual publication. Future deployments require an explicit release task and the live checks in the release checklist.

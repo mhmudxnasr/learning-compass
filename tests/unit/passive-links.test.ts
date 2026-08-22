@@ -4,6 +4,7 @@ import test from 'node:test'
 
 const home = readFileSync(new URL('../../client/src/workspaces/HomeWorkspace.tsx', import.meta.url), 'utf8')
 const libraryViews = readFileSync(new URL('../../client/src/workspaces/library/LibraryViews.tsx', import.meta.url), 'utf8')
+const booksView = readFileSync(new URL('../../client/src/workspaces/library/BooksView.tsx', import.meta.url), 'utf8')
 
 test('Home source and file links remain passive and hand tracked starts to Queue', () => {
   assert.match(home, /Opening from Home is passive\./)
@@ -29,4 +30,13 @@ test('Library object and file links never start learning sessions', () => {
 
   const startCalls = libraryViews.match(/handlers\.onStart\(/g) || []
   assert.equal(startCalls.length, 1, 'only Queue owns the tracked start action')
+})
+
+test('Books Shelf exposes passive dossier and companion links, not tracked Resume actions', () => {
+  assert.equal(booksView.includes('startLearningSession('), false)
+  assert.equal(booksView.includes('handlers.onStart('), false)
+  assert.doesNotMatch(booksView, />\s*Resume\s*</)
+  assert.doesNotMatch(booksView, /Continue Reading/)
+  assert.match(booksView, /Open dossier/)
+  assert.match(booksView, /Open HTML companion/)
 })

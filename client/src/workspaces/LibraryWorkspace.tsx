@@ -82,9 +82,8 @@ const triageFilters: Array<{ key: Extract<LibraryView, 'queue' | 'feeds'>; label
   { key: 'feeds', label: 'Feeds', description: 'Subscriptions & articles' },
 ]
 
-const catalogFilters: Array<{ key: Extract<LibraryView, 'all' | 'books' | 'journal' | 'collections' | 'archive'>; label: string; description: string }> = [
+const catalogFilters: Array<{ key: Extract<LibraryView, 'all' | 'journal' | 'collections' | 'archive'>; label: string; description: string }> = [
   { key: 'all', label: 'All', description: 'Every source' },
-  { key: 'books', label: 'Books', description: 'Chapter-aware sources' },
   { key: 'journal', label: 'Journal', description: 'KOReader via Hardcover' },
   { key: 'collections', label: 'Collections', description: 'Purposeful source groups' },
   { key: 'archive', label: 'Archive', description: 'Completed and excluded' },
@@ -136,7 +135,7 @@ function LibraryModeSwitcher({ activeView, objectType, onNavigate }: { activeVie
   </>
 }
 
-export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: LibraryWorkspaceProps) {
+export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect, onNavigate }: LibraryWorkspaceProps) {
   const localRoute = useRoute()
   const activeRoute = route || localRoute
   const normalizedMode = activeRoute.mode || activeRoute.query.get('mode') || ''
@@ -238,10 +237,10 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     finally { setWorking('') }
   }
 
-  const addBook = async (payload: { title: string; author: string; isbn: string }) => {
+  const addBook = async (payload: { title: string; author: string; branch_id: string; isbn?: string; why_this?: string; url?: string }) => {
     setWorking('book'); setNotice('')
-    try { await api('/recommendations/books', { method: 'POST', body: JSON.stringify(payload) }); setNotice('Book added to Library.'); reload() }
-    catch (actionError) { setNotice(actionMessage(actionError)) }
+    try { await api('/recommendations/books', { method: 'POST', body: JSON.stringify(payload) }); setNotice('Book added to your Shelf.'); reload() }
+    catch (actionError) { setNotice(actionMessage(actionError)); throw actionError }
     finally { setWorking('') }
   }
 
@@ -384,6 +383,7 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
     onDeleteFeedEntry: deleteFeedEntry,
     onClearFeedEntries: clearFeedEntries,
     onFeedbackSaved: (sourceId, result) => setFeedbackReceipt({ sourceId, result }),
+    onReload: reload,
     feedbackReceipt,
     busyId: working,
     blockedId,
@@ -394,14 +394,14 @@ export function LibraryWorkspace({ route, onInspect, onSelect, onNavigate }: Lib
   if (error) return <ErrorState message={error} retry={reload}/>
   const loaded = data || {}
 
-  const modeSwitcher = <LibraryModeSwitcher activeView={view} objectType={objectType} onNavigate={onNavigate} />
+  const modeSwitcher = embedded ? null : <LibraryModeSwitcher activeView={view} objectType={objectType} onNavigate={onNavigate} />
 
   if (activeRoute.objectId && objectType) {
     const item = objectItem(objectType, loaded, activeRoute.objectId)
     if (!item) return <ErrorState message={`The ${objectType} “${activeRoute.objectId}” is not available in this library.`} retry={reload}/>
     const objectData = objectType === 'source' ? loaded : { [objectType]: item }
     const backView = objectType === 'artifact' ? 'files' : objectType === 'book' ? 'books' : objectType === 'collection' ? 'collections' : 'all'
-    return <div class="library-workspace workspace-surface">{modeSwitcher}<ObjectRouteView type={objectType} data={objectData} handlers={handlers} onBack={() => go(viewHref(backView))}/></div>
+    return <div class="library-workspace workspace-surface">{modeSwitcher}<ObjectRouteView type={objectType} data={objectData} handlers={handlers} onBack={() => go(objectType === 'book' ? canonicalRouteHref('learn', 'canon', 'shelf') : viewHref(backView))}/></div>
   }
 
   const content = view === 'queue' ? <QueueView data={loaded} handlers={handlers}/> :
