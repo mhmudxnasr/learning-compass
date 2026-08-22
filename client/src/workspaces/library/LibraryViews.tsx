@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks'
 import { api, formatDate, labelize } from '../../api'
 import { Empty } from '../../components/States'
 import { Icon } from '../../components/Icon'
+import { BookChapterRows, BooksView, ChapterManagerDialog, computeBookProgress, getBookAccent, getInitials } from './BooksView'
 import type { LibraryRecord, LibrarySelection, LibraryViewHandlers } from './types'
 import {
   artifactLink,
@@ -843,13 +844,7 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
   )
 }
 
-export { BooksView } from './BooksView'
-
-function BookChapters({ book, handlers }: { book: LibraryRecord; handlers: LibraryViewHandlers }) {
-  const chapters = book.visual?.chapters || []
-  if (!chapters.length) return <p class="folio-record-note">No chapter companion records yet. Visual creation remains an explicit source action.</p>
-  return <div class="folio-chapter-list" aria-label={`${sourceTitle(book)} chapters`}>{chapters.map((chapter: LibraryRecord) => <div class="folio-chapter-row" key={chapter.key}><div><strong>{chapter.number ? `${chapter.number}. ` : ''}{chapter.title}</strong><small>{chapter.completed ? 'Finished' : 'Not finished'}</small></div><div class="folio-row-actions">{chapter.html && <a class="folio-button" href={`/artifacts/${chapter.html.id}/view`} target="_blank" rel="noreferrer">HTML</a>}{chapter.pdf && <a class="folio-button" href={`/artifacts/${chapter.pdf.id}`} target="_blank" rel="noreferrer">PDF</a>}<button type="button" class="folio-button" onClick={() => handlers.onCompleteChapter(book, chapter)} disabled={handlers.busyId === `${book.id}:${chapter.key}`}>{chapter.completed ? 'Undo' : 'Finish'}</button></div></div>)}</div>
-}
+export { BooksView }
 
 export function CollectionsView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
   const [name, setName] = useState('')
@@ -892,13 +887,13 @@ function BranchContextBadges({ item }: { item: LibraryRecord }) {
 
 export function ObjectRouteView({ type, data, handlers, onBack }: { type: 'source' | 'artifact' | 'book' | 'collection'; data: LibraryRecord; handlers: LibraryViewHandlers; onBack: () => void }) {
   const item = data.item || data.artifact || data.book || data.collection || data
+  if (type === 'book') return <div class="folio-library-view folio-object-view book-dossier-view"><BookObject item={item} record={data} handlers={handlers} onBack={onBack}/></div>
   const title = type === 'artifact' ? String(item.filename || 'Artifact') : type === 'collection' ? String(item.name || 'Collection') : sourceTitle(item)
   return <div class="folio-library-view folio-object-view">
-    <button type="button" class="folio-back-link" onClick={onBack}><Icon name="back" size={16}/>Back to {type === 'artifact' ? 'Files' : type === 'collection' ? 'Collections' : type === 'book' ? 'Books' : 'All sources'}</button>
-    <header class="folio-object-header"><div><RecordMeta>{type === 'source' ? `${sourceFormat(item)} · ${sourceState(item)}` : type === 'artifact' ? `${fileKind(item)} · ${formatBytes(item.size_bytes) || 'size unavailable'}` : type === 'book' ? `Book · ${formatStatus(item.status)}` : `Collection · ${item.item_count || 0} sources`}</RecordMeta><h1>{title}</h1><p>{type === 'collection' ? item.description || 'No description recorded.' : type === 'artifact' ? item.metadata?.source_title || 'Owned file in the R2 library.' : `${sourceCreator(item)}${item.created_at ? ` · added ${formatDate(item.created_at)}` : ''}`}</p></div></header>
+    <button type="button" class="folio-back-link" onClick={onBack}><Icon name="back" size={16}/>Back to {type === 'artifact' ? 'Files' : type === 'collection' ? 'Collections' : 'All sources'}</button>
+    <header class="folio-object-header"><div><RecordMeta>{type === 'source' ? `${sourceFormat(item)} · ${sourceState(item)}` : type === 'artifact' ? `${fileKind(item)} · ${formatBytes(item.size_bytes) || 'size unavailable'}` : `Collection · ${item.item_count || 0} sources`}</RecordMeta><h1>{title}</h1><p>{type === 'collection' ? item.description || 'No description recorded.' : type === 'artifact' ? item.metadata?.source_title || 'Owned file in the R2 library.' : `${sourceCreator(item)}${item.created_at ? ` · added ${formatDate(item.created_at)}` : ''}`}</p></div></header>
     {type === 'source' && <SourceObject item={item} record={data} handlers={handlers}/>}
     {type === 'artifact' && <ArtifactObject item={item}/>}
-    {type === 'book' && <BookObject item={item} record={data} handlers={handlers}/>}
     {type === 'collection' && <CollectionObject item={item}/>}
   </div>
 }
@@ -1094,88 +1089,142 @@ function ArtifactObject({ item }: { item: LibraryRecord }) {
   return <div class="folio-object-sections"><section class="folio-object-section"><h2>Artifact access</h2><div class="folio-row-actions"><a class="folio-button folio-button-primary" href={artifactLink(item)} target="_blank" rel="noreferrer">Open {fileKind(item)}</a></div><dl class="folio-property-list"><div><dt>Filename</dt><dd>{item.filename || 'Unnamed file'}</dd></div><div><dt>Source</dt><dd>{metadata.source_title || metadata.source_url || 'Not linked'}</dd></div><div><dt>Created</dt><dd>{formatDate(item.created_at)}</dd></div><div><dt>Role</dt><dd>{metadata.role || fileKind(item)}</dd></div></dl></section></div>
 }
 
-function BookObject({ item, record, handlers }: { item: LibraryRecord; record: LibraryRecord; handlers: LibraryViewHandlers }) {
-  const thread = (record.threads || [])[0]
+function BookObject({ item, record, handlers, onBack }: { item: LibraryRecord; record: LibraryRecord; handlers: LibraryViewHandlers; onBack: () => void }) {
+  const [editingChapters, setEditingChapters] = useState(false)
+  const metadata = parseMetadata(item.source_metadata_json)
+  const threads = record.threads || []
   const notes = record.notes || []
+  const sessions = record.sessions || []
+  const units = record.learning_units || []
+  const artifacts = record.artifacts || []
   const recall = record.srs?.recall_summary || { count: 0, due: 0 }
+  const cards = record.srs?.cards || []
   const drafts = (record.srs?.drafts || []).filter((draft: LibraryRecord) => draft.status !== 'approved')
   const branch = item.branch || (item.branch_id ? { id: item.branch_id, label: item.branch_label || item.branch_id, round: item.round, status: item.branch_status } : null)
   const chapters = item.visual?.chapters || record.visual?.chapters || record.book_chapters || []
   const bookWithChapters = { ...item, visual: { ...(item.visual || record.visual || {}), chapters } }
+  const progress = computeBookProgress(bookWithChapters)
+  const progressPercent = progress?.percent ?? Math.max(0, Math.min(100, Number(item.progress_percent || 0)))
+  const nextChapter = chapters.find((chapter: LibraryRecord) => !chapter.completed && !chapter.completed_at)
+  const nextCompanion = nextChapter?.html || chapters.find((chapter: LibraryRecord) => chapter.html)?.html
+  const original = sourceLink(item)
+  const memberships = Array.isArray(item.canon_memberships) ? item.canon_memberships : Array.isArray(record.canon_memberships) ? record.canon_memberships : []
+  const isCaptured = ['captured', 'inbox', ''].includes(String(item.learning_state || '')) && String(item.status || '') === 'active'
+  const readingState = String(item.status || '') === 'consumed' || String(item.learning_state || '') === 'completed'
+    ? 'Finished'
+    : String(item.learning_state || '') === 'in_progress'
+      ? 'Reading'
+      : String(item.learning_state || '') === 'queued'
+        ? 'Queued'
+        : 'My books'
+  const score = Number(item.user_score ?? item.user_rating ?? 0)
+  const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ block: 'start' })
 
-  return <div class="folio-object-sections">
-    {branch && <section class="folio-object-section">
-      <div class="folio-section-heading">
-        <h2>Branch & Knowledge Domain</h2>
-        <span class="folio-badge folio-badge-branch">
-          <span class="badge-format">Branch</span>
-          <span>{branch.label}</span>
-          {branch.round && <span class="badge-round">{branch.round}</span>}
-        </span>
+  return <div class="book-dossier">
+    <button type="button" class="folio-back-link book-dossier-back" onClick={onBack}><Icon name="back" size={16}/>Back to Books</button>
+
+    <header class="book-dossier-hero">
+      <div class="book-dossier-cover" style={{ backgroundColor: getBookAccent(sourceTitle(item)), color: 'var(--studio-action-ink)' }} aria-hidden="true">
+        <span>{getInitials(sourceTitle(item), sourceCreator(item))}</span>
+        <small>BOOK</small>
       </div>
-      <div class="folio-row-actions">
-        <a class="folio-button" href={`#/map/branch/${encodeURIComponent(String(branch.id))}`}>Open branch dossier</a>
-        {['captured', 'inbox'].includes(String(item.learning_state || '')) && <button type="button" class="folio-button folio-button-primary" onClick={() => handlers.onQueue(item)}>Queue book</button>}
+      <div class="book-dossier-identity">
+        <div class="book-dossier-kickers">
+          <span class="book-state-chip">{readingState}</span>
+          {branch && <a class="book-branch-badge" href={`#/map/branch/${encodeURIComponent(String(branch.id))}`} title={`${branch.label}${branch.round ? ` · ${branch.round}` : ''}`}><Icon name="branch" size={11}/><span>{branch.label}</span>{branch.round && <span class="branch-round-text">{branch.round}</span>}</a>}
+          {memberships.map((membership: LibraryRecord) => <a class="book-canon-badge" key={membership.entry_id || `${membership.domain_id}-${membership.role}`} href={`#/learn/canon/${encodeURIComponent(String(membership.domain_slug || membership.domain_id))}`}>Canon · {formatStatus(membership.role)} · {membership.domain_title}</a>)}
+        </div>
+        <p class="folio-kicker">Book dossier</p>
+        <h1>{sourceTitle(item)}</h1>
+        <p class="book-dossier-byline">{sourceCreator(item)}</p>
+        {item.why_this && <blockquote>{item.why_this}</blockquote>}
+
+        <div class="book-dossier-progress">
+          <div><span>Reading progress</span><strong>{progress ? `${progress.finished} of ${progress.total} chapters` : 'No chapter plan yet'}</strong></div>
+          <b>{progressPercent}%</b>
+          <div class="book-dossier-progress-track" role="progressbar" aria-label={`${sourceTitle(item)} reading progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}><span style={{ width: `${progressPercent}%` }}/></div>
+          {nextChapter && <small>Next: {nextChapter.number ? `${nextChapter.number}. ` : ''}{nextChapter.title}</small>}
+        </div>
+
+        <div class="book-dossier-actions">
+          {nextCompanion ? <a class="folio-button folio-button-primary" href={`/artifacts/${encodeURIComponent(String(nextCompanion.id))}/view`} target="_blank" rel="noreferrer"><Icon name="source" size={14}/>Read next companion</a>
+            : original ? <a class="folio-button folio-button-primary" href={original} target="_blank" rel="noreferrer"><Icon name="external" size={14}/>Open original</a> : null}
+          {original && nextCompanion && <a class="folio-button" href={original} target="_blank" rel="noreferrer">Open original</a>}
+          {isCaptured ? <button type="button" class="folio-button" onClick={() => handlers.onQueue(item)} disabled={handlers.busyId === item.id}>Add to Queue</button>
+            : <a class="folio-button" href="#/library?mode=triage&focus=queue">Open Queue</a>}
+          <button type="button" class="folio-button" onClick={() => setEditingChapters(true)}>Edit chapters</button>
+        </div>
+        <p class="folio-action-note">Opening the original or a companion is passive. Tracked Start and Resume actions stay in Queue.</p>
+        {handlers.notice && <p class="folio-action-status book-dossier-notice" role="status">{handlers.notice}</p>}
       </div>
-      {item.why_this && <p class="folio-record-reason">{item.why_this}</p>}
-    </section>}
+    </header>
 
-    <section class="folio-object-section">
-      <div class="folio-section-heading">
-        <h2>Chapters & Reading Companions</h2>
-        <span>{chapters.length} {chapters.length === 1 ? 'chapter' : 'chapters'}</span>
-      </div>
-      <BookChapters book={bookWithChapters} handlers={handlers}/>
-    </section>
+    <nav class="book-dossier-index" aria-label="Book dossier sections">
+      {['overview', 'chapters', 'study', 'recall', 'connections', 'history', 'reflection'].map((section) => <button type="button" key={section} onClick={() => jump(`book-${section}`)}>{section === 'study' ? 'Notes & evidence' : formatStatus(section)}</button>)}
+    </nav>
 
-    {notes.length > 0 && <section class="folio-object-section">
-      <div class="folio-section-heading">
-        <h2>Chapter Notes & Study Records</h2>
-        <span>{notes.length} {notes.length === 1 ? 'note' : 'notes'}</span>
-      </div>
-      {notes.map((note: LibraryRecord) => <div class="folio-note-block" key={note.id}>
-        <div class="folio-section-heading"><h3>{note.title || 'Chapter Note'}</h3><span>{formatStatus(note.status || 'draft')}</span></div>
-        {(note.sections || []).map((section: LibraryRecord) => <div class="folio-bilingual-block" dir={section.direction || 'auto'} key={section.section_key}>
-          <strong>{section.label || labelize(section.section_key || 'section')}</strong>
-          <p>{section.content}</p>
-        </div>)}
-      </div>)}
-      <div class="folio-row-actions"><a class="folio-button" href="#/learn?mode=practice&focus=notes">Open notes in Learn</a></div>
-    </section>}
+    <div class="book-dossier-layout">
+      <main class="book-dossier-main">
+        <section id="book-overview" class="book-dossier-section">
+          <div class="book-dossier-section-head"><div><p class="folio-kicker">Orientation</p><h2>Overview</h2></div><span>{readingState}</span></div>
+          <dl class="book-dossier-facts">
+            <div><dt>Author</dt><dd>{sourceCreator(item)}</dd></div>
+            <div><dt>ISBN</dt><dd>{metadata.isbn || item.isbn || 'Not recorded'}</dd></div>
+            <div><dt>Added</dt><dd>{formatDate(item.created_at)}</dd></div>
+            <div><dt>Updated</dt><dd>{formatDate(item.updated_at)}</dd></div>
+            <div><dt>Status</dt><dd>{formatStatus(item.learning_state || item.status)}</dd></div>
+            <div><dt>Branch round</dt><dd>{branch?.round || item.round || 'Not recorded'}</dd></div>
+          </dl>
+          {memberships.length > 0 && <div class="book-canon-placements"><h3>Canon placement</h3>{memberships.map((membership: LibraryRecord) => <article key={membership.entry_id || membership.domain_id}><div><span>{formatStatus(membership.role)}</span><strong>{membership.domain_title}</strong></div><p>{membership.domain_boundary}</p><a href={`#/learn/canon/${encodeURIComponent(String(membership.domain_slug || membership.domain_id))}`}>Open field guide</a></article>)}</div>}
+        </section>
 
-    {notes.length === 0 && <section class="folio-object-section">
-      <div class="folio-section-heading"><h2>Chapter Notes</h2><span>0 notes</span></div>
-      <p class="folio-record-note">No chapter notes recorded yet. Extracted chapter notes appear here during study sessions.</p>
-      <div class="folio-row-actions"><a class="folio-button" href="#/learn?mode=practice&focus=notes">Take notes in Learn</a></div>
-    </section>}
+        <section id="book-chapters" class="book-dossier-section book-dossier-chapters">
+          <div class="book-dossier-section-head"><div><p class="folio-kicker">Primary reading plan</p><h2>Chapters & companions</h2></div><div class="book-dossier-section-actions"><span>{progress ? `${progress.finished}/${progress.total} finished` : 'No chapters'}</span><button type="button" class="folio-button" onClick={() => setEditingChapters(true)}>{chapters.length ? 'Update chapters' : 'Add chapters'}</button></div></div>
+          <BookChapterRows book={bookWithChapters} handlers={handlers} onEdit={() => setEditingChapters(true)}/>
+        </section>
 
-    <section class="folio-object-section">
-      <div class="folio-section-heading">
-        <h2>Active Recall</h2>
-        <span>{recall.count} approved{recall.due > 0 ? ` · ${recall.due} due` : ''}</span>
-      </div>
-      {(record.srs?.cards || []).length ? <ul class="folio-recall-list">
-        {(record.srs.cards || []).map((card: LibraryRecord) => <li key={card.id}>
-          <strong>{card.question}</strong>
-          <span>Topic: {card.topic || 'General'} · Due {formatDate(card.due_at)} · {card.repetitions} reps</span>
-        </li>)}
-      </ul> : <p class="folio-record-note">No approved recall cards for this book yet.</p>}
-      {drafts.length > 0 && <div class="folio-draft-strip">
-        <span>{drafts.length} pending {drafts.length === 1 ? 'draft' : 'drafts'}</span>
-        <a class="folio-button" href="#/learn?mode=practice&focus=recall">Review drafts</a>
-      </div>}
-    </section>
+        <section id="book-study" class="book-dossier-section">
+          <div class="book-dossier-section-head"><div><p class="folio-kicker">Durable study record</p><h2>Notes & evidence</h2></div><span>{notes.length} notes · {record.annotations?.length || 0} anchors</span></div>
+          {notes.length ? <div class="book-dossier-notes">{notes.map((note: LibraryRecord) => <article class="folio-note-block" key={note.id}>
+            <div class="folio-section-heading"><h3>{note.title || 'Book note'}</h3><span>{formatStatus(note.status || 'draft')}</span></div>
+            {(note.sections || []).map((section: LibraryRecord) => <div class="folio-bilingual-block" dir={section.direction || 'auto'} key={`${note.id}-${section.section_key}`}><strong>{section.label || labelize(section.section_key || 'section')}</strong><p>{section.content}</p></div>)}
+          </article>)}</div> : <div class="book-dossier-empty"><strong>No notes yet</strong><p>Notes extracted or written for this book will stay attached to this dossier.</p><a class="folio-button" href="#/learn?mode=practice&focus=notes">Open Notes</a></div>}
+          <SourceAnnotationPanel source={item} threadId={threads[0]?.id} branchId={branch?.id}/>
+        </section>
 
-    <SourceAnnotationPanel source={item} threadId={thread?.id} branchId={branch?.id}/>
+        <section id="book-reflection" class="book-dossier-reflection">
+          <SourceFeedbackPanel item={item} record={record} threadId={threads[0]?.id} handlers={handlers} userScore={score} outcome={record.outcome}/>
+        </section>
+      </main>
 
-    {thread && <section class="folio-object-section">
-      <h2>Learning Thread</h2>
-      <a class="folio-linked-object" href={`#/learn/thread/${encodeURIComponent(String(thread.id))}`}>
-        <strong>{thread.title}</strong>
-        <span>{thread.role || 'Attached book'} · {formatStatus(thread.status)}</span>
-      </a>
-      {thread.expected_contribution && <p>{thread.expected_contribution}</p>}
-    </section>}
+      <aside class="book-dossier-aside" aria-label="Book learning context">
+        <section id="book-recall" class="book-dossier-side-section">
+          <div class="book-dossier-section-head"><div><p class="folio-kicker">Retrieval</p><h2>Recall</h2></div><span>{recall.count} approved{recall.due ? ` · ${recall.due} due` : ''}</span></div>
+          {cards.length ? <ul class="folio-recall-list">{cards.slice(0, 6).map((card: LibraryRecord) => <li key={card.id}><a href={`#/learn/card/${encodeURIComponent(String(card.id))}?mode=practice&focus=recall`}><strong>{card.question}</strong></a><span>{card.topic || 'General'} · Due {formatDate(card.due_at)}</span></li>)}</ul> : <p class="folio-record-note">No approved recall cards yet.</p>}
+          {drafts.length > 0 && <div class="folio-draft-strip"><span>{drafts.length} pending {drafts.length === 1 ? 'draft' : 'drafts'}</span><a class="folio-button" href="#/learn?mode=practice&focus=recall">Review drafts</a></div>}
+        </section>
+
+        <section id="book-connections" class="book-dossier-side-section">
+          <div class="book-dossier-section-head"><div><p class="folio-kicker">Knowledge context</p><h2>Connections</h2></div><span>{threads.length + units.length}</span></div>
+          {branch && <a class="folio-linked-object" href={`#/map/branch/${encodeURIComponent(String(branch.id))}`}><strong>{branch.label}</strong><span>{branch.round || 'Current round'} · {formatStatus(branch.status)}</span></a>}
+          {threads.map((thread: LibraryRecord) => <a class="folio-linked-object" href={`#/learn/thread/${encodeURIComponent(String(thread.id))}`} key={thread.id}><strong>{thread.title}</strong><span>{thread.role || 'Attached book'} · {formatStatus(thread.status)}</span></a>)}
+          {units.map((unit: LibraryRecord) => <a class="folio-linked-object" href={`#/learn/unit/${encodeURIComponent(String(unit.id))}`} key={unit.id}><strong>{unit.statement || unit.title || 'Learning unit'}</strong><span>{formatStatus(unit.unit_type || 'concept')}</span></a>)}
+          {!branch && !threads.length && !units.length && <p class="folio-record-note">No learning connections recorded yet.</p>}
+        </section>
+
+        <section id="book-history" class="book-dossier-side-section">
+          <div class="book-dossier-section-head"><div><p class="folio-kicker">Activity ledger</p><h2>Reading history</h2></div><span>{sessions.length}</span></div>
+          {sessions.length ? <ol class="book-session-list">{sessions.map((session: LibraryRecord) => <li key={session.id}><strong>{formatStatus(session.status)}</strong><span>{formatDate(session.started_at)}{session.completed_at ? ` · finished ${formatDate(session.completed_at)}` : session.returned_at ? ` · returned ${formatDate(session.returned_at)}` : ''}</span>{session.intent && <p>{session.intent}</p>}{session.reflection && <blockquote>{session.reflection}</blockquote>}</li>)}</ol> : <p class="folio-record-note">No tracked sessions yet. Start from Queue when this book earns active attention.</p>}
+        </section>
+
+        <section class="book-dossier-side-section">
+          <div class="book-dossier-section-head"><div><p class="folio-kicker">Owned material</p><h2>Files</h2></div><span>{artifacts.length}</span></div>
+          {artifacts.length ? <div class="book-file-list">{artifacts.map((artifact: LibraryRecord) => { const artifactMetadata = parseMetadata(artifact.metadata_json); return <a class="folio-linked-object" href={artifactLink(artifact)} target="_blank" rel="noreferrer" key={artifact.id}><strong>{artifact.filename || fileKind(artifact)}</strong><span>{artifactMetadata.chapter_title || artifactMetadata.role || fileKind(artifact)}{artifact.size_bytes ? ` · ${formatBytes(artifact.size_bytes)}` : ''}</span></a> })}</div> : <p class="folio-record-note">No linked files yet.</p>}
+        </section>
+      </aside>
+    </div>
+
+    {editingChapters && <ChapterManagerDialog book={bookWithChapters} onClose={() => setEditingChapters(false)} onSaved={() => { setEditingChapters(false); handlers.onReload?.() }}/>}
   </div>
 }
 

@@ -145,6 +145,26 @@ app.get('/books', async (c) => {
   const jobs = ids.length
     ? await c.env.DB.prepare(`SELECT id,job_type,status,error,payload_json,updated_at FROM agent_jobs WHERE job_type IN ('visualise_source','extract_notes') AND json_extract(payload_json,'$.recommendation_id') IN (${ids.map(() => '?').join(',')}) ORDER BY updated_at DESC`).bind(...ids).all<any>()
     : { results: [] }
+  const canonMembershipRows = ids.length
+    ? await c.env.DB.prepare(`SELECT e.recommendation_id,e.id entry_id,e.role,d.id domain_id,d.slug domain_slug,d.title domain_title,d.boundary domain_boundary
+      FROM canon_entries e JOIN canon_domains d ON d.id=e.domain_id
+      WHERE e.recommendation_id IN (${ids.map(() => '?').join(',')})
+      ORDER BY d.sort_order,d.title,CASE e.role WHEN 'foundation' THEN 0 WHEN 'representative' THEN 1 ELSE 2 END`).bind(...ids).all<any>()
+    : { results: [] }
+  const canonMemberships = new Map<string, any[]>()
+  for (const membership of canonMembershipRows.results || []) {
+    const recommendationId = String(membership.recommendation_id)
+    const existing = canonMemberships.get(recommendationId) || []
+    existing.push({
+      entry_id: membership.entry_id,
+      domain_id: membership.domain_id,
+      domain_slug: membership.domain_slug,
+      domain_title: membership.domain_title,
+      domain_boundary: membership.domain_boundary,
+      role: membership.role,
+    })
+    canonMemberships.set(recommendationId, existing)
+  }
   const balance = ids.length ? await buildLearningBalance(c.env.DB, 90).catch(() => null) : null
   const balanceByBranch = new Map((balance?.branches || []).map((branch: any) => [String(branch.id), branch]))
   const visuals = new Map<string, any>()
@@ -201,6 +221,7 @@ app.get('/books', async (c) => {
         branch_label: branchLabel,
         branch_status: book.branch_status || 'love',
         round: roundLabel,
+        canon_memberships: canonMemberships.get(String(book.id)) || [],
         visual: visuals.get(book.id),
       }
     }),

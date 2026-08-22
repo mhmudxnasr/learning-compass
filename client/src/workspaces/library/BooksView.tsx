@@ -3,6 +3,7 @@ import { api, formatDate } from '../../api'
 import { useData } from '../../app/useData'
 import { Icon } from '../../components/Icon'
 import { Empty } from '../../components/States'
+import { LearnCanonView } from '../learn/LearnCanonView'
 import type { LibraryRecord, LibraryViewHandlers } from './types'
 import {
   artifactLink,
@@ -12,6 +13,7 @@ import {
   formatReason,
   formatStatus,
   objectHref,
+  parseMetadata,
   sourceCreator,
   sourceLink,
   sourceTitle,
@@ -25,7 +27,7 @@ const BOOK_ACCENTS = [
   'var(--studio-secondary)',
 ]
 
-function getBookAccent(title: string) {
+export function getBookAccent(title: string) {
   let hash = 0
   for (let i = 0; i < title.length; i++) {
     hash = (hash << 5) - hash + title.charCodeAt(i)
@@ -35,7 +37,7 @@ function getBookAccent(title: string) {
   return BOOK_ACCENTS[index]
 }
 
-function getInitials(title: string, author?: string) {
+export function getInitials(title: string, author?: string) {
   const tWords = (title || '').trim().split(/\s+/).filter(Boolean)
   const aWords = (author || '').trim().split(/\s+/).filter(Boolean)
   const tInitial = tWords[0] ? tWords[0][0].toUpperCase() : 'B'
@@ -48,27 +50,26 @@ function formatBranchPill(branch?: LibraryRecord | null) {
   const label = String(branch.label || branch.title || '').trim()
   if (!label) return null
 
-  let roundText = String(branch.round || branch.round_label || '').trim()
-  // Clean up long round titles like "Canon Atlas · Investigative Reporting" -> "Investigative Reporting"
-  if (roundText.includes('·')) {
-    const parts = roundText.split('·').map((s) => s.trim()).filter(Boolean)
-    roundText = parts[parts.length - 1] || roundText
-  }
-  // Shorten if still too long
-  if (roundText.length > 22) {
-    roundText = roundText.slice(0, 20) + '…'
-  }
+  const roundText = String(branch.round || branch.round_label || '').trim()
 
   return { label, round: roundText }
 }
 
-function computeBookProgress(book: LibraryRecord) {
+export function computeBookProgress(book: LibraryRecord) {
   const chapters = book.visual?.chapters || []
   if (!chapters.length) return null
   const finished = chapters.filter((c: LibraryRecord) => Boolean(c.completed || c.completed_at)).length
   const total = chapters.length
   const percent = Math.round((finished / total) * 100)
   return { finished, total, percent }
+}
+
+function firstCanonMembership(book: LibraryRecord) {
+  return Array.isArray(book.canon_memberships) ? book.canon_memberships[0] : null
+}
+
+function scrollToBooksSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ block: 'start' })
 }
 
 export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
@@ -176,13 +177,18 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
       const author = sourceCreator(book).toLowerCase()
       const why = String(book.why_this || '').toLowerCase()
       const branch = String(book.branch?.label || book.branch_label || '').toLowerCase()
-      const isbn = String(book.source_metadata_json?.isbn || '').toLowerCase()
+      const isbn = String(parseMetadata(book.source_metadata_json).isbn || '').toLowerCase()
+      const canon = (Array.isArray(book.canon_memberships) ? book.canon_memberships : [])
+        .map((membership: LibraryRecord) => `${membership.domain_title || ''} ${membership.role || ''}`)
+        .join(' ')
+        .toLowerCase()
       return (
         title.includes(needle) ||
         author.includes(needle) ||
         why.includes(needle) ||
         branch.includes(needle) ||
-        isbn.includes(needle)
+        isbn.includes(needle) ||
+        canon.includes(needle)
       )
     })
   }, [books, activeShelf, readingBooks, toReadBooks, finishedBooks, searchQuery])
@@ -250,16 +256,22 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
         </div>
       </header>
 
-      {/* Reading Progress Shelf Bar */}
-      <section class="books-stats-shelf" aria-label="Reading shelf overview">
-        <div class="books-shelf-nav-pills" role="group" aria-label="Filter by shelf">
+      <nav class="books-room-index" aria-label="Books page sections">
+        {readingBooks.length > 0 && <button type="button" onClick={() => scrollToBooksSection('books-reading-desk')}>Reading desk</button>}
+        <button type="button" onClick={() => scrollToBooksSection('books-library')}>My books</button>
+        <button type="button" onClick={() => scrollToBooksSection('books-canon')}>Canon fields</button>
+      </nav>
+
+      {/* Reading-status summary */}
+      <section class="books-stats-shelf" aria-label="Reading status overview">
+        <div class="books-shelf-nav-pills" role="group" aria-label="Filter My books by reading status">
           <button
             type="button"
             aria-pressed={activeShelf === 'all'}
             class={`books-shelf-pill ${activeShelf === 'all' ? 'is-active' : ''}`}
             onClick={() => setActiveShelf('all')}
           >
-            <span class="pill-title">All volumes</span>
+            <span class="pill-title">All books</span>
             <span class="pill-badge">{stats.totalBooks}</span>
           </button>
 
@@ -284,7 +296,7 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
             class={`books-shelf-pill ${activeShelf === 'toread' ? 'is-active' : ''}`}
             onClick={() => setActiveShelf('toread')}
           >
-            <span class="pill-title">On the shelf</span>
+            <span class="pill-title">Saved</span>
             <span class="pill-badge">{stats.toReadCount}</span>
           </button>
 
@@ -423,20 +435,21 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
 
       {/* Currently Immersed Spotlight Banner */}
       {readingBooks.length > 0 && activeShelf !== 'finished' && activeShelf !== 'toread' && (
-        <section class="books-active-spotlight" aria-label="Reading desk">
+        <section id="books-reading-desk" class="books-active-spotlight" aria-label="Reading desk">
           <div class="active-spotlight-heading">
             <span class="active-pulse-beacon" />
             <h3>Reading desk</h3>
           </div>
 
           <div class="active-spotlight-list">
-            {readingBooks.slice(0, 1).map((book: LibraryRecord) => {
+            {readingBooks.map((book: LibraryRecord) => {
               const accent = getBookAccent(sourceTitle(book))
               const progress = computeBookProgress(book)
               const chapters = book.visual?.chapters || []
               const nextChapter = chapters.find((c: LibraryRecord) => !c.completed && !c.completed_at)
               const firstHtml = chapters.find((c: LibraryRecord) => c.html)?.html
               const branchInfo = formatBranchPill(book.branch)
+              const canon = firstCanonMembership(book)
 
               return (
                 <div class="active-spotlight-card" key={book.id}>
@@ -460,6 +473,9 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
                           {branchInfo.round && <span class="branch-round-text">{branchInfo.round}</span>}
                         </a>
                       )}
+                      {canon && <a class="book-canon-badge" href={`#/learn/canon/${encodeURIComponent(String(canon.domain_slug || canon.domain_id))}`}>
+                        Canon · {formatStatus(canon.role)} · {canon.domain_title}
+                      </a>}
                     </div>
 
                     <h2 class="spotlight-book-title">
@@ -545,7 +561,7 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
             type="search"
             value={searchQuery}
             onInput={(e) => setSearchQuery((e.currentTarget as HTMLInputElement).value)}
-            placeholder="Search by title, author, branch, or rationale…"
+            placeholder="Search books, authors, branches, or Canon fields…"
             aria-label="Filter books"
           />
           {searchQuery && (
@@ -602,7 +618,14 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
         </div>
       </div>
 
+      <LearnCanonView integrated searchQuery={searchQuery} onClearSearch={() => setSearchQuery('')} />
+
       {/* Book Records Grid / Ledger */}
+      <section id="books-library" class="books-library-section" aria-labelledby="my-books-title">
+      <header class="books-library-heading">
+        <div><p class="folio-kicker">Your durable reading record</p><h2 id="my-books-title">My books</h2></div>
+        <span>{filteredBooks.length} {filteredBooks.length === 1 ? 'book' : 'books'}</span>
+      </header>
       {filteredBooks.length ? (
         viewLayout === 'grid' ? (
           <div class="books-responsive-grid" aria-label="Book collection">
@@ -637,10 +660,11 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
         )
       ) : (
         <Empty
-          title={searchQuery ? 'No matching books found' : activeShelf === 'reading' ? 'No books currently being read' : activeShelf === 'finished' ? 'No finished books recorded yet' : 'No books on this shelf yet'}
-          body={searchQuery ? 'Try another search query or clear the filter.' : activeShelf === 'reading' ? 'Select a book from your shelf to start an active reading session.' : 'Add books with chapters to track deep reading and companion extraction.'}
+          title={searchQuery ? 'No matching books found' : activeShelf === 'reading' ? 'No books currently being read' : activeShelf === 'finished' ? 'No finished books recorded yet' : 'No books saved yet'}
+          body={searchQuery ? 'Try another search query or clear the filter.' : activeShelf === 'reading' ? 'Add the book to Queue when it is ready for a tracked reading session.' : 'Add books with chapters to track deep reading and companion extraction.'}
         />
       )}
+      </section>
 
       {/* Chapter Breakdown Modal */}
       {chapterModalBook && (
@@ -681,6 +705,7 @@ function BookCardItem({
   const canDeletePermanently = String(book.status || '') !== 'active'
   const isDeleting = handlers.busyId === `permanent-delete:${book.id}`
   const branchInfo = formatBranchPill(book.branch)
+  const canon = firstCanonMembership(book)
 
   return (
     <article class={`book-grid-card ${isReading ? 'is-reading-card' : ''} ${isFinished ? 'is-finished-card' : ''}`}>
@@ -693,7 +718,7 @@ function BookCardItem({
         <div class="book-card-header-info">
           <span class="book-card-author">{sourceCreator(book)}</span>
           <span class={`book-card-shelf-tag ${isReading ? 'tag-reading' : isFinished ? 'tag-finished' : ''}`}>
-            {isReading ? 'Reading' : isFinished ? 'Finished' : 'Shelf'}
+            {isReading ? 'Reading' : isFinished ? 'Finished' : 'Saved'}
           </span>
         </div>
       </div>
@@ -720,6 +745,9 @@ function BookCardItem({
             </a>
           </div>
         )}
+        {canon && <a class="book-canon-badge" href={`#/learn/canon/${encodeURIComponent(String(canon.domain_slug || canon.domain_id))}`}>
+          Canon · {formatStatus(canon.role)} · {canon.domain_title}
+        </a>}
 
         {book.why_this && <p class="book-card-reason">“{book.why_this}”</p>}
 
@@ -827,6 +855,7 @@ function BookLedgerItem({
   const canDeletePermanently = String(book.status || '') !== 'active'
   const isDeleting = handlers.busyId === `permanent-delete:${book.id}`
   const branchInfo = formatBranchPill(book.branch)
+  const canon = firstCanonMembership(book)
 
   return (
     <article class={`book-ledger-row ${isReading ? 'is-reading-row' : ''}`}>
@@ -847,6 +876,9 @@ function BookLedgerItem({
                 {branchInfo.label} {branchInfo.round ? `· ${branchInfo.round}` : ''}
               </span>
             )}
+            {canon && <a class="ledger-canon-tag" href={`#/learn/canon/${encodeURIComponent(String(canon.domain_slug || canon.domain_id))}`}>
+              Canon · {formatStatus(canon.role)} · {canon.domain_title}
+            </a>}
           </div>
 
           <h3 class="ledger-title-text">
@@ -917,7 +949,7 @@ function BookLedgerItem({
   )
 }
 
-function BookChapterRows({
+export function BookChapterRows({
   book,
   handlers,
   onEdit,
@@ -1014,7 +1046,7 @@ function BookChapterRows({
   )
 }
 
-function ChapterManagerDialog({
+export function ChapterManagerDialog({
   book,
   onClose,
   onSaved,

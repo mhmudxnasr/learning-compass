@@ -239,7 +239,7 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
 
   const addBook = async (payload: { title: string; author: string; branch_id: string; isbn?: string; why_this?: string; url?: string }) => {
     setWorking('book'); setNotice('')
-    try { await api('/recommendations/books', { method: 'POST', body: JSON.stringify(payload) }); setNotice('Book added to your Shelf.'); reload() }
+    try { await api('/recommendations/books', { method: 'POST', body: JSON.stringify(payload) }); setNotice('Book added to Books.'); reload() }
     catch (actionError) { setNotice(actionMessage(actionError)); throw actionError }
     finally { setWorking('') }
   }
@@ -399,9 +399,9 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
   if (activeRoute.objectId && objectType) {
     const item = objectItem(objectType, loaded, activeRoute.objectId)
     if (!item) return <ErrorState message={`The ${objectType} “${activeRoute.objectId}” is not available in this library.`} retry={reload}/>
-    const objectData = objectType === 'source' ? loaded : { [objectType]: item }
+    const objectData = objectType === 'source' || objectType === 'book' ? { ...loaded, [objectType]: item } : { [objectType]: item }
     const backView = objectType === 'artifact' ? 'files' : objectType === 'book' ? 'books' : objectType === 'collection' ? 'collections' : 'all'
-    return <div class="library-workspace workspace-surface">{modeSwitcher}<ObjectRouteView type={objectType} data={objectData} handlers={handlers} onBack={() => go(objectType === 'book' ? canonicalRouteHref('learn', 'canon', 'shelf') : viewHref(backView))}/></div>
+    return <div class="library-workspace workspace-surface">{modeSwitcher}<ObjectRouteView type={objectType} data={objectData} handlers={handlers} onBack={() => go(objectType === 'book' ? canonicalRouteHref('learn', 'canon') : viewHref(backView))}/></div>
   }
 
   const content = view === 'queue' ? <QueueView data={loaded} handlers={handlers}/> :

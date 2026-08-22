@@ -32,11 +32,14 @@ test('Library object and file links never start learning sessions', () => {
   assert.equal(startCalls.length, 1, 'only Queue owns the tracked start action')
 })
 
-test('Books Shelf exposes passive dossier and companion links, not tracked Resume actions', () => {
+test('the unified Books workspace and dossier expose passive access, not tracked Resume actions', () => {
+  const bookObject = libraryViews.slice(libraryViews.indexOf('function BookObject'), libraryViews.indexOf('function CollectionObject'))
   assert.equal(booksView.includes('startLearningSession('), false)
   assert.equal(booksView.includes('handlers.onStart('), false)
   assert.doesNotMatch(booksView, />\s*Resume\s*</)
   assert.doesNotMatch(booksView, /Continue Reading/)
   assert.match(booksView, /Open dossier/)
   assert.match(booksView, /Open HTML companion/)
+  assert.match(bookObject, /Opening the original or a companion is passive/)
+  assert.equal(bookObject.includes('handlers.onStart('), false)
 })

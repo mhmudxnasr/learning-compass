@@ -15,11 +15,10 @@ export type LearnWorkspaceProps = {
 
 type LearnMode = 'paths' | 'canon' | 'practice'
 type PracticeFocus = 'notes' | 'recall'
-type BooksFocus = 'shelf' | 'atlas'
 
 const learnModes: Array<{ key: LearnMode; label: string; description: string }> = [
   { key: 'paths', label: 'Threads', description: 'Structured learning paths' },
-  { key: 'canon', label: 'Books', description: 'Shelf and Canon atlas' },
+  { key: 'canon', label: 'Books', description: 'Library and field guides' },
   { key: 'practice', label: 'Practice', description: 'Synthesis and retrieval' },
 ]
 
@@ -28,26 +27,16 @@ const practiceFilters: Array<{ key: PracticeFocus; label: string; description: s
   { key: 'recall', label: 'Recall', description: 'Retrieval and approved cards' },
 ]
 
-const booksFilters: Array<{ key: BooksFocus; label: string; description: string }> = [
-  { key: 'shelf', label: 'Shelf', description: 'Books, chapters, and companions' },
-  { key: 'atlas', label: 'Canon atlas', description: 'Three-book field paths' },
-]
-
-function LearnModeSwitcher({ active, practiceFocus, booksFocus }: { active: LearnMode; practiceFocus: PracticeFocus; booksFocus: BooksFocus }) {
+function LearnModeSwitcher({ active, practiceFocus }: { active: LearnMode; practiceFocus: PracticeFocus }) {
   return <>
     <nav class="workspace-mode-switcher workspace-local-nav" aria-label="Learn sections">
     {learnModes.map((item) => {
-      const href = item.key === 'paths' ? routeHref('learn', 'paths') : item.key === 'canon' ? routeHref('learn', 'canon', 'shelf') : routeHref('learn', 'practice', 'notes')
+      const href = item.key === 'paths' ? routeHref('learn', 'paths') : item.key === 'canon' ? routeHref('learn', 'canon') : routeHref('learn', 'practice', 'notes')
       return <a key={item.key} href={href} class={active === item.key ? 'active' : ''} aria-current={active === item.key ? 'page' : undefined}>
         <strong>{item.label}</strong><small>{item.description}</small>
       </a>
     })}
     </nav>
-    {active === 'canon' && <nav class="workspace-filter-switcher workspace-local-nav books-filter-nav" aria-label="Books views">
-      {booksFilters.map((item) => <a key={item.key} href={item.key === 'atlas' ? routeHref('learn', 'canon') : routeHref('learn', 'canon', item.key)} class={booksFocus === item.key ? 'active' : ''} aria-current={booksFocus === item.key ? 'page' : undefined}>
-        <strong>{item.label}</strong><small>{item.description}</small>
-      </a>)}
-    </nav>}
     {active === 'practice' && <nav class="workspace-filter-switcher workspace-local-nav practice-filter-nav" aria-label="Practice modes">
       {practiceFilters.map((item) => <a key={item.key} href={routeHref('learn', 'practice', item.key)} class={practiceFocus === item.key ? 'active' : ''} aria-current={practiceFocus === item.key ? 'page' : undefined}>
         <strong>{item.label}</strong><small>{item.description}</small>
@@ -67,7 +56,6 @@ export function LearnWorkspace({ route }: LearnWorkspaceProps = {}) {
   const routeMode = activeRoute.mode || activeRoute.query.get('mode') || activeRoute.view
   const routeFocus = activeRoute.focus || activeRoute.query.get('focus') || ''
   const practiceFocus: PracticeFocus = activeRoute.objectType === 'note' || routeFocus === 'notes' || routeMode === 'notes' ? 'notes' : 'recall'
-  const booksFocus: BooksFocus = activeRoute.objectType === 'book' || routeFocus === 'shelf' ? 'shelf' : 'atlas'
   const activeMode: LearnMode = activeRoute.objectType === 'thread' || activeRoute.objectType === 'level' ? 'paths' : activeRoute.objectType === 'book' || activeRoute.objectType === 'canon-domain' || routeMode === 'canon' ? 'canon' : activeRoute.objectType === 'note' || routeMode === 'practice' || routeMode === 'notes' || routeMode === 'recall' ? 'practice' : 'paths'
 
   const content = activeRoute.objectType === 'thread' && activeRoute.objectId ? <LearnThreadView threadId={activeRoute.objectId} tab={activeRoute.query.get('tab') || undefined} />
@@ -79,10 +67,9 @@ export function LearnWorkspace({ route }: LearnWorkspaceProps = {}) {
       : activeRoute.objectType === 'canon-domain' && activeRoute.objectId ? <LearnCanonView domainId={activeRoute.objectId} />
     : activeMode === 'practice' && practiceFocus === 'notes' ? <LearnNotesView noteId={activeRoute.query.get('note') || undefined} />
         : activeMode === 'practice' ? <LearnRecallView />
-          : activeMode === 'canon' && booksFocus === 'shelf' ? <LibraryWorkspace embedded route={{ ...activeRoute, root: 'library', mode: 'catalog', focus: 'books', view: 'books' }} />
-          : activeMode === 'canon' ? <LearnCanonView />
+          : activeMode === 'canon' ? <LibraryWorkspace embedded route={{ ...activeRoute, root: 'library', mode: 'catalog', focus: 'books', view: 'books' }} />
           : <LearnPathsView />
-  return <div class="learn-workspace-shell workspace-surface">{activeRoute.objectType !== 'lesson' && <LearnModeSwitcher active={activeMode} practiceFocus={practiceFocus} booksFocus={booksFocus} />}{content}</div>
+  return <div class="learn-workspace-shell workspace-surface">{activeRoute.objectType !== 'lesson' && <LearnModeSwitcher active={activeMode} practiceFocus={practiceFocus} />}{content}</div>
 }
 
 function LearnUnitView({ unitId }: { unitId: string }) {

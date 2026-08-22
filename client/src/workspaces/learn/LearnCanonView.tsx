@@ -103,13 +103,14 @@ const stateBadge = (status: string) => {
 const isReady = (domain: CanonDomain) =>
   domain.curation_status === 'complete' && Number(domain.entry_count || domain.entry_titles?.length || 0) === 3
 
-export function LearnCanonView({ domainId }: { domainId?: string }) {
-  return domainId ? <CanonDomainDetail domainId={domainId} /> : <CanonAtlas />
+export function LearnCanonView({ domainId, integrated = false, searchQuery = '', onClearSearch }: { domainId?: string; integrated?: boolean; searchQuery?: string; onClearSearch?: () => void }) {
+  return domainId ? <CanonDomainDetail domainId={domainId} /> : <CanonAtlas integrated={integrated} searchQuery={searchQuery} onClearSearch={onClearSearch} />
 }
 
-function CanonAtlas() {
-  const [searchQuery, setSearchQuery] = useState('')
+function CanonAtlas({ integrated, searchQuery: sharedSearchQuery, onClearSearch }: { integrated: boolean; searchQuery: string; onClearSearch?: () => void }) {
+  const [localSearchQuery, setLocalSearchQuery] = useState('')
   const [familyId, setFamilyId] = useState('all')
+  const searchQuery = integrated ? sharedSearchQuery : localSearchQuery
   const endpoint = `/learning/core/canon`
   const data = useData<CanonAtlasResponse>(endpoint)
 
@@ -154,14 +155,14 @@ function CanonAtlas() {
   }
 
   return (
-    <section class="learn-workspace folio-learn canon-atlas-workspace" aria-labelledby="canon-title">
+    <section id={integrated ? 'books-canon' : undefined} class={`learn-workspace folio-learn canon-atlas-workspace${integrated ? ' canon-atlas-integrated' : ''}`} aria-labelledby="canon-title">
       {/* Clean Folio Surface Head */}
       <header class="learn-surface-head folio-surface-head canon-surface-head">
         <div class="learn-header-content">
-          <p class="folio-object-kicker">Learning Compass · Foundational 3-Book Atlas</p>
-          <h1 id="canon-title">Canon</h1>
+          <p class="folio-object-kicker">Curated field guide · Three deliberate perspectives</p>
+          {integrated ? <h2 id="canon-title">Canon fields</h2> : <h1 id="canon-title">Canon</h1>}
           <p class="folio-lede">
-            Three definitive books to enter, master, and challenge any discipline with confidence.
+            Enter a discipline through its foundation, representative craft, and strongest boundary—without creating a second shelf.
           </p>
         </div>
 
@@ -233,12 +234,12 @@ function CanonAtlas() {
           })}
         </div>
 
-        <div class="canon-search-wrapper">
+        {!integrated && <div class="canon-search-wrapper">
           <Icon name="search" size={15} class="canon-search-icon" />
           <input
             type="search"
             value={searchQuery}
-            onInput={(e) => setSearchQuery((e.currentTarget as HTMLInputElement).value)}
+            onInput={(e) => setLocalSearchQuery((e.currentTarget as HTMLInputElement).value)}
             placeholder="Search disciplines or books…"
             aria-label="Search Canon disciplines"
           />
@@ -246,13 +247,13 @@ function CanonAtlas() {
             <button
               class="canon-search-clear"
               type="button"
-              onClick={() => setSearchQuery('')}
+              onClick={() => setLocalSearchQuery('')}
               aria-label="Clear search"
             >
               <Icon name="close" size={13} />
             </button>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Learner-first field split */}
@@ -261,14 +262,17 @@ function CanonAtlas() {
           <Icon name="search" size={28} />
           <h3>No matching disciplines found</h3>
           <p>Try searching for another topic or clear filters to view all fields.</p>
-          <button class="button secondary" type="button" onClick={() => { setSearchQuery(''); setFamilyId('all') }}>
+          <button class="button secondary" type="button" onClick={() => { if (integrated) onClearSearch?.(); else setLocalSearchQuery(''); setFamilyId('all') }}>
             Reset Filters
           </button>
         </div>
       ) : (
         <>
-          <CanonLearnerSection title="Ready to explore" domains={readyDomains} families={families} />
-          <CanonLearnerSection title="Coming next" domains={comingDomains} families={families} />
+          <CanonLearnerSection title="Ready to explore" domains={readyDomains} families={families} integrated={integrated} />
+          {integrated && comingDomains.length ? <details class="canon-coming-disclosure">
+            <summary>Coming next <span>{comingDomains.length} fields in curation</span></summary>
+            <CanonLearnerSection title="Fields in curation" domains={comingDomains} families={families} integrated />
+          </details> : <CanonLearnerSection title="Coming next" domains={comingDomains} families={families} integrated={false} />}
         </>
       )}
 
@@ -295,7 +299,7 @@ function CanonAtlas() {
   )
 }
 
-function CanonLearnerSection({ title, domains, families }: { title: string; domains: CanonDomain[]; families: CanonDomain[] }) {
+function CanonLearnerSection({ title, domains, families, integrated }: { title: string; domains: CanonDomain[]; families: CanonDomain[]; integrated: boolean }) {
   return (
     <section class="canon-learner-section" aria-labelledby={`canon-${title.toLowerCase().replace(/\s+/g, '-')}`}>
       <header class="canon-learner-section-head">
@@ -323,7 +327,7 @@ function CanonLearnerSection({ title, domains, families }: { title: string; doma
                     </span>
                   </header>
                   <div class="canon-cards-grid">
-                    {domainsInFamily.map((domain) => <CanonFieldCard key={domain.id} domain={domain} />)}
+                    {domainsInFamily.map((domain) => <CanonFieldCard key={domain.id} domain={domain} integrated={integrated} />)}
                   </div>
                 </section>
               )
@@ -336,7 +340,7 @@ function CanonLearnerSection({ title, domains, families }: { title: string; doma
   )
 }
 
-function CanonFieldCard({ domain }: { domain: CanonDomain }) {
+function CanonFieldCard({ domain, integrated }: { domain: CanonDomain; integrated: boolean }) {
   const ready = isReady(domain)
   const status = stateBadge(domain.curation_status)
   const bookTitles = domain.entry_titles || []
@@ -364,7 +368,7 @@ function CanonFieldCard({ domain }: { domain: CanonDomain }) {
 
       {/* 3-Book Shelf Visualizer */}
       <div class="canon-entry-shelf">
-        {ready && bookTitles.length === 3 ? (
+        {ready && bookTitles.length === 3 && !integrated ? (
           <ol class="canon-shelf-list">
             {bookTitles.map((title, idx) => {
               const roleKey = idx === 0 ? 'foundation' : idx === 1 ? 'representative' : 'boundary'
@@ -400,7 +404,7 @@ function CanonFieldCard({ domain }: { domain: CanonDomain }) {
 
       {ready && <div class="canon-card-action-bar">
           <a class="button secondary canon-view-btn" aria-label={`Explore Canon field ${domain.title}`} href={canonDomainHref(domain)}>
-          <span>Explore 3-Book Path</span>
+          <span>Open field guide</span>
           <Icon name="chevron" size={14} />
         </a>
       </div>}
@@ -422,7 +426,7 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
         body="This field may have been renamed or merged."
         action={
           <a class="button secondary" href="#/learn?mode=canon">
-            Return to Canon Atlas
+            Return to Books
           </a>
         }
       />
@@ -447,8 +451,8 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
       setNotice({
         kind: 'success',
         message: result.state === 'captured'
-          ? `"${entry.title}" was saved to your Library under ${domain.branch_label || 'this branch'}.`
-          : `"${entry.title}" is already in your Library.`
+          ? `"${entry.title}" was added to My books under ${domain.branch_label || 'this branch'}.`
+          : `"${entry.title}" is already in My books.`
       })
       data.reload()
     } catch (error: any) {
@@ -479,7 +483,7 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
       <nav class="canon-breadcrumb" aria-label="Breadcrumb">
         <a class="canon-back-link" href="#/learn?mode=canon">
           <Icon name="back" size={15} />
-          <span>Canon</span>
+          <span>Books</span>
         </a>
         <span class="canon-breadcrumb-sep">/</span>
         <span class="canon-breadcrumb-current">{domain.family_title || 'Disciplines'}</span>
@@ -605,10 +609,10 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
                     {entry.recommendation_id ? (
                       <a
                         class="button secondary"
-                        href={`#/learn/book/${encodeURIComponent(entry.recommendation_id)}?mode=canon&focus=shelf`}
+                        href={`#/learn/book/${encodeURIComponent(entry.recommendation_id)}?mode=canon`}
                       >
                         <Icon name="library" size={15} />
-                        <span>Open on Shelf</span>
+                        <span>Open book dossier</span>
                       </a>
                     ) : (
                       <button
@@ -719,7 +723,7 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
           <p>
             {capturedCount
               ? `${capturedCount} of 3 books are saved to your Library. Launch a structured Learning Thread to track your reading and synthesis.`
-              : 'Save at least one book to your Shelf before creating a structured Learning Thread.'}
+              : 'Add at least one selection to My books before creating a structured Learning Thread.'}
           </p>
         </div>
         <button

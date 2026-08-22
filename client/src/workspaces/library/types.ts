@@ -69,7 +69,7 @@ export const objectLabels: Record<LibraryObjectType, string> = {
 }
 
 export function objectHref(type: LibraryObjectType, id: string) {
-  if (type === 'book') return canonicalObjectHref('learn', type, id, 'canon', 'shelf')
+  if (type === 'book') return canonicalObjectHref('learn', type, id, 'canon')
   return canonicalObjectHref('library', type, id)
 }
 

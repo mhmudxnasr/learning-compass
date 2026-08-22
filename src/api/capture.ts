@@ -340,7 +340,7 @@ app.get('/:id/record', async (c) => {
     COALESCE(n.round_label, r.round) round_label
     FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(recommendationId).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
-  const [sessions, notes, sections, artifacts, drafts, cards, outcome, memories, proposals, jobs, threads, units, anchors, annotations, relations, consolidation, disposition, feedbackRows] = await Promise.all([
+  const [sessions, notes, sections, artifacts, drafts, cards, outcome, memories, proposals, jobs, threads, units, anchors, annotations, relations, consolidation, disposition, feedbackRows, canonMembershipRows] = await Promise.all([
     c.env.DB.prepare(`SELECT id,status,intent,reflection,thread_id,target_kind,target_artifact_id,started_at,returned_at,completed_at,duration_seconds FROM learning_sessions WHERE recommendation_id=? ORDER BY started_at DESC`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT n.id,n.recommendation_id,n.title,n.kind,n.status,n.revision,n.source_url,n.source_artifact_id,n.provenance_json,n.updated_at
       FROM notes n WHERE n.recommendation_id=? ORDER BY n.updated_at DESC`).bind(recommendationId).all<any>(),
@@ -366,6 +366,10 @@ app.get('/:id/record', async (c) => {
     c.env.DB.prepare(`SELECT cf.id,cf.pick_id,cf.outcome,cf.score,cf.reason_tags_json,cf.reflection,cf.exposure_json,cf.structured_json,cf.disposition,cf.created_at,p.strategy lane,p.thread_id
       FROM compass_feedback cf LEFT JOIN compass_picks p ON p.id=cf.pick_id
       WHERE cf.recommendation_id=? ORDER BY cf.created_at DESC`).bind(recommendationId).all<any>(),
+    c.env.DB.prepare(`SELECT e.id entry_id,e.role,d.id domain_id,d.slug domain_slug,d.title domain_title,d.boundary domain_boundary
+      FROM canon_entries e JOIN canon_domains d ON d.id=e.domain_id
+      WHERE e.recommendation_id=?
+      ORDER BY d.sort_order,d.title,CASE e.role WHEN 'foundation' THEN 0 WHEN 'representative' THEN 1 ELSE 2 END`).bind(recommendationId).all<any>(),
   ])
   const noteSections = new Map<string, any[]>()
   for (const section of sections.results || []) noteSections.set(section.note_id, [...(noteSections.get(section.note_id) || []), section])
@@ -444,7 +448,7 @@ app.get('/:id/record', async (c) => {
     : companion
 
   return c.json({
-    item: { ...item, branch: branchInfo, round: roundLabel || round, branch_label: branchLabel, branch_status: item.branch_status || 'love', round_label: roundLabel, visual: visualObj },
+    item: { ...item, branch: branchInfo, round: roundLabel || round, branch_label: branchLabel, branch_status: item.branch_status || 'love', round_label: roundLabel, canon_memberships: canonMembershipRows.results || [], visual: visualObj },
     sessions: sessions.results || [],
     threads: threads.results || [],
     annotations: annotationRows,
@@ -458,6 +462,7 @@ app.get('/:id/record', async (c) => {
     companions,
     visual: visualObj,
     book_chapters: chapterList,
+    canon_memberships: canonMembershipRows.results || [],
     srs: { drafts: (drafts.results || []).map((draft: any) => ({ ...draft, provenance: parseList(draft.provenance_json), provenance_json: undefined })), cards: cardRows, recall_summary: { count: cardCount, due: dueCount } },
     outcome: outcome || null,
     memory_influences: memoryInfluences,

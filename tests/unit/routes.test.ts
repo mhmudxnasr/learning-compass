@@ -198,8 +198,9 @@ test('the router exposes five roots and twelve grouped modes with focus state', 
   assert.equal(new Set(declaredModes.map((mode) => `${mode.root}/${mode.key}`)).size, 12)
   assert.ok(declaredModes.every((mode) => mode.label.trim() && mode.description.trim()))
   assert.equal(views.library.length, 7)
-  assert.equal(views.learn.length, 5)
+  assert.equal(views.learn.length, 4)
   assert.equal(modes.learn.find((mode) => mode.key === 'canon')?.label, 'Books')
+  assert.equal(modes.learn.find((mode) => mode.key === 'canon')?.focuses, undefined)
   assert.ok(!modes.library.find((mode) => mode.key === 'catalog')?.focuses?.some((item) => item.key === 'books'))
   for (const root of roots) {
     assert.equal(routeHref(root.key), `#/${root.key}`)
@@ -210,7 +211,7 @@ test('the router exposes five roots and twelve grouped modes with focus state', 
       else assert.equal(href, `#/${root.key}?mode=${mode.key}`)
     }
   }
-  assert.equal(routeHref('library', 'books'), '#/learn?mode=canon&focus=shelf')
+  assert.equal(routeHref('library', 'books'), '#/learn?mode=canon')
   assert.equal(routeHref('library', 'journal'), '#/library?mode=catalog&focus=journal')
   assert.equal(routeHref('learn', 'notes'), '#/learn?mode=practice&focus=notes')
   assert.equal(routeHref('learn', 'canon'), '#/learn?mode=canon')
@@ -224,9 +225,9 @@ test('root modes parse from query state while typed object links keep their iden
     const books = parseRoute(href)
     assert.equal(books.root, 'learn')
     assert.equal(books.mode, 'canon')
-    assert.equal(books.focus, 'shelf')
-    assert.equal(books.view, 'shelf')
-    assert.equal(books.canonical, '/learn?mode=canon&focus=shelf')
+    assert.equal(books.focus, undefined)
+    assert.equal(books.view, 'books')
+    assert.equal(books.canonical, '/learn?mode=canon')
     assert.equal(books.objectId, undefined)
     assert.equal(books.notFound, undefined)
   }
@@ -258,16 +259,23 @@ test('root modes parse from query state while typed object links keep their iden
   const book = parseRoute('#/learn/book/book%201?mode=canon&focus=shelf')
   assert.equal(book.root, 'learn')
   assert.equal(book.mode, 'canon')
-  assert.equal(book.focus, 'shelf')
+  assert.equal(book.focus, undefined)
   assert.equal(book.objectType, 'book')
   assert.equal(book.objectId, 'book 1')
-  assert.equal(book.canonical, '/learn/book/book%201?mode=canon&focus=shelf')
+  assert.equal(book.canonical, '/learn/book/book%201?mode=canon')
+  assert.equal(book.notFound, undefined)
+
+  const oldAtlas = parseRoute('#/learn?mode=canon&focus=atlas')
+  assert.equal(oldAtlas.focus, undefined)
+  assert.equal(oldAtlas.view, 'books')
+  assert.equal(oldAtlas.canonical, '/learn?mode=canon')
+  assert.equal(oldAtlas.notFound, undefined)
 
   const movedBook = parseRoute('#/library/book/book%201')
   assert.equal(movedBook.root, 'learn')
   assert.equal(movedBook.objectType, 'book')
   assert.equal(movedBook.objectId, 'book 1')
-  assert.equal(movedBook.canonical, '/learn/book/book%201?mode=canon&focus=shelf')
+  assert.equal(movedBook.canonical, '/learn/book/book%201?mode=canon')
 
   const lesson = parseRoute('#/learn/thread/thread%201/lesson/lesson%202')
   assert.equal(lesson.objectType, 'lesson')
@@ -308,6 +316,6 @@ test('root modes parse from query state while typed object links keep their iden
 test('typed object links preserve the five-root contract', () => {
   assert.equal(objectHref('library', 'source', 'rec/1'), '#/library/source/rec%2F1')
   assert.equal(objectHref('learn', 'thread', 'path 1'), '#/learn/thread/path%201')
-  assert.equal(objectHref('learn', 'book', 'book 1', 'canon', 'shelf'), '#/learn/book/book%201?mode=canon&focus=shelf')
+  assert.equal(objectHref('learn', 'book', 'book 1', 'canon'), '#/learn/book/book%201?mode=canon')
   assert.equal(objectHref('map', 'branch', 'branch 1', 'branches'), '#/map/branch/branch%201?mode=review&focus=branches')
 })

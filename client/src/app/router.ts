@@ -76,8 +76,7 @@ export const modes: Record<RootKey, ModeDefinition[]> = {
   learn: [
     { key: 'paths', label: 'Threads', description: 'Build and follow finite learning paths.', defaultView: 'paths' },
     {
-      key: 'canon', label: 'Books', description: 'Read your shelf or explore the three-book Canon.', defaultView: 'atlas', defaultFocus: 'atlas',
-      focuses: [focus('shelf', 'Shelf', 'Tracked books, chapters, and reading companions.'), focus('atlas', 'Canon atlas', 'Three-book entry points across fields.')],
+      key: 'canon', label: 'Books', description: 'Read, organize, and explore foundational field paths.', defaultView: 'books',
     },
     {
       key: 'practice', label: 'Practice', description: 'Retrieve and make knowledge durable.', defaultView: 'notes', defaultFocus: 'notes',
@@ -146,9 +145,9 @@ const legacyDestinations: Record<string, LegacyDestination> = {
   '/library/rss': { root: 'library', mode: 'triage', focus: 'feeds' },
   '/curate/discovery': { root: 'library', mode: 'catalog', focus: 'all' },
   '/library/all': { root: 'library', mode: 'catalog', focus: 'all' },
-  '/curate/books': { root: 'learn', mode: 'canon', focus: 'shelf' },
-  '/library/books': { root: 'learn', mode: 'canon', focus: 'shelf' },
-  '/learn/books': { root: 'learn', mode: 'canon', focus: 'shelf' },
+  '/curate/books': { root: 'learn', mode: 'canon' },
+  '/library/books': { root: 'learn', mode: 'canon' },
+  '/learn/books': { root: 'learn', mode: 'canon' },
   '/library/journal': { root: 'library', mode: 'catalog', focus: 'journal' },
   '/library/hardcover': { root: 'library', mode: 'catalog', focus: 'journal' },
   '/curate/collections': { root: 'library', mode: 'catalog', focus: 'collections' },
@@ -290,6 +289,7 @@ function mergeRecoveryQuery(query: URLSearchParams, mode: string, focusValue?: s
   const merged = new URLSearchParams(query)
   merged.set('mode', mode)
   if (focusValue) merged.set('focus', focusValue)
+  else merged.delete('focus')
   return merged
 }
 
@@ -314,7 +314,7 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const levelPath = oldTypedPath.match(/^\/learn\/(?:thread\/([^/]+)\/level|t\/([^/]+)\/v)\/([^/]+)$/)
   const canonDomainPath = oldTypedPath.match(/^\/learn\/canon\/([^/]+)$/)
   const movedBooksQuery = rawPath === '/library' && (originalQuery.get('focus') === 'books' || originalQuery.get('mode') === 'books')
-  const exactAlias = movedBooksQuery ? { root: 'learn' as const, mode: 'canon', focus: 'shelf' } : legacyDestinations[rawPath]
+  const exactAlias = movedBooksQuery ? { root: 'learn' as const, mode: 'canon' } : legacyDestinations[rawPath]
   const pathParts = oldTypedPath.replace(/^\//, '').split('/').filter(Boolean)
   const candidateRoot = (exactAlias?.root || pathParts[0]) as RootKey
   const knownRoot = roots.some((item) => item.key === candidateRoot)
@@ -348,7 +348,9 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const queryMode = originalQuery.get('mode') || undefined
   const queryFocus = originalQuery.get('focus') || undefined
   const requestedMode = movedBookObject || movedBooksQuery ? 'canon' : queryMode || exactAlias?.mode || pathState?.mode
-  const requestedFocus = movedBookObject || movedBooksQuery ? 'shelf' : queryFocus || exactAlias?.focus || pathState?.focus
+  const rawRequestedFocus = movedBookObject || movedBooksQuery ? undefined : queryFocus || exactAlias?.focus || pathState?.focus
+  const legacyBooksFocus = root === 'learn' && requestedMode === 'canon' && ['shelf', 'atlas'].includes(String(rawRequestedFocus || ''))
+  const requestedFocus = legacyBooksFocus ? undefined : rawRequestedFocus
   const state = normalizeState(root, requestedMode, requestedFocus)
   const invalidObject = objectRoute && (!objectType || !objectTypes[root].includes(objectType))
   const invalidModePath = !objectRoute && pathParts.length > 1 && !exactAlias && !pathState && !modeMeta(root, pathSegment)
@@ -367,7 +369,7 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
       : canonicalRoot(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
   const rawComparable = rawPath + (queryString ? `?${queryString}` : '')
   const changed = canonical !== rawComparable
-  const recovered = Boolean(exactAlias || movedBookObject || oldThread || (pathParts.length > 1 && !objectRoute && canonical !== rawComparable) || invalid)
+  const recovered = Boolean(exactAlias || movedBookObject || legacyBooksFocus || oldThread || (pathParts.length > 1 && !objectRoute && canonical !== rawComparable) || invalid)
   const route = {
     root,
     mode: state.mode,
@@ -393,7 +395,7 @@ function normalizeHrefState(root: RootKey, requestedMode?: string, requestedFocu
 
 /** Return a root URL; modes are groups and focus is local query state. */
 export function routeHref(root: RootKey, mode?: string, focusValue?: string) {
-  if (root === 'library' && (mode === 'books' || focusValue === 'books')) return routeHref('learn', 'canon', 'shelf')
+  if (root === 'library' && (mode === 'books' || focusValue === 'books')) return routeHref('learn', 'canon')
   const state = normalizeHrefState(root, mode, focusValue)
   const explicitLeaf = Boolean(mode && !modeMeta(root, mode) && leafMeta(root, mode))
   const explicitFocus = Boolean(focusValue)
@@ -424,5 +426,18 @@ export function useRoute() {
     if (!location.hash) location.hash = '#/home'
     return () => removeEventListener('hashchange', update)
   }, [])
+  useEffect(() => {
+    if (!route.recoveredFrom || route.notFound) return
+    const currentRoute = parseRoute(location.hash)
+    if (currentRoute.canonical !== route.canonical || currentRoute.recoveredFrom !== route.recoveredFrom) return
+    const [canonicalPath, canonicalQuery = ''] = route.canonical.split('?')
+    const params = new URLSearchParams(canonicalQuery)
+    for (const [key, value] of route.query) {
+      if (key !== 'mode' && key !== 'focus') params.set(key, value)
+    }
+    const query = params.toString()
+    const canonicalHash = `#${canonicalPath}${query ? `?${query}` : ''}`
+    if (location.hash !== canonicalHash) history.replaceState(history.state, '', canonicalHash)
+  }, [route])
   return route
 }

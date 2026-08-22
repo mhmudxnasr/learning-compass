@@ -1,8 +1,8 @@
 # Books API contract
 
-Books is one visible Learn workspace with **Shelf** and **Canon atlas** lenses. A captured book record is owned by `GET /recommendations/books`; its typed dossier, chapter rows, and chapter files stay under Learn → Books → Shelf rather than creating a competing Library tab. Canon retains its separate curated-domain model until a selection is explicitly captured.
+Books is one continuous Learn workspace containing the reading desk, **My books**, and integrated **Canon fields**. There is no Shelf/Canon tab split. A captured book record is owned by `GET /recommendations/books`; its typed dossier, chapter rows, and chapter files stay under Learn → Books rather than creating a competing Library or Canon collection. Canon retains its separate curated-domain model until a selection is explicitly captured, after which the same book identity carries both personal reading state and Canon membership.
 
-## Add a Shelf book
+## Add a book
 
 `POST /recommendations/books`
 
@@ -17,6 +17,9 @@ Returns `{ "books": [...] }`. Each book may include:
 - `visual.chapters[]`: `{ key, title, number, completed, completed_at }`
 - `visual.chapters[].html`: optional chapter HTML artifact link metadata
 - `visual.chapters[].pdf`: optional chapter PDF artifact link metadata
+- `canon_memberships[]`: zero or more `{ entry_id, domain_id, domain_slug, domain_title, domain_boundary, role }` placements linked through `canon_entries.recommendation_id`
+
+`GET /capture/:id/record` returns the authoritative book dossier read model. Its `item.canon_memberships[]` and top-level `canon_memberships[]` use the same membership shape, alongside sessions, Threads, annotations, learning Units, disposition and feedback, notes, artifacts, chapter projections, recall drafts/cards, and outcome.
 
 ## Register chapter metadata
 
@@ -61,8 +64,9 @@ Request `{ "completed": true|false }`. This changes chapter completion metadata 
 ## Hermes invariants
 
 - Read and mutate book chapters through the Books routes.
-- Require and verify a non-pruned branch for every manual Shelf intake; preserve its round everywhere the book renders.
-- Keep passive Shelf links separate from Queue-owned tracked Start/Resume actions.
+- Require and verify a non-pruned branch for every manual book intake; preserve its round everywhere the book renders.
+- Keep passive My books and dossier links separate from Queue-owned tracked Start/Resume actions.
+- Render a captured Canon selection once as a personal book identity with Canon domain/role metadata; Canon field summaries remain navigation context, not duplicate book cards.
 - Keep book chapter files book-scoped with `scope=book`.
 - Verify the owning book and chapter key before upload or completion.
 - Do not turn a book chapter into a standalone recommendation, captured Library source, Queue item, or general Files entry.

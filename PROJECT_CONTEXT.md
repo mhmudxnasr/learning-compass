@@ -11,7 +11,7 @@ The product is English-first. Notes Extractor source notes default to English wi
 ## Product model
 
 - **Learning Threads** are purpose-first objects for one question, decision, build, or capability. Start the available Level, complete its lessons directly, then continue; the Thread completes when every Level's lessons are complete. Projects, sources, notes, ratings, and recall are optional context and never gate or advance progression. Notes, files, recall cards, and drafts preserve exact Thread, Level, or Lesson ownership. Lesson sources visibly expose their persisted branch and round.
-- **Books** is one visible Learn workspace with two lenses: **Shelf** for captured book records, chapters, and companions, and **Canon atlas** for evergreen curated field paths. Canon retains its separate data model and is not a Thread or captured shelf. Complete **Ready to explore** trios are usable destinations; unfinished domains remain non-actionable **Coming next** coverage. Each branch-verified domain has Foundation, Representative, and Boundary dossiers. Canon books enter the Shelf only through explicit branch-preserving capture. Queue alone owns tracked Start/Resume actions.
+- **Books** is one continuous Learn workspace: the reading desk leads into a searchable **My books** ledger and integrated **Canon fields**. There is no Shelf/Canon tab split. Canon retains its separate evergreen relationship model and is not a Thread or a second book collection. Complete **Ready to explore** trios are usable field guides; unfinished domains remain non-actionable **Coming next** coverage. Each branch-verified domain has Foundation, Representative, and Boundary dossiers. Explicit branch-preserving capture gives one book identity both personal reading state and Canon membership. Queue alone owns tracked Start/Resume actions.
 - **Sources** are reusable inputs. Lesson `primary`, `case`, `challenge`, and `reference` roles are replacement-safe single slots; `optional` is additive so several distinct extensions may coexist. **Learning Units** are atomic claims, concepts, methods, examples, questions, applications, and counterclaims with exact anchors, user synthesis, stance, confidence, and typed relations. Notes are readable projections; Atlas is the navigation taxonomy.
 - **Learning progression** is separate from enjoyment and utility. `retain`, `apply`, `reference`, and `drop` are source dispositions; only direct lesson completion advances a Level or Thread.
 - **Recall** uses approved, versioned FSRS cards. Explicit retain/apply consolidation may create at most four source-anchored, Unit-linked drafts—or an explicit no-card reason. Rating never creates recall by itself; approval is required before Review, and failed reviews never advance mastery.
@@ -34,7 +34,7 @@ The shipped client is the **Botanical Folio / Evidence Ledger**: a green-and-cre
 |---|---|
 | Home | Today |
 | Library | Triage (Queue, RSS Feeds), Catalog (All sources, Reading journal, Collections, Archive), Assets (Files) |
-| Learn | Threads (legacy Paths aliases), Books (Shelf, Canon atlas), Practice (Notes, Recall) |
+| Learn | Threads (legacy Paths aliases), Books (Reading desk, My books, integrated Canon fields), Practice (Notes, Recall) |
 | Map | Atlas, Review (Branches, Balance) |
 | Settings | Personal (Learning profile, Preferences), Data & recovery, System |
 

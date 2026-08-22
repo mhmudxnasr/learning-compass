@@ -18909,3 +18909,614 @@ a.branch-ledger-title:hover {
     max-height: calc(100dvh - 16px);
   }
 }
+
+/* Unified Books room — one continuous reading desk, library, and Canon guide. */
+.books-room-index {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  border-block: 1px solid var(--studio-seam);
+  background: color-mix(in srgb, var(--studio-ledger) 88%, var(--studio-highlight));
+}
+
+.books-room-index button,
+.book-dossier-index button {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--studio-secondary);
+  font: var(--font-medium-weight) .7rem var(--font-mono);
+  letter-spacing: .055em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.books-room-index button:hover,
+.book-dossier-index button:hover {
+  background: color-mix(in srgb, var(--studio-cypress) 8%, transparent);
+  color: var(--studio-cypress);
+}
+
+.books-room-index button:focus-visible,
+.book-dossier-index button:focus-visible {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: 2px;
+}
+
+.books-library-section {
+  display: grid;
+  gap: 18px;
+  scroll-margin-top: 72px;
+}
+
+.books-library-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  padding-block: 8px 12px;
+  border-bottom: 1px solid var(--studio-seam);
+}
+
+.books-library-heading h2 {
+  margin: 2px 0 0;
+  color: var(--studio-ink);
+  font: var(--font-heading-weight) clamp(1.55rem, 3vw, 2.25rem)/1 var(--font-display);
+}
+
+.books-library-heading > span {
+  color: var(--studio-muted);
+  font: var(--font-medium-weight) .72rem var(--font-mono);
+}
+
+.canon-atlas-integrated {
+  gap: 22px;
+  margin-block: 14px 22px;
+  padding-block: 28px;
+  border-block: 1px solid var(--studio-seam);
+  scroll-margin-top: 72px;
+}
+
+.canon-atlas-integrated .canon-surface-head {
+  padding-block: 0;
+}
+
+.canon-atlas-integrated .canon-surface-head h2 {
+  margin: 3px 0 8px;
+  color: var(--studio-ink);
+  font: var(--font-heading-weight) clamp(1.7rem, 3.5vw, 2.7rem)/.98 var(--font-display);
+}
+
+.canon-atlas-integrated .canon-trio-bar {
+  margin: 0;
+}
+
+.canon-atlas-integrated .canon-entry-card {
+  min-height: 0;
+}
+
+.canon-atlas-integrated .canon-entry-shelf {
+  margin-top: auto;
+}
+
+.canon-coming-disclosure {
+  border-top: 1px solid var(--studio-seam);
+}
+
+.canon-coming-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  color: var(--studio-secondary);
+  font: var(--font-medium-weight) .78rem var(--font-mono);
+  cursor: pointer;
+}
+
+.canon-coming-disclosure > summary span {
+  color: var(--studio-muted);
+  font-size: .68rem;
+}
+
+.canon-coming-disclosure .canon-learner-section {
+  padding-top: 18px;
+}
+
+.book-canon-badge,
+.ledger-canon-tag {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid color-mix(in srgb, var(--studio-map) 30%, var(--studio-seam));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--studio-map) 8%, var(--studio-ledger));
+  color: var(--studio-map);
+  font: var(--font-medium-weight) .64rem/1.2 var(--font-mono);
+  text-decoration: none;
+}
+
+.book-canon-badge:hover,
+.ledger-canon-tag:hover {
+  border-color: var(--studio-map);
+}
+
+.book-card-branch-container + .book-canon-badge {
+  margin-top: 7px;
+}
+
+.folio-books-view .ledger-author-line {
+  flex-wrap: wrap;
+}
+
+/* Book dossier — the authoritative record for one volume. */
+.book-dossier-view {
+  max-width: none;
+}
+
+.book-dossier {
+  display: grid;
+  gap: 18px;
+}
+
+.book-dossier-back {
+  width: fit-content;
+}
+
+.book-dossier-hero {
+  display: grid;
+  grid-template-columns: minmax(132px, 176px) minmax(0, 1fr);
+  gap: clamp(20px, 4vw, 44px);
+  padding: clamp(20px, 4vw, 38px);
+  border-top: 4px solid var(--studio-cypress);
+  border-bottom: 1px solid var(--studio-seam);
+  background: linear-gradient(105deg, color-mix(in srgb, var(--studio-highlight) 72%, transparent), transparent 60%), var(--studio-ledger);
+}
+
+.book-dossier-cover {
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-self: start;
+  aspect-ratio: 3 / 4.35;
+  min-height: 190px;
+  padding: 18px;
+  border-radius: calc(var(--panel-radius) * .55);
+  box-shadow: 0 14px 28px color-mix(in srgb, var(--studio-ink) 15%, transparent), inset 8px 0 0 color-mix(in srgb, var(--studio-ledger) 18%, transparent);
+  overflow: hidden;
+}
+
+.book-dossier-cover::after {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 32%, transparent);
+  pointer-events: none;
+}
+
+.book-dossier-cover span {
+  font: var(--font-heading-weight) clamp(2.2rem, 5vw, 4rem)/1 var(--font-display);
+  letter-spacing: -.05em;
+}
+
+.book-dossier-cover small {
+  position: absolute;
+  inset-inline: 18px;
+  bottom: 21px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+  font: var(--font-medium-weight) .58rem var(--font-mono);
+  letter-spacing: .22em;
+}
+
+.book-dossier-identity {
+  min-width: 0;
+}
+
+.book-dossier-kickers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 18px;
+}
+
+.book-state-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--studio-cypress);
+  color: var(--studio-action-ink);
+  font: var(--font-medium-weight) .65rem var(--font-mono);
+  letter-spacing: .04em;
+}
+
+.book-dossier-identity h1 {
+  max-width: 900px;
+  margin: 3px 0 6px;
+  color: var(--studio-ink);
+  font: var(--font-heading-weight) clamp(2.15rem, 5.5vw, 4.8rem)/.94 var(--font-display);
+  letter-spacing: -.045em;
+  overflow-wrap: anywhere;
+}
+
+.book-dossier-byline {
+  margin: 0;
+  color: var(--studio-secondary);
+  font: var(--font-medium-weight) clamp(1rem, 2vw, 1.25rem) var(--font-body);
+}
+
+.book-dossier-identity blockquote {
+  max-width: 760px;
+  margin: 22px 0;
+  padding-inline-start: 18px;
+  border-inline-start: 2px solid var(--studio-map);
+  color: var(--studio-secondary);
+  font: italic var(--font-body-weight) clamp(.96rem, 1.8vw, 1.1rem)/1.6 var(--font-body);
+}
+
+.book-dossier-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 18px;
+  max-width: 720px;
+  margin-block: 20px;
+}
+
+.book-dossier-progress > div:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--studio-muted);
+  font-size: .78rem;
+}
+
+.book-dossier-progress > div:first-child strong {
+  color: var(--studio-secondary);
+}
+
+.book-dossier-progress > b {
+  grid-column: 2;
+  grid-row: 1;
+  color: var(--studio-cypress);
+  font: var(--font-heading-weight) 1.25rem var(--font-display);
+}
+
+.book-dossier-progress-track {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--studio-cypress) 12%, var(--studio-seam));
+  overflow: hidden;
+}
+
+.book-dossier-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--studio-cypress);
+}
+
+.book-dossier-progress > small {
+  grid-column: 1 / -1;
+  color: var(--studio-muted);
+}
+
+.book-dossier-actions,
+.book-dossier-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.book-dossier-notice {
+  margin-top: 12px;
+}
+
+.book-dossier-index {
+  position: sticky;
+  z-index: 4;
+  top: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 7px;
+  border: 1px solid var(--studio-seam);
+  background: color-mix(in srgb, var(--studio-canvas) 93%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.book-dossier-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, .75fr);
+  align-items: start;
+  gap: clamp(18px, 3vw, 34px);
+}
+
+.book-dossier-main,
+.book-dossier-aside {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+}
+
+.book-dossier-section,
+.book-dossier-side-section,
+.book-dossier-reflection > .folio-object-section {
+  min-width: 0;
+  padding: clamp(18px, 3vw, 30px);
+  border: 1px solid var(--studio-seam);
+  border-radius: var(--panel-radius);
+  background: var(--studio-ledger);
+  scroll-margin-top: 68px;
+}
+
+.book-dossier-side-section {
+  padding: 20px;
+}
+
+.book-dossier-section-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.book-dossier-section-head h2 {
+  margin: 2px 0 0;
+  color: var(--studio-ink);
+  font: var(--font-heading-weight) clamp(1.3rem, 2.5vw, 1.85rem)/1.05 var(--font-display);
+}
+
+.book-dossier-section-head > span,
+.book-dossier-section-actions > span {
+  color: var(--studio-muted);
+  font: var(--font-medium-weight) .68rem var(--font-mono);
+  white-space: nowrap;
+}
+
+.book-dossier-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  border-block: 1px solid var(--studio-seam);
+}
+
+.book-dossier-facts > div {
+  min-width: 0;
+  padding: 14px;
+  border-inline-end: 1px solid var(--studio-seam);
+}
+
+.book-dossier-facts > div:nth-child(3n) {
+  border-inline-end: 0;
+}
+
+.book-dossier-facts dt {
+  margin-bottom: 5px;
+  color: var(--studio-muted);
+  font: var(--font-medium-weight) .62rem var(--font-mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.book-dossier-facts dd {
+  margin: 0;
+  color: var(--studio-secondary);
+  overflow-wrap: anywhere;
+}
+
+.book-canon-placements {
+  display: grid;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.book-canon-placements h3 {
+  margin: 0;
+  font: var(--font-heading-weight) 1.05rem var(--font-display);
+}
+
+.book-canon-placements article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 18px;
+  padding: 14px;
+  border-inline-start: 3px solid var(--studio-map);
+  background: color-mix(in srgb, var(--studio-map) 6%, transparent);
+}
+
+.book-canon-placements article div {
+  display: grid;
+  gap: 3px;
+}
+
+.book-canon-placements article span {
+  color: var(--studio-map);
+  font: var(--font-medium-weight) .62rem var(--font-mono);
+  text-transform: uppercase;
+}
+
+.book-canon-placements article p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--studio-secondary);
+  font-size: .84rem;
+}
+
+.book-canon-placements article a {
+  color: var(--studio-cypress);
+  font-size: .76rem;
+}
+
+.book-dossier-chapters .chapter-rows-container {
+  border-top: 1px solid var(--studio-seam);
+}
+
+.book-dossier-notes,
+.book-file-list {
+  display: grid;
+  gap: 12px;
+}
+
+.book-dossier-empty {
+  padding: 20px;
+  border: 1px dashed var(--studio-seam-strong);
+  background: color-mix(in srgb, var(--studio-highlight) 45%, transparent);
+}
+
+.book-dossier-empty p {
+  margin: 6px 0 14px;
+  color: var(--studio-muted);
+}
+
+.book-dossier-section .source-annotation-panel {
+  margin-top: 22px;
+  padding: 22px 0 0;
+  border: 0;
+  border-top: 1px solid var(--studio-seam);
+  border-radius: 0;
+}
+
+.book-dossier-reflection {
+  scroll-margin-top: 68px;
+}
+
+.book-dossier-reflection > .folio-object-section {
+  margin: 0;
+}
+
+.book-session-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.book-session-list li {
+  display: grid;
+  gap: 4px;
+  padding: 13px 0 13px 16px;
+  border-inline-start: 1px solid var(--studio-seam-strong);
+  border-bottom: 1px solid var(--studio-seam);
+}
+
+.book-session-list li > span {
+  color: var(--studio-muted);
+  font-size: .7rem;
+}
+
+.book-session-list li p,
+.book-session-list li blockquote {
+  margin: 3px 0 0;
+  color: var(--studio-secondary);
+  font-size: .8rem;
+}
+
+@media (max-width: 960px) {
+  .book-dossier-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .book-dossier-aside {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .books-room-index {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .books-room-index button,
+  .book-dossier-index button {
+    min-height: 44px;
+  }
+
+  .books-library-heading,
+  .canon-coming-disclosure > summary,
+  .book-dossier-section-head {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .canon-atlas-integrated .canon-trio-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .canon-atlas-integrated .canon-trio-sep {
+    display: none;
+  }
+
+  .canon-filter-tabs {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .book-dossier-hero {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 17px;
+  }
+
+  .book-dossier-cover {
+    width: 92px;
+    min-height: 132px;
+    padding: 10px;
+  }
+
+  .book-dossier-cover::after {
+    inset: 7px;
+  }
+
+  .book-dossier-cover small {
+    inset-inline: 10px;
+    bottom: 12px;
+    font-size: .48rem;
+  }
+
+  .book-dossier-identity h1 {
+    font-size: clamp(1.75rem, 10vw, 2.8rem);
+  }
+
+  .book-dossier-index {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .book-dossier-aside {
+    grid-template-columns: 1fr;
+  }
+
+  .book-dossier-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .book-dossier-facts > div,
+  .book-dossier-facts > div:nth-child(3n) {
+    border-inline-end: 1px solid var(--studio-seam);
+  }
+
+  .book-dossier-facts > div:nth-child(2n) {
+    border-inline-end: 0;
+  }
+
+  .book-canon-placements article {
+    grid-template-columns: 1fr;
+  }
+}
