@@ -33,6 +33,7 @@ export type LibraryViewHandlers = {
   onDeleteArtifact: (item: LibraryRecord, skipConfirm?: boolean) => void
   onDeleteRecommendationPermanently: (item: LibraryRecord) => void
   onCompleteChapter: (book: LibraryRecord, chapter: LibraryRecord) => void
+  onSetBookReadingState: (book: LibraryRecord, state: 'saved' | 'reading' | 'finished') => void
   onAddBook: (payload: { title: string; author: string; branch_id: string; isbn?: string; why_this?: string; url?: string }) => Promise<void>
   onCreateCollection: (payload: { name: string; description: string }) => void
   onDeleteCollection: (item: LibraryRecord) => void
@@ -125,7 +126,7 @@ export function sourceLink(item: LibraryRecord) {
 export function artifactLink(item: LibraryRecord) {
   if (item.legacy) return `/html/download/${encodeURIComponent(String(item.id))}`
   const id = encodeURIComponent(String(item.id))
-  return /markdown|text\/plain/i.test(String(item.media_type || '')) || /\.md$/i.test(String(item.filename || ''))
+  return /html|markdown|text\/plain/i.test(String(item.media_type || '')) || /\.(?:html?|md)$/i.test(String(item.filename || ''))
     ? `/artifacts/${id}/view`
     : `/artifacts/${id}`
 }

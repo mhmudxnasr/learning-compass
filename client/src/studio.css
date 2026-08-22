@@ -17806,8 +17806,8 @@ a.branch-ledger-title:hover {
 }
 
 .folio-books-view .pill-badge.badge-finished {
-  background: color-mix(in srgb, #2e7d32 15%, transparent);
-  color: #2e7d32;
+  background: color-mix(in srgb, var(--studio-cypress) 15%, transparent);
+  color: var(--studio-cypress);
 }
 
 .active-dot {
@@ -18920,9 +18920,11 @@ a.branch-ledger-title:hover {
   background: color-mix(in srgb, var(--studio-ledger) 88%, var(--studio-highlight));
 }
 
-.books-room-index button,
-.book-dossier-index button {
-  min-height: 36px;
+.books-room-index a,
+.book-dossier-index a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 7px 12px;
   border: 0;
   border-radius: var(--control-radius);
@@ -18932,16 +18934,17 @@ a.branch-ledger-title:hover {
   letter-spacing: .055em;
   text-transform: uppercase;
   cursor: pointer;
+  text-decoration: none;
 }
 
-.books-room-index button:hover,
-.book-dossier-index button:hover {
+.books-room-index a:hover,
+.book-dossier-index a:hover {
   background: color-mix(in srgb, var(--studio-cypress) 8%, transparent);
   color: var(--studio-cypress);
 }
 
-.books-room-index button:focus-visible,
-.book-dossier-index button:focus-visible {
+.books-room-index a:focus-visible,
+.book-dossier-index a:focus-visible {
   outline: 2px solid var(--studio-focus);
   outline-offset: 2px;
 }
@@ -19040,6 +19043,21 @@ a.branch-ledger-title:hover {
   color: var(--studio-map);
   font: var(--font-medium-weight) .64rem/1.2 var(--font-mono);
   text-decoration: none;
+}
+
+.book-canon-memberships {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.book-branch-badge.is-unverified,
+.folio-books-view .ledger-branch-tag.is-unverified {
+  color: var(--studio-muted);
+  border-color: var(--studio-seam);
+  background: var(--studio-ledger);
 }
 
 .book-canon-badge:hover,
@@ -19442,8 +19460,8 @@ a.branch-ledger-title:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .books-room-index button,
-  .book-dossier-index button {
+  .books-room-index a,
+  .book-dossier-index a {
     min-height: 44px;
   }
 
@@ -19519,4 +19537,101 @@ a.branch-ledger-title:hover {
   .book-canon-placements article {
     grid-template-columns: 1fr;
   }
+}
+
+/* Final Books accessibility and responsive overrides must follow the legacy
+ * sanctuary rules above so text zoom and the mobile dock cannot defeat them. */
+.folio-books-view {
+  max-width: 1180px;
+  margin-inline: auto;
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
+}
+.folio-books-view :is(button, .folio-button, select, summary, .folio-file-badge),
+.book-dossier :is(button, .folio-button, select),
+.chapter-checkbox-btn,
+.chapter-item-actions a {
+  min-height: 44px;
+}
+.book-branch-badge,
+.branch-text,
+.folio-books-view .ledger-branch-tag,
+.folio-books-view .ledger-canon-tag,
+.book-canon-badge {
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+.book-ledger-row.is-reading-row {
+  border-inline-start: 1px solid var(--studio-seam);
+  background: color-mix(in srgb, var(--studio-lichen) 28%, var(--studio-canvas));
+}
+.folio-books-view .ledger-author-line,
+.folio-books-view .ledger-actions-col { flex-wrap: wrap; }
+.folio-books-view .ledger-state-tag,
+.folio-books-view .ledger-branch-tag,
+.folio-books-view .ledger-author-line,
+.folio-books-view .ledger-why-text,
+.folio-books-view .ledger-progress-readout,
+.book-dossier-section-head > span,
+.book-dossier-section-actions > span {
+  font-size: calc(14px * var(--font-scale));
+  line-height: 1.45;
+}
+.folio-books-view .ledger-why-text {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+.books-room-index a,
+.book-dossier-index a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.book-reading-state-control {
+  display: grid;
+  gap: 3px;
+  color: var(--studio-secondary);
+  font-size: calc(14px * var(--font-scale));
+}
+.book-reading-state-control select {
+  min-width: 132px;
+  padding-inline: 10px;
+  border: 1px solid var(--studio-seam-strong);
+  border-radius: var(--control-radius);
+  background: var(--studio-canvas);
+  color: var(--studio-ink);
+  font: inherit;
+}
+.books-load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--studio-secondary);
+  font-size: calc(14px * var(--font-scale));
+}
+@media (max-width: 680px) {
+  .folio-books-view { padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
+  .books-room-index { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .books-room-index a { justify-content: center; padding-inline: 6px; text-align: center; }
+  .folio-books-view .ledger-row-content {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: start;
+  }
+  .folio-books-view .ledger-avatar { width: 44px; height: 56px; }
+  .folio-books-view .ledger-progress-col,
+  .folio-books-view .ledger-actions-col { grid-column: 1 / -1; width: 100%; }
+  .folio-books-view .ledger-progress-readout { align-items: flex-start; flex-direction: row; gap: 8px; }
+  .folio-books-view .ledger-actions-col > :is(.folio-button, .book-reading-state-control) { flex: 1 1 148px; }
+  .book-reading-state-control select { width: 100%; }
+  .spotlight-actions-bar,
+  .book-dossier-actions { align-items: stretch; flex-direction: column; }
+  .spotlight-actions-bar .folio-button,
+  .book-dossier-actions > :is(.folio-button, .book-reading-state-control) { width: 100%; justify-content: center; }
 }

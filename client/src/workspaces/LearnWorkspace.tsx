@@ -18,7 +18,7 @@ type PracticeFocus = 'notes' | 'recall'
 
 const learnModes: Array<{ key: LearnMode; label: string; description: string }> = [
   { key: 'paths', label: 'Threads', description: 'Structured learning paths' },
-  { key: 'canon', label: 'Books', description: 'Library and field guides' },
+  { key: 'canon', label: 'Books', description: 'Library and reading desk' },
   { key: 'practice', label: 'Practice', description: 'Synthesis and retrieval' },
 ]
 

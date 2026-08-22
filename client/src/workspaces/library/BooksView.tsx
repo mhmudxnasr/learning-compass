@@ -5,6 +5,7 @@ import { Icon } from '../../components/Icon'
 import { Empty } from '../../components/States'
 import { LearnCanonView } from '../learn/LearnCanonView'
 import type { LibraryRecord, LibraryViewHandlers } from './types'
+import { bookChapters, bookNextChapter, bookProgress, bookQueueState, bookReadingState, chapterActionCopy, chapterCompanionUrl } from './bookModel'
 import {
   artifactLink,
   bookSelection,
@@ -52,24 +53,19 @@ function formatBranchPill(branch?: LibraryRecord | null) {
 
   const roundText = String(branch.round || branch.round_label || '').trim()
 
-  return { label, round: roundText }
+  return { label, round: roundText, linkable: branch.linkable !== false && branch.verified !== false }
 }
 
-export function computeBookProgress(book: LibraryRecord) {
-  const chapters = book.visual?.chapters || []
-  if (!chapters.length) return null
-  const finished = chapters.filter((c: LibraryRecord) => Boolean(c.completed || c.completed_at)).length
-  const total = chapters.length
-  const percent = Math.round((finished / total) * 100)
-  return { finished, total, percent }
-}
+export const computeBookProgress = bookProgress
 
-function firstCanonMembership(book: LibraryRecord) {
-  return Array.isArray(book.canon_memberships) ? book.canon_memberships[0] : null
-}
-
-function scrollToBooksSection(id: string) {
-  document.getElementById(id)?.scrollIntoView({ block: 'start' })
+function CanonMembershipTags({ book, className }: { book: LibraryRecord; className: string }) {
+  const memberships = Array.isArray(book.canon_memberships) ? book.canon_memberships : []
+  if (!memberships.length) return null
+  return <span class="book-canon-memberships">{memberships.map((membership: LibraryRecord, index: number) => (
+    <a class={className} href={`#/learn/canon/${encodeURIComponent(String(membership.domain_slug || membership.domain_id))}`} key={String(membership.entry_id || `${membership.domain_id}-${membership.role}-${index}`)}>
+      Canon · {formatStatus(membership.role)} · {membership.domain_title}
+    </a>
+  ))}</span>
 }
 
 export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
@@ -81,15 +77,13 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
   )
   const [searchQuery, setSearchQuery] = useState('')
   const [activeShelf, setActiveShelf] = useState<'all' | 'reading' | 'toread' | 'finished'>('all')
-  const [viewLayout, setViewLayout] = useState<'grid' | 'ledger'>(() => {
-    if (typeof window === 'undefined') return 'grid'
-    return window.localStorage.getItem('learning-compass.books-layout') === 'ledger' ? 'ledger' : 'grid'
-  })
+  const [visibleCount, setVisibleCount] = useState(12)
   const [showAddForm, setShowAddForm] = useState(false)
   const [expandedBookId, setExpandedBookId] = useState<string | null>(null)
   const [chapterModalBook, setChapterModalBook] = useState<LibraryRecord | null>(null)
   const addButtonRef = useRef<HTMLButtonElement>(null)
   const addTitleRef = useRef<HTMLInputElement>(null)
+  const shelfInitialized = useRef(false)
 
   // Add Book Form state
   const [newTitle, setNewTitle] = useState('')
@@ -102,7 +96,16 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
   const [addError, setAddError] = useState('')
 
   useEffect(() => {
-    if (showAddForm) addTitleRef.current?.focus()
+    if (!showAddForm) return
+    addTitleRef.current?.focus()
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeAddForm()
+      }
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
   }, [showAddForm])
 
   const closeAddForm = () => {
@@ -110,57 +113,36 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
     requestAnimationFrame(() => addButtonRef.current?.focus())
   }
 
-  const toggleViewLayout = (layout: 'grid' | 'ledger') => {
-    setViewLayout(layout)
-    window.localStorage.setItem('learning-compass.books-layout', layout)
-  }
-
-  // Shelf separation
-  const readingBooks = useMemo(
-    () => books.filter((b: LibraryRecord) => String(b.learning_state || '') === 'in_progress'),
-    [books],
-  )
-  const toReadBooks = useMemo(
-    () =>
-      books.filter(
-        (b: LibraryRecord) =>
-          ['captured', 'inbox', ''].includes(String(b.learning_state || '')) &&
-          String(b.status || '') === 'active',
-      ),
-    [books],
-  )
-  const finishedBooks = useMemo(
-    () =>
-      books.filter(
-        (b: LibraryRecord) =>
-          String(b.status || '') === 'consumed' || String(b.learning_state || '') === 'completed',
-      ),
-    [books],
-  )
-
-  // Overall reading statistics
-  const stats = useMemo(() => {
-    let totalChapters = 0
-    let finishedChapters = 0
-
-    for (const b of books) {
-      const chs = b.visual?.chapters || []
-      totalChapters += chs.length
-      finishedChapters += chs.filter((c: LibraryRecord) => Boolean(c.completed || c.completed_at)).length
+  const shelves = useMemo(() => {
+    const reading: LibraryRecord[] = []
+    const toRead: LibraryRecord[] = []
+    const finished: LibraryRecord[] = []
+    for (const book of books) {
+      const state = bookReadingState(book)
+      if (state === 'reading') reading.push(book)
+      else if (state === 'finished') finished.push(book)
+      else if (String(book.status || '') === 'active') toRead.push(book)
     }
+    return { reading, toRead, finished }
+  }, [books])
+  const readingBooks = shelves.reading
+  const toReadBooks = shelves.toRead
+  const finishedBooks = shelves.finished
 
-    const chapterPercent = totalChapters > 0 ? Math.round((finishedChapters / totalChapters) * 100) : 0
+  // Shelf book counts
+  const stats = useMemo(() => ({
+    totalBooks: books.length,
+    readingCount: readingBooks.length,
+    toReadCount: toReadBooks.length,
+    finishedCount: finishedBooks.length,
+  }), [books, readingBooks, toReadBooks, finishedBooks])
 
-    return {
-      totalBooks: books.length,
-      readingCount: readingBooks.length,
-      toReadCount: toReadBooks.length,
-      finishedCount: finishedBooks.length,
-      totalChapters,
-      finishedChapters,
-      chapterPercent,
+  useEffect(() => {
+    if (!shelfInitialized.current && books.length) {
+      shelfInitialized.current = true
+      setActiveShelf(readingBooks.length ? 'reading' : 'all')
     }
-  }, [books, readingBooks, toReadBooks, finishedBooks])
+  }, [books.length, readingBooks.length])
 
   // Filtered books
   const filteredBooks = useMemo(() => {
@@ -192,6 +174,10 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
       )
     })
   }, [books, activeShelf, readingBooks, toReadBooks, finishedBooks, searchQuery])
+
+  useEffect(() => setVisibleCount(12), [activeShelf, searchQuery])
+
+  const visibleBooks = filteredBooks.slice(0, visibleCount)
 
   const handleAddSubmit = async (e: Event) => {
     e.preventDefault()
@@ -257,76 +243,10 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
       </header>
 
       <nav class="books-room-index" aria-label="Books page sections">
-        {readingBooks.length > 0 && <button type="button" onClick={() => scrollToBooksSection('books-reading-desk')}>Reading desk</button>}
-        <button type="button" onClick={() => scrollToBooksSection('books-library')}>My books</button>
-        <button type="button" onClick={() => scrollToBooksSection('books-canon')}>Canon fields</button>
+        <a href="#books-reading-desk">Reading desk</a>
+        <a href="#books-library">My books</a>
+        <a href="#books-canon">Canon fields</a>
       </nav>
-
-      {/* Reading-status summary */}
-      <section class="books-stats-shelf" aria-label="Reading status overview">
-        <div class="books-shelf-nav-pills" role="group" aria-label="Filter My books by reading status">
-          <button
-            type="button"
-            aria-pressed={activeShelf === 'all'}
-            class={`books-shelf-pill ${activeShelf === 'all' ? 'is-active' : ''}`}
-            onClick={() => setActiveShelf('all')}
-          >
-            <span class="pill-title">All books</span>
-            <span class="pill-badge">{stats.totalBooks}</span>
-          </button>
-
-          <button
-            type="button"
-            aria-pressed={activeShelf === 'reading'}
-            class={`books-shelf-pill ${activeShelf === 'reading' ? 'is-active' : ''}`}
-            onClick={() => setActiveShelf('reading')}
-          >
-            <span class="pill-title">
-              {stats.readingCount > 0 && <span class="active-dot" />}
-              Reading now
-            </span>
-            <span class={`pill-badge ${stats.readingCount > 0 ? 'badge-reading' : ''}`}>
-              {stats.readingCount}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            aria-pressed={activeShelf === 'toread'}
-            class={`books-shelf-pill ${activeShelf === 'toread' ? 'is-active' : ''}`}
-            onClick={() => setActiveShelf('toread')}
-          >
-            <span class="pill-title">Saved</span>
-            <span class="pill-badge">{stats.toReadCount}</span>
-          </button>
-
-          <button
-            type="button"
-            aria-pressed={activeShelf === 'finished'}
-            class={`books-shelf-pill ${activeShelf === 'finished' ? 'is-active' : ''}`}
-            onClick={() => setActiveShelf('finished')}
-          >
-            <span class="pill-title">Finished</span>
-            <span class={`pill-badge ${stats.finishedCount > 0 ? 'badge-finished' : ''}`}>
-              {stats.finishedCount}
-            </span>
-          </button>
-        </div>
-
-        {stats.totalChapters > 0 && (
-          <div class="books-chapter-progress-widget">
-            <div class="progress-widget-head">
-              <span class="progress-widget-label">Chapter progress</span>
-              <strong class="progress-widget-val">
-                {stats.finishedChapters}/{stats.totalChapters} <small>({stats.chapterPercent}%)</small>
-              </strong>
-            </div>
-            <div class="progress-widget-track" role="progressbar" aria-label="Overall chapter progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={stats.chapterPercent}>
-              <div class="progress-widget-bar" style={{ width: `${stats.chapterPercent}%` }} />
-            </div>
-          </div>
-        )}
-      </section>
 
       {/* Add Book Intake Card */}
       {showAddForm && (
@@ -347,7 +267,7 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
           </div>
 
           <form class="books-form-body" onSubmit={handleAddSubmit}>
-            <div class="books-form-grid">
+            <div class="books-form-grid" aria-describedby={addError ? 'books-add-error' : undefined}>
               <label class="folio-form-field">
                 <span>Book Title <em>*</em></span>
                 <input
@@ -372,26 +292,6 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
               </label>
 
               <label class="folio-form-field">
-                <span>ISBN / Standard Number <small>(optional)</small></span>
-                <input
-                  type="text"
-                  value={newIsbn}
-                  onInput={(e) => setNewIsbn((e.currentTarget as HTMLInputElement).value)}
-                  placeholder="10 or 13-digit ISBN"
-                />
-              </label>
-
-              <label class="folio-form-field">
-                <span>Source Link <small>(optional)</small></span>
-                <input
-                  type="url"
-                  value={newUrl}
-                  onInput={(e) => setNewUrl((e.currentTarget as HTMLInputElement).value)}
-                  placeholder="https://books.google.com/..."
-                />
-              </label>
-
-              <label class="folio-form-field">
                 <span>Knowledge branch <em>*</em></span>
                 <select value={newBranchId} onChange={(event) => setNewBranchId((event.currentTarget as HTMLSelectElement).value)} required disabled={branchDeck.loading || !branchOptions.length}>
                   <option value="">{branchDeck.loading ? 'Loading branches…' : branchOptions.length ? 'Choose the book’s branch' : 'No active branches available'}</option>
@@ -401,17 +301,25 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
             </div>
 
             {branchDeck.error && <p class="folio-inline-warning" role="alert">Branches could not be loaded. Retry the page before adding a book.</p>}
-            {addError && <p class="folio-inline-warning" role="alert">{addError}</p>}
+            {addError && <p id="books-add-error" class="folio-inline-warning" role="alert">{addError}</p>}
 
-            <label class="folio-form-field field-full">
-              <span>Why read this? <small>(Personal question, problem, or branch focus)</small></span>
-              <textarea
-                rows={2}
-                value={newWhyThis}
-                onInput={(e) => setNewWhyThis((e.currentTarget as HTMLTextAreaElement).value)}
-                placeholder="What core concept or foundational inquiry makes this book essential right now?"
-              />
-            </label>
+            <details class="books-optional-fields">
+              <summary>Optional book details</summary>
+              <div class="books-form-grid">
+                <label class="folio-form-field">
+                  <span>ISBN / Standard Number</span>
+                  <input type="text" value={newIsbn} onInput={(e) => setNewIsbn((e.currentTarget as HTMLInputElement).value)} placeholder="10 or 13-digit ISBN" />
+                </label>
+                <label class="folio-form-field">
+                  <span>Original book link</span>
+                  <input type="url" value={newUrl} onInput={(e) => setNewUrl((e.currentTarget as HTMLInputElement).value)} placeholder="https://books.google.com/..." />
+                </label>
+                <label class="folio-form-field field-full">
+                  <span>Why read this?</span>
+                  <textarea rows={2} value={newWhyThis} onInput={(e) => setNewWhyThis((e.currentTarget as HTMLTextAreaElement).value)} placeholder="The question, problem, or branch focus this book serves" />
+                </label>
+              </div>
+            </details>
 
             <div class="intake-drawer-actions">
               <button
@@ -434,22 +342,20 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
       )}
 
       {/* Currently Immersed Spotlight Banner */}
-      {readingBooks.length > 0 && activeShelf !== 'finished' && activeShelf !== 'toread' && (
-        <section id="books-reading-desk" class="books-active-spotlight" aria-label="Reading desk">
+      <section id="books-reading-desk" class="books-active-spotlight" aria-labelledby="books-reading-title">
           <div class="active-spotlight-heading">
-            <span class="active-pulse-beacon" />
-            <h3>Reading desk</h3>
+            <h2 id="books-reading-title">Reading desk</h2>
           </div>
 
           <div class="active-spotlight-list">
-            {readingBooks.map((book: LibraryRecord) => {
+            {readingBooks.slice(0, 1).map((book: LibraryRecord) => {
               const accent = getBookAccent(sourceTitle(book))
               const progress = computeBookProgress(book)
-              const chapters = book.visual?.chapters || []
-              const nextChapter = chapters.find((c: LibraryRecord) => !c.completed && !c.completed_at)
-              const firstHtml = chapters.find((c: LibraryRecord) => c.html)?.html
+              const nextChapter = bookNextChapter(book)
+              const original = sourceLink(book)
+              const nextUrl = chapterCompanionUrl(nextChapter) || (nextChapter ? original : null)
+              const nextCopy = chapterActionCopy(book, nextChapter)
               const branchInfo = formatBranchPill(book.branch)
-              const canon = firstCanonMembership(book)
 
               return (
                 <div class="active-spotlight-card" key={book.id}>
@@ -463,7 +369,7 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
                   <div class="spotlight-content">
                     <div class="spotlight-meta-row">
                       <span class="spotlight-author">{sourceCreator(book)}</span>
-                      {branchInfo && (
+                      {branchInfo && branchInfo.linkable ? (
                         <a
                           class="book-branch-badge"
                           href={`#/map/branch/${encodeURIComponent(String(book.branch?.id || branchInfo.label))}`}
@@ -472,10 +378,8 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
                           <span class="branch-text">{branchInfo.label}</span>
                           {branchInfo.round && <span class="branch-round-text">{branchInfo.round}</span>}
                         </a>
-                      )}
-                      {canon && <a class="book-canon-badge" href={`#/learn/canon/${encodeURIComponent(String(canon.domain_slug || canon.domain_id))}`}>
-                        Canon · {formatStatus(canon.role)} · {canon.domain_title}
-                      </a>}
+                      ) : branchInfo ? <span class="book-branch-badge is-unverified"><Icon name="branch" size={11} />Unverified · {branchInfo.label}</span> : null}
+                      <CanonMembershipTags book={book} className="book-canon-badge" />
                     </div>
 
                     <h2 class="spotlight-book-title">
@@ -484,13 +388,11 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
 
                     {book.why_this && <p class="spotlight-why-quote">“{book.why_this}”</p>}
 
-                    {progress && (
+                    {progress.total > 0 && (
                       <div class="spotlight-progress-meter">
                         <div class="progress-meter-info">
-                          <span>
-                            Chapter {progress.finished} of {progress.total}
-                          </span>
-                          <strong>{progress.percent}% complete</strong>
+                          <span>{progress.finished} of {progress.total} chapters complete</span>
+                          <strong>{progress.percent}%</strong>
                         </div>
                         <div class="progress-meter-track" role="progressbar" aria-label={`${sourceTitle(book)} chapter progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent}>
                           <div class="progress-meter-fill" style={{ width: `${progress.percent}%` }} />
@@ -508,163 +410,158 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
                     )}
 
                     <div class="spotlight-actions-bar">
-                      {nextChapter?.html ? (
+                      {nextUrl && nextCopy ? (
                         <a
                           class="folio-button folio-button-primary"
-                          href={`/artifacts/${nextChapter.html.id}/view`}
+                          href={nextUrl}
                           target="_blank"
                           rel="noreferrer"
                         >
                           <Icon name="source" size={14} />
-                          <span>Open HTML companion</span>
+                          <span>{nextCopy}</span>
                         </a>
-                      ) : firstHtml ? (
+                      ) : original ? (
                         <a
                           class="folio-button folio-button-primary"
-                          href={`/artifacts/${firstHtml.id}/view`}
+                          href={original}
                           target="_blank"
                           rel="noreferrer"
                         >
-                          <Icon name="source" size={14} />
-                          <span>Open HTML companion</span>
+                          <Icon name="external" size={14} />
+                          <span>Open original book</span>
                         </a>
                       ) : (
-                        <a
-                          class="folio-button folio-button-primary"
-                          href={sourceLink(book) || objectHref('book', String(book.id))}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <Icon name="source" size={14} />
-                          <span>Open original</span>
-                        </a>
+                        <a class="folio-button folio-button-primary" href={objectHref('book', String(book.id))}>Open book record</a>
                       )}
 
                       <a class="folio-button" href={objectHref('book', String(book.id))}>
                         <Icon name="note" size={14} />
-                        <span>Open dossier</span>
+                        <span>Book details</span>
                       </a>
                     </div>
+                    <p class="folio-action-note">Opening a chapter or original is passive. Queue is {bookQueueState(book) === 'queued' || bookQueueState(book) === 'in_progress' ? formatStatus(bookQueueState(book)) : 'not tracking this book'}.</p>
                   </div>
                 </div>
               )
             })}
+            {!readingBooks.length && <Empty title="No book is marked Reading now" body="Choose Reading now from a book’s personal state controls. Queue remains a separate commitment." />}
           </div>
         </section>
-      )}
-
-      {/* Filter Toolbar & Search */}
-      <div class="books-filter-toolbar">
-        <div class="books-search-wrapper">
-          <Icon name="search" size={15} />
-          <input
-            type="search"
-            value={searchQuery}
-            onInput={(e) => setSearchQuery((e.currentTarget as HTMLInputElement).value)}
-            placeholder="Search books, authors, branches, or Canon fields…"
-            aria-label="Filter books"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              class="books-search-clear"
-              onClick={() => setSearchQuery('')}
-              aria-label="Clear search"
-            >
-              ×
-            </button>
-          )}
-        </div>
-
-        <div class="books-view-controls">
-          <span class="books-results-count">
-            <strong>{filteredBooks.length}</strong> {filteredBooks.length === 1 ? 'book' : 'books'}
-          </span>
-
-          <div class="books-layout-switcher" role="group" aria-label="Layout mode">
-            <button
-              type="button"
-              class={`layout-switch-btn ${viewLayout === 'grid' ? 'is-active' : ''}`}
-              onClick={() => toggleViewLayout('grid')}
-              title="Grid view"
-              aria-label="Grid view"
-              aria-pressed={viewLayout === 'grid'}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="7" height="7" rx="1" />
-                <rect x="14" y="3" width="7" height="7" rx="1" />
-                <rect x="14" y="14" width="7" height="7" rx="1" />
-                <rect x="3" y="14" width="7" height="7" rx="1" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              class={`layout-switch-btn ${viewLayout === 'ledger' ? 'is-active' : ''}`}
-              onClick={() => toggleViewLayout('ledger')}
-              title="Ledger list view"
-              aria-label="Ledger list view"
-              aria-pressed={viewLayout === 'ledger'}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="8" y1="6" x2="21" y2="6" />
-                <line x1="8" y1="12" x2="21" y2="12" />
-                <line x1="8" y1="18" x2="21" y2="18" />
-                <line x1="3" y1="6" x2="3.01" y2="6" />
-                <line x1="3" y1="12" x2="3.01" y2="12" />
-                <line x1="3" y1="18" x2="3.01" y2="18" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <LearnCanonView integrated searchQuery={searchQuery} onClearSearch={() => setSearchQuery('')} />
 
       {/* Book Records Grid / Ledger */}
       <section id="books-library" class="books-library-section" aria-labelledby="my-books-title">
-      <header class="books-library-heading">
-        <div><p class="folio-kicker">Your durable reading record</p><h2 id="my-books-title">My books</h2></div>
-        <span>{filteredBooks.length} {filteredBooks.length === 1 ? 'book' : 'books'}</span>
-      </header>
-      {filteredBooks.length ? (
-        viewLayout === 'grid' ? (
-          <div class="books-responsive-grid" aria-label="Book collection">
-            {filteredBooks.map((book: LibraryRecord) => (
-              <BookCardItem
-                key={book.id}
-                book={book}
-                isExpanded={expandedBookId === String(book.id)}
-                onToggleExpand={() =>
-                  setExpandedBookId(expandedBookId === String(book.id) ? null : String(book.id))
-                }
-                onOpenChapterModal={() => setChapterModalBook(book)}
-                handlers={handlers}
-              />
-            ))}
+        <header class="books-library-heading">
+          <div><p class="folio-kicker">Your durable reading record</p><h2 id="my-books-title">My books</h2></div>
+          <span>{filteredBooks.length} {filteredBooks.length === 1 ? 'book' : 'books'}</span>
+        </header>
+
+        {/* Reading-status summary */}
+        <section class="books-stats-shelf" aria-label="Reading status overview">
+          <div class="books-shelf-nav-pills" role="group" aria-label="Filter My books by reading status">
+            <button
+              type="button"
+              aria-pressed={activeShelf === 'all'}
+              class={`books-shelf-pill ${activeShelf === 'all' ? 'is-active' : ''}`}
+              onClick={() => setActiveShelf('all')}
+            >
+              <span class="pill-title">All books</span>
+              <span class="pill-badge">{stats.totalBooks}</span>
+            </button>
+
+            <button
+              type="button"
+              aria-pressed={activeShelf === 'reading'}
+              class={`books-shelf-pill ${activeShelf === 'reading' ? 'is-active' : ''}`}
+              onClick={() => setActiveShelf('reading')}
+            >
+              <span class="pill-title">
+                {stats.readingCount > 0 && <span class="active-dot" />}
+                Reading now
+              </span>
+              <span class={`pill-badge ${stats.readingCount > 0 ? 'badge-reading' : ''}`}>
+                {stats.readingCount}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              aria-pressed={activeShelf === 'toread'}
+              class={`books-shelf-pill ${activeShelf === 'toread' ? 'is-active' : ''}`}
+              onClick={() => setActiveShelf('toread')}
+            >
+              <span class="pill-title">Saved</span>
+              <span class="pill-badge">{stats.toReadCount}</span>
+            </button>
+
+            <button
+              type="button"
+              aria-pressed={activeShelf === 'finished'}
+              class={`books-shelf-pill ${activeShelf === 'finished' ? 'is-active' : ''}`}
+              onClick={() => setActiveShelf('finished')}
+            >
+              <span class="pill-title">Finished</span>
+              <span class={`pill-badge ${stats.finishedCount > 0 ? 'badge-finished' : ''}`}>
+                {stats.finishedCount}
+              </span>
+            </button>
           </div>
-        ) : (
-          <div class="books-responsive-ledger" aria-label="Book ledger">
-            {filteredBooks.map((book: LibraryRecord) => (
-              <BookLedgerItem
-                key={book.id}
-                book={book}
-                isExpanded={expandedBookId === String(book.id)}
-                onToggleExpand={() =>
-                  setExpandedBookId(expandedBookId === String(book.id) ? null : String(book.id))
-                }
-                onOpenChapterModal={() => setChapterModalBook(book)}
-                handlers={handlers}
-              />
-            ))}
+        </section>
+
+        {/* Filter Toolbar & Search */}
+        <div class="books-filter-toolbar">
+          <div class="books-search-wrapper">
+            <Icon name="search" size={15} />
+            <input
+              type="search"
+              value={searchQuery}
+              onInput={(e) => setSearchQuery((e.currentTarget as HTMLInputElement).value)}
+              placeholder="Search books by title, author, or branch…"
+              aria-label="Filter books"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                class="books-search-clear"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
+              >
+                ×
+              </button>
+            )}
           </div>
-        )
-      ) : (
-        <Empty
-          title={searchQuery ? 'No matching books found' : activeShelf === 'reading' ? 'No books currently being read' : activeShelf === 'finished' ? 'No finished books recorded yet' : 'No books saved yet'}
-          body={searchQuery ? 'Try another search query or clear the filter.' : activeShelf === 'reading' ? 'Add the book to Queue when it is ready for a tracked reading session.' : 'Add books with chapters to track deep reading and companion extraction.'}
-        />
-      )}
+
+          <div class="books-view-controls">
+            <output class="books-results-count" aria-live="polite">
+              <strong>{filteredBooks.length}</strong> {filteredBooks.length === 1 ? 'book' : 'books'}
+            </output>
+          </div>
+        </div>
+
+        {filteredBooks.length ? <>
+            <div class="books-responsive-ledger" aria-label="Book ledger">
+              {visibleBooks.map((book: LibraryRecord) => (
+                <BookLedgerItem
+                  key={book.id}
+                  book={book}
+                  isExpanded={expandedBookId === String(book.id)}
+                  onToggleExpand={() =>
+                    setExpandedBookId(expandedBookId === String(book.id) ? null : String(book.id))
+                  }
+                  onOpenChapterModal={() => setChapterModalBook(book)}
+                  handlers={handlers}
+                />
+              ))}
+            </div>
+            {visibleCount < filteredBooks.length && <div class="books-load-more"><button type="button" class="folio-button" onClick={() => setVisibleCount((count) => count + 12)}>Show 12 more</button><span aria-live="polite">Showing {Math.min(visibleCount, filteredBooks.length)} of {filteredBooks.length} books</span></div>}
+          </> : (
+          <Empty
+            title={searchQuery ? 'No matching books found' : activeShelf === 'reading' ? 'No books currently being read' : activeShelf === 'finished' ? 'No finished books recorded yet' : 'No books saved yet'}
+            body={searchQuery ? 'Try another search query or clear the filter.' : activeShelf === 'reading' ? 'Add the book to Queue when it is ready for a tracked reading session.' : 'Add books with chapters to track deep reading and companion extraction.'}
+          />
+        )}
       </section>
+
+      <LearnCanonView integrated searchQuery={searchQuery} onClearSearch={() => setSearchQuery('')} />
 
       {/* Chapter Breakdown Modal */}
       {chapterModalBook && (
@@ -683,157 +580,6 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
   )
 }
 
-function BookCardItem({
-  book,
-  isExpanded,
-  onToggleExpand,
-  onOpenChapterModal,
-  handlers,
-}: {
-  book: LibraryRecord
-  isExpanded: boolean
-  onToggleExpand: () => void
-  onOpenChapterModal: () => void
-  handlers: LibraryViewHandlers
-}) {
-  const accent = getBookAccent(sourceTitle(book))
-  const progress = computeBookProgress(book)
-  const chapters = book.visual?.chapters || []
-  const isInbox = ['captured', 'inbox', ''].includes(String(book.learning_state || '')) && String(book.status || '') === 'active'
-  const isReading = String(book.learning_state || '') === 'in_progress'
-  const isFinished = String(book.status || '') === 'consumed' || String(book.learning_state || '') === 'completed'
-  const canDeletePermanently = String(book.status || '') !== 'active'
-  const isDeleting = handlers.busyId === `permanent-delete:${book.id}`
-  const branchInfo = formatBranchPill(book.branch)
-  const canon = firstCanonMembership(book)
-
-  return (
-    <article class={`book-grid-card ${isReading ? 'is-reading-card' : ''} ${isFinished ? 'is-finished-card' : ''}`}>
-      {/* Card Header Top Row */}
-      <div class="book-card-header-bar">
-        <div class="book-card-avatar" style={{ backgroundColor: accent, color: 'var(--studio-action-ink)' }}>
-          <span>{getInitials(sourceTitle(book), sourceCreator(book))}</span>
-        </div>
-
-        <div class="book-card-header-info">
-          <span class="book-card-author">{sourceCreator(book)}</span>
-          <span class={`book-card-shelf-tag ${isReading ? 'tag-reading' : isFinished ? 'tag-finished' : ''}`}>
-            {isReading ? 'Reading' : isFinished ? 'Finished' : 'Saved'}
-          </span>
-        </div>
-      </div>
-
-      {/* Main Body */}
-      <div class="book-card-body">
-        <h3 class="book-card-title">
-          <a href={objectHref('book', String(book.id))} title={sourceTitle(book)}>
-            {sourceTitle(book)}
-          </a>
-        </h3>
-
-        {/* Clean, Compact Branch Pill */}
-        {branchInfo && (
-          <div class="book-card-branch-container">
-            <a
-              class="book-branch-badge"
-              href={`#/map/branch/${encodeURIComponent(String(book.branch?.id || branchInfo.label))}`}
-              title={`Branch: ${branchInfo.label}${branchInfo.round ? ` · ${branchInfo.round}` : ''}`}
-            >
-              <Icon name="branch" size={11} />
-              <span class="branch-text">{branchInfo.label}</span>
-              {branchInfo.round && <span class="branch-round-text">{branchInfo.round}</span>}
-            </a>
-          </div>
-        )}
-        {canon && <a class="book-canon-badge" href={`#/learn/canon/${encodeURIComponent(String(canon.domain_slug || canon.domain_id))}`}>
-          Canon · {formatStatus(canon.role)} · {canon.domain_title}
-        </a>}
-
-        {book.why_this && <p class="book-card-reason">“{book.why_this}”</p>}
-
-        {/* Progress Bar */}
-        {progress ? (
-          <div class="book-card-progress">
-            <div class="card-progress-labels">
-              <span>{progress.finished} of {progress.total} chapters</span>
-              <strong>{progress.percent}%</strong>
-            </div>
-            <div class="card-progress-track" role="progressbar" aria-label={`${sourceTitle(book)} chapter progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent}>
-              <div class="card-progress-fill" style={{ width: `${progress.percent}%` }} />
-            </div>
-          </div>
-        ) : (
-          <div class="book-card-no-chapters">
-            <small>No chapter breakdown</small>
-            <button type="button" class="inline-link-btn" onClick={onOpenChapterModal}>
-              + Add chapters
-            </button>
-          </div>
-        )}
-
-        {/* Actions Footer */}
-        <div class="book-card-actions">
-          <div class="card-actions-group">
-            {isInbox && (
-              <button
-                type="button"
-                class="folio-button folio-button-primary folio-btn-sm"
-                onClick={() => handlers.onQueue(book)}
-                disabled={handlers.busyId === book.id}
-              >
-                Queue
-              </button>
-            )}
-
-            <button
-              type="button"
-              class={`folio-button folio-btn-sm ${isExpanded ? 'folio-button-active' : ''}`}
-              onClick={onToggleExpand}
-              aria-expanded={isExpanded}
-              aria-controls={`book-chapters-${book.id}`}
-            >
-              <Icon name="book" size={13} />
-              <span>{chapters.length > 0 ? `Chapters (${chapters.length})` : 'Chapters'}</span>
-            </button>
-
-            <a class="folio-button folio-btn-sm" href={objectHref('book', String(book.id))}>
-              Open dossier
-            </a>
-          </div>
-
-          <div class="card-actions-end">
-            {canDeletePermanently && (
-              <button
-                type="button"
-                class="folio-btn-quiet-trash"
-                onClick={() => handlers.onDeleteRecommendationPermanently(book)}
-                disabled={isDeleting}
-                title="Delete book permanently"
-                aria-label={`Delete ${sourceTitle(book)} permanently`}
-              >
-                <Icon name="trash" size={14} />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Expandable Chapter Breakdown Drawer */}
-        {isExpanded && (
-          <div id={`book-chapters-${book.id}`} class="book-card-expanded-drawer">
-            <div class="expanded-drawer-head">
-              <h4>Chapters & Reading Companions</h4>
-              <button type="button" class="inline-link-btn" onClick={onOpenChapterModal}>
-                Edit breakdown
-              </button>
-            </div>
-            <BookChapterRows book={book} handlers={handlers} onEdit={onOpenChapterModal} />
-          </div>
-        )}
-      </div>
-    </article>
-  )
-}
-
 function BookLedgerItem({
   book,
   isExpanded,
@@ -849,13 +595,15 @@ function BookLedgerItem({
 }) {
   const accent = getBookAccent(sourceTitle(book))
   const progress = computeBookProgress(book)
-  const chapters = book.visual?.chapters || []
-  const isInbox = ['captured', 'inbox', ''].includes(String(book.learning_state || '')) && String(book.status || '') === 'active'
-  const isReading = String(book.learning_state || '') === 'in_progress'
+  const chapters = bookChapters(book)
+  const nextChapter = bookNextChapter(book)
+  const nextUrl = chapterCompanionUrl(nextChapter) || sourceLink(book)
+  const nextCopy = nextChapter ? chapterActionCopy(book, nextChapter) : (nextUrl ? 'Open original book' : null)
+  const isInbox = bookQueueState(book) === 'captured' && String(book.status || '') === 'active'
+  const isReading = bookReadingState(book) === 'reading'
   const canDeletePermanently = String(book.status || '') !== 'active'
   const isDeleting = handlers.busyId === `permanent-delete:${book.id}`
   const branchInfo = formatBranchPill(book.branch)
-  const canon = firstCanonMembership(book)
 
   return (
     <article class={`book-ledger-row ${isReading ? 'is-reading-row' : ''}`}>
@@ -870,15 +618,14 @@ function BookLedgerItem({
         <div class="ledger-main-info">
           <div class="ledger-author-line">
             <span class="ledger-author-text">{sourceCreator(book)}</span>
-            <span class="ledger-state-tag">{formatStatus(book.learning_state || book.status)}</span>
+            <span class="ledger-state-tag">{bookReadingState(book) === 'reading' ? 'Reading now' : formatStatus(bookReadingState(book))}</span>
             {branchInfo && (
-              <span class="ledger-branch-tag">
+              <span class={`ledger-branch-tag ${branchInfo.linkable ? '' : 'is-unverified'}`}>
+                {!branchInfo.linkable && 'Unverified · '}
                 {branchInfo.label} {branchInfo.round ? `· ${branchInfo.round}` : ''}
               </span>
             )}
-            {canon && <a class="ledger-canon-tag" href={`#/learn/canon/${encodeURIComponent(String(canon.domain_slug || canon.domain_id))}`}>
-              Canon · {formatStatus(canon.role)} · {canon.domain_title}
-            </a>}
+            <CanonMembershipTags book={book} className="ledger-canon-tag" />
           </div>
 
           <h3 class="ledger-title-text">
@@ -889,7 +636,7 @@ function BookLedgerItem({
         </div>
 
         <div class="ledger-progress-col">
-          {progress ? (
+          {progress.total ? (
             <div class="ledger-progress-readout">
               <strong>{progress.percent}%</strong>
               <small>{progress.finished}/{progress.total} chs</small>
@@ -900,6 +647,15 @@ function BookLedgerItem({
         </div>
 
         <div class="ledger-actions-col">
+          <label class="book-reading-state-control">
+            <span>Personal state</span>
+            <select value={bookReadingState(book)} onChange={(event) => handlers.onSetBookReadingState(book, (event.currentTarget as HTMLSelectElement).value as 'saved' | 'reading' | 'finished')} disabled={handlers.busyId === `reading-state:${book.id}`} aria-label={`Personal reading state for ${sourceTitle(book)}`}>
+              <option value="saved">Saved</option>
+              <option value="reading">Reading now</option>
+              <option value="finished">Finished</option>
+            </select>
+          </label>
+          {nextUrl && nextCopy && <a class="folio-button folio-button-primary folio-btn-sm" href={nextUrl} target="_blank" rel="noreferrer">{nextCopy}</a>}
           {isInbox && (
             <button
               type="button"
@@ -922,7 +678,7 @@ function BookLedgerItem({
           </button>
 
           <a class="folio-button folio-btn-sm" href={objectHref('book', String(book.id))}>
-            Open dossier
+            Book details
           </a>
 
           {canDeletePermanently && (
@@ -958,7 +714,7 @@ export function BookChapterRows({
   handlers: LibraryViewHandlers
   onEdit?: () => void
 }) {
-  const chapters = book.visual?.chapters || []
+  const chapters = bookChapters(book)
   if (!chapters.length) {
     return (
       <div class="empty-chapters-panel">
@@ -1017,7 +773,7 @@ export function BookChapterRows({
               {htmlArtifact && (
                 <a
                   class="folio-file-badge folio-badge-html"
-                  href={`/artifacts/${htmlArtifact.id}/view`}
+                  href={artifactLink(htmlArtifact)}
                   target="_blank"
                   rel="noreferrer"
                   title="Read Arabic HTML companion"
@@ -1029,7 +785,7 @@ export function BookChapterRows({
               {pdfArtifact && (
                 <a
                   class="folio-file-badge folio-badge-pdf"
-                  href={`/artifacts/${pdfArtifact.id}`}
+                  href={artifactLink(pdfArtifact)}
                   target="_blank"
                   rel="noreferrer"
                   title="Download A4 PDF companion"
@@ -1055,7 +811,7 @@ export function ChapterManagerDialog({
   onClose: () => void
   onSaved: () => void
 }) {
-  const existingChapters = book.visual?.chapters || []
+  const existingChapters = bookChapters(book)
   const initialText = existingChapters
     .map((c: LibraryRecord) => `${c.number ? `${c.number}. ` : ''}${c.title}`)
     .join('\n')

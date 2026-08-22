@@ -7,6 +7,8 @@ import { recordRecommendationSignal } from '../services/intelligence-v2'
 import { displayRound } from '../services/branch-rounds'
 import { loadCaptureQueue } from '../services/capture-queue'
 import { selectLearningSourceRenditions } from '../services/learning-material-renditions'
+import { projectBook } from '../services/book-projection'
+import { normalizeQualityAssurance } from '../artifact-metadata'
 import { LITE_VISUAL_CHECKPOINT_REQUIREMENTS, LITE_VISUAL_SOURCE_EXTRACTION_SCHEMA, LITE_VISUAL_STAGES, LITE_VISUAL_WORKFLOW_CONTRACT, LITE_VISUAL_WORKFLOW_VERSION, resolveLiteVisualResume } from '../services/lite-visual-workflow'
 
 import { activateWaitingRun } from './discovery'
@@ -185,8 +187,8 @@ app.delete('/feeds/:id', async (c) => {
 })
 
 app.post('/:id/triage', async (c) => {
-  const body: { action?: 'queue' | 'exclude'; thread_id?: string; override_queue_cap?: boolean; reason?: string } = await c.req.json().catch(() => ({}))
-  const item = await c.env.DB.prepare(`SELECT r.id,r.video_url,r.video_title,m.branch_id,n.id branch_exists,n.label branch_label,n.status branch_status
+  const body: { action?: 'queue' | 'exclude' | 'dequeue'; thread_id?: string; override_queue_cap?: boolean; reason?: string } = await c.req.json().catch(() => ({}))
+  const item = await c.env.DB.prepare(`SELECT r.id,r.video_url,r.video_title,r.status,r.deleted_at,m.learning_state,m.branch_id,n.id branch_exists,n.label branch_label,n.status branch_status
     FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
     LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(c.req.param('id')).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
@@ -212,7 +214,17 @@ app.post('/:id/triage', async (c) => {
     try { await activateWaitingRun(c.env.DB) } catch {}
     return c.json({ ok: true, state: 'excluded' })
   }
-  if (body.action !== 'queue') return c.json({ error: 'action must be queue or exclude' }, 400)
+  if (body.action === 'dequeue') {
+    if (item.status !== 'active' || item.deleted_at || !['queued', 'in_progress'].includes(String(item.learning_state || ''))) {
+      return c.json({ error: 'item is not an active Queue commitment' }, 409)
+    }
+    const result = await c.env.DB.prepare(`UPDATE recommendation_meta SET learning_state='captured',updated_at=datetime('now')
+      WHERE recommendation_id=? AND learning_state IN ('queued','in_progress')
+        AND EXISTS (SELECT 1 FROM recommendations r WHERE r.id=recommendation_meta.recommendation_id AND r.status='active' AND r.deleted_at IS NULL)`).bind(c.req.param('id')).run()
+    if (!result.meta.changes) return c.json({ error: 'item is not an active Queue commitment' }, 409)
+    return c.json({ ok: true, state: 'captured' })
+  }
+  if (body.action !== 'queue') return c.json({ error: 'action must be queue, dequeue, or exclude' }, 400)
   if (!item.branch_id || !item.branch_exists) {
     return c.json({ error: 'branch_mapping_required', message: 'Map this source to a verified knowledge branch before adding it to Queue.' }, 409)
   }
@@ -395,7 +407,10 @@ app.get('/:id/record', async (c) => {
   const consolidationSteps = consolidation ? await c.env.DB.prepare(`SELECT * FROM consolidation_steps WHERE run_id=? ORDER BY position`).bind(consolidation.id).all<any>() : { results: [] }
   const cardRows = (cards.results || []).map((card: any) => ({ ...card }))
   const today = new Date().toISOString().slice(0, 10)
-  const artifactsRows = artifacts.results || []
+  const artifactsRows = (artifacts.results || []).map((artifact: any) => ({
+    ...artifact,
+    quality_assurance: normalizeQualityAssurance(parseJson(artifact.metadata_json) || {}),
+  }))
   const selectedCompanions = selectLearningSourceRenditions(artifactsRows).get(recommendationId) || {}
   const directLegacyArtifacts = artifactsRows.filter((artifact: any) => {
     const metadata = parseJson(artifact.metadata_json) || {}
@@ -418,37 +433,13 @@ app.get('/:id/record', async (c) => {
   const bookChapters = item.content_type === 'book'
     ? await c.env.DB.prepare(`SELECT chapter_key,chapter_title,position,completed_at FROM book_visual_chapters WHERE recommendation_id=? ORDER BY position,chapter_key`).bind(recommendationId).all<any>()
     : { results: [] }
-  const chapterList: any[] = []
-  for (const row of bookChapters.results || []) {
-    chapterList.push({
-      key: row.chapter_key,
-      title: row.chapter_title,
-      number: row.position,
-      completed: Boolean(row.completed_at),
-      completed_at: row.completed_at,
-      html: null,
-      pdf: null,
-    })
-  }
-  for (const art of artifactsRows) {
-    const meta = parseJson(art.metadata_json) || {}
-    if (meta.chapter_key) {
-      let ch = chapterList.find((c) => c.key === meta.chapter_key)
-      if (!ch) {
-        ch = { key: meta.chapter_key, title: meta.chapter_title || meta.chapter_key, number: meta.chapter_number || null, completed: false, completed_at: null, html: null, pdf: null }
-        chapterList.push(ch)
-      }
-      if (meta.role === 'html' || meta.role === 'pdf') {
-        ch[meta.role] = { id: art.id, filename: art.filename, size_bytes: art.size_bytes }
-      }
-    }
-  }
-  const visualObj = item.content_type === 'book'
-    ? { status: chapterList.length > 0 ? 'ready' : 'not_started', chapters: chapterList }
-    : companion
+  const bookProjection = item.content_type === 'book'
+    ? projectBook(item, bookChapters.results || [], artifactsRows)
+    : null
+  const visualObj = bookProjection?.visual || companion
 
   return c.json({
-    item: { ...item, branch: branchInfo, round: roundLabel || round, branch_label: branchLabel, branch_status: item.branch_status || 'love', round_label: roundLabel, canon_memberships: canonMembershipRows.results || [], visual: visualObj },
+    item: { ...item, ...(bookProjection || {}), branch: branchInfo, round: roundLabel || round, branch_label: branchLabel, branch_status: item.branch_status || 'love', round_label: roundLabel, canon_memberships: canonMembershipRows.results || [], visual: visualObj },
     sessions: sessions.results || [],
     threads: threads.results || [],
     annotations: annotationRows,
@@ -461,7 +452,8 @@ app.get('/:id/record', async (c) => {
     companion,
     companions,
     visual: visualObj,
-    book_chapters: chapterList,
+    book_chapters: bookProjection?.visual.chapters || [],
+    ...(bookProjection ? { reading_state: bookProjection.reading_state, queue_state: bookProjection.queue_state, progress: bookProjection.progress, next_chapter: bookProjection.next_chapter } : {}),
     canon_memberships: canonMembershipRows.results || [],
     srs: { drafts: (drafts.results || []).map((draft: any) => ({ ...draft, provenance: parseList(draft.provenance_json), provenance_json: undefined })), cards: cardRows, recall_summary: { count: cardCount, due: dueCount } },
     outcome: outcome || null,
