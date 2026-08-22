@@ -237,6 +237,17 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     finally { setWorking('') }
   }
 
+  const setBookReadingState = async (book: LibraryRecord, state: 'saved' | 'reading' | 'finished') => {
+    const busyKey = `reading-state:${book.id}`
+    setWorking(busyKey); setNotice('')
+    try {
+      await api(`/recommendations/books/${encodeURIComponent(String(book.id))}/reading-state`, { method: 'POST', body: JSON.stringify({ state }) })
+      setNotice(`Personal reading state changed to ${state}. Queue was not changed.`)
+      reload()
+    } catch (actionError) { setNotice(actionMessage(actionError)) }
+    finally { setWorking('') }
+  }
+
   const addBook = async (payload: { title: string; author: string; branch_id: string; isbn?: string; why_this?: string; url?: string }) => {
     setWorking('book'); setNotice('')
     try { await api('/recommendations/books', { method: 'POST', body: JSON.stringify(payload) }); setNotice('Book added to Books.'); reload() }
@@ -373,6 +384,7 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     onDeleteArtifact: removeArtifact,
     onDeleteRecommendationPermanently: deleteRecommendationPermanently,
     onCompleteChapter: completeChapter,
+    onSetBookReadingState: setBookReadingState,
     onAddBook: addBook,
     onCreateCollection: createCollection,
     onDeleteCollection: deleteCollection,

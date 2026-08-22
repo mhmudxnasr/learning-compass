@@ -5,9 +5,22 @@ import { normalizeQualityAssurance } from '../artifact-metadata'
 import { classifyRecommendationFeedback } from '../intelligence-v2'
 import { recordRecommendationSignal, syncRecommendationFeedbackSignals } from '../services/intelligence-v2'
 import { buildLearningBalance } from '../services/learning-balance'
-import { displayRound, roundEvidenceFromBalance } from '../services/branch-rounds'
+import { displayRound, explicitRound, roundEvidenceFromBalance } from '../services/branch-rounds'
+import { chapterMetadataFromArtifact, projectBook } from '../services/book-projection'
 
 const app = new Hono<{ Bindings: Bindings }>()
+
+export const bookVisibilityPredicate = (alias = 'r') => `(${alias}.status IS NULL OR ${alias}.status!='deleted') AND ${alias}.deleted_at IS NULL`
+
+const bookPersistedOrPrefixRound = (book: Record<string, any>) => {
+  if (!book.verified_branch_id) return null
+  const persisted = explicitRound(book.verified_round_label || book.round)
+  if (persisted) return persisted
+  const branchId = String(book.verified_branch_id)
+  if (branchId.startsWith('r2-')) return 'R2'
+  if (branchId.startsWith('r3-')) return 'R3'
+  return null
+}
 
 app.get('/active', async (c) => {
   const { DB } = c.env
@@ -126,36 +139,46 @@ app.get('/books', async (c) => {
   const status = c.req.query('status')
   const allowed = new Set(['active', 'consumed', 'rejected'])
   if (status && !allowed.has(status)) return c.json({ error: 'invalid status' }, 400)
-  const query = `SELECT r.*,m.learning_state,m.priority_rank,m.branch_id,
-    COALESCE(n.label, r.branch) branch_label,
-    COALESCE(n.status, 'love') branch_status,
-    COALESCE(n.round_label, r.round) round_label,
+  const query = `SELECT r.*,m.learning_state,m.priority_rank,m.branch_id,m.source_metadata_json,
+    n.id verified_branch_id,n.label verified_branch_label,n.status verified_branch_status,n.round_label verified_round_label,
     (SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND t.status NOT IN ('verified','abandoned') ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 1) thread_id
     FROM recommendations r
     LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
-    LEFT JOIN tree_nodes n ON n.id=m.branch_id
-    WHERE r.content_type='book' ${status ? 'AND r.status=?' : ''}
+    LEFT JOIN tree_nodes n ON n.id=m.branch_id AND lower(COALESCE(n.status,''))!='pruned'
+    WHERE r.content_type='book' AND ${bookVisibilityPredicate('r')} ${status ? 'AND r.status=?' : ''}
     ORDER BY r.updated_at DESC, r.created_at DESC`
   const rows = status ? await c.env.DB.prepare(query).bind(status).all<any>() : await c.env.DB.prepare(query).all<any>()
   const books = rows.results || []
   const ids = books.map((book: any) => book.id)
-  const artifacts = ids.length
-    ? await c.env.DB.prepare(`SELECT id,filename,media_type,metadata_json,created_at FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${ids.map(() => '?').join(',')}) ORDER BY created_at DESC`).bind(...ids).all<any>()
-    : { results: [] }
-  const jobs = ids.length
-    ? await c.env.DB.prepare(`SELECT id,job_type,status,error,payload_json,updated_at FROM agent_jobs WHERE job_type IN ('visualise_source','extract_notes') AND json_extract(payload_json,'$.recommendation_id') IN (${ids.map(() => '?').join(',')}) ORDER BY updated_at DESC`).bind(...ids).all<any>()
-    : { results: [] }
-  const canonMembershipRows = ids.length
-    ? await c.env.DB.prepare(`SELECT e.recommendation_id,e.id entry_id,e.role,d.id domain_id,d.slug domain_slug,d.title domain_title,d.boundary domain_boundary
+  const placeholders = ids.map(() => '?').join(',')
+  const needsBalance = books.some((book: any) => book.verified_branch_id && !bookPersistedOrPrefixRound(book))
+  const [artifacts, jobs, canonMembershipRows, chapterResult, balance] = await Promise.all([
+    ids.length
+      ? c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,created_at FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${placeholders}) ORDER BY created_at DESC,id DESC`).bind(...ids).all<any>()
+      : Promise.resolve({ results: [] }),
+    ids.length
+      ? c.env.DB.prepare(`SELECT id,job_type,status,error,payload_json,updated_at FROM agent_jobs WHERE job_type IN ('visualise_source','extract_notes') AND json_extract(payload_json,'$.recommendation_id') IN (${placeholders}) ORDER BY updated_at DESC,id DESC`).bind(...ids).all<any>()
+      : Promise.resolve({ results: [] }),
+    ids.length
+      ? c.env.DB.prepare(`SELECT e.recommendation_id,e.id entry_id,e.role,d.id domain_id,d.slug domain_slug,d.title domain_title,d.boundary domain_boundary
       FROM canon_entries e JOIN canon_domains d ON d.id=e.domain_id
-      WHERE e.recommendation_id IN (${ids.map(() => '?').join(',')})
+      WHERE e.recommendation_id IN (${placeholders})
       ORDER BY d.sort_order,d.title,CASE e.role WHEN 'foundation' THEN 0 WHEN 'representative' THEN 1 ELSE 2 END`).bind(...ids).all<any>()
-    : { results: [] }
+      : Promise.resolve({ results: [] }),
+    ids.length
+      ? c.env.DB.prepare(`SELECT recommendation_id,chapter_key,chapter_title,position,completed_at FROM book_visual_chapters WHERE recommendation_id IN (${placeholders}) ORDER BY position,chapter_key`).bind(...ids).all<any>()
+      : Promise.resolve({ results: [] }),
+    needsBalance ? buildLearningBalance(c.env.DB, 90).catch(() => null) : Promise.resolve(null),
+  ])
   const canonMemberships = new Map<string, any[]>()
   for (const membership of canonMembershipRows.results || []) {
     const recommendationId = String(membership.recommendation_id)
-    const existing = canonMemberships.get(recommendationId) || []
-    existing.push({
+    let bucket = canonMemberships.get(recommendationId)
+    if (!bucket) {
+      bucket = []
+      canonMemberships.set(recommendationId, bucket)
+    }
+    bucket.push({
       entry_id: membership.entry_id,
       domain_id: membership.domain_id,
       domain_slug: membership.domain_slug,
@@ -163,44 +186,37 @@ app.get('/books', async (c) => {
       domain_boundary: membership.domain_boundary,
       role: membership.role,
     })
-    canonMemberships.set(recommendationId, existing)
   }
-  const balance = ids.length ? await buildLearningBalance(c.env.DB, 90).catch(() => null) : null
   const balanceByBranch = new Map((balance?.branches || []).map((branch: any) => [String(branch.id), branch]))
-  const visuals = new Map<string, any>()
-  for (const book of books) visuals.set(book.id, { status: 'not_started', html: null, pdf: null, extraction: null, chapters: [] })
+  const artifactsByBook = new Map<string, any[]>()
   for (const row of artifacts.results || []) {
     let metadata: any = {}
     try { metadata = JSON.parse(row.metadata_json || '{}') } catch {}
-    const visual = visuals.get(metadata.recommendation_id)
-    if (!visual || !['html', 'pdf'].includes(metadata.role)) continue
-    const chapterKey = metadata.chapter_key || 'book'
-    await c.env.DB.prepare(`INSERT OR IGNORE INTO book_visual_chapters (recommendation_id,chapter_key,chapter_title,position) VALUES (?,?,?,?)`).bind(metadata.recommendation_id, chapterKey, metadata.chapter_title || (chapterKey === 'book' ? 'Book companion' : `Chapter ${metadata.chapter_number || chapterKey}`), Number(metadata.chapter_number || 0)).run()
-    const chapter = visual.chapters?.find((item: any) => item.key === chapterKey) || (() => {
-      const item = { key: chapterKey, title: metadata.chapter_title || (chapterKey === 'book' ? 'Book companion' : `Chapter ${metadata.chapter_number || chapterKey}`), number: metadata.chapter_number || null, html: null, pdf: null, completed: false }
-      visual.chapters = [...(visual.chapters || []), item]
-      return item
-    })()
-    chapter[metadata.role] = { id: row.id, filename: row.filename, quality_assurance: normalizeQualityAssurance(metadata), created_at: row.created_at }
-  }
-  const chapterIds = ids.filter(Boolean)
-  if (chapterIds.length) {
-    const chapters = await c.env.DB.prepare(`SELECT recommendation_id,chapter_key,chapter_title,position,completed_at FROM book_visual_chapters WHERE recommendation_id IN (${chapterIds.map(() => '?').join(',')}) ORDER BY position,chapter_key`).bind(...chapterIds).all<any>()
-    for (const row of chapters.results || []) {
-      const visual = visuals.get(row.recommendation_id)
-      if (!visual) continue
-      let chapter = visual.chapters?.find((item: any) => item.key === row.chapter_key)
-      if (!chapter) {
-        chapter = { key: row.chapter_key, title: row.chapter_title, number: null, html: null, pdf: null, completed: false }
-        visual.chapters = [...(visual.chapters || []), chapter]
-      }
-      chapter.title = row.chapter_title; chapter.position = row.position; chapter.number = row.position || chapter.number || null; chapter.completed = Boolean(row.completed_at); chapter.completed_at = row.completed_at
+    const recommendationId = String(metadata.recommendation_id || '')
+    if (!recommendationId) continue
+    let bucket = artifactsByBook.get(recommendationId)
+    if (!bucket) {
+      bucket = []
+      artifactsByBook.set(recommendationId, bucket)
     }
+    bucket.push({ ...row, quality_assurance: normalizeQualityAssurance(metadata) })
   }
+  const chaptersByBook = new Map<string, any[]>()
+  for (const row of chapterResult.results || []) {
+    const recommendationId = String(row.recommendation_id)
+    let bucket = chaptersByBook.get(recommendationId)
+    if (!bucket) {
+      bucket = []
+      chaptersByBook.set(recommendationId, bucket)
+    }
+    bucket.push(row)
+  }
+  const projections = new Map<string, any>()
+  for (const book of books) projections.set(String(book.id), projectBook(book, chaptersByBook.get(String(book.id)) || [], artifactsByBook.get(String(book.id)) || []))
   for (const row of jobs.results || []) {
     let payload: any = {}
     try { payload = JSON.parse(row.payload_json || '{}') } catch {}
-    const visual = visuals.get(payload.recommendation_id)
+    const visual = projections.get(String(payload.recommendation_id))?.visual
     if (!visual) continue
     if (row.job_type === 'visualise_source' && visual.status === 'not_started') visual.status = row.status
     if (row.job_type === 'extract_notes') {
@@ -210,31 +226,83 @@ app.get('/books', async (c) => {
   }
   return c.json({
     books: books.map((book: any) => {
-      const branchLabel = book.branch_label || book.branch
-      const branchId = book.branch_id || branchLabel
-      const balanceBranch = balanceByBranch.get(String(branchId || ''))
-      const roundLabel = book.round_label || book.round || (branchId ? displayRound({ id: branchId }, roundEvidenceFromBalance(balanceBranch)) : null)
-      const branchInfo = branchLabel ? { id: branchId, label: branchLabel, round: roundLabel, status: book.branch_status || 'love' } : null
+      const projection = projections.get(String(book.id)) || projectBook(book)
+      const verified = Boolean(book.verified_branch_id)
+      const branchLabel = verified ? book.verified_branch_label : String(book.branch || '').trim() || null
+      const branchId = verified ? book.verified_branch_id : null
+      const balanceBranch = verified ? balanceByBranch.get(String(branchId)) : null
+      const roundLabel = verified
+        ? bookPersistedOrPrefixRound(book) || displayRound({ id: branchId }, roundEvidenceFromBalance(balanceBranch))
+        : null
+      const branchInfo = branchLabel ? {
+        id: branchId,
+        label: branchLabel,
+        round: roundLabel,
+        status: verified ? book.verified_branch_status : null,
+        verified,
+        linkable: verified,
+      } : null
       return {
         ...book,
+        source_metadata_json: undefined,
+        verified_branch_id: undefined,
+        verified_branch_label: undefined,
+        verified_branch_status: undefined,
+        verified_round_label: undefined,
+        ...projection,
         branch: branchInfo,
         branch_label: branchLabel,
-        branch_status: book.branch_status || 'love',
+        branch_status: verified ? book.verified_branch_status : null,
         round: roundLabel,
         canon_memberships: canonMemberships.get(String(book.id)) || [],
-        visual: visuals.get(book.id),
       }
     }),
   })
 })
 
+// Personal book reading state is intentionally separate from Queue commitment.
+app.post('/books/:id/reading-state', async (c) => {
+  const recommendationId = c.req.param('id')
+  const body = await c.req.json<{ state?: string }>().catch(() => ({} as { state?: string }))
+  const readingState = String(body.state || '').trim().toLowerCase()
+  if (!['saved', 'reading', 'finished'].includes(readingState)) return c.json({ error: 'state must be saved, reading, or finished' }, 400)
+  const book = await c.env.DB.prepare(`SELECT r.id,m.learning_state FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=? AND r.content_type='book' AND ${bookVisibilityPredicate('r')} AND lower(COALESCE(n.status,''))!='pruned'`).bind(recommendationId).first<any>()
+  if (!book) return c.json({ error: 'book not found' }, 404)
+  await c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,source_metadata_json,updated_at)
+    VALUES (?,COALESCE(?,'captured'),json_object('book_reading_state',?),datetime('now'))
+    ON CONFLICT(recommendation_id) DO UPDATE SET
+      source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json),
+      updated_at=datetime('now')`).bind(recommendationId, book.learning_state || null, readingState).run()
+  return c.json({ ok: true, recommendation_id: recommendationId, reading_state: readingState, queue_state: book.learning_state || 'captured' })
+})
+
 app.post('/books/:id/chapters/:chapterKey/complete', async (c) => {
   const recommendationId = c.req.param('id')
   const chapterKey = c.req.param('chapterKey')
-  const exists = await c.env.DB.prepare(`SELECT 1 FROM recommendations WHERE id=? AND content_type='book'`).bind(recommendationId).first()
+  const exists = await c.env.DB.prepare(`SELECT 1 FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=? AND r.content_type='book' AND ${bookVisibilityPredicate('r')} AND lower(COALESCE(n.status,''))!='pruned'`).bind(recommendationId).first()
   if (!exists) return c.json({ error: 'book not found' }, 404)
-  const chapter = await c.env.DB.prepare(`SELECT chapter_key FROM book_visual_chapters WHERE recommendation_id=? AND chapter_key=?`).bind(recommendationId, chapterKey).first()
-  if (!chapter) return c.json({ error: 'chapter not found' }, 404)
+  let chapter = await c.env.DB.prepare(`SELECT chapter_key FROM book_visual_chapters WHERE recommendation_id=? AND chapter_key=?`).bind(recommendationId, chapterKey).first()
+  if (!chapter) {
+    const artifact = await c.env.DB.prepare(`SELECT metadata_json FROM artifacts
+      WHERE json_extract(metadata_json,'$.recommendation_id')=?
+        AND trim(json_extract(metadata_json,'$.chapter_key'))=?
+        AND COALESCE(json_extract(metadata_json,'$.scope'),'book')='book'
+        AND lower(json_extract(metadata_json,'$.role')) IN ('html','pdf')
+      ORDER BY created_at DESC,id DESC LIMIT 1`).bind(recommendationId, chapterKey).first<any>()
+    let metadata: Record<string, any> = {}
+    try { metadata = JSON.parse(artifact?.metadata_json || '{}') } catch {}
+    const last = artifact
+      ? await c.env.DB.prepare(`SELECT COALESCE(MAX(position),0) position FROM book_visual_chapters WHERE recommendation_id=?`).bind(recommendationId).first<{ position: number }>()
+      : null
+    const derived = artifact ? chapterMetadataFromArtifact(metadata, chapterKey, Number(last?.position || 0) + 1) : null
+    if (!derived) return c.json({ error: 'chapter not found' }, 404)
+    await c.env.DB.prepare(`INSERT INTO book_visual_chapters (recommendation_id,chapter_key,chapter_title,position,updated_at)
+      VALUES (?,?,?,?,datetime('now'))
+      ON CONFLICT(recommendation_id,chapter_key) DO UPDATE SET
+        chapter_title=excluded.chapter_title,position=excluded.position,updated_at=datetime('now')`)
+      .bind(recommendationId, derived.key, derived.title, derived.position).run()
+    chapter = { chapter_key: derived.key }
+  }
   const body: { completed?: boolean } = await c.req.json<{ completed?: boolean }>().catch(() => ({} as { completed?: boolean }))
   const completed = body.completed !== false
   await c.env.DB.prepare(`UPDATE book_visual_chapters SET completed_at=?,updated_at=datetime('now') WHERE recommendation_id=? AND chapter_key=?`).bind(completed ? new Date().toISOString() : null, recommendationId, chapterKey).run()
@@ -246,7 +314,7 @@ app.post('/books/:id/chapters/:chapterKey/complete', async (c) => {
 // remain scoped to the book shelf and the Files library stays untouched.
 app.post('/books/:id/chapters', async (c) => {
   const recommendationId = c.req.param('id')
-  const book = await c.env.DB.prepare(`SELECT id FROM recommendations WHERE id=? AND content_type='book'`).bind(recommendationId).first()
+  const book = await c.env.DB.prepare(`SELECT r.id FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=? AND r.content_type='book' AND ${bookVisibilityPredicate('r')} AND lower(COALESCE(n.status,''))!='pruned'`).bind(recommendationId).first()
   if (!book) return c.json({ error: 'book not found' }, 404)
   const body = await c.req.json<{ chapters?: Array<{ key?: string; title?: string; number?: number; completed?: boolean }> }>().catch(() => ({} as { chapters?: Array<{ key?: string; title?: string; number?: number; completed?: boolean }> }))
   const chapters = Array.isArray(body.chapters) ? body.chapters : []
@@ -258,6 +326,7 @@ app.post('/books/:id/chapters', async (c) => {
     completed: chapter.completed === true,
   }))
   if (normalized.some((chapter) => !chapter.key || !chapter.title)) return c.json({ error: 'each chapter needs a key and title' }, 400)
+  if (normalized.some((chapter) => chapter.key.toLowerCase() === 'book' && chapter.number === 0)) return c.json({ error: 'the legacy whole-book Chapter 0 placeholder is not a valid chapter' }, 400)
   try {
     await c.env.DB.batch(normalized.map((chapter) => c.env.DB.prepare(`
       INSERT INTO book_visual_chapters (recommendation_id,chapter_key,chapter_title,position,completed_at,updated_at)
@@ -305,7 +374,7 @@ app.post('/books', async (c) => {
       c.env.DB.prepare(`INSERT INTO recommendation_meta
         (recommendation_id,learning_state,branch_id,source_metadata_json,updated_at) VALUES (?,'captured',?,?,datetime('now'))
         ON CONFLICT(recommendation_id) DO UPDATE SET branch_id=excluded.branch_id,source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json),updated_at=datetime('now')`)
-        .bind(recommendationId, branch.id, JSON.stringify({ isbn: isbn || null, source: 'bookshelf' })),
+        .bind(recommendationId, branch.id, JSON.stringify({ isbn: isbn || null, source: 'bookshelf', ...(existing ? {} : { book_reading_state: 'saved' }) })),
     ])
     const saved = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,n.label branch_label,n.round_label,n.status branch_status FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(recommendationId).first<any>()
     return c.json({ ok: true, book: saved, duplicate: Boolean(existing) }, existing ? 200 : 201)

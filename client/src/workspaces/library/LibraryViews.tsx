@@ -3,6 +3,7 @@ import { api, formatDate, labelize } from '../../api'
 import { Empty } from '../../components/States'
 import { Icon } from '../../components/Icon'
 import { BookChapterRows, BooksView, ChapterManagerDialog, computeBookProgress, getBookAccent, getInitials } from './BooksView'
+import { bookChapters, bookNextChapter, bookQueueState, bookReadingState, chapterActionCopy, chapterCompanionUrl } from './bookModel'
 import type { LibraryRecord, LibrarySelection, LibraryViewHandlers } from './types'
 import {
   artifactLink,
@@ -1101,24 +1102,18 @@ function BookObject({ item, record, handlers, onBack }: { item: LibraryRecord; r
   const cards = record.srs?.cards || []
   const drafts = (record.srs?.drafts || []).filter((draft: LibraryRecord) => draft.status !== 'approved')
   const branch = item.branch || (item.branch_id ? { id: item.branch_id, label: item.branch_label || item.branch_id, round: item.round, status: item.branch_status } : null)
-  const chapters = item.visual?.chapters || record.visual?.chapters || record.book_chapters || []
-  const bookWithChapters = { ...item, visual: { ...(item.visual || record.visual || {}), chapters } }
+  const bookWithChapters = { ...item, progress: item.progress || record.progress, next_chapter: item.next_chapter || record.next_chapter, visual: item.visual || record.visual || { chapters: record.book_chapters || [] } }
+  const chapters = bookChapters(bookWithChapters)
   const progress = computeBookProgress(bookWithChapters)
-  const progressPercent = progress?.percent ?? Math.max(0, Math.min(100, Number(item.progress_percent || 0)))
-  const nextChapter = chapters.find((chapter: LibraryRecord) => !chapter.completed && !chapter.completed_at)
-  const nextCompanion = nextChapter?.html || chapters.find((chapter: LibraryRecord) => chapter.html)?.html
+  const progressPercent = progress.percent
+  const nextChapter = bookNextChapter(bookWithChapters)
   const original = sourceLink(item)
+  const nextUrl = chapterCompanionUrl(nextChapter) || (nextChapter ? original : null)
+  const nextCopy = chapterActionCopy(bookWithChapters, nextChapter)
   const memberships = Array.isArray(item.canon_memberships) ? item.canon_memberships : Array.isArray(record.canon_memberships) ? record.canon_memberships : []
-  const isCaptured = ['captured', 'inbox', ''].includes(String(item.learning_state || '')) && String(item.status || '') === 'active'
-  const readingState = String(item.status || '') === 'consumed' || String(item.learning_state || '') === 'completed'
-    ? 'Finished'
-    : String(item.learning_state || '') === 'in_progress'
-      ? 'Reading'
-      : String(item.learning_state || '') === 'queued'
-        ? 'Queued'
-        : 'My books'
+  const isCaptured = bookQueueState(bookWithChapters) === 'captured' && String(item.status || '') === 'active'
+  const readingState = bookReadingState(bookWithChapters)
   const score = Number(item.user_score ?? item.user_rating ?? 0)
-  const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ block: 'start' })
 
   return <div class="book-dossier">
     <button type="button" class="folio-back-link book-dossier-back" onClick={onBack}><Icon name="back" size={16}/>Back to Books</button>
@@ -1130,7 +1125,7 @@ function BookObject({ item, record, handlers, onBack }: { item: LibraryRecord; r
       </div>
       <div class="book-dossier-identity">
         <div class="book-dossier-kickers">
-          <span class="book-state-chip">{readingState}</span>
+          <span class="book-state-chip">{readingState === 'reading' ? 'Reading now' : formatStatus(readingState)}</span>
           {branch && <a class="book-branch-badge" href={`#/map/branch/${encodeURIComponent(String(branch.id))}`} title={`${branch.label}${branch.round ? ` · ${branch.round}` : ''}`}><Icon name="branch" size={11}/><span>{branch.label}</span>{branch.round && <span class="branch-round-text">{branch.round}</span>}</a>}
           {memberships.map((membership: LibraryRecord) => <a class="book-canon-badge" key={membership.entry_id || `${membership.domain_id}-${membership.role}`} href={`#/learn/canon/${encodeURIComponent(String(membership.domain_slug || membership.domain_id))}`}>Canon · {formatStatus(membership.role)} · {membership.domain_title}</a>)}
         </div>
@@ -1140,16 +1135,17 @@ function BookObject({ item, record, handlers, onBack }: { item: LibraryRecord; r
         {item.why_this && <blockquote>{item.why_this}</blockquote>}
 
         <div class="book-dossier-progress">
-          <div><span>Reading progress</span><strong>{progress ? `${progress.finished} of ${progress.total} chapters` : 'No chapter plan yet'}</strong></div>
+          <div><span>Reading progress</span><strong>{progress.total ? `${progress.finished} of ${progress.total} chapters complete` : 'No chapter plan yet'}</strong></div>
           <b>{progressPercent}%</b>
           <div class="book-dossier-progress-track" role="progressbar" aria-label={`${sourceTitle(item)} reading progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}><span style={{ width: `${progressPercent}%` }}/></div>
           {nextChapter && <small>Next: {nextChapter.number ? `${nextChapter.number}. ` : ''}{nextChapter.title}</small>}
         </div>
 
         <div class="book-dossier-actions">
-          {nextCompanion ? <a class="folio-button folio-button-primary" href={`/artifacts/${encodeURIComponent(String(nextCompanion.id))}/view`} target="_blank" rel="noreferrer"><Icon name="source" size={14}/>Read next companion</a>
+          {nextUrl && nextCopy ? <a class="folio-button folio-button-primary" href={nextUrl} target="_blank" rel="noreferrer"><Icon name="source" size={14}/>{nextCopy}</a>
             : original ? <a class="folio-button folio-button-primary" href={original} target="_blank" rel="noreferrer"><Icon name="external" size={14}/>Open original</a> : null}
-          {original && nextCompanion && <a class="folio-button" href={original} target="_blank" rel="noreferrer">Open original</a>}
+          {original && nextUrl && <a class="folio-button" href={original} target="_blank" rel="noreferrer">Open original</a>}
+          <label class="book-reading-state-control"><span>Personal state</span><select value={readingState} onChange={(event) => handlers.onSetBookReadingState(item, (event.currentTarget as HTMLSelectElement).value as 'saved' | 'reading' | 'finished')} disabled={handlers.busyId === `reading-state:${item.id}`}><option value="saved">Saved</option><option value="reading">Reading now</option><option value="finished">Finished</option></select></label>
           {isCaptured ? <button type="button" class="folio-button" onClick={() => handlers.onQueue(item)} disabled={handlers.busyId === item.id}>Add to Queue</button>
             : <a class="folio-button" href="#/library?mode=triage&focus=queue">Open Queue</a>}
           <button type="button" class="folio-button" onClick={() => setEditingChapters(true)}>Edit chapters</button>
@@ -1160,13 +1156,13 @@ function BookObject({ item, record, handlers, onBack }: { item: LibraryRecord; r
     </header>
 
     <nav class="book-dossier-index" aria-label="Book dossier sections">
-      {['overview', 'chapters', 'study', 'recall', 'connections', 'history', 'reflection'].map((section) => <button type="button" key={section} onClick={() => jump(`book-${section}`)}>{section === 'study' ? 'Notes & evidence' : formatStatus(section)}</button>)}
+      {['overview', 'chapters', 'study', 'recall', 'connections', 'history', 'reflection'].map((section) => <a key={section} href={`#book-${section}`}>{section === 'study' ? 'Notes & evidence' : formatStatus(section)}</a>)}
     </nav>
 
     <div class="book-dossier-layout">
       <main class="book-dossier-main">
         <section id="book-overview" class="book-dossier-section">
-          <div class="book-dossier-section-head"><div><p class="folio-kicker">Orientation</p><h2>Overview</h2></div><span>{readingState}</span></div>
+          <div class="book-dossier-section-head"><div><p class="folio-kicker">Orientation</p><h2>Overview</h2></div><span>{formatStatus(readingState)}</span></div>
           <dl class="book-dossier-facts">
             <div><dt>Author</dt><dd>{sourceCreator(item)}</dd></div>
             <div><dt>ISBN</dt><dd>{metadata.isbn || item.isbn || 'Not recorded'}</dd></div>

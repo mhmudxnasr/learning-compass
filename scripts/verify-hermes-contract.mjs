@@ -26,6 +26,7 @@ expectedMigrations.push('0047_personal_branch_map.sql')
 expectedMigrations.push('0048_remove_inbox_concept.sql')
 expectedMigrations.push('0049_source_notes_recall_quality.sql')
 expectedMigrations.push('0050_structured_compass_feedback.sql')
+expectedMigrations.push('0051_remove_synthetic_book_chapters.sql')
 if (migrationNames.length !== expectedMigrations.length || expectedMigrations.some((name, index) => migrationNames[index] !== name)) throw new Error(`Migration order drift: expected ${expectedMigrations.join(', ')}, found ${migrationNames.join(', ')}`)
 
 const checks = [
