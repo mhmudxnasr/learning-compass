@@ -12,8 +12,7 @@ export function statusLabel(value?: string | null) {
   return ({
     active: 'In progress',
     paused: 'Paused',
-    verified: 'Verified',
-    ready_to_verify: 'Ready to verify',
+    completed: 'Completed',
     abandoned: 'Archived',
     draft: 'Planned',
     available: 'Available',

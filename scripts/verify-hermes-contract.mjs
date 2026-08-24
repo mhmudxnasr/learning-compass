@@ -27,6 +27,15 @@ expectedMigrations.push('0048_remove_inbox_concept.sql')
 expectedMigrations.push('0049_source_notes_recall_quality.sql')
 expectedMigrations.push('0050_structured_compass_feedback.sql')
 expectedMigrations.push('0051_remove_synthetic_book_chapters.sql')
+expectedMigrations.push('0052_pin_primary_book.sql')
+expectedMigrations.push('0053_retire_synthetic_rounds.sql')
+expectedMigrations.push('0054_production_operations.sql')
+expectedMigrations.push('0055_d1_performance_indexes.sql')
+expectedMigrations.push('0056_direct_lesson_progression.sql')
+expectedMigrations.push('0057_complete_legacy_draft_threads.sql')
+expectedMigrations.push('0058_semantic_relationships.sql')
+expectedMigrations.push('0059_daily_resurfacing.sql')
+expectedMigrations.push('0060_note_distillation.sql')
 if (migrationNames.length !== expectedMigrations.length || expectedMigrations.some((name, index) => migrationNames[index] !== name)) throw new Error(`Migration order drift: expected ${expectedMigrations.join(', ')}, found ${migrationNames.join(', ')}`)
 
 const checks = [
@@ -95,7 +104,7 @@ const requiredPolicy = [
   ['notebooklm', 'explicit feedback grounding or explicit Studio request only'],
   ['recommendations', 'explicit request only; feedback never creates a recommendation'],
   ['capture', 'every new source is a captured Library record with its validated branch persisted atomically; Queue is separate and explicit'],
-  ['learning_progression', 'Levels and Threads advance only through learner-confirmed direct lesson completion; projects, sources, notes, ratings, dispositions, recall, and provider receipts never gate or advance progression'],
+  ['learning_progression', 'Levels and Threads advance only through learner-confirmed direct lesson completion; projects, sources, notes, ratings, dispositions, recall, resurfacing, frontier states, and provider receipts never gate or advance progression'],
   ['branch_round', 'every captured, recommended, or queued item requires a verified non-pruned branch plus round and a visible branch pill on every rendering surface'],
 ]
 for (const [key, expected] of requiredPolicy) {
@@ -114,10 +123,10 @@ for (const trigger of ['specialist evolution handoff', 'observed skill failure',
 if (contract.self_evolution_owner !== 'learning-compass-self-evolution') throw new Error('Canonical self-evolution owner drift')
 const activeSkills = contract.skill_graph?.active || []
 const retiredSkills = contract.skill_graph?.retired || []
-if (activeSkills.length !== 25 || new Set(activeSkills.map((skill) => skill.name)).size !== activeSkills.length) {
+if (activeSkills.length !== 27 || new Set(activeSkills.map((skill) => skill.name)).size !== activeSkills.length) {
   throw new Error('Canonical Hermes active skill graph is incomplete or duplicated')
 }
-for (const name of ['learning-compass-operating-system', 'learning-compass-self-evolution', 'learning-compass-site-operator', 'recommendations-worker-ops', 'taste-mapper', 'taste-rec', 'learning-notes-extractor', 'lite-visual', 'visual-mind', 'notebooklm', 'rss-feed', 'agent-cli-delegation', 'youtube-playlist-verification', 'learning-thread-authoring', 'progressive-learning-curriculum', 'learning-compass-source-ingestion', 'learning-hub-companion-authoring', 'compass-recommendation-workflows', 'hermes-configuration-operations', 'learning-compass-feedback-corrections', 'learning-compass-foundation-curation', 'learning-compass-job-backlog-operations', 'learning-compass-bridge', 'hermes-learning-compass', 'epub-repair']) {
+for (const name of ['learning-compass-operating-system', 'learning-compass-self-evolution', 'learning-compass-site-operator', 'recommendations-worker-ops', 'cloudflare-ai-pipeline-operations', 'taste-mapper', 'taste-rec', 'learning-notes-extractor', 'lite-visual', 'visual-mind', 'notebooklm', 'rss-feed', 'agent-cli-delegation', 'youtube-playlist-verification', 'learning-thread-authoring', 'riyadh-salihin-al-badr', 'progressive-learning-curriculum', 'learning-compass-source-ingestion', 'learning-hub-companion-authoring', 'compass-recommendation-workflows', 'hermes-configuration-operations', 'learning-compass-feedback-corrections', 'learning-compass-foundation-curation', 'learning-compass-job-backlog-operations', 'learning-compass-bridge', 'hermes-learning-compass', 'epub-repair']) {
   if (!activeSkills.some((skill) => skill.name === name && skill.path && skill.role)) throw new Error(`Canonical active skill missing: ${name}`)
 }
 for (const name of ['taste-enhancer', 'compass-queue-fill', 'learning-compass-curator-policy', 'master-editorial-synthesis', 'learning-thread-curation']) {

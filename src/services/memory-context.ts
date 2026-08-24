@@ -41,7 +41,7 @@ export async function compileMemoryContext(db: DB, input: {
       FROM memory_evidence`).all<any>().catch(() => ({ results: [] })),
     input.recommendationId ? db.prepare(`SELECT r.id,r.video_title,r.creator,r.content_type,r.status,r.user_score,r.user_rating,r.user_review,m.branch_id,m.learning_state
       FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?`).bind(input.recommendationId).first<any>() : Promise.resolve(null),
-    input.threadId ? db.prepare(`SELECT id,title,guiding_question,why_now,definition_of_done,evidence_requirements_json,status FROM learning_threads WHERE id=?`).bind(input.threadId).first<any>() : Promise.resolve(null),
+    input.threadId ? db.prepare(`SELECT id,title,guiding_question,why_now,definition_of_done,status FROM learning_threads WHERE id=?`).bind(input.threadId).first<any>() : Promise.resolve(null),
   ])
   const evidenceByMemory = new Map<string, any[]>()
   for (const item of evidenceResult.results || []) evidenceByMemory.set(item.memory_id, [...(evidenceByMemory.get(item.memory_id) || []), item])
@@ -69,7 +69,7 @@ export async function compileMemoryContext(db: DB, input: {
     task_kind: input.taskKind,
     scope: { recommendation_id: input.recommendationId || null, thread_id: input.threadId || null },
     source: sourceResult || null,
-    thread: threadResult ? { ...threadResult, evidence_requirements: parseJson(threadResult.evidence_requirements_json), evidence_requirements_json: undefined } : null,
+    thread: threadResult || null,
     memories: ranked.map(({ value_json, evidence_json, ...memory }: any) => memory),
     profile_assertions: assertions,
   }

@@ -38,7 +38,7 @@ app.post('/suggest', async (c) => {
     ] = await Promise.all([
       DB.prepare('SELECT identity_json, mega_priority_json, core_filter, reaction_style_json, quality_rules_json, patterns_summary_json FROM profile WHERE id = 1').first<any>().catch(() => null),
       DB.prepare('SELECT rank, branch_id, label, rationale FROM priorities ORDER BY rank ASC LIMIT 10').all<any>().catch(() => ({ results: [] })),
-      DB.prepare("SELECT r.video_title FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 10").all<any>().catch(() => ({ results: [] })),
+      DB.prepare("SELECT r.video_title FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 10").all<any>().catch(() => ({ results: [] })),
       DB.prepare(`
         SELECT t.id, t.label, t.super_category, MAX(r.consumed_date) as last_consumed
         FROM tree_nodes t

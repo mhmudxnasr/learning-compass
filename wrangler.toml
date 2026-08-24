@@ -3,6 +3,23 @@ main = "src/index.ts"
 compatibility_date = "2026-07-27"
 compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
+[triggers]
+crons = ["0 */6 * * *"]
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+persist = true
+
 [assets]
 directory = "./dist/client"
 binding = "ASSETS"

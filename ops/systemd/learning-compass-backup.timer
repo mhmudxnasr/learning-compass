@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Learning Compass recovery snapshot every day
+
+[Timer]
+OnCalendar=*-*-* 03:17:00
+Persistent=true
+RandomizedDelaySec=5m
+Unit=learning-compass-backup.service
+
+[Install]
+WantedBy=timers.target

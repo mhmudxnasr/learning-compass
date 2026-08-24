@@ -125,7 +125,7 @@ export async function activateWaitingRun(DB: D1Database, targetRunId?: string) {
 
   // Verify capacity
   const activeQueueCountResult = await DB.prepare(
-    `SELECT COUNT(*) as c FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')`
+    `SELECT COUNT(*) as c FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')`
   ).first<{ c: number }>()
 
   const queueCount = activeQueueCountResult?.c || 0
@@ -172,7 +172,7 @@ async function getGateState(DB: D1Database) {
   ).first<any>()
 
   const activeQueueCountResult = await DB.prepare(
-    `SELECT COUNT(*) as c FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')`
+    `SELECT COUNT(*) as c FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')`
   ).first<{ c: number }>()
 
   const queueCount = activeQueueCountResult?.c || 0

@@ -1,4 +1,5 @@
 import { canonicalCreatorKey, canonicalFormat, structuredEvidenceStatus, type CompassLane } from './intelligence-v2.ts'
+import { deliveryMatch, type ResolvedDeliveryContext } from './services/delivery-context.ts'
 
 export type TrustSignal = { average: number; count: number }
 export type KnownSource = { url: string; title: string; creator: string; status: string }
@@ -27,6 +28,7 @@ export type CompassContext = {
   thread?: { id: string; title?: string | null; guiding_question?: string | null; why_now?: string | null; definition_of_done?: string | null; recommendation_target_gaps?: RecommendationTargetGap[] }
   laneEvidence?: Map<string, number>
   threadCoverage?: ThreadCoverageAnchor[]
+  delivery?: ResolvedDeliveryContext
 }
 
 export function editorialReviewStatus(value: unknown): 'approved' | 'missing' | 'invalid' {
@@ -110,7 +112,9 @@ export function candidateSetDiversity(candidate: any, peers: any[]) {
   const sameCreator = creator ? eligible.filter((peer) => peer !== candidate && String(peer?._creator_key || '') === creator).length : 0
   const sameFormat = format ? eligible.filter((peer) => peer !== candidate && String(peer?._format_key || '') === format).length : 0
   const sameBranch = branch ? eligible.filter((peer) => peer !== candidate && norm(peer?._branch_id || '') === branch).length : 0
-  const repetition = duplicateSimilarity * .55 + (sameCreator / (eligible.length - 1)) * .20 + (sameFormat / (eligible.length - 1)) * .15 + (sameBranch / (eligible.length - 1)) * .10
+  const perspective = String(candidate?._perspective_key || '')
+  const samePerspective = perspective ? eligible.filter((peer) => peer !== candidate && String(peer?._perspective_key || '') === perspective).length : 0
+  const repetition = duplicateSimilarity * .50 + (sameCreator / (eligible.length - 1)) * .18 + (sameFormat / (eligible.length - 1)) * .12 + (sameBranch / (eligible.length - 1)) * .10 + (samePerspective / (eligible.length - 1)) * .10
   return Math.round(clamp(1 - repetition, 0) * 1000) / 1000
 }
 
@@ -206,6 +210,8 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
   const threadContribution = context.thread ? clamp(.28 + threadSimilarity * .38 + targetGapMatch * .22 + (explicitContribution ? .12 : 0), .28) : .5
   const evidenceStatus = structuredEvidenceStatus(item.evidence || item.rationale || item.why_this)
   const evidenceQuality = evidenceStatus === 'structured' ? .92 : evidenceStatus === 'legacy' ? .58 : evidenceStatus === 'invalid' ? .08 : .20
+  const perspective = item.perspective && item.perspective.status === 'verified' ? item.perspective : null
+  const delivery = context.delivery ? deliveryMatch(item, context.delivery) : { matches: true, score: .5, compared_fields: 0, advisory_only: true as const }
   return {
     topic_value: clamp(.40 + topicAffinity * .35 + (priorityMatch ? .20 : 0) + balanceBoost, 0),
     personal_relevance: clamp(.38 + topicAffinity * .40 + (priorityMatch ? .17 : 0) + profileMatch * .12 + balanceBoost, 0),
@@ -216,6 +222,7 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
     evidence_quality: evidenceQuality,
     thread_contribution: threadContribution,
     friction,
+    delivery_fit: delivery.score,
     _valid_url: Boolean(url),
     _has_identity: Boolean(title && url),
     _hard_excluded: knownUrl || knownSimilarity >= .84 || blocked || Boolean(coverageMatch) || bookRequiresExplicitRequest || editorialStatus !== 'approved' || !['verified','restricted'].includes(sourceCheck.status) || sourceCheck.evidence_status === 'failed' || evidenceStatus !== 'structured',
@@ -225,6 +232,7 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
     _topic_signals: topicSignals.length,
     _profile_match: profileMatch,
     _known_similarity: knownSimilarity,
+    _repetition_advisory: { repeated_source: knownUrl, similarity: Math.round(knownSimilarity * 1000) / 1000, advisory_only: true },
     _source_check: sourceCheck.status,
     _branch_state: branchSignal?.state || 'unmapped',
     _branch_id: item.branch_id || null,
@@ -236,6 +244,9 @@ export function deriveCandidateFeatures(item: any, context: CompassContext = EMP
     _target_gap_match: targetGapMatch,
     _target_lesson_id: targetGap?.lesson_id || null,
     _candidate_context: contributionCorpus,
+    _perspective: perspective || { status: 'neutral', viewpoint: null, school: null, evidence_indexes: [] },
+    _perspective_key: perspective ? norm(`${perspective.viewpoint || ''} ${perspective.school || ''}`) || null : null,
+    _delivery_match: delivery,
     contextual_alignment: threadSimilarity,
     // Replaced with candidate-set comparison in the route once all candidates
     // are known; a neutral default keeps isolated feature evaluation stable.

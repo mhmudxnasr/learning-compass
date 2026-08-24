@@ -42,23 +42,36 @@ function safeUUID(): string {
 
 const mutationId = () => `mut_${Date.now()}_${safeUUID()}`
 
-export async function api<T = any>(url: string, init?: RequestInit): Promise<T> {
+type ApiRequestInit = RequestInit & { timeoutMs?: number; queueOnNetworkError?: boolean }
+
+export async function api<T = any>(url: string, init?: ApiRequestInit): Promise<T> {
   const method = (init?.method || 'GET').toUpperCase()
   const headers = new Headers({ 'content-type': 'application/json', ...(init?.headers || {}) })
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && !headers.has('x-client-mutation-id')) {
-    headers.set('x-client-mutation-id', mutationId())
-  }
+  const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(method)
+  if (mutation && !headers.has('x-client-mutation-id')) headers.set('x-client-mutation-id', mutationId())
+  const controller = new AbortController()
+  let timedOut = false
+  const timeoutMs = Math.max(1000, Number(init?.timeoutMs || (mutation ? 30000 : 15000)))
+  const timeout = setTimeout(() => { timedOut = true; controller.abort() }, timeoutMs)
+  const abortFromCaller = () => controller.abort()
+  init?.signal?.addEventListener('abort', abortFromCaller, { once: true })
+  const { timeoutMs: _timeoutMs, queueOnNetworkError = true, ...requestInit } = init || {}
   let response: Response
   try {
-    response = await fetch(url, { ...init, headers })
+    response = await fetch(url, { ...requestInit, headers, signal: controller.signal })
   } catch (error) {
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && typeof navigator !== 'undefined' && !navigator.onLine) {
-      await queueOfflineMutation(url, { ...init, method, headers })
-      const queued = new ApiError('Saved offline. It will sync when you reconnect.', 0, { error: 'offline_queued' })
+    const callerAborted = Boolean(init?.signal?.aborted) && !timedOut
+    if (mutation && queueOnNetworkError && !callerAborted && typeof indexedDB !== 'undefined') {
+      await queueOfflineMutation(url, { ...requestInit, method, headers })
+      const queued = new ApiError(timedOut ? 'The request timed out and was saved for retry.' : 'The network request was saved for retry.', 0, { error: timedOut ? 'network_timeout_queued' : 'network_error_queued' })
       queued.offlineQueued = true
       throw queued
     }
+    if (timedOut) throw new ApiError('The request timed out. Try again.', 0, { error: 'network_timeout' })
     throw error
+  } finally {
+    clearTimeout(timeout)
+    init?.signal?.removeEventListener('abort', abortFromCaller)
   }
 
   let body: any = {}
@@ -75,9 +88,7 @@ export async function api<T = any>(url: string, init?: RequestInit): Promise<T> 
     body = rawText ? { rawText } : {}
   }
 
-  if (!response.ok) {
-    throw new ApiError(body?.error || body?.message || `Request failed (${response.status})`, response.status, body)
-  }
+  if (!response.ok) throw new ApiError(body?.error || body?.message || `Request failed (${response.status})`, response.status, body)
   return body as T
 }
 
@@ -101,11 +112,12 @@ const transact = async <T>(mode: IDBTransactionMode, action: (store: IDBObjectSt
 }
 
 export async function queueOfflineMutation(url: string, init: RequestInit) {
-  const id = mutationId()
   const headers: Record<string, string> = {}
   new Headers(init.headers).forEach((value, key) => { headers[key] = value })
+  const id = headers['x-client-mutation-id'] || mutationId()
+  headers['x-client-mutation-id'] = id
   await transact<IDBValidKey>('readwrite', (store, resolve, reject) => {
-    const request = store.add({ id, url, method: init.method || 'POST', body: init.body || null, headers, queuedAt: new Date().toISOString(), attempts: 0, state: 'pending', error: '' })
+    const request = store.put({ id, url, method: init.method || 'POST', body: init.body || null, headers, queuedAt: new Date().toISOString(), attempts: 0, state: 'pending', error: '' })
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)
   })
@@ -146,25 +158,31 @@ export async function resolveOfflineMutation(id: string, action: 'retry' | 'disc
   }
 }
 
+let flushPromise: Promise<void> | null = null
+
 export async function flushOfflineMutations() {
-  if (!navigator.onLine) return
-  const queue = await listOfflineMutations()
-  for (const item of queue) {
-    if (item.state === 'conflict' || item.state === 'failed') continue
-    try {
-      await updateOfflineMutation(item, { attempts: Number(item.attempts || 0) + 1, state: 'syncing', error: '' })
-      await api(item.url, { method: item.method, body: item.body || undefined, headers: { ...(item.headers || {}), 'x-client-mutation-id': item.id } })
-      await transact<void>('readwrite', (store, resolve, reject) => {
-        const request = store.delete(item.id)
-        request.onsuccess = () => resolve()
-        request.onerror = () => reject(request.error)
-      })
-    } catch (error: any) {
-      const status = Number(error?.status || 0)
-      await updateOfflineMutation(item, { state: status === 409 || status === 412 ? 'conflict' : status >= 400 && status < 500 ? 'failed' : 'pending', error: error?.message || 'Offline; waiting to reconnect' })
-      if (!status || status >= 500) break
+  if (flushPromise) return flushPromise
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return
+  flushPromise = (async () => {
+    const queue = await listOfflineMutations()
+    for (const item of queue) {
+      if (item.state === 'conflict' || item.state === 'failed') continue
+      try {
+        await updateOfflineMutation(item, { attempts: Number(item.attempts || 0) + 1, state: 'syncing', error: '' })
+        await api(item.url, { method: item.method, body: item.body || undefined, headers: { ...(item.headers || {}), 'x-client-mutation-id': item.id }, queueOnNetworkError: false })
+        await transact<void>('readwrite', (store, resolve, reject) => {
+          const request = store.delete(item.id)
+          request.onsuccess = () => resolve()
+          request.onerror = () => reject(request.error)
+        })
+      } catch (error: any) {
+        const status = Number(error?.status || 0)
+        await updateOfflineMutation(item, { state: status === 409 || status === 412 ? 'conflict' : status >= 400 && status < 500 ? 'failed' : 'pending', error: error?.message || 'Network unavailable; waiting to retry' })
+        if (!status || status >= 500) break
+      }
     }
-  }
+  })().finally(() => { flushPromise = null })
+  return flushPromise
 }
 
 export function firstArray<T = any>(value: unknown): T[] {

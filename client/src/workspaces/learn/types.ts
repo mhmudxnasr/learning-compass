@@ -1,6 +1,6 @@
 export type Direction = 'auto' | 'ltr' | 'rtl'
 
-export type PathStatus = 'active' | 'paused' | 'verified' | 'ready_to_verify' | 'abandoned' | 'draft'
+export type PathStatus = 'active' | 'paused' | 'completed' | 'abandoned' | 'draft'
 
 export interface PathRecord {
   id: string
@@ -16,8 +16,6 @@ export interface PathRecord {
   current_stage_status?: string | null
   lesson_count?: number
   completed_lesson_count?: number
-  proof_count?: number
-  completed_proof_count?: number
   needs_material_count?: number
   updated_at?: string | null
 }
@@ -95,6 +93,7 @@ export interface NoteRecord {
   kind?: string | null
   status?: string | null
   recommendation_id?: string | null
+  content_type?: string | null
   branch_id?: string | null
   branch_label?: string | null
   round_label?: string | null
@@ -102,6 +101,7 @@ export interface NoteRecord {
   thread_id?: string | null
   stage_id?: string | null
   lesson_id?: string | null
+  owner_thread_id?: string | null
   source_url?: string | null
   abstract?: string | null
   extraction_contract?: string | null
@@ -122,7 +122,6 @@ export type NextAction =
   | { kind: 'lesson'; label: string; stage_id?: string; lesson_id: string }
   | { kind: 'item'; label: string; stage_id?: string; item_id: string }
   | { kind: 'project'; label: string; stage_id?: string; project_id: string }
-  | { kind: 'verify'; label: string; stage_id?: string }
   | { kind: 'none'; label: string; stage_id?: string; reason?: string }
 
 export interface PathStage {
@@ -141,7 +140,7 @@ export interface PathStage {
   files: PathArtifact[]
   cards: RecallCard[]
   recall_drafts: RecallDraft[]
-  progress: { completed: number; total: number; study_completed?: number; study_total?: number; proof_completed?: number; proof_total?: number; project_completed?: number; project_total?: number }
+  progress: { completed: number; total: number; study_completed?: number; study_total?: number; project_completed?: number; project_total?: number }
   next_action?: NextAction
 }
 
@@ -180,19 +179,6 @@ export interface ThreadProject {
   notes?: string | null
 }
 
-export interface StageEvidence {
-  id: string
-  thread_id?: string | null
-  stage_id?: string | null
-  item_id?: string | null
-  evidence_type: string
-  result: string
-  response?: string | null
-  score?: number | null
-  proof_ref?: string | null
-  occurred_at?: string | null
-}
-
 export interface PathResponse {
   thread: {
     id: string
@@ -206,14 +192,11 @@ export interface PathResponse {
     superseded_by_type?: string | null
     superseded_by_id?: string | null
     superseded_at?: string | null
-    evidence_requirements?: Array<{ key?: string; label?: string; evidence_type?: string }>
     updated_at?: string | null
   }
   stages: PathStage[]
   current_stage?: PathStage | null
   projects: ThreadProject[]
-  evidence: StageEvidence[]
-  requirements: Array<{ id: string; label?: string | null; status?: string | null; evidence_type?: string | null; stage_id?: string | null }>
   notes: NoteRecord[]
   files: PathArtifact[]
   cards: RecallCard[]
@@ -290,9 +273,72 @@ export interface LearningUnitSummary {
   anchors: Array<{ anchor_type: string; locator: string; excerpt?: string | null }>
 }
 
+export interface DistillationBlock {
+  section_key: string
+  section_label?: string | null
+  block_index: number
+  text: string
+  checksum: string
+}
+
+export interface ClaimHighlight {
+  id: string
+  note_id: string
+  section_key: string
+  block_index: number
+  block_checksum: string
+  source_text: string
+  claim_text: string
+  stale: boolean
+  promoted_unit_id?: string | null
+  promoted_at?: string | null
+  created_at: string
+}
+
+export interface SynthesisRevision {
+  id: string
+  note_id: string
+  revision: number
+  synthesis_text: string
+  created_at: string
+}
+
+export interface NoteDistillation {
+  blocks: DistillationBlock[]
+  highlights: ClaimHighlight[]
+  synthesis_revisions: SynthesisRevision[]
+  can_promote: boolean
+}
+
+export interface SemanticRelationEndpoint {
+  unit_id: string
+  statement: string
+  unit_type: string
+  note_id?: string | null
+  recommendation_id?: string | null
+  branch: { id: string; label: string; domain: string }
+  anchor?: { locator: string; excerpt?: string | null } | null
+}
+
+export interface SemanticRelation {
+  id: string
+  relation_type: string
+  confidence: number
+  why: string
+  review_state: string
+  resolution?: string | null
+  direction: 'incoming' | 'outgoing'
+  counterpart: SemanticRelationEndpoint
+  source: SemanticRelationEndpoint
+  target: SemanticRelationEndpoint
+}
+
 export interface NoteDossierResponse {
   note: NoteRecord
   related_notes: NoteRecord[]
   units: LearningUnitSummary[]
+  relations: SemanticRelation[]
+  backlinks: SemanticRelation[]
   recall: { drafts: RecallDraft[]; cards: RecallCard[] }
+  distillation?: NoteDistillation | null
 }

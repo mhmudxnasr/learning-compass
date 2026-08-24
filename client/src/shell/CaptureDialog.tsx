@@ -8,11 +8,13 @@ export function CaptureDialog({
   onClose,
   onCaptured,
   initialSource = '',
+  initialStatus = '',
 }: {
   open: boolean
   onClose: () => void
   onCaptured: () => void
   initialSource?: string
+  initialStatus?: string
 }) {
   const [source, setSource] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -39,6 +41,7 @@ export function CaptureDialog({
   useEffect(() => {
     if (!open) return
     if (initialSource && !source) setSource(initialSource)
+    if (initialStatus && !status) setStatus(initialStatus)
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       event.preventDefault()
@@ -47,7 +50,7 @@ export function CaptureDialog({
     }
     document.addEventListener('keydown', closeOnEscape, true)
     return () => document.removeEventListener('keydown', closeOnEscape, true)
-  }, [open, onClose, initialSource, source])
+  }, [open, onClose, initialSource, initialStatus, source, status])
 
   const trapFocus = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {

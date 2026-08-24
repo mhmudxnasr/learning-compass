@@ -32,6 +32,12 @@ function emit() {
 
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return
+  let reloading = false
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return
+    reloading = true
+    location.reload()
+  })
   const register = () => {
     void navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
       .then((registration) => {
@@ -93,7 +99,7 @@ export function AndroidInstallBanner() {
   return <aside class="android-install-banner" aria-label="Install Learning Compass">
     <div>
       <strong>Use Learning Compass like an Android app</strong>
-      <span>Install it for a launcher icon, standalone window, offline shell, sharing, and notifications.</span>
+      <span>Install it for a launcher icon, standalone window, offline shell, and sharing. Reminders can be enabled separately in Preferences.</span>
     </div>
     <div class="android-install-actions">
       <button class="button secondary" type="button" onClick={() => {

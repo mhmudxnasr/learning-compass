@@ -1,3 +1,5 @@
+import { chunkForD1 } from './d1-query.ts'
+
 export const NOTEBOOKLM_LEARNING_CONTRACT = 'notebooklm-learning-v1'
 
 export const notebookLearningFormats = [
@@ -350,13 +352,15 @@ export async function loadNotebookLearningStates(
 
   const recommendationIds = [...notebookUrls.keys()]
   const targets = recommendationIds.map(notebookLearningTarget)
-  const placeholders = targets.map(() => '?').join(',')
-  const rows = await DB.prepare(`SELECT rowid sequence,id,intent,target,status_code,verified,receipt_json,created_at
-    FROM agent_receipts
-    WHERE target IN (${placeholders}) AND intent IN ('notebooklm_learning_plan','notebooklm_source_receipt','notebooklm_artifact_receipt')
-    ORDER BY rowid DESC`).bind(...targets).all<NotebookLearningReceiptRow & { target: string }>()
+  const rowBatches = await Promise.all(chunkForD1(targets).map((batch) => {
+    const placeholders = batch.map(() => '?').join(',')
+    return DB.prepare(`SELECT rowid sequence,id,intent,target,status_code,verified,receipt_json,created_at
+      FROM agent_receipts
+      WHERE target IN (${placeholders}) AND intent IN ('notebooklm_learning_plan','notebooklm_source_receipt','notebooklm_artifact_receipt')
+      ORDER BY rowid DESC`).bind(...batch).all<NotebookLearningReceiptRow & { target: string }>()
+  }))
   const byTarget = new Map<string, NotebookLearningReceiptRow[]>()
-  for (const row of rows.results || []) {
+  for (const row of rowBatches.flatMap((batch) => batch.results || [])) {
     const group = byTarget.get(row.target) || []
     group.push(row)
     byTarget.set(row.target, group)

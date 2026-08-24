@@ -3,6 +3,7 @@ import { api, flushOfflineMutations, formatDate, labelize, listOfflineMutations,
 import { ErrorState, Empty, Loading } from '../components/States'
 import { HermesActivityPanel } from './HermesActivityPanel'
 import { OperationalHealthPanel } from './OperationalHealthPanel'
+import { NotificationSettings } from './NotificationSettings'
 import { useData } from '../app/useData'
 import { useRoute } from '../app/router'
 import { THEME_PRESETS, FONT_PRESETS, THEME_VARIANTS, applyTheme, applyFont, applyDisplayPreferences, applyTypography, getSavedTheme, getSavedFontId, getSavedCustomFont, getSavedCustomPalette, getSavedDisplayPreferences, getSavedTypography, getSavedThemePair, saveThemePair, contrastRatio, extractColorsFromText, normalizeColor, normalizeCustomFont, type CustomPalette, type CustomFont, type DisplayPreferences, type TypographyPreferences, type ThemePair, DEFAULT_CUSTOM_PALETTE, DEFAULT_CUSTOM_FONT, DEFAULT_TYPOGRAPHY } from '../theme'
@@ -42,6 +43,7 @@ type SettingsPayload = {
     ai_curation?: { enrich_capture?: boolean }
     profile_automation?: { mode?: string }
     recommendation_engine?: { mode?: string }
+    delivery_context?: { effort?: 'light' | 'moderate' | 'deep'; language?: 'any' | 'en' | 'ar'; delivery_modes?: Array<'read' | 'watch' | 'listen' | 'practice'>; depth_tier?: 'adaptive' | 'introductory' | 'intermediate' | 'advanced' }
   }
 }
 
@@ -51,7 +53,8 @@ type SystemPayload = {
   environment?: string
   timezone?: string
   storage?: Array<{ name: string; purpose: string; status: string }>
-  schedule?: Array<{ id: string; cron: string; cadence: string; timezone: string; responsibilities?: string[]; last_search_sync?: string | null }>
+  schedule?: Array<{ id: string; cron: string; cadence: string; timezone: string; responsibilities?: string[]; last_run?: string | null; last_success?: string | null; last_search_sync?: string | null; status?: string }>
+  recovery?: { ok?: boolean; latest?: { id?: string; created_at?: string; restore_rehearsed_at?: string; artifact_count?: number; d1_bytes?: number } | null; age_ms?: number | null }
   on_demand_only?: string[]
   counts?: Record<string, number>
   safety?: string[]
@@ -406,7 +409,7 @@ function ThemeContextPreview() {
     <div class="theme-preview-heading"><span class="settings-active-label">Live preview</span><h2 id="appearance-preview-title">Your studio in context</h2><p>Colors, type, spacing, and corners update here as you make changes.</p></div>
     <div class="theme-preview-frame" aria-hidden="true">
       <div class="theme-preview-sidebar"><strong>LC</strong><i class="active" /><i /><i /><i /></div>
-      <div class="theme-preview-content"><div class="theme-preview-toolbar"><span>Today</span><em>Capture</em></div><article class="theme-preview-card"><div><strong>Build a calmer review loop</strong><small>Current Thread · evidence ready</small></div><span class="theme-preview-score">R2</span></article><div class="theme-preview-grid"><div class="theme-preview-alert"><strong>Next action</strong><span>Record proof from the source you just completed.</span></div><div class="theme-preview-chart"><i style="height:35%"/><i style="height:55%"/><i style="height:48%"/><i style="height:78%"/><i style="height:66%"/><i style="height:90%"/></div></div><div class="theme-preview-actions"><span>Not now</span><strong>Open Thread</strong></div></div>
+      <div class="theme-preview-content"><div class="theme-preview-toolbar"><span>Today</span><em>Capture</em></div><article class="theme-preview-card"><div><strong>Build a calmer review loop</strong><small>Current Thread · lesson ready</small></div><span class="theme-preview-score">R2</span></article><div class="theme-preview-grid"><div class="theme-preview-alert"><strong>Next action</strong><span>Continue the next lesson in your Thread.</span></div><div class="theme-preview-chart"><i style="height:35%"/><i style="height:55%"/><i style="height:48%"/><i style="height:78%"/><i style="height:66%"/><i style="height:90%"/></div></div><div class="theme-preview-actions"><span>Not now</span><strong>Open Thread</strong></div></div>
     </div>
     <div class="theme-preview-scope"><span>Home</span><span>Library</span><span>Learn</span><span>Map</span><span>Settings</span></div>
   </section>
@@ -439,20 +442,23 @@ function PreferencesView() {
   const [viewportWidth, setViewportWidth] = useState(() => typeof window === 'undefined' ? 1280 : window.innerWidth)
   const [retention, setRetention] = useState(90)
   const [enrichCapture, setEnrichCapture] = useState(false)
-  const [srsEnabled, setSrsEnabled] = useState(true)
   const [autoExtract, setAutoExtract] = useState(false)
   const [profileMode, setProfileMode] = useState('automatic')
   const [engineMode, setEngineMode] = useState('shadow')
+  const [deliveryEffort, setDeliveryEffort] = useState<'light' | 'moderate' | 'deep'>('moderate')
+  const [deliveryLanguage, setDeliveryLanguage] = useState<'any' | 'en' | 'ar'>('any')
+  const [deliveryModes, setDeliveryModes] = useState<Array<'read' | 'watch' | 'listen' | 'practice'>>([])
+  const [depthTier, setDepthTier] = useState<'adaptive' | 'introductory' | 'intermediate' | 'advanced'>('adaptive')
   const [paletteDirty, setPaletteDirty] = useState(false)
   const [arrows, setArrows] = useState(true)
-  const [textFade, setTextFade] = useState(-0.7)
+  const [textFade, setTextFade] = useState(0.05)
   const [atlasNodeSize, setAtlasNodeSize] = useState(0.58)
-  const [linkThickness, setLinkThickness] = useState(1.16)
-  const [branchLinkThickness, setBranchLinkThickness] = useState(1)
+  const [linkThickness, setLinkThickness] = useState(4)
+  const [branchLinkThickness, setBranchLinkThickness] = useState(2.75)
   const [atlasAnimate, setAtlasAnimate] = useState(true)
-  const [centerForce, setCenterForce] = useState(0.52)
-  const [repelForce, setRepelForce] = useState(10)
-  const [linkForce, setLinkForce] = useState(1)
+  const [centerForce, setCenterForce] = useState(0.83)
+  const [repelForce, setRepelForce] = useState(11)
+  const [linkForce, setLinkForce] = useState(2.75)
   const resolved = settings.data?.resolved
   const paletteSaveTimer = useRef<number | null>(null)
   const typographySaveTimer = useRef<number | null>(null)
@@ -491,20 +497,23 @@ function PreferencesView() {
     }
     setRetention(Number(resolved.learning?.retention || 90))
     setEnrichCapture(Boolean(resolved.ai_curation?.enrich_capture))
-    setSrsEnabled(resolved.srs_drafts?.enabled !== false)
     setAutoExtract(Boolean(resolved.srs_drafts?.auto_extract))
     setProfileMode(resolved.profile_automation?.mode || 'automatic')
     setEngineMode(resolved.recommendation_engine?.mode || 'shadow')
+    setDeliveryEffort(resolved.delivery_context?.effort || 'moderate')
+    setDeliveryLanguage(resolved.delivery_context?.language || 'any')
+    setDeliveryModes(resolved.delivery_context?.delivery_modes || [])
+    setDepthTier(resolved.delivery_context?.depth_tier || 'adaptive')
     const atlas = (resolved as any).atlas || {}
-    setArrows(atlas.arrows ?? true)
-    setTextFade(typeof atlas.text_fade_threshold === 'number' ? atlas.text_fade_threshold : -0.7)
-    setAtlasNodeSize(typeof atlas.node_size === 'number' ? atlas.node_size : 0.58)
-    setLinkThickness(typeof atlas.link_thickness === 'number' ? atlas.link_thickness : 1.16)
-    setBranchLinkThickness(typeof atlas.branch_link_thickness === 'number' ? atlas.branch_link_thickness : 1)
+    setArrows(atlas.arrows ?? false)
+    setTextFade(typeof atlas.text_fade_threshold === 'number' ? atlas.text_fade_threshold : 0.15)
+    setAtlasNodeSize(typeof atlas.node_size === 'number' ? atlas.node_size : 0.85)
+    setLinkThickness(typeof atlas.link_thickness === 'number' ? atlas.link_thickness : 1.4)
+    setBranchLinkThickness(typeof atlas.branch_link_thickness === 'number' ? atlas.branch_link_thickness : 1.5)
     setAtlasAnimate(atlas.animate ?? true)
-    setCenterForce(typeof atlas.center_force === 'number' ? atlas.center_force : 0.52)
-    setRepelForce(typeof atlas.repel_force === 'number' ? atlas.repel_force : 10)
-    setLinkForce(typeof atlas.link_force === 'number' ? atlas.link_force : 1)
+    setCenterForce(typeof atlas.center_force === 'number' ? atlas.center_force : 0.65)
+    setRepelForce(typeof atlas.repel_force === 'number' ? atlas.repel_force : 14)
+    setLinkForce(typeof atlas.link_force === 'number' ? atlas.link_force : 1.25)
     document.documentElement.dataset.density = resolved.appearance?.density || 'balanced'
   }, [resolved])
 
@@ -858,7 +867,12 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
   }
 
   const saveLearning = (value: number) => { setRetention(value); persist('learning', { retention: value, queue_cap: 5 }) }
-  const saveSrs = (next: Partial<{ enabled: boolean; auto_extract: boolean }>) => { const current = { enabled: srsEnabled, minimum_rating: 7, auto_extract: autoExtract, ...next }; setSrsEnabled(current.enabled); setAutoExtract(current.auto_extract); persist('srs_drafts', current) }
+  const saveDelivery = (patch: Partial<{ effort: 'light' | 'moderate' | 'deep'; language: 'any' | 'en' | 'ar'; delivery_modes: Array<'read' | 'watch' | 'listen' | 'practice'>; depth_tier: 'adaptive' | 'introductory' | 'intermediate' | 'advanced' }>) => {
+    const next = { effort: deliveryEffort, language: deliveryLanguage, delivery_modes: deliveryModes, depth_tier: depthTier, ...patch }
+    setDeliveryEffort(next.effort); setDeliveryLanguage(next.language); setDeliveryModes(next.delivery_modes); setDepthTier(next.depth_tier)
+    persist('delivery_context', next)
+  }
+  const saveSrs = (next: Partial<{ auto_extract: boolean }>) => { const current = { minimum_rating: 7, auto_extract: autoExtract, ...next }; setAutoExtract(current.auto_extract); persist('srs_drafts', current) }
   const activePreset = VISUAL_PRESETS.find((preset) => {
     const typeMatches = (Object.keys(preset.typography) as Array<keyof TypographyPreferences>)
       .every((key) => preset.typography[key] === typography[key])
@@ -886,7 +900,10 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
       <button type="button" class="preferences-reset" onClick={() => applyVisualPreset(VISUAL_PRESETS[0])}>Restore focused study</button>
     </section>
 
-    <nav class="settings-jump-nav" aria-label="Preference sections"><a href="#visual-presets-heading" onClick={(event) => jumpToPreference(event, 'visual-presets-heading')}>Workspace</a><a href="#interface-tokens" onClick={(event) => jumpToPreference(event, 'interface-tokens')}>Comfort</a><a href="#theme-section" onClick={(event) => jumpToPreference(event, 'theme-section')}>Theme</a><a href="#font-section" onClick={(event) => jumpToPreference(event, 'font-section')}>Reading</a><a href="#learning-preferences" onClick={(event) => jumpToPreference(event, 'learning-preferences')}>Learning</a><a href="#atlas-preferences" onClick={(event) => jumpToPreference(event, 'atlas-preferences')}>Map</a></nav>
+    <details class="settings-jump-disclosure">
+      <summary>Jump to a preference</summary>
+      <nav class="settings-jump-nav" aria-label="Preference sections"><a href="#visual-presets-heading" onClick={(event) => jumpToPreference(event, 'visual-presets-heading')}>Workspace</a><a href="#interface-tokens" onClick={(event) => jumpToPreference(event, 'interface-tokens')}>Comfort</a><a href="#theme-section" onClick={(event) => jumpToPreference(event, 'theme-section')}>Theme</a><a href="#font-section" onClick={(event) => jumpToPreference(event, 'font-section')}>Reading</a><a href="#learning-preferences" onClick={(event) => jumpToPreference(event, 'learning-preferences')}>Learning</a><a href="#atlas-preferences" onClick={(event) => jumpToPreference(event, 'atlas-preferences')}>Map</a></nav>
+    </details>
 
     <div class="preferences-layout">
       <div class="preferences-main">
@@ -1344,8 +1361,11 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
         </div>
         <span class="setting-value">5 items</span>
       </div>
-      <PreferenceToggle label="Prepare grounded recall drafts" description="Retain/apply consolidation may prepare a few source-anchored drafts; approval is still required." checked={srsEnabled} onChange={(value) => saveSrs({ enabled: value })} />
       <div class="setting-row"><div><strong>Draft policy</strong><span>Rating never creates cards. The extractor may return zero to four Unit-linked drafts, or explain why none are useful.</span></div><span class="setting-value">Source note v2</span></div>
+      <div class="setting-row"><div><strong>Default effort</strong><span>Used only as your explicit saved delivery context.</span></div><select aria-label="Default delivery effort" value={deliveryEffort} onChange={(event) => saveDelivery({ effort: (event.currentTarget as HTMLSelectElement).value as any })}><option value="light">Light</option><option value="moderate">Moderate</option><option value="deep">Deep</option></select></div>
+      <div class="setting-row"><div><strong>Default language</strong><span>No language is inferred from activity.</span></div><select aria-label="Default delivery language" value={deliveryLanguage} onChange={(event) => saveDelivery({ language: (event.currentTarget as HTMLSelectElement).value as any })}><option value="any">Any</option><option value="en">English</option><option value="ar">Arabic</option></select></div>
+      <div class="setting-row"><div><strong>Depth</strong><span>Adaptive is an advisory derived from direct lesson completions and depth feedback; it never changes progress.</span></div><select aria-label="Default depth tier" value={depthTier} onChange={(event) => saveDelivery({ depth_tier: (event.currentTarget as HTMLSelectElement).value as any })}><option value="adaptive">Adaptive</option><option value="introductory">Introductory</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></div>
+      <div class="setting-row"><div><strong>Delivery modes</strong><span>Leave all unchecked to accept any mode.</span></div><span>{(['read', 'watch', 'listen', 'practice'] as const).map((mode) => <label key={mode}><input type="checkbox" checked={deliveryModes.includes(mode)} onChange={(event) => saveDelivery({ delivery_modes: (event.currentTarget as HTMLInputElement).checked ? [...deliveryModes, mode] : deliveryModes.filter((item) => item !== mode) })} /> {labelize(mode)}</label>)}</span></div>
     </article>
 
     <article class="preference-setting-group"><div class="preference-group-heading"><span>Curation</span><h3>Capture & profile</h3><p>Choose where the system may prepare context or apply strong evidence.</p></div>
@@ -1370,6 +1390,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
       <PreferenceToggle label="Prepare notes after retain or apply" description="Eligible completion feedback can start structured extraction; your reflection is never rewritten." checked={autoExtract} onChange={(value) => saveSrs({ auto_extract: value })} />
     </article>
 
+      <NotificationSettings />
       </div>
     </section>
 
@@ -1387,7 +1408,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
       <label class="type-range"><span class="type-range-label"><strong>Branch links</strong><output>{branchLinkThickness.toFixed(2)}×</output></span><small>Thickness of lines from a branch to its child nodes.</small><input type="range" min={0.1} max={6} step={0.05} value={branchLinkThickness} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setBranchLinkThickness(v); saveAtlas({ branch_link_thickness: v }) }} /></label>
       </div><div class="section-head atlas-force-heading"><h3>Constellation forces</h3><span>How clusters spread and hold together</span></div><div class="atlas-preference-grid">
       <label class="type-range"><span class="type-range-label"><strong>Center force</strong><output>{centerForce.toFixed(2)}</output></span><small>Pull of cluster islands toward the canvas center.</small><input type="range" min={0} max={2} step={0.01} value={centerForce} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setCenterForce(v); saveAtlas({ center_force: v }) }} /></label>
-      <label class="type-range"><span class="type-range-label"><strong>Repel force</strong><output>{repelForce.toFixed(2)}</output></span><small>How strongly nodes push apart to avoid overlap.</small><input type="range" min={0} max={40} step={0.5} value={repelForce} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setRepelForce(v); saveAtlas({ repel_force: v }) }} /></label>
+      <label class="type-range"><span class="type-range-label"><strong>Repel force</strong><output>{repelForce.toFixed(2)}</output></span><small>How strongly nodes push apart to avoid overlap.</small><input type="range" min={0} max={50} step={0.5} value={repelForce} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setRepelForce(v); saveAtlas({ repel_force: v }) }} /></label>
       <label class="type-range"><span class="type-range-label"><strong>Link force</strong><output>{linkForce.toFixed(2)}</output></span><small>Length of the links that connect related nodes.</small><input type="range" min={0} max={3} step={0.05} value={linkForce} onInput={(event) => { const v = Number((event.target as HTMLInputElement).value); setLinkForce(v); saveAtlas({ link_force: v }) }} /></label>
       </div></div>
     </details>
@@ -1514,19 +1535,19 @@ function DataView() {
     <div class="settings-page data-settings-page">
       <section class="settings-intro">
         <span class="eyebrow">Settings / Data & recovery</span>
-        <h1>Back up and recover your learning record</h1>
-        <p>Your library is canonical, your larger companions are stored separately, and pending offline changes remain recoverable in this browser.</p>
+        <h1>Export and recover your learning record</h1>
+        <p>Portable source exports are available here. Complete recovery is handled by the verified daily D1 and R2 snapshot shown below.</p>
       </section>
       <OfflineQueue />
       <section>
         <div class="section-head">
-          <h2>Back up your library</h2>
-          <span>Portable copies of your source record</span>
+          <h2>Portable source exports</h2>
+          <span>Readable copies of recommendation history—not a full-system backup</span>
         </div>
         <div class="setting-row">
           <div>
             <strong>Source library JSON</strong>
-            <span>Download recommendation history and metadata for backup or inspection.</span>
+            <span>Download recommendation history and metadata for portability or inspection. Notes, Threads, recall, settings, and R2 files are not included.</span>
           </div>
           <button
             type="button"
@@ -1561,6 +1582,20 @@ function DataView() {
           </a>
         </div>
       </section>
+      <section class="recovery-status-panel">
+        <div class="section-head">
+          <h2>Full-system recovery</h2>
+          <span>{system.data?.recovery?.ok ? 'Verified' : 'Needs attention'}</span>
+        </div>
+        {system.data?.recovery?.latest ? <div class="setting-row">
+          <div>
+            <strong>Daily D1 + R2 snapshot</strong>
+            <span>Latest disposable restore rehearsal {formatDate(system.data.recovery.latest.restore_rehearsed_at || system.data.recovery.latest.created_at)} · {Number(system.data.recovery.latest.artifact_count || 0)} artifacts verified.</span>
+          </div>
+          <span class={`setting-value ${system.data.recovery.ok ? 'is-active' : ''}`}>{system.data.recovery.ok ? 'Current' : 'Stale'}</span>
+        </div> : <Empty title="No verified full backup" body="Run the production backup and restore rehearsal before relying on recovery." />}
+        <p class="settings-help">The operator snapshot includes canonical D1 state and every R2 object, verifies checksums, restores into a disposable database, and is retained outside this repository.</p>
+      </section>
       <section>
         <div class="section-head">
           <h2>Where your data lives</h2>
@@ -1591,7 +1626,7 @@ function DataView() {
 }
 
 function capabilityArea(path: string) {
-  if (/^\/(capture|recommendations|compass|discovery|collections)/.test(path)) return 'Capture & curation'
+  if (/^\/(capture|recommendations|compass|discovery)/.test(path)) return 'Capture & curation'
   if (/^\/(learning|sessions|srs|notes|feedback)/.test(path)) return 'Learning loop'
   if (/^\/(brain|knowledge|taste)/.test(path)) return 'Knowledge & profile'
   if (/^\/(artifacts|notebooklm)/.test(path)) return 'Files & NotebookLM'
@@ -1601,7 +1636,7 @@ function capabilityArea(path: string) {
 }
 
 function SystemView() {
-  const capabilities = useData<{ capabilities?: Capability[]; authentication?: string }>('/agent/capabilities')
+  const capabilities = useData<{ capabilities?: Capability[]; authentication?: string }>('/agent/capabilities?view=summary')
   const system = useData<SystemPayload>('/agent/system')
   const [query, setQuery] = useState('')
   const [method, setMethod] = useState('ALL')
@@ -1611,7 +1646,7 @@ function SystemView() {
   const filtered = operations.filter((item) => (method === 'ALL' || item.method === method) && `${item.method} ${item.path} ${item.description}`.toLowerCase().includes(query.trim().toLowerCase()))
   const grouped = filtered.reduce<Record<string, Capability[]>>((result, item) => { const area = capabilityArea(item.path); result[area] = [...(result[area] || []), item]; return result }, {})
   const writes = operations.filter((item) => item.method !== 'GET').length
-  return <div class="system-console settings-system-page"><section class="system-hero"><div><span class="eyebrow">Settings / System</span><h1>System status and advanced operations</h1><p>Check the health of Learning Compass, review Hermes activity, and inspect the allow-listed operations available to the product.</p></div><div class="system-hero-actions"><a href="/agent/openapi.json" target="_blank" rel="noreferrer">Open API specification ↗</a><button type="button" onClick={() => { capabilities.reload(); system.reload() }}>Refresh status</button></div></section><OperationalHealthPanel /><HermesActivityPanel /><div class="system-summary"><div><strong>{operations.length}</strong><span>API operations</span></div><div><strong>{operations.length - writes}</strong><span>Read operations</span></div><div><strong>{writes}</strong><span>Guarded writes</span></div><div><strong>{system.data?.schedule?.length || 0}</strong><span>Configured schedules</span></div></div><section><div class="section-head"><h2>Runtime and storage</h2><span>{system.data?.status || 'unknown'}</span></div><div class="system-health-grid"><article><i class="healthy" /><span><strong>{system.data?.service || 'Learning Compass Worker'}</strong><small>{system.data?.environment || 'Runtime available'}</small></span></article>{(system.data?.storage || []).map((item) => <article key={item.name}><i class={/connected|managed|active/i.test(item.status) ? 'healthy' : 'warning'} /><span><strong>{item.name}</strong><small>{labelize(item.status)}</small></span></article>)}</div></section><div class="system-two-column"><section><div class="section-head"><h2>Schedules</h2><span>{system.data?.schedule?.length || 0} configured</span></div><div class="schedule-list">{(system.data?.schedule || []).length ? system.data!.schedule!.map((item) => <article key={item.id}><div class="schedule-head"><span class="method-badge method-post">CRON</span><div><strong>{item.cadence}</strong><code>{item.cron} · {item.timezone}</code></div></div><ul>{(item.responsibilities || []).map((responsibility) => <li key={responsibility}>{responsibility}</li>)}</ul><small>Search sync {item.last_search_sync ? formatDate(item.last_search_sync) : 'not recorded'}</small></article>) : <Empty title="No schedules configured" body="Maintenance remains on-demand until a schedule is explicitly configured." />}</div></section><section><div class="section-head"><h2>On demand only</h2><span>{system.data?.on_demand_only?.length || 0} workflows</span></div><div class="on-demand-list">{(system.data?.on_demand_only || []).map((item) => <div key={item}><i /><span>{item}</span></div>)}</div></section></div><section><div class="section-head"><h2>Advanced API operations</h2><span>{filtered.length} of {operations.length}</span></div><div class="api-catalog-head"><div class="api-filters"><label>Search path or capability<input value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="e.g. profile, export, notes" /></label><label>Method<select value={method} onChange={(event) => setMethod((event.target as HTMLSelectElement).value)}><option value="ALL">All methods</option>{[...new Set(operations.map((item) => item.method))].sort().map((item) => <option key={item} value={item}>{item}</option>)}</select></label></div></div>{filtered.length ? <div class="api-groups">{(Object.entries(grouped) as Array<[string, Capability[]]>).map(([area, items]) => <section key={area}><div class="api-group-title"><h3>{area}</h3><span>{items.length}</span></div><div class="api-operation-list">{items.map((item) => <article key={`${item.method}:${item.path}`}><span class={`method-badge method-${item.method.toLowerCase()}`}>{item.method}</span><code>{item.path}</code><p>{item.description}</p><small>{item.method === 'GET' ? 'Read only' : 'Validated · audit logged'}</small></article>)}</div></section>)}</div> : <Empty title="No operations match" body="Try a broader search or reset the method filter." action={<button type="button" class="button secondary" onClick={() => { setQuery(''); setMethod('ALL') }}>Clear filters</button>} />}</section><section class="system-safety"><div class="section-head"><h2>Safety boundaries</h2><span>{capabilities.data?.authentication || 'Product validation remains active'}</span></div>{(system.data?.safety || []).map((item) => <span key={item}>{item}</span>)}</section></div>
+  return <div class="system-console settings-system-page"><section class="system-hero"><div><span class="eyebrow">Settings / System</span><h1>System status and advanced operations</h1><p>Check the health of Learning Compass, review Hermes activity, and inspect the allow-listed operations available to the product.</p></div><div class="system-hero-actions"><a href="/agent/openapi.json" target="_blank" rel="noreferrer">Open API specification ↗</a><button type="button" onClick={() => { capabilities.reload(); system.reload() }}>Refresh status</button></div></section><OperationalHealthPanel /><HermesActivityPanel /><div class="system-summary"><div><strong>{operations.length}</strong><span>API operations</span></div><div><strong>{operations.length - writes}</strong><span>Read operations</span></div><div><strong>{writes}</strong><span>Guarded writes</span></div><div><strong>{system.data?.schedule?.length || 0}</strong><span>Configured schedules</span></div></div><section><div class="section-head"><h2>Runtime and storage</h2><span>{system.data?.status || 'unknown'}</span></div><div class="system-health-grid"><article><i class="healthy" /><span><strong>{system.data?.service || 'Learning Compass Worker'}</strong><small>{system.data?.environment || 'Runtime available'}</small></span></article>{(system.data?.storage || []).map((item) => <article key={item.name}><i class={/connected|managed|active/i.test(item.status) ? 'healthy' : 'warning'} /><span><strong>{item.name}</strong><small>{labelize(item.status)}</small></span></article>)}</div></section><div class="system-two-column"><section><div class="section-head"><h2>Schedules</h2><span>{system.data?.schedule?.length || 0} configured</span></div><div class="schedule-list">{(system.data?.schedule || []).length ? system.data!.schedule!.map((item) => <article key={item.id}><div class="schedule-head"><span class="method-badge method-post">CRON</span><div><strong>{item.cadence}</strong><code>{item.cron} · {item.timezone}</code></div></div><ul>{(item.responsibilities || []).map((responsibility) => <li key={responsibility}>{responsibility}</li>)}</ul><small>Last success {item.last_success ? formatDate(item.last_success) : 'not recorded'} · search {item.last_search_sync ? formatDate(item.last_search_sync) : 'not recorded'}</small></article>) : <Empty title="No schedules configured" body="Maintenance remains on-demand until a schedule is explicitly configured." />}</div></section><section><div class="section-head"><h2>On demand only</h2><span>{system.data?.on_demand_only?.length || 0} workflows</span></div><div class="on-demand-list">{(system.data?.on_demand_only || []).map((item) => <div key={item}><i /><span>{item}</span></div>)}</div></section></div><section><div class="section-head"><h2>Advanced API operations</h2><span>{filtered.length} of {operations.length}</span></div><div class="api-catalog-head"><div class="api-filters"><label>Search path or capability<input value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="e.g. profile, export, notes" /></label><label>Method<select value={method} onChange={(event) => setMethod((event.target as HTMLSelectElement).value)}><option value="ALL">All methods</option>{[...new Set(operations.map((item) => item.method))].sort().map((item) => <option key={item} value={item}>{item}</option>)}</select></label></div></div>{filtered.length ? <div class="api-groups">{(Object.entries(grouped) as Array<[string, Capability[]]>).map(([area, items]) => <section key={area}><div class="api-group-title"><h3>{area}</h3><span>{items.length}</span></div><div class="api-operation-list">{items.map((item) => <article key={`${item.method}:${item.path}`}><span class={`method-badge method-${item.method.toLowerCase()}`}>{item.method}</span><code>{item.path}</code><p>{item.description}</p><small>{item.method === 'GET' ? 'Read only' : 'Validated · audit logged'}</small></article>)}</div></section>)}</div> : <Empty title="No operations match" body="Try a broader search or reset the method filter." action={<button type="button" class="button secondary" onClick={() => { setQuery(''); setMethod('ALL') }}>Clear filters</button>} />}</section><section class="system-safety"><div class="section-head"><h2>Safety boundaries</h2><span>{capabilities.data?.authentication || 'Product validation remains active'}</span></div>{(system.data?.safety || []).map((item) => <span key={item}>{item}</span>)}</section></div>
 }
 
 export function SettingsWorkspace({ route, view, onRouteChange }: SettingsWorkspaceProps) {

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 
 const input = process.argv[2]
 if (!input || input === '--help' || input === '-h') {
@@ -12,7 +12,7 @@ const manifestPath = resolve(input)
 if (!existsSync(manifestPath)) throw new Error(`Manifest not found: ${manifestPath}`)
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
 if (manifest.format !== 'learning-compass-recovery-v1') throw new Error('Unsupported recovery manifest format.')
-const sqlPath = resolve(manifest.sql_file)
+const sqlPath = resolve(dirname(manifestPath), manifest.sql_file)
 if (!existsSync(sqlPath)) throw new Error(`SQL export not found: ${sqlPath}`)
 const sql = readFileSync(sqlPath)
 const hash = createHash('sha256').update(sql).digest('hex')

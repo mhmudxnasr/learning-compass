@@ -128,9 +128,11 @@ function atomicPairFixture() {
 
 class PairDatabase {
   batchStatements: any[] = []
+  preparedSql: string[] = []
   failBatch = false
 
   prepare(sql: string) {
+    this.preparedSql.push(sql)
     const statement: any = {
       sql,
       values: [] as unknown[],
@@ -172,6 +174,9 @@ test('atomic pair route stores both objects before one D1 batch and retains the 
   assert.equal(response.status, 201, await response.text())
   assert.equal(puts.length, 2)
   assert.equal(deletes.length, 0)
+  const targetQuery = db.preparedSql.find((sql) => sql.includes('FROM recommendations')) || ''
+  assert.match(targetQuery, /r\.status IN \('active','consumed'\)/)
+  assert.match(targetQuery, /r\.deleted_at IS NULL/)
   assert.equal(db.batchStatements.length, 2)
   const htmlMetadata = JSON.parse(db.batchStatements[0].values[5])
   assert.equal(htmlMetadata.publication_state, 'ready')

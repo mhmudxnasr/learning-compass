@@ -23,7 +23,6 @@ function selectionType(selection: InspectorSelection) {
   if (selection.type === 'branch') return 'Map branch'
   if (selection.type === 'artifact') return 'Artifact'
   if (selection.type === 'book') return 'Book'
-  if (selection.type === 'collection') return 'Collection'
   if (selection.type === 'thread') return 'Learning Thread'
   return 'Source'
 }
@@ -33,14 +32,14 @@ function selectionFacts(selection: InspectorSelection) {
   if (selection.type === 'source' || selection.type === 'thread') {
     const rawBranch = data.branch
     const branch = typeof rawBranch === 'string'
-      ? { id: rawBranch, label: rawBranch, round: data.round_label || data.round }
-      : rawBranch || (data.branch_id ? { id: data.branch_id, label: data.branch_label || data.branch_id, round: data.round_label || data.round } : null)
+      ? { id: rawBranch, label: rawBranch }
+      : rawBranch || (data.branch_id ? { id: data.branch_id, label: data.branch_label || data.branch_id } : null)
     return [
       ['State', data.learning_state || data.status],
       ['Creator', data.creator || data.author],
       ['Format', data.content_type || data.format],
       ['Branch', branch ? (branch.label || branch.id) : undefined],
-      ['Round', branch?.round || data.round_label || data.round],
+      ['Domain', data.category_label || data.super_category || (typeof rawBranch === 'object' ? (rawBranch as any)?.category_label || (rawBranch as any)?.super_category : undefined)],
       ['Thread', data.thread_title || data.thread_id],
     ] as Array<[string, unknown]>
   }
@@ -58,13 +57,6 @@ function selectionFacts(selection: InspectorSelection) {
       ['ISBN', data.isbn],
       ['Chapters', Array.isArray(data.chapters) ? data.chapters.length : undefined],
       ['State', data.status || data.learning_state],
-    ] as Array<[string, unknown]>
-  }
-  if (selection.type === 'collection') {
-    return [
-      ['Sources', data.source_count || (Array.isArray(data.sources) ? data.sources.length : undefined)],
-      ['Scope', data.scope],
-      ['Created', data.created_at],
     ] as Array<[string, unknown]>
   }
   return [

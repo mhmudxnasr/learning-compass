@@ -24,17 +24,16 @@ import discoveryApi from './api/discovery'
 import notebooklmApi from './api/notebooklm'
 import { normalizeYouTubeUrl, isValidUrl } from './lib'
 import { createCapture } from './services/capture'
-import { syncAllFeeds } from './services/rss'
+import { runMaintenance } from './services/maintenance'
+import { loadOperationalHealth } from './services/operational-health'
 import notificationsApi from './api/notifications'
-import { deliverScheduledReminders } from './api/notifications'
 import compassApi from './api/compass'
 import analyticsApi from './api/analytics'
 import learningCoreApi from './api/learning-core'
 import canonApi from './api/canon'
 import annotationsApi from './api/annotations'
-import hardcoverApi from './api/hardcover'
 
-const app = new Hono<{ Bindings: Bindings }>()
+const app = new Hono<{ Bindings: Bindings; Variables: { requestId: string } }>()
 const PUBLIC_LEARNING_UPDATE_PATH = '/updates/learning-materials'
 const PUBLIC_LEARNING_UPDATE_FILE_PATH = `${PUBLIC_LEARNING_UPDATE_PATH}.html`
 const isPublicLearningUpdatePath = (path: string) => path === PUBLIC_LEARNING_UPDATE_PATH || path === PUBLIC_LEARNING_UPDATE_FILE_PATH
@@ -76,7 +75,8 @@ function checkRateLimit(ip: string, isWrite: boolean): { allowed: boolean; retry
 app.use('/*', async (c, next) => {
   const start = Date.now()
   const requestId = crypto.randomUUID()
-  c.res.headers.set('X-Request-Id', requestId)
+  c.set('requestId', requestId)
+  c.header('X-Request-Id', requestId)
 
   await next()
 
@@ -89,6 +89,15 @@ app.use('/*', async (c, next) => {
   if (status >= 400 || duration >= 1000) {
     console.warn(JSON.stringify({ ts: new Date().toISOString(), level: status >= 500 ? 'error' : 'warn', msg: 'request', method, path, status, duration, ip, ua, requestId }))
   }
+})
+
+app.onError((error, c) => {
+  const requestId = c.get('requestId') || crypto.randomUUID()
+  const method = c.req.method
+  const path = new URL(c.req.url).pathname
+  console.error(JSON.stringify({ ts: new Date().toISOString(), level: 'error', msg: 'unhandled_request_error', method, path, requestId, error: error instanceof Error ? error.message : String(error) }))
+  c.header('X-Request-Id', requestId)
+  return c.json({ error: 'internal_error', message: 'Learning Compass could not complete this request.', request_id: requestId }, 500)
 })
 
 app.use('/*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }))
@@ -142,7 +151,7 @@ app.use('/*', async (c, next) => {
   const method = c.req.method.toUpperCase()
   if (method === 'OPTIONS' || method === 'HEAD') return next()
   const path = new URL(c.req.url).pathname
-  const staticPath = path === '/' || path === '/ui' || isPublicLearningUpdatePath(path) || path === '/health' || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path === '/favicon.ico' || path === '/api/telegram' || path.startsWith('/assets/') || path.startsWith('/icons/')
+  const staticPath = path === '/' || path === '/ui' || isPublicLearningUpdatePath(path) || path.startsWith('/health') || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path === '/favicon.ico' || path === '/api/telegram' || path.startsWith('/assets/') || path.startsWith('/icons/')
   if (staticPath) return next()
   const token = c.req.header('x-api-token') || (!c.env.REQUIRE_API_AUTH ? c.req.query('token') : undefined)
   const expected = c.env.API_TOKEN
@@ -221,7 +230,6 @@ app.route('/learning', learningApi)
 app.route('/learning/core', learningCoreApi)
 app.route('/learning/core/canon', canonApi)
 app.route('/annotations', annotationsApi)
-app.route('/hardcover', hardcoverApi)
 app.route('/stats', statsApi)
 app.route('/search', searchApi)
 app.route('/ai', enhanceApi)
@@ -241,7 +249,13 @@ app.route('/analytics', analyticsApi)
 app.route('/', intelligenceApi)
 app.route('/', productApi)
 
-app.get('/health', (c) => c.json({ ok: true, now: new Date().toISOString() }))
+app.get('/health/live', (c) => c.json({ ok: true, status: 'live', now: new Date().toISOString() }))
+const readiness = async (c: any) => {
+  const health = await loadOperationalHealth(c.env)
+  return c.json(health, health.ok ? 200 : 503)
+}
+app.get('/health', readiness)
+app.get('/health/ready', readiness)
 
 app.get('/', async (c) => {
   const asset = await c.env.ASSETS.fetch(c.req.raw)
@@ -279,7 +293,9 @@ app.get('/manifest.json', async (c) => {
 })
 
 app.get('/sw.js', async (c) => {
-  const asset = await c.env.ASSETS.fetch(c.req.raw)
+  const assetUrl = new URL(c.req.url)
+  assetUrl.searchParams.set('release', 'shell-v38')
+  const asset = await c.env.ASSETS.fetch(assetUrl.toString())
   const headers = new Headers(asset.headers)
   headers.set('Content-Type', 'application/javascript; charset=utf-8')
   headers.set('Cache-Control', 'no-cache, no-store, must-revalidate')
@@ -287,24 +303,24 @@ app.get('/sw.js', async (c) => {
   return new Response(asset.body, { status: asset.status, headers })
 })
 
-// Share target — receives URLs shared from mobile/desktop
+// Share target — receives URLs shared from mobile/desktop and preserves failed input.
 app.post('/api/share-target', async (c) => {
-  const { DB } = c.env
+  let candidate = ''
   try {
     const form = await c.req.formData()
     const title = form.get('title')?.toString()?.trim()
     const text = form.get('text')?.toString()?.trim()
     const url = form.get('url')?.toString()?.trim()
-
-    const candidateUrl = url || text
-    if (!candidateUrl || !isValidUrl(candidateUrl)) {
-      return c.redirect('/#/library?mode=catalog&focus=all', 303)
-    }
-
-    const vt = title || candidateUrl.split('/').pop()?.replace(/-/g, ' ') || 'Shared item'
-    await createCapture(DB, { source: candidateUrl, title: vt })
-  } catch { /* best effort */ }
-  return c.redirect('/#/library?mode=catalog&focus=all', 303)
+    candidate = url || text || ''
+    if (!candidate || candidate.length > 10000) return c.redirect('/#/home?action=capture&share=invalid', 303)
+    const derivedTitle = title || (isValidUrl(String(candidate)) ? candidate.split('/').pop()?.replace(/-/g, ' ') : candidate.slice(0, 100)) || 'Shared item'
+    const result = await createCapture(c.env.DB, { source: candidate, title: derivedTitle })
+    return c.redirect(`/#/library/source/${encodeURIComponent(result.id)}?from=home&share=${result.duplicate ? 'existing' : 'saved'}`, 303)
+  } catch (error) {
+    console.error(JSON.stringify({ ts: new Date().toISOString(), level: 'error', msg: 'share_target_capture_failed', error: error instanceof Error ? error.message : String(error) }))
+    const query = new URLSearchParams({ action: 'capture', share: 'retry', ...(candidate ? { capture: candidate } : {}) })
+    return c.redirect(`/#/home?${query.toString()}`, 303)
+  }
 })
 
 // YouTube metadata enrichment
@@ -326,6 +342,19 @@ app.get('/api/yt/:id', async (c) => {
 })
 
 // Telegram bot webhook
+async function telegramReply(token: string, payload: Record<string, unknown>) {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) console.warn(JSON.stringify({ ts: new Date().toISOString(), level: 'warn', msg: 'telegram_reply_failed', status: response.status }))
+  } catch (error) {
+    console.warn(JSON.stringify({ ts: new Date().toISOString(), level: 'warn', msg: 'telegram_reply_failed', error: error instanceof Error ? error.message : String(error) }))
+  }
+}
+
 app.post('/api/telegram', async (c) => {
   const { DB } = c.env
   const { TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_ALLOWED_CHAT_ID } = c.env
@@ -341,146 +370,63 @@ app.post('/api/telegram', async (c) => {
   if (!msg?.text) return c.json({ ok: true })
   const chatId = msg.chat.id
   if (TELEGRAM_ALLOWED_CHAT_ID && String(chatId) !== String(TELEGRAM_ALLOWED_CHAT_ID)) return c.json({ ok: false, error: 'chat_not_allowed' }, 403)
-  const updateId = Number(body?.update_id)
-  if (Number.isInteger(updateId)) {
-    const inserted = await DB.prepare('INSERT OR IGNORE INTO telegram_updates (update_id) VALUES (?)').bind(updateId).run()
-    if (!inserted.meta?.changes) return c.json({ ok: true, duplicate: true })
-  }
-  const text = msg.text.trim()
 
-  const urlMatch = text.match(/https?:\/\/[^\s]+/)
-  if (urlMatch) {
-    const url = urlMatch[0]
-    const label = text.replace(url, '').trim()
-    const result = await createCapture(DB, { source: url, title: label || undefined })
-    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: result.duplicate ? `Already captured: ${label || url}` : `Saved as a source: ${label || url}`, reply_to_message_id: msg.message_id })
-    })
-  } else if (text === '/queue') {
-    const active = await DB.prepare(`SELECT r.video_title,r.content_type
-      FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
-      WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')
-      ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 5`).all<any>()
-    const lines = (active.results || []).map((r: any) => `• [${r.content_type || '?'}] ${r.video_title}`)
-    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: lines.length ? `Queue (${lines.length}):\n${lines.join('\n')}` : 'Queue is empty.' })
-    })
-  } else {
-    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: 'Send a link to save it, or /queue to see your list.', reply_to_message_id: msg.message_id })
-    })
+  const updateId = Number(body?.update_id)
+  const durableUpdate = Number.isInteger(updateId)
+  if (durableUpdate) {
+    const existing = await DB.prepare('SELECT status,result_id FROM telegram_updates WHERE update_id=?').bind(updateId).first<{ status: string; result_id: string | null }>()
+    if (existing?.status === 'completed') return c.json({ ok: true, duplicate: true, result_id: existing.result_id || null })
+    if (!existing) {
+      await DB.prepare("INSERT INTO telegram_updates(update_id,status,attempts,updated_at) VALUES (?,'processing',1,datetime('now'))").bind(updateId).run()
+    } else {
+      const claimed = await DB.prepare(`UPDATE telegram_updates SET status='processing',attempts=attempts+1,error=NULL,updated_at=datetime('now')
+        WHERE update_id=? AND (status='failed' OR (status='processing' AND datetime(COALESCE(updated_at,received_at))<datetime('now','-2 minutes')))`)
+        .bind(updateId).run()
+      if (!claimed.meta?.changes) return c.json({ ok: true, in_progress: true }, 202)
+    }
   }
-  return c.json({ ok: true })
+
+  const text = msg.text.trim()
+  let resultId: string | null = null
+  try {
+    const urlMatch = text.match(/https?:\/\/[^\s]+/)
+    if (urlMatch) {
+      const url = urlMatch[0]
+      const label = text.replace(url, '').trim()
+      const result = await createCapture(DB, { source: url, title: label || undefined })
+      resultId = result.id
+      if (durableUpdate) await DB.prepare("UPDATE telegram_updates SET status='completed',result_id=?,error=NULL,completed_at=datetime('now'),updated_at=datetime('now') WHERE update_id=?").bind(result.id, updateId).run()
+      await telegramReply(TELEGRAM_BOT_TOKEN, { chat_id: chatId, text: result.duplicate ? `Already captured: ${label || url}` : `Saved as a source: ${label || url}`, reply_to_message_id: msg.message_id })
+    } else if (text === '/queue') {
+      const active = await DB.prepare(`SELECT r.video_title,r.content_type
+        FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
+        WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')
+        ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 5`).all<any>()
+      const lines = (active.results || []).map((row: any) => `• [${row.content_type || '?'}] ${row.video_title}`)
+      if (durableUpdate) await DB.prepare("UPDATE telegram_updates SET status='completed',error=NULL,completed_at=datetime('now'),updated_at=datetime('now') WHERE update_id=?").bind(updateId).run()
+      await telegramReply(TELEGRAM_BOT_TOKEN, { chat_id: chatId, text: lines.length ? `Queue (${lines.length}):\n${lines.join('\n')}` : 'Queue is empty.' })
+    } else {
+      if (durableUpdate) await DB.prepare("UPDATE telegram_updates SET status='completed',error=NULL,completed_at=datetime('now'),updated_at=datetime('now') WHERE update_id=?").bind(updateId).run()
+      await telegramReply(TELEGRAM_BOT_TOKEN, { chat_id: chatId, text: 'Send a link to save it, or /queue to see your list.', reply_to_message_id: msg.message_id })
+    }
+    return c.json({ ok: true, result_id: resultId })
+  } catch (error) {
+    const failure = error instanceof Error ? error.message : String(error)
+    if (durableUpdate) await DB.prepare("UPDATE telegram_updates SET status='failed',error=?,updated_at=datetime('now') WHERE update_id=?").bind(failure.slice(0, 1000), updateId).run().catch(() => undefined)
+    throw error
+  }
 })
 
-// Scheduled cron: smart resurfacing engine + FTS sync
-export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
-  const { DB } = env
-  const today = new Date().toISOString().split('T')[0]
-
-  try {
-    await syncAllFeeds(DB)
-    await deliverScheduledReminders(env)
-
-    // 1. Clean expired undo rows
-    await DB.prepare("DELETE FROM undo_queue WHERE expires_at < datetime('now')").run()
-    await DB.prepare("DELETE FROM telegram_updates WHERE received_at < datetime('now','-30 days')").run()
-
-    // 2. FTS5 sync: only rebuild if anything changed since last build
-    const lastSync = await DB.prepare("SELECT value FROM kv_store WHERE key = 'fts_last_sync'").first<any>()
-    const lastSyncTs = lastSync?.value || '1970-01-01'
-    const changedRecs = await DB.prepare(
-      "SELECT COUNT(*) as c FROM recommendations WHERE created_at > ? OR updated_at > ? OR (consumed_date IS NOT NULL AND consumed_date > ?)"
-    ).bind(lastSyncTs, lastSyncTs, lastSyncTs).first<{ c: number }>()
-    const dirty = (changedRecs?.c || 0) > 0
-
-    if (dirty) {
-      await DB.prepare("INSERT INTO search_idx(search_idx) VALUES('optimize')").run()
-      await DB.prepare("DELETE FROM search_idx WHERE source='rec'").run()
-      const allRecs = await DB.prepare("SELECT id, video_title, creator, why_this, user_review FROM recommendations").all<any>()
-      for (const r of (allRecs.results || [])) {
-        const text = [r.video_title, r.creator, r.why_this, r.user_review].filter(Boolean).join(' ')
-        await DB.prepare("INSERT INTO search_idx(source, ref_id, text) VALUES ('rec', ?, ?)").bind(r.id, text).run()
-      }
-    }
-
-    // Sync tree nodes to FTS too
-    const changedNodes = dirty ? null as any : await DB.prepare(
-      "SELECT COUNT(*) as c FROM tree_nodes WHERE updated_at > ?"
-    ).bind(lastSyncTs).first<{ c: number }>()
-    if ((changedNodes?.c || 0) > 0 || dirty) {
-      await DB.prepare("DELETE FROM search_idx WHERE source='node'").run()
-      const allNodes = await DB.prepare("SELECT id, label FROM tree_nodes").all<any>()
-      for (const n of (allNodes.results || [])) {
-        await DB.prepare("INSERT INTO search_idx(source, ref_id, text) VALUES ('node', ?, ?)").bind(n.id, n.label).run()
-      }
-    }
-
-    // Learning Units, notes, typed profile assertions, and Hermes procedure
-    // memory are searchable knowledge too.  Rebuilding these small tables keeps
-    // search deterministic and avoids a second, un-audited retrieval store.
-    const changedKnowledge = await DB.prepare(`SELECT COUNT(*) c FROM (
-      SELECT updated_at FROM learning_units WHERE updated_at>?
-      UNION ALL SELECT updated_at FROM notes WHERE updated_at>?
-      UNION ALL SELECT updated_at FROM profile_assertions WHERE updated_at>?
-      UNION ALL SELECT updated_at FROM hermes_memory WHERE updated_at>?
-      UNION ALL SELECT updated_at FROM source_annotations WHERE updated_at>?
-    )`).bind(lastSyncTs, lastSyncTs, lastSyncTs, lastSyncTs, lastSyncTs).first<{ c: number }>()
-    if ((changedKnowledge?.c || 0) > 0 || dirty) {
-      await DB.prepare("DELETE FROM search_idx WHERE source IN ('unit','note','assertion','memory','annotation')").run()
-      const [units, notes, assertions, memories, annotations] = await Promise.all([
-        DB.prepare('SELECT id,statement,user_synthesis FROM learning_units').all<any>(),
-        DB.prepare(`SELECT n.id,n.title,GROUP_CONCAT(s.content,' ') content FROM notes n LEFT JOIN note_sections s ON s.note_id=n.id GROUP BY n.id`).all<any>(),
-        DB.prepare("SELECT assertion_key,value_json FROM profile_assertions WHERE status='active'").all<any>(),
-        DB.prepare("SELECT id,memory_key,value_json FROM hermes_memory WHERE status IN ('active','approved')").all<any>(),
-        DB.prepare("SELECT id,recommendation_id,quote,context_before,context_after,language FROM source_annotations WHERE status='active'").all<any>(),
-      ])
-      for (const unit of units.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('unit',?,?)").bind(unit.id, [unit.statement, unit.user_synthesis].filter(Boolean).join(' ')).run()
-      for (const note of notes.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('note',?,?)").bind(note.id, [note.title, note.content].filter(Boolean).join(' ')).run()
-      for (const assertion of assertions.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('assertion',?,?)").bind(assertion.assertion_key, `${assertion.assertion_key} ${assertion.value_json || ''}`).run()
-      for (const memory of memories.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('memory',?,?)").bind(memory.id, `${memory.memory_key} ${memory.value_json || ''}`).run()
-      for (const annotation of annotations.results || []) await DB.prepare("INSERT INTO search_idx(source,ref_id,text) VALUES ('annotation',?,?)").bind(annotation.id, [annotation.quote, annotation.context_before, annotation.context_after, annotation.language].filter(Boolean).join(' ')).run()
-    }
-
-    // Update sync timestamp
-    await DB.prepare("INSERT OR REPLACE INTO kv_store (key, value) VALUES ('fts_last_sync', ?)").bind(new Date().toISOString()).run()
-
-    // 3. Find neglected branches (no consumed items in 30 days)
-    const staleBranches = await DB.prepare(`
-      SELECT DISTINCT substr(dedup_key, 1, instr(dedup_key || '-', '-') - 1) as branch
-      FROM recommendations
-      WHERE status = 'consumed'
-        AND dedup_key LIKE '%-%'
-        AND dedup_key NOT LIKE 'yt-%'
-        AND dedup_key NOT LIKE 'book-%'
-        AND dedup_key NOT LIKE 'key-%'
-      GROUP BY branch
-      HAVING MAX(consumed_date) < date('now', '-30 days')
-    `).all<any>()
-
-    // 4. For each stale branch, surface a loved source without silently adding it to Queue.
-    for (const b of (staleBranches.results || [])) {
-      const branch = b.branch
-      if (!branch) continue
-      const existsResult = await DB.prepare(
-        `SELECT id FROM recommendations
-         WHERE user_rating IN ('love','like') AND status = 'consumed'
-           AND substr(dedup_key, 1, instr(dedup_key || '-', '-') - 1) = ?
-         ORDER BY consumed_date DESC LIMIT 1`
-      ).bind(branch).all<any>()
-      if (!existsResult.results || existsResult.results.length === 0) continue
-      const rec = existsResult.results[0]
-      await DB.prepare(`INSERT INTO resurfacing (recommendation_id,stage,due_at,notes)
-        SELECT ?,'stale',date('now'),? WHERE NOT EXISTS (SELECT 1 FROM resurfacing WHERE recommendation_id=? AND resolved_at IS NULL)`)
-        .bind(rec.id, `Branch ${branch} has been inactive for 30 days.`, rec.id).run()
-    }
-
-  } catch (e) {
-    console.error('cron failed', e)
+// Cloudflare invokes scheduled handlers from the default module export.
+export async function scheduled(_event: ScheduledController, env: Bindings, _ctx: ExecutionContext) {
+  const receipt = await runMaintenance(env, 'cron')
+  if (!receipt.ok) {
+    const failures = receipt.steps.filter((step) => step.status === 'failed').map((step) => `${step.name}: ${step.error}`).join('; ')
+    throw new Error(`Scheduled maintenance failed: ${failures}`)
   }
 }
 
-export default app
+export default {
+  fetch: app.fetch,
+  scheduled,
+} satisfies ExportedHandler<Bindings>

@@ -117,7 +117,7 @@ app.post('/pairs', async (c) => {
     if (!validation.ok) return c.json({ error: 'lite_visual_pair_validation_failed', failures: validation.failures }, 422)
 
     const recommendationId = String(metadata.recommendation_id)
-    const target = await c.env.DB.prepare(`SELECT r.id,r.video_url,r.video_title,m.source_metadata_json FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=? AND r.status='active'`).bind(recommendationId).first<any>()
+    const target = await c.env.DB.prepare(`SELECT r.id,r.video_url,r.video_title,m.source_metadata_json FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=? AND r.status IN ('active','consumed') AND r.deleted_at IS NULL`).bind(recommendationId).first<any>()
     if (!target) return c.json({ error: 'recommendation_not_found' }, 404)
     const sourceUrl = String(metadata.source_url || '')
     if (sourceUrl && target.video_url && sourceUrl !== String(target.video_url)) return c.json({ error: 'source_url_mismatch' }, 409)

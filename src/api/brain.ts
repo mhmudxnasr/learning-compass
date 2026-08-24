@@ -3,10 +3,11 @@ import { Bindings, Recommendation, safeError, isNonEmptyStr, isValidLength, VALI
 import { cached } from '../cache'
 import { applyProfileAssertion, profileIntelligenceSnapshot, revertProfileRevision } from '../services/intelligence-v2'
 import { buildLearningBalance } from '../services/learning-balance'
-import { displayRound } from '../services/branch-rounds'
 import { profileTasteLabel } from '../services/profile-labels'
 import { loadCompassContext } from './compass'
 import { freeAi } from '../services/ai'
+import { loadCrossBranchBridges } from '../services/cross-branch-bridges'
+import { actOnResurfacing, createResurfacingPresentation, getDailyResurfacing, setResurfacingPreference } from '../services/resurfacing'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -20,7 +21,8 @@ app.get('/node/:id', async (c) => {
     if (!row) return c.json({ error: 'not found' }, 404)
     let x: number | null = null, y: number | null = null
     try { if (row.meta_json) { const m = JSON.parse(row.meta_json); if (typeof m.x === 'number') x = m.x; if (typeof m.y === 'number') y = m.y } } catch { }
-    const node = { ...row, x, y, meta_json: undefined }
+    const { round_label: _legacyRound, ...nodeRow } = row
+    const node = { ...nodeRow, x, y, meta_json: undefined }
     const children = await DB.prepare(
       'SELECT id, type, label, status, super_category, meta_json FROM tree_nodes WHERE parent_id = ? ORDER BY type, id'
     ).bind(id).all<any[]>()
@@ -173,11 +175,11 @@ app.get('/branches/:id/items', async (c) => {
   c.header('Cache-Control', 'no-store')
   const id = c.req.param('id')
   try {
-    const branch = await DB.prepare('SELECT id,type,label,status,super_category,parent_id,round_label,meta_json FROM tree_nodes WHERE id=?').bind(id).first<any>()
+    const branch = await DB.prepare('SELECT id,type,label,status,super_category,parent_id,meta_json FROM tree_nodes WHERE id=?').bind(id).first<any>()
     if (!branch) return c.json({ error: 'branch not found' }, 404)
     let meta: any = {}
     try { if (branch.meta_json) meta = JSON.parse(branch.meta_json) } catch {}
-    const [path, recommendations, notes, cards, drafts, artifacts, balance] = await Promise.all([
+    const [path, recommendations, notes, cards, drafts, artifacts, balance, bridges] = await Promise.all([
       DB.prepare(`WITH RECURSIVE chain(id,label,type,parent_id) AS (
         SELECT id,label,type,parent_id FROM tree_nodes WHERE id=?
         UNION ALL SELECT t.id,t.label,t.type,t.parent_id FROM tree_nodes t JOIN chain ch ON t.id=ch.parent_id)
@@ -208,15 +210,9 @@ app.get('/branches/:id/items', async (c) => {
         FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id') IN (SELECT m.recommendation_id FROM recommendation_meta m WHERE m.branch_id=?)
         ORDER BY a.created_at DESC LIMIT 100`).bind(id).all<any>(),
       buildLearningBalance(DB, 90).catch(() => null),
+      loadCrossBranchBridges(DB, id),
     ])
     const balanceNode = (balance?.branches || []).find((b: any) => String(b.id) === id) || null
-    const evidence = {
-      consumed: Number(balanceNode?.consumed_count ?? 0),
-      notes: Number(balanceNode?.notes_count ?? (notes.results || []).length),
-      cards: Number(balanceNode?.srs_total ?? 0),
-      due: Number(balanceNode?.srs_due ?? 0),
-      recallStrength: balanceNode?.recall_strength != null ? Number(balanceNode.recall_strength) : null,
-    }
     const priority = await DB.prepare('SELECT rank,label,rationale FROM priorities WHERE branch_id=?').bind(id).first<any>()
     const recs = (recommendations.results || []).map((row: any) => ({
       ...row,
@@ -228,7 +224,7 @@ app.get('/branches/:id/items', async (c) => {
     return c.json({
       branch: {
         id: branch.id, label: branch.label, type: branch.type, status: branch.status,
-        round: displayRound(branch, evidence), super_category: branch.super_category || null,
+        super_category: branch.super_category || null,
         parent_id: branch.parent_id || null, description: meta.notes || meta.description || null,
         priority: priority || null, balance: balanceNode,
       },
@@ -238,6 +234,7 @@ app.get('/branches/:id/items', async (c) => {
       recall_cards: cards.results || [],
       srs_drafts: drafts.results || [],
       artifacts: artifacts.results || [],
+      bridges,
       generated_at: new Date().toISOString(),
     })
   } catch (err) {
@@ -250,14 +247,38 @@ app.get('/resurfacing', async (c) => {
   const { DB } = c.env
   c.header('Cache-Control', 'no-store')
   try {
-    const today = new Date().toISOString().split('T')[0]
-    const due = await DB.prepare(
-      "SELECT r.*, rec.video_title, rec.creator, rec.user_rating FROM resurfacing r LEFT JOIN recommendations rec ON rec.id = r.recommendation_id WHERE r.resolved_at IS NULL AND r.due_at <= ? ORDER BY r.due_at ASC"
-    ).bind(today).all()
-    return c.json({ due: due.results || [], today })
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '5'), 1), 25)
+    return c.json(await getDailyResurfacing(DB, { limit }))
   } catch (err) {
     return c.json(safeError('Resurfacing failed')(err), 500)
   }
+})
+
+app.patch('/resurfacing/:recommendationId/preference', async (c) => {
+  const body = await c.req.json<{ starred?: boolean }>().catch(() => null)
+  if (!body || typeof body.starred !== 'boolean') return c.json({ error: 'starred must be boolean' }, 400)
+  try {
+    const result = await setResurfacingPreference(c.env.DB, c.req.param('recommendationId'), body.starred)
+    return result ? c.json({ ok: true, ...result }) : c.json({ error: 'consumed source not found' }, 404)
+  } catch (err) { return c.json(safeError('Resurfacing preference failed')(err), 500) }
+})
+
+app.post('/resurfacing/presentations', async (c) => {
+  const body = await c.req.json<{ recommendation_id?: string }>().catch(() => null)
+  if (!body?.recommendation_id || !isNonEmptyStr(body.recommendation_id, 100)) return c.json({ error: 'recommendation_id required' }, 400)
+  try {
+    const result = await createResurfacingPresentation(c.env.DB, body.recommendation_id)
+    return result ? c.json({ ok: true, presentation: result }) : c.json({ error: 'source is not today\'s due resurfacing item' }, 409)
+  } catch (err) { return c.json(safeError('Resurfacing presentation failed')(err), 500) }
+})
+
+app.post('/resurfacing/:eventId/action', async (c) => {
+  const body = await c.req.json<{ action?: string }>().catch(() => null)
+  if (!body || !['reviewed', 'snooze', 'dismissed'].includes(String(body.action))) return c.json({ error: 'action must be reviewed, snooze, or dismissed' }, 400)
+  try {
+    const result = await actOnResurfacing(c.env.DB, c.req.param('eventId'), body.action as 'reviewed' | 'snooze' | 'dismissed')
+    return result ? c.json({ ok: true, event: result }) : c.json({ error: 'resurfacing event not found' }, 404)
+  } catch (err) { return c.json(safeError('Resurfacing action failed')(err), 500) }
 })
 
 // ---- /brain/contradictions — detected tensions
@@ -386,12 +407,12 @@ app.post('/seed', async (c) => {
         if (!isNonEmptyStr(n.id, 100)) continue
         if (!isNonEmptyStr(n.label, 200)) return c.json({ error: `label too long for node ${n.id}` }, 400)
         stmts.push(DB.prepare(`
-          INSERT OR REPLACE INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, meta_json, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          INSERT OR REPLACE INTO tree_nodes (id, type, label, super_category, parent_id, status, meta_json, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
         `).bind(
           n.id, n.type || 'branch', n.label || n.id,
           n.super_category || null, n.parent_id || null,
-          n.status || null, n.round_label || null,
+          n.status || null,
           n.meta_json || (n.color ? JSON.stringify({ color: n.color, x: n.x, y: n.y, creator: n.creator, video_url: n.video_url, user_rating: n.user_rating, consumed_date: n.consumed_date }) : null)
         ))
       }
@@ -586,7 +607,7 @@ app.get('/branch-deck', async (c) => {
   c.header('Cache-Control', 'no-store')
   try {
     const [existingNodes, categories, priorities, explored, mastered, balance, mappedByBranch, unmappedRows, learningUnitsByBranch] = await Promise.all([
-      DB.prepare(`SELECT id, type, label, status, super_category, parent_id, round_label, meta_json
+      DB.prepare(`SELECT id, type, label, status, super_category, parent_id, meta_json
         FROM tree_nodes
         WHERE type='branch'
           AND (parent_id='root' OR parent_id IN (SELECT id FROM tree_nodes WHERE type='category'))
@@ -662,13 +683,6 @@ app.get('/branch-deck', async (c) => {
           id: node.id,
           label: cleanedLabel,
           type: node.type,
-          round_label: displayRound(node, {
-            consumed: Number(balanceNode?.consumed_count ?? 0),
-            notes: Number(balanceNode?.notes_count ?? 0),
-            cards: Number(balanceNode?.srs_total ?? 0),
-            due: Number(balanceNode?.srs_due ?? 0),
-            recallStrength: balanceNode?.recall_strength != null ? Number(balanceNode.recall_strength) : null,
-          }),
           super_category: node.super_category || 'cat-mind',
           category_label: (categories.results || []).find((category: any) => category.id === node.super_category)?.label || categoryName,
           parent_id: node.parent_id || 'root',
@@ -693,6 +707,12 @@ app.get('/branch-deck', async (c) => {
           notes_count: Number(balanceNode?.notes_count ?? 0),
           state,
           reasons: Array.isArray(balanceNode?.reasons) ? balanceNode.reasons : [],
+          frontier_state: balanceNode?.frontier_state || null,
+          frontier_reasons: Array.isArray(balanceNode?.frontier_reasons) ? balanceNode.frontier_reasons : [],
+          lifetime_consumed_count: Number(balanceNode?.lifetime_consumed_count ?? 0),
+          accepted_units_count: Number(balanceNode?.accepted_units_count ?? 0),
+          completed_lessons_count: Number(balanceNode?.completed_lessons_count ?? 0),
+          latest_recall: balanceNode?.latest_recall ?? null,
         }
       })
 
@@ -756,12 +776,11 @@ app.post('/branch-explanations', async (c) => {
 app.post('/branch-swipe', async (c) => {
   const { DB } = c.env
   try {
-    const { id, action, label, super_category, round_label, rationale, description, leaves_sample, contrast_hook, parent_id, restore_status, restore_priority_rank, restore_action } = await c.req.json<{
+    const { id, action, label, super_category, rationale, description, leaves_sample, contrast_hook, parent_id, restore_status, restore_priority_rank, restore_action } = await c.req.json<{
       id: string
       action: 'keep' | 'prune' | 'priority' | 'hold' | 'add' | 'update' | 'undo'
       label?: string
       super_category?: string
-      round_label?: string
       rationale?: string
       description?: string
       leaves_sample?: string[]
@@ -777,7 +796,6 @@ app.post('/branch-swipe', async (c) => {
 
     const branchLabel = label || id.replace(/[-_]/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
     const cat = super_category || 'cat-mind'
-    const round = round_label || (id.startsWith('r1-') ? 'R1' : id.startsWith('r2-') ? 'R2' : 'R1')
     const suppliedMeta = {
       description: String(description || rationale || '').slice(0, 1000),
       leaves: Array.isArray(leaves_sample) ? leaves_sample.map((item) => String(item).slice(0, 120)).slice(0, 12) : [],
@@ -837,7 +855,7 @@ app.post('/branch-swipe', async (c) => {
       await log(`Branch ${branchLabel} restored to ${restoredStatus}`, { restoredStatus })
       }
     } else if (action === 'update') {
-      const existing = await DB.prepare("SELECT label,status,super_category,parent_id,round_label,meta_json FROM tree_nodes WHERE id=? AND type='branch'").bind(id).first<any>()
+      const existing = await DB.prepare("SELECT label,status,super_category,parent_id,meta_json FROM tree_nodes WHERE id=? AND type='branch'").bind(id).first<any>()
       if (!existing) return c.json({ error: 'branch not found' }, 404)
       const nextParent = parent_id || super_category || existing.parent_id || 'root'
       const category = await DB.prepare("SELECT id FROM tree_nodes WHERE id=? AND type='category' AND status!='pruned'").bind(nextParent).first<any>()
@@ -852,20 +870,20 @@ app.post('/branch-swipe', async (c) => {
       await DB.prepare('UPDATE priorities SET label=? WHERE branch_id=?').bind(branchLabel, id).run().catch(() => {})
       await log(`Branch ${branchLabel} details updated`, { category: nextParent })
     } else if (action === 'keep') {
-      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'love', ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'love', updated_at = datetime('now')")
-        .bind(id, branchLabel, cat, round).run()
-      await log(`Branch ${branchLabel} [${round}] kept & updated to LOVE status`, { round })
+      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'love', datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'love', updated_at = datetime('now')")
+        .bind(id, branchLabel, cat).run()
+      await log(`Branch ${branchLabel} kept and updated to LOVE status`, {})
     } else if (action === 'prune') {
-      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'pruned', ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'pruned', updated_at = datetime('now')")
-        .bind(id, branchLabel, cat, round).run()
+      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'pruned', datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'pruned', updated_at = datetime('now')")
+        .bind(id, branchLabel, cat).run()
       await DB.prepare("INSERT INTO branch_exploration (id, name, path, lifecycle_state, confidence_score, is_pruned, pruning_reason, updated_at) VALUES (?, ?, ?, 'pruned', 0, 1, 'Pruned in Branch Deck', datetime('now')) ON CONFLICT(id) DO UPDATE SET is_pruned = 1, lifecycle_state = 'pruned', pruning_reason = 'Pruned in Branch Deck', updated_at = datetime('now')")
         .bind(id, branchLabel, id).run()
       // A pruned branch stops steering Compass priorities.
       await writePriorityOrder((await readPriorityOrder()).filter((priority) => priority.branch_id !== id))
       await log(`Branch ${branchLabel} pruned`, {})
     } else if (action === 'priority') {
-      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'love', ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'love', updated_at = datetime('now')")
-        .bind(id, branchLabel, cat, round).run()
+      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'love', datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'love', updated_at = datetime('now')")
+        .bind(id, branchLabel, cat).run()
       const priorities = await readPriorityOrder()
       const existingPriority = priorities.find((priority) => priority.branch_id === id)
       await writePriorityOrder([
@@ -874,15 +892,15 @@ app.post('/branch-swipe', async (c) => {
       ])
       await log(`Branch ${branchLabel} promoted to priority #1`, { rank: 1 })
     } else if (action === 'hold') {
-      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'held', ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'held', updated_at = datetime('now')")
-        .bind(id, branchLabel, cat, round).run()
+      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, updated_at) VALUES (?, 'branch', ?, ?, 'root', 'held', datetime('now')) ON CONFLICT(id) DO UPDATE SET status = 'held', updated_at = datetime('now')")
+        .bind(id, branchLabel, cat).run()
       await log(`Branch ${branchLabel} held`, {})
     } else if (action === 'add') {
       const nextParent = parent_id || cat
       const category = await DB.prepare("SELECT id FROM tree_nodes WHERE id=? AND type='category' AND status!='pruned'").bind(nextParent).first<any>()
       if (!category) return c.json({ error: 'valid category required' }, 400)
-      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, meta_json, updated_at) VALUES (?, 'branch', ?, ?, ?, 'active', ?, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET label = excluded.label, super_category = excluded.super_category, parent_id = excluded.parent_id, status = 'active', round_label = excluded.round_label, meta_json = excluded.meta_json, updated_at = datetime('now')")
-        .bind(id, branchLabel, nextParent, nextParent, round_label || null, JSON.stringify(suppliedMeta)).run()
+      await DB.prepare("INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, meta_json, updated_at) VALUES (?, 'branch', ?, ?, ?, 'active', ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET label = excluded.label, super_category = excluded.super_category, parent_id = excluded.parent_id, status = 'active', meta_json = excluded.meta_json, updated_at = datetime('now')")
+        .bind(id, branchLabel, nextParent, nextParent, JSON.stringify(suppliedMeta)).run()
       await log(`Branch ${branchLabel} added as active exploration`, {})
     }
 
@@ -915,7 +933,6 @@ app.post('/branch-swipe', async (c) => {
             action,
             status: action === 'keep' || action === 'priority' ? 'love' : action === 'prune' ? 'pruned' : action === 'add' ? 'active' : 'held',
             super_category: cat,
-            round_label: round,
             timestamp: new Date().toISOString(),
           },
           confidence: action === 'hold' ? 0.6 : 1.0,
@@ -981,7 +998,7 @@ app.post('/branch-suggest', async (c) => {
 
     const [context, nodes, assertions] = await Promise.all([
       loadCompassContext(DB).catch(() => null),
-      DB.prepare("SELECT id, label, status, super_category, round_label FROM tree_nodes WHERE type='branch' ORDER BY CASE status WHEN 'love' THEN 0 WHEN 'priority' THEN 0 ELSE 1 END, id").all<any>().catch(() => ({ results: [] })),
+      DB.prepare("SELECT id, label, status, super_category FROM tree_nodes WHERE type='branch' ORDER BY CASE status WHEN 'love' THEN 0 WHEN 'priority' THEN 0 ELSE 1 END, id").all<any>().catch(() => ({ results: [] })),
       DB.prepare("SELECT category, value_json, confidence, status FROM profile_assertions WHERE status='active' ORDER BY confidence DESC LIMIT 40").all<any>().catch(() => ({ results: [] })),
     ])
 
@@ -1026,7 +1043,6 @@ app.post('/branch-suggest', async (c) => {
       'Rules:',
       '- Each label must be a concrete, non-obvious branch name (2-6 words), not already on the map, not in the blocked/excluded list.',
       '- super_category must be one of the KNOWN CATEGORIES (or a natural new category prefixed cat-).',
-      '- round_label must be R3 (these are new suggestions).',
       '- description: 1-2 sentences on what the branch is and why it matters to this learner.',
       '- plain_language: give a comprehensive but concise orientation in everyday language (2-3 sentences): define the scope, include one concrete example or mechanism, and state what this branch is not about.',
       '- leaves_sample: 3-6 concrete subtopics or source directions inside the branch.',
@@ -1037,7 +1053,7 @@ app.post('/branch-suggest', async (c) => {
       '- overlap_candidates: 0-3 existing branch labels this may overlap with; do not invent labels.',
       '- suggested_next_move: one cautious next step such as "Hold until one source confirms the scope" or "Keep and explore one primary source".',
       '- uncertainty_note: one sentence naming what is still unknown and making uncertainty explicit.',
-      'Return ONLY valid JSON — an array of objects with keys: label, round_label, super_category, description, plain_language, leaves_sample, contrast_hook, why_now, evidence_grounding, evidence_confidence, overlap_candidates, suggested_next_move, uncertainty_note. No markdown, no commentary.',
+      'Return ONLY valid JSON — an array of objects with keys: label, super_category, description, plain_language, leaves_sample, contrast_hook, why_now, evidence_grounding, evidence_confidence, overlap_candidates, suggested_next_move, uncertainty_note. No markdown, no commentary.',
     ].join('\n')
 
     const result = await freeAi(c.env, 'You are the branch curator for a private learning OS. Return ONLY valid JSON as instructed.', prompt, 2048)
@@ -1056,9 +1072,8 @@ app.post('/branch-suggest', async (c) => {
               if (blocked.some((b: string) => low.includes(b.toLowerCase()) || String(b).toLowerCase().includes(low))) continue
               const slug = label.toLowerCase().replace(SLUG_RE, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'branch'
               suggestions.push({
-                id: `r3-${slug}`,
+                id: `branch-${slug}`,
                 label,
-                round_label: /^R[1-5]$/i.test(String(item?.round_label || '')) ? String(item.round_label).toUpperCase() : 'R3',
                 super_category: /^cat-/.test(String(item?.super_category || '')) ? String(item.super_category).slice(0, 60) : `cat-${String(item?.super_category || 'mind').toLowerCase().replace(SLUG_RE, '-').slice(0, 40)}`,
                 description: String(item?.description || '').trim().slice(0, 1000),
                 plain_language: String(item?.plain_language || '').trim().slice(0, 500),
@@ -1099,7 +1114,7 @@ app.post('/branch-suggest', async (c) => {
 app.post('/profile/sync-swipes', async (c) => {
   const { DB } = c.env
   try {
-    const nodes = await DB.prepare("SELECT id, label, status, super_category, round_label FROM tree_nodes WHERE status IN ('love','pruned','held')").all<any>()
+    const nodes = await DB.prepare("SELECT id, label, status, super_category FROM tree_nodes WHERE status IN ('love','pruned','held')").all<any>()
     let synced = 0
     for (const node of nodes.results || []) {
       const affinityScore = node.status === 'love' ? 5.0 : node.status === 'pruned' ? 0.0 : 2.5
@@ -1110,7 +1125,7 @@ app.post('/profile/sync-swipes', async (c) => {
       await applyProfileAssertion(DB, {
         assertionKey: `user.profile.branch_preference.${node.id}`,
         category: 'topic_affinity',
-        value: JSON.stringify({ branch_id: node.id, label: node.label, status: node.status, super_category: node.super_category, round_label: node.round_label }),
+        value: JSON.stringify({ branch_id: node.id, label: node.label, status: node.status, super_category: node.super_category }),
         confidence: 1.0,
         sourceKind: 'user',
         evidence: [{ source: 'profile_sync_swipes', status: node.status }],

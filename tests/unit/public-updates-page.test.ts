@@ -48,7 +48,7 @@ test('learning update stays public in private mode and is served with strict doc
     },
   }
 
-  const response = await app.request(`https://learning-compass.test${updatePath}`, {}, env as any)
+  const response = await app.fetch(new Request(`https://learning-compass.test${updatePath}`), env as any, {} as ExecutionContext)
   assert.equal(response.status, 200)
   assert.deepEqual(requestedPaths, [updatePath])
   assert.equal(response.headers.get('content-type'), 'text/html; charset=utf-8')

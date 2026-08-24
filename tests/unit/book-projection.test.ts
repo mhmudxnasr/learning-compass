@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { normalizeBookChapters, projectBook, resolveBookReadingState } from '../../src/services/book-projection.ts'
+import { normalizeBookChapters, projectBook, resolveBookPrimary, resolveBookReadingState } from '../../src/services/book-projection.ts'
+
+test('primary reading state is explicit and independent from reading status', () => {
+  assert.equal(resolveBookPrimary({ source_metadata_json: JSON.stringify({ book_primary: true }) }), true)
+  assert.equal(resolveBookPrimary({ source_metadata_json: JSON.stringify({ book_primary: 1 }) }), true)
+  assert.equal(resolveBookPrimary({ source_metadata_json: JSON.stringify({ book_reading_state: 'reading' }) }), false)
+  assert.equal(projectBook({ source_metadata_json: JSON.stringify({ book_primary: true }) }).is_primary, true)
+})
 
 test('explicit personal reading state takes precedence over legacy Queue and source state', () => {
   assert.equal(resolveBookReadingState({ status: 'consumed', learning_state: 'completed', source_metadata_json: '{"book_reading_state":"reading"}' }), 'reading')

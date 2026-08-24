@@ -46,9 +46,8 @@ test('Lite Visual validator blocks the observed artifact defects', () => {
 })
 
 test('Visual Lite is source-designed code only with no image or template branch', () => {
-  assert.match(liteVisual, /read these two current skills completely/)
-  assert.match(liteVisual, /intent\/SKILL\.md/)
-  assert.match(liteVisual, /frontend-design\/SKILL\.md/)
+  assert.match(liteVisual, /former `.agents\/skills\/intent` and `.agents\/skills\/frontend-design` paths have been retired/)
+  assert.match(liteVisual, /apply the required Intent and Frontend Design reasoning directly/i)
   assert.match(liteVisual, /source-specific CSS/)
   assert.match(liteVisual, /minimal inline SVG/)
   assert.match(liteVisual, /Do not invoke Visual Mind, AGY, Antigravity, ImageGen/)

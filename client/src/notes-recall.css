@@ -97,6 +97,9 @@
 .note-reading-workspace { display: grid; gap: 18px; padding-bottom: 72px; }
 .note-reading-actions { position: static; padding: 0 0 14px; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
 .note-reading-actions > div { display: flex; gap: 6px; flex-wrap: wrap; }
+.note-reading-workspace.scholar-note-workspace { max-width: none; margin-inline: 0; }
+.scholar-note-workspace .scholar-note-actions { align-items: center; justify-content: flex-end; min-height: 40px; padding: 0; border: 0; }
+.scholar-note-workspace .scholar-note-actions > div { justify-content: flex-end; }
 .note-manuscript.folio-reading-body {
   width: min(100%, 820px);
   margin: 0 auto;

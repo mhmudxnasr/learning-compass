@@ -8,6 +8,9 @@ import { createConsolidationRun, normalizeDisposition, recordLearningEvent } fro
 import { applyFeedbackProposal, revertFeedbackProposal, syncRecommendationFeedbackSignals } from '../services/intelligence-v2'
 import { resolveLearningScope } from '../services/learning-scope'
 import { feedbackMetadata, normalizeStructuredFeedback, type FeedbackCompletionState, type FeedbackEffort } from '../services/feedback'
+import { loadNormalizedUnitRelations } from '../services/cross-branch-bridges'
+import { appendSynthesisRevision, createClaimHighlight, loadNoteDistillation, promoteHighlightToUnit } from '../services/note-distillation'
+import { validateArabicRecall } from '../services/recall-language'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const id = (prefix: string) => `${prefix}_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
@@ -57,7 +60,7 @@ app.post('/feedback/record', async (c) => {
   const structured = normalizeStructuredFeedback(body, body.complete === true || rating.score !== null ? 'completed' : 'in_progress')
   if (structured.completion_state === 'stopped' && structured.reason_tags.length === 0) return c.json({ error: 'stopped_reason_required' }, 400)
   const complete = structured.completion_state === 'completed'
-  const disposition = normalizeDisposition(body.disposition, rating.score)
+  const disposition = normalizeDisposition(body.disposition)
   let recommendation = body.recommendation_id
     ? await c.env.DB.prepare(`SELECT * FROM recommendations WHERE id=?`).bind(body.recommendation_id).first<any>()
     : null
@@ -131,7 +134,7 @@ app.post('/feedback/record', async (c) => {
   })
 })
 app.post('/sessions/:id/return', async (c) => {
-  const body: { reflection?: string; complete?: boolean; rating?: number | string; score?: number | string; disposition?: string; auto_enqueue?: boolean; completion_state?: FeedbackCompletionState; reason_tags?: string[]; expected?: string; actual?: string; effort?: FeedbackEffort; length_minutes?: number | string } = await c.req.json<any>().catch(() => ({}))
+  const body: { reflection?: string; complete?: boolean; rating?: number | string; score?: number | string; disposition?: string; completion_state?: FeedbackCompletionState; reason_tags?: string[]; expected?: string; actual?: string; effort?: FeedbackEffort; length_minutes?: number | string } = await c.req.json<any>().catch(() => ({}))
   const session = await c.env.DB.prepare(`SELECT s.*, r.video_title, r.video_url, r.creator, r.content_type FROM learning_sessions s LEFT JOIN recommendations r ON r.id=s.recommendation_id WHERE s.id=?`).bind(c.req.param('id')).first<any>()
   if (!session) return c.json({ error: 'session not found' }, 404)
   const reflection = String(body.reflection || '').trim().slice(0, 10000)
@@ -139,7 +142,7 @@ app.post('/sessions/:id/return', async (c) => {
   const structured = normalizeStructuredFeedback(body, body.complete === true ? 'completed' : 'in_progress')
   if (structured.completion_state === 'stopped' && structured.reason_tags.length === 0) return c.json({ error: 'stopped_reason_required' }, 400)
   const complete = structured.completion_state === 'completed'
-  const disposition = normalizeDisposition(body.disposition, rating.score)
+  const disposition = normalizeDisposition(body.disposition)
   let reflectionNoteId: string | null = null
   let reflectionNoteCreated = false
   let reflectionRevision = 0
@@ -176,7 +179,7 @@ app.post('/sessions/:id/return', async (c) => {
     const knowledgeRequested = disposition === 'retain' || disposition === 'apply'
     feedbackJobId = id('job')
     statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'process_feedback',?,?,?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(feedbackJobId, JSON.stringify({ recommendation_id: session.recommendation_id, session_id: session.id, note_id: reflectionNoteId, reflection, rating: rating.score, disposition, ...structured, review_required: true, feedback_context_endpoint: '/feedback/context', feedback_context_scope: 'all_archived_feedback_profile_and_nodes' }), `session-feedback:${session.id}`, session.recommendation_id, 'explicit_user_action'))
-    if (knowledgeRequested || body.auto_enqueue === true) {
+    if (knowledgeRequested) {
       extractionJobId = id('job')
       statements.push(c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key,recommendation_id,trigger_kind) VALUES (?,'extract_notes',?,?,?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(extractionJobId, JSON.stringify({
           recommendation_id: session.recommendation_id,
@@ -211,7 +214,7 @@ app.post('/sessions/:id/return', async (c) => {
     completed: complete,
     reflection,
   })
-  return c.json({ ok: true, status: complete ? 'completed' : 'returned', completion_state: structured.completion_state, disposition, structured_feedback: { ...structured, score: rating.score }, reflection_note_id: reflectionNoteId, reflection_note_created: reflectionNoteCreated, recall_eligible: complete && (disposition === 'retain' || disposition === 'apply'), srs_eligible: complete && (disposition === 'retain' || disposition === 'apply'), feedback_job_id: feedbackJobId, extraction_job_id: extractionJobId, receipt: { status: 'recorded', analysis: feedbackJobId ? 'queued' : 'not_requested', notes: extractionJobId ? 'queued' : 'not_requested', neutral: structured.reason_tags.includes('not_now') }, consolidation, learning_outcome: outcome })
+  return c.json({ ok: true, status: complete ? 'completed' : 'returned', completion_state: structured.completion_state, disposition, structured_feedback: { ...structured, score: rating.score }, reflection_note_id: reflectionNoteId, reflection_note_created: reflectionNoteCreated, recall_eligible: false, srs_eligible: false, feedback_job_id: feedbackJobId, extraction_job_id: extractionJobId, receipt: { status: 'recorded', analysis: feedbackJobId ? 'queued' : 'not_requested', notes: extractionJobId ? 'queued' : 'not_requested', neutral: structured.reason_tags.includes('not_now') }, consolidation, learning_outcome: outcome })
 })
 app.delete('/sessions/:id', async (c) => {
   const result = await c.env.DB.prepare("DELETE FROM learning_sessions WHERE id=? AND status NOT IN ('completed')").bind(c.req.param('id')).run()
@@ -219,35 +222,6 @@ app.delete('/sessions/:id', async (c) => {
     try { await activateWaitingRun(c.env.DB) } catch {}
   }
   return result.meta.changes ? c.json({ ok: true }) : c.json({ error: 'session not found or completed' }, 404)
-})
-
-app.get('/collections', async (c) => {
-  const scope = c.req.query('scope')
-  const rows = scope ? await c.env.DB.prepare(`SELECT c.*, COUNT(ci.recommendation_id) item_count FROM collections c LEFT JOIN collection_items ci ON ci.collection_id=c.id WHERE c.scope=? GROUP BY c.id ORDER BY c.updated_at DESC`).bind(scope).all() : await c.env.DB.prepare(`SELECT c.*, COUNT(ci.recommendation_id) item_count FROM collections c LEFT JOIN collection_items ci ON ci.collection_id=c.id GROUP BY c.id ORDER BY c.updated_at DESC`).all()
-  return c.json({ collections: rows.results || [] })
-})
-app.post('/collections', async (c) => {
-  const body = await c.req.json<{ name: string; description?: string; scope?: string }>()
-  if (!body.name?.trim()) return c.json({ error: 'name required' }, 400)
-  const collectionId = id('collection')
-  await c.env.DB.prepare(`INSERT INTO collections (id,name,description,scope) VALUES (?,?,?,?)`).bind(collectionId, body.name.trim(), body.description || null, body.scope || 'curate').run()
-  return c.json({ ok: true, id: collectionId }, 201)
-})
-app.post('/collections/:id/items', async (c) => {
-  const body = await c.req.json<{ recommendation_id: string; position?: number }>()
-  await c.env.DB.prepare(`INSERT OR REPLACE INTO collection_items (collection_id,recommendation_id,position) VALUES (?,?,?)`).bind(c.req.param('id'), body.recommendation_id, body.position || 0).run()
-  return c.json({ ok: true })
-})
-app.delete('/collections/:id/items/:recommendation_id', async (c) => {
-  await c.env.DB.prepare('DELETE FROM collection_items WHERE collection_id=? AND recommendation_id=?').bind(c.req.param('id'), c.req.param('recommendation_id')).run()
-  return c.json({ ok: true })
-})
-app.delete('/collections/:id', async (c) => {
-  await c.env.DB.batch([
-    c.env.DB.prepare('DELETE FROM collection_items WHERE collection_id=?').bind(c.req.param('id')),
-    c.env.DB.prepare('DELETE FROM collections WHERE id=?').bind(c.req.param('id')),
-  ])
-  return c.json({ ok: true })
 })
 
 async function hubNotes(db: D1Database, scope: { thread_id?: string; stage_id?: string }) {
@@ -296,7 +270,7 @@ app.get('/notes/hub', async (c) => {
 })
 app.get('/notes/:id', async (c) => {
   const noteId = c.req.param('id')
-  const note = await c.env.DB.prepare(`SELECT n.*, r.branch as rec_branch, r.round as rec_round, r.content_type as rec_content_type, r.video_title as rec_title, r.video_url as rec_video_url, json_extract(m.source_metadata_json,'$.raw_source') as rec_source_url FROM notes n LEFT JOIN recommendations r ON n.recommendation_id = r.id LEFT JOIN recommendation_meta m ON m.recommendation_id = n.recommendation_id WHERE n.id=?`).bind(noteId).first<any>()
+  const note = await c.env.DB.prepare(`SELECT n.*, r.branch as rec_branch, r.round as rec_round, r.content_type as rec_content_type, r.video_title as rec_title, r.video_url as rec_video_url, json_extract(m.source_metadata_json,'$.raw_source') as rec_source_url, COALESCE(n.thread_id,l.thread_id) as owner_thread_id FROM notes n LEFT JOIN recommendations r ON n.recommendation_id = r.id LEFT JOIN recommendation_meta m ON m.recommendation_id = n.recommendation_id LEFT JOIN thread_lessons l ON l.id=n.lesson_id WHERE n.id=?`).bind(noteId).first<any>()
   if (!note) return c.json({ error: 'not found' }, 404)
 
   const [sections, related, units, drafts, cards] = await Promise.all([
@@ -304,9 +278,10 @@ app.get('/notes/:id', async (c) => {
     note.recommendation_id
       ? c.env.DB.prepare(`SELECT id,title,kind,status,updated_at FROM notes WHERE recommendation_id=? AND id<>? ORDER BY CASE kind WHEN 'reflection' THEN 0 WHEN 'guide' THEN 1 ELSE 2 END,updated_at DESC`).bind(note.recommendation_id, noteId).all<any>()
       : Promise.resolve({ results: [] } as any),
-    note.recommendation_id
-      ? c.env.DB.prepare(`SELECT * FROM learning_units WHERE recommendation_id=? AND status NOT IN ('deleted','quarantined') ORDER BY created_at,id`).bind(note.recommendation_id).all<any>()
-      : Promise.resolve({ results: [] } as any),
+    c.env.DB.prepare(`SELECT * FROM learning_units WHERE note_id=? AND status IN ('draft','accepted') ORDER BY created_at,id`).bind(noteId).all<any>()
+      .catch(() => note.recommendation_id
+        ? c.env.DB.prepare(`SELECT * FROM learning_units WHERE recommendation_id=? AND status NOT IN ('deleted','quarantined') ORDER BY created_at,id`).bind(note.recommendation_id).all<any>()
+        : Promise.resolve({ results: [] } as any)),
     c.env.DB.prepare(`SELECT d.*,u.statement unit_statement,u.unit_type FROM srs_drafts d LEFT JOIN learning_units u ON u.id=d.unit_id WHERE d.note_id=? ORDER BY d.created_at DESC`).bind(noteId).all<any>(),
     c.env.DB.prepare(`SELECT card.*,u.statement unit_statement,u.unit_type FROM srs_cards card LEFT JOIN learning_units u ON u.id=card.unit_id WHERE card.note_id=? ORDER BY card.due_at,card.question`).bind(noteId).all<any>(),
   ])
@@ -326,6 +301,9 @@ app.get('/notes/:id', async (c) => {
     const rows = await c.env.DB.prepare(`SELECT unit_id,anchor_type,locator,excerpt FROM unit_anchors WHERE unit_id IN (${placeholders}) ORDER BY unit_id,rowid`).bind(...unitRows.map((row: any) => row.id)).all<any>()
     for (const anchor of rows.results || []) anchorsByUnit.set(anchor.unit_id, [...(anchorsByUnit.get(anchor.unit_id) || []), anchor])
   }
+  const relationGroups = await Promise.all(unitRows.map((unit: any) => loadNormalizedUnitRelations(c.env.DB, unit.id))).catch(() => [])
+  const relations = relationGroups.flat()
+  const backlinks = relations.filter((relation: any) => relation.direction === 'incoming' && relation.counterpart.note_id !== noteId)
 
   const output = {
     ...note,
@@ -338,12 +316,28 @@ app.get('/notes/:id', async (c) => {
     provenance_json: undefined,
     sections: sections.results || []
   }
+  const distillation = await loadNoteDistillation(c.env.DB, noteId).catch(() => null)
   return c.json({
     note: output,
     related_notes: relatedRows.map((row: any) => ({ ...row, sections: relatedSections.get(row.id) || [] })),
     units: unitRows.map((unit: any) => ({ ...unit, anchors: anchorsByUnit.get(unit.id) || [] })),
+    relations,
+    backlinks,
     recall: { drafts: drafts.results || [], cards: cards.results || [] },
+    distillation,
   })
+})
+app.post('/notes/:id/distillation/highlights', async (c) => {
+  const result = await createClaimHighlight(c.env.DB, c.req.param('id'), await c.req.json<any>().catch(() => ({})))
+  return 'error' in result ? c.json({ error: result.error }, result.status) : c.json({ ok: true, highlight: result }, 201)
+})
+app.post('/notes/:id/distillation/syntheses', async (c) => {
+  const result = await appendSynthesisRevision(c.env.DB, c.req.param('id'), await c.req.json<any>().catch(() => ({})))
+  return 'error' in result ? c.json({ error: result.error }, result.status) : c.json({ ok: true, synthesis: result }, 201)
+})
+app.post('/notes/:id/distillation/highlights/:highlightId/promote', async (c) => {
+  const result = await promoteHighlightToUnit(c.env.DB, c.req.param('id'), c.req.param('highlightId'))
+  return 'error' in result ? c.json({ error: result.error }, result.status) : c.json({ ok: true, unit: result }, result.duplicate ? 200 : 201)
 })
 app.post('/notes', async (c) => {
   const body = await c.req.json<any>()
@@ -381,6 +375,7 @@ app.put('/notes/:id', async (c) => {
 })
 app.delete('/notes/:id', async (c) => {
   await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE learning_units SET note_id=NULL WHERE note_id=?').bind(c.req.param('id')),
     c.env.DB.prepare('DELETE FROM note_sections WHERE note_id=?').bind(c.req.param('id')),
     c.env.DB.prepare('DELETE FROM notes WHERE id=?').bind(c.req.param('id')),
   ])
@@ -469,12 +464,18 @@ app.delete('/learning/srs/cards/:id', async (c) => {
 })
 app.put('/srs/drafts/:id', async (c) => {
   const body = await c.req.json<any>()
+  const draft = await c.env.DB.prepare(`SELECT question,answer FROM srs_drafts WHERE id=?`).bind(c.req.param('id')).first<any>()
+  if (!draft) return c.json({ error: 'draft not found' }, 404)
+  const languageError = validateArabicRecall(body.question || draft.question, body.answer || draft.answer)
+  if (languageError) return c.json({ error: 'recall_language_required', message: languageError }, 400)
   await c.env.DB.prepare(`UPDATE srs_drafts SET question=COALESCE(?,question),answer=COALESCE(?,answer),topic=COALESCE(?,topic),branch=COALESCE(?,branch),card_type=COALESCE(?,card_type),source_anchor=COALESCE(?,source_anchor),updated_at=datetime('now') WHERE id=?`).bind(body.question || null, body.answer || null, body.topic || null, body.branch || null, body.card_type || null, body.source_anchor || null, c.req.param('id')).run()
   return c.json({ ok: true })
 })
 app.post('/srs/drafts/:id/approve', async (c) => {
   const draft = await c.env.DB.prepare(`SELECT * FROM srs_drafts WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!draft) return c.json({ error: 'not found' }, 404)
+  const languageError = validateArabicRecall(draft.question, draft.answer)
+  if (languageError) return c.json({ error: 'recall_language_required', message: languageError }, 400)
   const approved = await c.env.DB.prepare(`UPDATE srs_drafts SET status='approved',updated_at=datetime('now') WHERE id=? AND status='draft'`).bind(draft.id).run()
   if (!approved.meta.changes) return c.json({ error: 'draft already processed' }, 409)
   await c.env.DB.prepare(`INSERT INTO srs_cards (id,recommendation_id,note_id,question,answer,topic,branch,due_at,unit_id,thread_id,stage_id,scheduler_version,card_type,source_anchor) VALUES (?,?,?,?,?,?,?,date('now'),?,?,?,'fsrs-6-ts-fsrs-5.4.1',?,?)`).bind(id('card'), draft.recommendation_id, draft.note_id || null, draft.question, draft.answer, draft.topic, draft.branch || null, draft.unit_id || null, draft.thread_id || null, draft.stage_id || null, draft.card_type || null, draft.source_anchor || null).run()
@@ -538,7 +539,7 @@ app.get('/settings', async (c) => {
 app.put('/settings/:key', async (c) => {
   try {
     const key = c.req.param('key') as keyof TasteMapSettings
-    if (!['appearance', 'learning', 'srs_drafts', 'ai_curation', 'profile_proposals', 'profile_automation', 'recommendation_engine', 'atlas'].includes(key)) return c.json({ error: 'unknown settings key' }, 400)
+    if (!['appearance', 'learning', 'srs_drafts', 'ai_curation', 'profile_proposals', 'profile_automation', 'recommendation_engine', 'delivery_context', 'atlas'].includes(key)) return c.json({ error: 'unknown settings key' }, 400)
     const current = await loadSettings(c.env.DB)
     const value = await c.req.json<any>()
     if (key === 'recommendation_engine' && value?.mode && value.mode !== current.recommendation_engine.mode) {

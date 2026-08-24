@@ -21,10 +21,10 @@ app.get('/briefing', async (c) => {
     const data = await cached('home.briefing', 30000, async () => {
       const today = new Date().toISOString().split('T')[0]
       const [next, due, total, active, consumed, todayLog, streak, growth, recent] = await Promise.all([
-        firstOr(DB.prepare("SELECT id, video_title, creator, content_type, video_url, why_this, status, user_rating, consumed_date, created_at FROM recommendations WHERE status = 'active' ORDER BY created_at DESC LIMIT 1")),
+        firstOr(DB.prepare("SELECT id, video_title, creator, content_type, video_url, why_this, status, user_rating, consumed_date, created_at FROM recommendations WHERE status = 'active' AND COALESCE(content_type, '') != 'book' ORDER BY created_at DESC LIMIT 1")),
         firstOr(DB.prepare("SELECT COUNT(*) as c FROM srs_cards WHERE due_at <= date('now')"), { c: 0 }),
         firstOr(DB.prepare('SELECT COUNT(*) as c FROM recommendations'), { c: 0 }),
-        firstOr(DB.prepare("SELECT COUNT(*) as c FROM recommendations WHERE status = 'active'"), { c: 0 }),
+        firstOr(DB.prepare("SELECT COUNT(*) as c FROM recommendations WHERE status = 'active' AND COALESCE(content_type, '') != 'book'"), { c: 0 }),
         firstOr(DB.prepare("SELECT COUNT(*) as c FROM recommendations WHERE status = 'consumed'"), { c: 0 }),
         firstOr(DB.prepare('SELECT count, topics FROM learning_log WHERE date = ?').bind(today)),
         firstOr(DB.prepare(`
@@ -38,7 +38,7 @@ app.get('/briefing', async (c) => {
               WHERE NOT EXISTS (SELECT 1 FROM learning_log l2 WHERE date(l2.date, '+1 day') = l1.date)), '1970-01-01')
         `), { streak: 0 }),
         allOr(DB.prepare("SELECT substr(consumed_date, 1, 7) as month, COUNT(*) as count FROM recommendations WHERE status = 'consumed' AND consumed_date IS NOT NULL AND consumed_date != 'unset' GROUP BY month ORDER BY month ASC LIMIT 24")),
-        allOr(DB.prepare("SELECT id, video_title, creator, content_type, why_this, status, user_rating, consumed_date, updated_at FROM recommendations WHERE status = 'active' ORDER BY created_at DESC LIMIT 3")),
+        allOr(DB.prepare("SELECT id, video_title, creator, content_type, why_this, status, user_rating, consumed_date, updated_at FROM recommendations WHERE status = 'active' AND COALESCE(content_type, '') != 'book' ORDER BY created_at DESC LIMIT 3")),
       ])
 
       return {

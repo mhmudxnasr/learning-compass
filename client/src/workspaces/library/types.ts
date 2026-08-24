@@ -1,8 +1,8 @@
 import type { Route } from '../../app/router'
 import { objectHref as canonicalObjectHref, routeHref } from '../../app/router'
 
-export type LibraryView = 'queue' | 'feeds' | 'all' | 'files' | 'books' | 'journal' | 'collections' | 'archive'
-export type LibraryObjectType = 'source' | 'artifact' | 'book' | 'collection'
+export type LibraryView = 'queue' | 'feeds' | 'files' | 'books' | 'archive'
+export type LibraryObjectType = 'source' | 'artifact' | 'book'
 
 export type LibraryRecord = Record<string, any>
 
@@ -33,10 +33,8 @@ export type LibraryViewHandlers = {
   onDeleteArtifact: (item: LibraryRecord, skipConfirm?: boolean) => void
   onDeleteRecommendationPermanently: (item: LibraryRecord) => void
   onCompleteChapter: (book: LibraryRecord, chapter: LibraryRecord) => void
-  onSetBookReadingState: (book: LibraryRecord, state: 'saved' | 'reading' | 'finished') => void
+  onSetBookReadingState: (book: LibraryRecord, state: 'saved' | 'reading' | 'finished', primary?: boolean) => void
   onAddBook: (payload: { title: string; author: string; branch_id: string; isbn?: string; why_this?: string; url?: string }) => Promise<void>
-  onCreateCollection: (payload: { name: string; description: string }) => void
-  onDeleteCollection: (item: LibraryRecord) => void
   onAddFeed?: (url: string) => void
   onSyncFeeds?: () => void
   onSyncFeed?: (feedId: string) => void
@@ -45,6 +43,7 @@ export type LibraryViewHandlers = {
   onClearFeedEntries?: (feedId: string) => void
   onFeedbackSaved?: (sourceId: string, receipt: LibraryRecord) => void
   onReload?: () => void
+  onQueueDeliveryChange?: (context: { effort?: string; language?: string; delivery_modes?: string[]; depth_tier?: string; matches_only?: boolean }) => void
   feedbackReceipt?: { sourceId: string; result: LibraryRecord } | null
   busyId?: string
   blockedId?: string
@@ -54,11 +53,8 @@ export type LibraryViewHandlers = {
 export const viewLabels: Record<LibraryView, string> = {
   queue: 'Queue',
   feeds: 'RSS Feeds',
-  all: 'All sources',
   files: 'Files',
   books: 'Books',
-  journal: 'Reading journal',
-  collections: 'Collections',
   archive: 'Archive',
 }
 
@@ -66,11 +62,10 @@ export const objectLabels: Record<LibraryObjectType, string> = {
   source: 'Source',
   artifact: 'Artifact',
   book: 'Book',
-  collection: 'Collection',
 }
 
 export function objectHref(type: LibraryObjectType, id: string) {
-  if (type === 'book') return canonicalObjectHref('learn', type, id, 'canon')
+  if (type === 'book') return canonicalObjectHref('library', type, id, 'books')
   return canonicalObjectHref('library', type, id)
 }
 
@@ -78,7 +73,7 @@ export function viewHref(view: LibraryView) {
   if (view === 'queue') return routeHref('library', 'triage', 'queue')
   if (view === 'feeds') return routeHref('library', 'triage', 'feeds')
   if (view === 'files') return routeHref('library', 'assets', 'files')
-  return routeHref('library', 'catalog', view)
+  return view === 'books' ? routeHref('library', 'books') : routeHref('library', 'catalog', view)
 }
 
 export function asView(value?: string): LibraryView {
@@ -179,9 +174,4 @@ export function artifactSelection(item: LibraryRecord): LibrarySelection {
 export function bookSelection(item: LibraryRecord): LibrarySelection {
   const id = String(item.id)
   return { type: 'book', id, title: sourceTitle(item), data: item, route: objectHref('book', id) }
-}
-
-export function collectionSelection(item: LibraryRecord): LibrarySelection {
-  const id = String(item.id)
-  return { type: 'collection', id, title: String(item.name || 'Untitled collection'), data: item, route: objectHref('collection', id) }
 }

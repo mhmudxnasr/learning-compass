@@ -47,6 +47,11 @@ export function resolveBookReadingState(book: Row): BookReadingState {
   return 'saved'
 }
 
+export function resolveBookPrimary(book: Row) {
+  const metadata = parseObject(book.source_metadata_json ?? book.source_metadata)
+  return metadata.book_primary === true || metadata.book_primary === 1
+}
+
 export function isSyntheticWholeBookChapter(row: Row) {
   const key = String(row.chapter_key ?? row.key ?? '').trim().toLowerCase()
   const position = Number(row.position ?? row.number ?? row.chapter_number ?? 0)
@@ -133,6 +138,7 @@ export function projectBook(book: Row, chapterRows: Row[] = [], artifactRows: Ro
   const nextChapter = chapters.find((chapter) => !chapter.completed) || (chapters.length ? chapters[chapters.length - 1] : null)
   return {
     reading_state: resolveBookReadingState(book),
+    is_primary: resolveBookPrimary(book),
     queue_state: String(book.learning_state || 'captured'),
     visual: {
       status: total ? 'ready' : 'not_started',

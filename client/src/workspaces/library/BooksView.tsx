@@ -2,21 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { api, formatDate } from '../../api'
 import { useData } from '../../app/useData'
 import { Icon } from '../../components/Icon'
-import { Empty } from '../../components/States'
 import { LearnCanonView } from '../learn/LearnCanonView'
 import type { LibraryRecord, LibraryViewHandlers } from './types'
-import { bookChapters, bookNextChapter, bookProgress, bookQueueState, bookReadingState, chapterActionCopy, chapterCompanionUrl } from './bookModel'
+import { bookChapters, bookNextChapter, bookProgress, bookReadingState } from './bookModel'
 import {
   artifactLink,
-  bookSelection,
-  fileKind,
-  formatBytes,
-  formatReason,
   formatStatus,
   objectHref,
   parseMetadata,
   sourceCreator,
-  sourceLink,
   sourceTitle,
 } from './types'
 
@@ -58,6 +52,56 @@ function formatBranchPill(branch?: LibraryRecord | null) {
 
 export const computeBookProgress = bookProgress
 
+const BOOK_PAGE_SIZE = 8
+
+type BookState = 'reading' | 'saved' | 'finished'
+type BookFilter = 'all' | BookState
+
+const BOOK_STATE_ORDER: BookState[] = ['reading', 'saved', 'finished']
+const BOOK_STATE_LABELS: Record<BookState, string> = {
+  reading: 'Reading now',
+  saved: 'Saved for later',
+  finished: 'Finished',
+}
+
+type BookBranchGroup = {
+  key: string
+  id: string
+  representative: LibraryRecord
+  books: LibraryRecord[]
+  states: Record<BookState, LibraryRecord[]>
+}
+
+function bookBranchKey(book: LibraryRecord) {
+  return String(book.branch?.id || book.branch?.label || 'unassigned')
+}
+
+function bookBranchLabel(book: LibraryRecord) {
+  return String(book.branch?.label || 'Unassigned branch')
+}
+
+function bookCanonKeys(book: LibraryRecord) {
+  const memberships = Array.isArray(book.canon_memberships) ? book.canon_memberships : []
+  return memberships.map((membership: LibraryRecord) => String(membership.domain_id || membership.domain_slug || membership.domain_title || ''))
+}
+
+function bookSearchText(book: LibraryRecord) {
+  const canon = (Array.isArray(book.canon_memberships) ? book.canon_memberships : [])
+    .map((membership: LibraryRecord) => `${membership.domain_title || ''} ${membership.role || ''}`)
+  const threads = (Array.isArray(book.threads) ? book.threads : [])
+    .map((thread: LibraryRecord) => thread.title || '')
+  return [
+    sourceTitle(book),
+    sourceCreator(book),
+    book.why_this,
+    book.branch?.label,
+    book.branch?.round,
+    parseMetadata(book.source_metadata_json).isbn,
+    ...canon,
+    ...threads,
+  ].filter(Boolean).join(' ').toLowerCase()
+}
+
 function CanonMembershipTags({ book, className }: { book: LibraryRecord; className: string }) {
   const memberships = Array.isArray(book.canon_memberships) ? book.canon_memberships : []
   if (!memberships.length) return null
@@ -68,24 +112,65 @@ function CanonMembershipTags({ book, className }: { book: LibraryRecord; classNa
   ))}</span>
 }
 
+function ThreadConnectionTags({ book, className }: { book: LibraryRecord; className: string }) {
+  const threads = Array.isArray(book.threads) ? book.threads : []
+  if (!threads.length) return null
+  return <span class="book-thread-connections" aria-label="Connected Learning Threads">{threads.map((thread: LibraryRecord) => (
+    <a class={className} href={`#/learn/thread/${encodeURIComponent(String(thread.id))}`} key={String(thread.id)}>
+      <Icon name="path" size={11} />
+      <span>Thread · {thread.title}</span>
+    </a>
+  ))}</span>
+}
+
+function BookBranchPill({ book, className = '' }: { book: LibraryRecord; className?: string }) {
+  const branchInfo = formatBranchPill(book.branch)
+  if (!branchInfo) return null
+  const classes = `book-branch-pill ${className}`.trim()
+  const content = <><Icon name="branch" size={12}/><span>{branchInfo.label}</span></>
+  return branchInfo.linkable
+    ? <a class={classes} href={`#/map/branch/${encodeURIComponent(String(book.branch?.id || branchInfo.label))}`}>{content}</a>
+    : <span class={`${classes} is-unverified`} aria-label={`Unverified branch ${branchInfo.label}`}>{content}</span>
+}
+
+export function ReadingFormatLinks({ book, chapter, className = '' }: { book: LibraryRecord; chapter: LibraryRecord | null; className?: string }) {
+  if (!chapter) return null
+  const notebookUrl = String(book.notebook_url || book.metadata?.notebook_url || '').trim()
+  const formats = [
+    chapter.html?.id ? { label: 'HTML', href: artifactLink(chapter.html), kind: 'html' } : null,
+    chapter.pdf?.id ? { label: 'PDF', href: artifactLink(chapter.pdf), kind: 'pdf' } : null,
+    notebookUrl ? { label: 'NotebookLM', href: notebookUrl, kind: 'notebooklm' } : null,
+  ].filter(Boolean) as Array<{ label: string; href: string; kind: string }>
+
+  if (!formats.length) return <p class="reading-fold-no-format">No reading format is attached to this chapter yet.</p>
+  return <div class={`reading-fold-formats ${className}`.trim()} aria-label={`Reading formats for ${chapter.title}`}>
+    {formats.map((format) => <a class={`reading-format reading-format-${format.kind}`} href={format.href} target="_blank" rel="noreferrer" key={format.kind}>
+      <span>{format.label}</span>
+      <Icon name="external" size={14}/>
+    </a>)}
+  </div>
+}
+
+export function BookKnowledgeContext({ book }: { book: LibraryRecord }) {
+  return <div class="reading-fold-context" aria-label="Book knowledge context">
+    <BookBranchPill book={book} className="reading-fold-branch-pill"/>
+    <CanonMembershipTags book={book} className="reading-fold-context-link"/>
+    <ThreadConnectionTags book={book} className="reading-fold-context-link"/>
+  </div>
+}
+
 export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
   const books = useMemo(() => (Array.isArray(data.books) ? data.books : []), [data.books])
-  const branchDeck = useData<{ existing?: LibraryRecord[] }>('/brain/branch-deck')
-  const branchOptions = useMemo(
-    () => (branchDeck.data?.existing || []).filter((branch) => String(branch.status || '').toLowerCase() !== 'pruned'),
-    [branchDeck.data?.existing],
-  )
-  const [searchQuery, setSearchQuery] = useState('')
-  const [activeShelf, setActiveShelf] = useState<'all' | 'reading' | 'toread' | 'finished'>('all')
-  const [visibleCount, setVisibleCount] = useState(12)
+  const primaryBook = useMemo(() => books.find((book: LibraryRecord) => Boolean(book.is_primary)) || null, [books])
   const [showAddForm, setShowAddForm] = useState(false)
-  const [expandedBookId, setExpandedBookId] = useState<string | null>(null)
-  const [chapterModalBook, setChapterModalBook] = useState<LibraryRecord | null>(null)
-  const addButtonRef = useRef<HTMLButtonElement>(null)
-  const addTitleRef = useRef<HTMLInputElement>(null)
-  const shelfInitialized = useRef(false)
-
-  // Add Book Form state
+  const branchDeck = useData<{ existing?: LibraryRecord[] }>(showAddForm ? '/brain/branch-deck' : undefined)
+  const branchOptions = useMemo(() => (branchDeck.data?.existing || []).filter((branch) => String(branch.status || '').toLowerCase() !== 'pruned'), [branchDeck.data?.existing])
+  const [bookSearch, setBookSearch] = useState('')
+  const [bookFilter, setBookFilter] = useState<BookFilter>('all')
+  const [showBookFacets, setShowBookFacets] = useState(false)
+  const [selectedBranch, setSelectedBranch] = useState('')
+  const [selectedCanon, setSelectedCanon] = useState('')
+  const [visibleBookCount, setVisibleBookCount] = useState(BOOK_PAGE_SIZE)
   const [newTitle, setNewTitle] = useState('')
   const [newAuthor, setNewAuthor] = useState('')
   const [newIsbn, setNewIsbn] = useState('')
@@ -94,93 +179,32 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
   const [newBranchId, setNewBranchId] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [addError, setAddError] = useState('')
+  const addButtonRef = useRef<HTMLButtonElement>(null)
+  const addTitleRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!showAddForm) return
     addTitleRef.current?.focus()
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        closeAddForm()
-      }
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      closeAddForm()
     }
     document.addEventListener('keydown', closeOnEscape)
     return () => document.removeEventListener('keydown', closeOnEscape)
   }, [showAddForm])
+
+  useEffect(() => {
+    setVisibleBookCount(BOOK_PAGE_SIZE)
+  }, [bookSearch, bookFilter, selectedBranch, selectedCanon, books.length])
 
   const closeAddForm = () => {
     setShowAddForm(false)
     requestAnimationFrame(() => addButtonRef.current?.focus())
   }
 
-  const shelves = useMemo(() => {
-    const reading: LibraryRecord[] = []
-    const toRead: LibraryRecord[] = []
-    const finished: LibraryRecord[] = []
-    for (const book of books) {
-      const state = bookReadingState(book)
-      if (state === 'reading') reading.push(book)
-      else if (state === 'finished') finished.push(book)
-      else if (String(book.status || '') === 'active') toRead.push(book)
-    }
-    return { reading, toRead, finished }
-  }, [books])
-  const readingBooks = shelves.reading
-  const toReadBooks = shelves.toRead
-  const finishedBooks = shelves.finished
-
-  // Shelf book counts
-  const stats = useMemo(() => ({
-    totalBooks: books.length,
-    readingCount: readingBooks.length,
-    toReadCount: toReadBooks.length,
-    finishedCount: finishedBooks.length,
-  }), [books, readingBooks, toReadBooks, finishedBooks])
-
-  useEffect(() => {
-    if (!shelfInitialized.current && books.length) {
-      shelfInitialized.current = true
-      setActiveShelf(readingBooks.length ? 'reading' : 'all')
-    }
-  }, [books.length, readingBooks.length])
-
-  // Filtered books
-  const filteredBooks = useMemo(() => {
-    let list = books
-    if (activeShelf === 'reading') list = readingBooks
-    else if (activeShelf === 'toread') list = toReadBooks
-    else if (activeShelf === 'finished') list = finishedBooks
-
-    const needle = searchQuery.trim().toLowerCase()
-    if (!needle) return list
-
-    return list.filter((book: LibraryRecord) => {
-      const title = sourceTitle(book).toLowerCase()
-      const author = sourceCreator(book).toLowerCase()
-      const why = String(book.why_this || '').toLowerCase()
-      const branch = String(book.branch?.label || book.branch_label || '').toLowerCase()
-      const isbn = String(parseMetadata(book.source_metadata_json).isbn || '').toLowerCase()
-      const canon = (Array.isArray(book.canon_memberships) ? book.canon_memberships : [])
-        .map((membership: LibraryRecord) => `${membership.domain_title || ''} ${membership.role || ''}`)
-        .join(' ')
-        .toLowerCase()
-      return (
-        title.includes(needle) ||
-        author.includes(needle) ||
-        why.includes(needle) ||
-        branch.includes(needle) ||
-        isbn.includes(needle) ||
-        canon.includes(needle)
-      )
-    })
-  }, [books, activeShelf, readingBooks, toReadBooks, finishedBooks, searchQuery])
-
-  useEffect(() => setVisibleCount(12), [activeShelf, searchQuery])
-
-  const visibleBooks = filteredBooks.slice(0, visibleCount)
-
-  const handleAddSubmit = async (e: Event) => {
-    e.preventDefault()
+  const handleAddSubmit = async (event: Event) => {
+    event.preventDefault()
     if (!newTitle.trim() || !newAuthor.trim() || !newBranchId) return
     setIsSubmitting(true)
     setAddError('')
@@ -189,17 +213,11 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
         title: newTitle.trim(),
         author: newAuthor.trim(),
         branch_id: newBranchId,
-        isbn: newIsbn.trim(),
+        isbn: newIsbn.trim() || undefined,
         why_this: newWhyThis.trim() || undefined,
         url: newUrl.trim() || undefined,
       })
-      setNewTitle('')
-      setNewAuthor('')
-      setNewIsbn('')
-      setNewWhyThis('')
-      setNewUrl('')
-      setNewBranchId('')
-      closeAddForm()
+      setNewTitle(''); setNewAuthor(''); setNewIsbn(''); setNewWhyThis(''); setNewUrl(''); setNewBranchId(''); closeAddForm()
     } catch (error) {
       setAddError(error instanceof Error ? error.message : 'The book could not be added. Your entries have been preserved.')
     } finally {
@@ -207,502 +225,316 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
     }
   }
 
-  return (
-    <div class="folio-library-view folio-books-view folio-books-sanctuary">
-      {/* Intro Header */}
-      <header class="books-view-header">
-        <div class="books-view-intro">
-          <p class="folio-kicker">Deliberate intake · Long-form reading</p>
-          <h1>Books</h1>
-          <p class="books-lede">
-            Chapter-aware reading companions, field reflections, and long-form study. Books move through intentional triage, deep reading sessions, and permanent consolidation.
-          </p>
-        </div>
+  const progress = primaryBook ? computeBookProgress(primaryBook) : null
+  const nextChapter = primaryBook ? bookNextChapter(primaryBook) : null
+  const readingComplete = Boolean(progress && progress.total > 0 && progress.finished >= progress.total)
+  const bookCounts = useMemo(() => books.reduce((counts, book) => {
+    counts[bookReadingState(book)] += 1
+    return counts
+  }, { saved: 0, reading: 0, finished: 0 }), [books])
+  const branchFacets = useMemo(() => {
+    const facets = new Map<string, { key: string; label: string; count: number; current: boolean }>()
+    for (const book of books) {
+      const key = bookBranchKey(book)
+      const existing = facets.get(key)
+      facets.set(key, {
+        key,
+        label: bookBranchLabel(book),
+        count: (existing?.count || 0) + 1,
+        current: Boolean(existing?.current || book.is_primary),
+      })
+    }
+    return [...facets.values()].sort((left, right) => Number(right.current) - Number(left.current) || left.label.localeCompare(right.label))
+  }, [books])
+  const canonFacets = useMemo(() => {
+    const facets = new Map<string, { key: string; label: string; count: number }>()
+    for (const book of books) {
+      const memberships = Array.isArray(book.canon_memberships) ? book.canon_memberships : []
+      for (const membership of memberships) {
+        const key = String(membership.domain_id || membership.domain_slug || membership.domain_title || '')
+        const label = String(membership.domain_title || '').trim()
+        if (!key || !label) continue
+        const existing = facets.get(key)
+        facets.set(key, { key, label, count: (existing?.count || 0) + 1 })
+      }
+    }
+    return [...facets.values()].sort((left, right) => left.label.localeCompare(right.label))
+  }, [books])
+  const filteredBooks = useMemo(() => {
+    const needle = bookSearch.trim().toLowerCase()
+    const currentBranchKey = primaryBook ? bookBranchKey(primaryBook) : ''
+    return [...books]
+      .filter((book) => bookFilter === 'all' || bookReadingState(book) === bookFilter)
+      .filter((book) => !selectedBranch || bookBranchKey(book) === selectedBranch)
+      .filter((book) => !selectedCanon || bookCanonKeys(book).includes(selectedCanon))
+      .filter((book) => !needle || bookSearchText(book).includes(needle))
+      .sort((left, right) => {
+        const branchPriority = Number(bookBranchKey(right) === currentBranchKey) - Number(bookBranchKey(left) === currentBranchKey)
+        if (branchPriority) return branchPriority
+        const branchDifference = bookBranchLabel(left).localeCompare(bookBranchLabel(right))
+        if (branchDifference) return branchDifference
+        const stateOrder: Record<BookState, number> = { reading: 0, saved: 1, finished: 2 }
+        const stateDifference = stateOrder[bookReadingState(left)] - stateOrder[bookReadingState(right)]
+        if (stateDifference) return stateDifference
+        const primaryDifference = Number(Boolean(right.is_primary)) - Number(Boolean(left.is_primary))
+        if (primaryDifference) return primaryDifference
+        return sourceTitle(left).localeCompare(sourceTitle(right))
+      })
+  }, [books, bookFilter, bookSearch, primaryBook, selectedBranch, selectedCanon])
+  const visibleBooks = useMemo(() => {
+    const branchBuckets = new Map<string, LibraryRecord[]>()
+    for (const book of filteredBooks) {
+      const key = bookBranchKey(book)
+      branchBuckets.set(key, [...(branchBuckets.get(key) || []), book])
+    }
+    const buckets = [...branchBuckets.values()]
+    const ordered: LibraryRecord[] = []
+    const positions = buckets.map(() => 0)
 
-        <div class="books-header-actions">
-          <button
-            ref={addButtonRef}
-            type="button"
-            class={`folio-button ${showAddForm ? 'folio-button-active' : 'folio-button-primary'}`}
-            onClick={() => showAddForm ? closeAddForm() : setShowAddForm(true)}
-            aria-expanded={showAddForm}
-            aria-controls="books-intake-drawer"
-          >
-            <Icon name="book" size={15} />
-            <span>{showAddForm ? 'Close intake' : 'Add a book'}</span>
-          </button>
-          <a
-            href="#/library?mode=catalog&focus=journal"
-            class="folio-button"
-            title="Open highlights & notes from KOReader via Hardcover"
-          >
-            <Icon name="rss" size={14} />
-            <span>Reading journal</span>
-          </a>
-        </div>
-      </header>
+    // Keep the leading branch useful while ensuring the first page previews the wider library.
+    const leadingCount = Math.min(4, buckets[0]?.length || 0)
+    if (buckets[0]) {
+      ordered.push(...buckets[0].slice(0, leadingCount))
+      positions[0] = leadingCount
+    }
+    while (ordered.length < filteredBooks.length) {
+      let added = false
+      for (let offset = 1; offset <= buckets.length; offset++) {
+        const index = offset % buckets.length
+        const book = buckets[index][positions[index]]
+        if (!book) continue
+        ordered.push(book)
+        positions[index] += 1
+        added = true
+      }
+      if (!added) break
+    }
+    return ordered.slice(0, visibleBookCount)
+  }, [filteredBooks, visibleBookCount])
+  const hiddenBookCount = Math.max(0, filteredBooks.length - visibleBooks.length)
+  const visibleBookGroups = useMemo(() => {
+    const groups = new Map<string, BookBranchGroup>()
+    for (const book of visibleBooks) {
+      const key = bookBranchKey(book)
+      const group: BookBranchGroup = groups.get(key) || {
+        key,
+        id: key.replace(/[^a-zA-Z0-9_-]/g, '-'),
+        representative: book,
+        books: [],
+        states: { reading: [], saved: [], finished: [] },
+      }
+      group.books.push(book)
+      group.states[bookReadingState(book)].push(book)
+      groups.set(key, group)
+    }
+    return [...groups.values()]
+  }, [visibleBooks])
 
-      <nav class="books-room-index" aria-label="Books page sections">
-        <a href="#books-reading-desk">Reading desk</a>
-        <a href="#books-library">My books</a>
-        <a href="#books-canon">Canon fields</a>
-      </nav>
+  const addBookButton = <button
+    ref={addButtonRef}
+    type="button"
+    class={`books-add-trigger ${showAddForm ? 'is-active' : ''}`}
+    onClick={() => showAddForm ? closeAddForm() : setShowAddForm(true)}
+    aria-expanded={showAddForm}
+    aria-controls="books-add-panel"
+  >
+    <Icon name={showAddForm ? 'close' : 'capture'} size={15}/>
+    <span>{showAddForm ? 'Close form' : 'Add a book'}</span>
+  </button>
 
-      {/* Add Book Intake Card */}
-      {showAddForm && (
-        <section id="books-intake-drawer" class="books-intake-drawer" aria-label="Add book form">
-          <div class="intake-drawer-head">
-            <div>
-              <h2>Add a volume to your library</h2>
-              <p>Clarify why this book earns attention before it becomes a commitment.</p>
-            </div>
-            <button
-              type="button"
-              class="intake-drawer-close"
-              onClick={closeAddForm}
-              aria-label="Close form"
-            >
-              <Icon name="close" size={16} />
-            </button>
-          </div>
-
-          <form class="books-form-body" onSubmit={handleAddSubmit}>
-            <div class="books-form-grid" aria-describedby={addError ? 'books-add-error' : undefined}>
-              <label class="folio-form-field">
-                <span>Book Title <em>*</em></span>
-                <input
-                  ref={addTitleRef}
-                  type="text"
-                  value={newTitle}
-                  onInput={(e) => setNewTitle((e.currentTarget as HTMLInputElement).value)}
-                  placeholder="e.g. The Structure of Scientific Revolutions"
-                  required
-                />
-              </label>
-
-              <label class="folio-form-field">
-                <span>Author <em>*</em></span>
-                <input
-                  type="text"
-                  value={newAuthor}
-                  onInput={(e) => setNewAuthor((e.currentTarget as HTMLInputElement).value)}
-                  placeholder="e.g. Thomas S. Kuhn"
-                  required
-                />
-              </label>
-
-              <label class="folio-form-field">
-                <span>Knowledge branch <em>*</em></span>
-                <select value={newBranchId} onChange={(event) => setNewBranchId((event.currentTarget as HTMLSelectElement).value)} required disabled={branchDeck.loading || !branchOptions.length}>
-                  <option value="">{branchDeck.loading ? 'Loading branches…' : branchOptions.length ? 'Choose the book’s branch' : 'No active branches available'}</option>
-                  {branchOptions.map((branch) => <option value={String(branch.id)} key={String(branch.id)}>{branch.label || branch.id} · {branch.round_label || branch.round || 'R1'}</option>)}
-                </select>
-              </label>
-            </div>
-
-            {branchDeck.error && <p class="folio-inline-warning" role="alert">Branches could not be loaded. Retry the page before adding a book.</p>}
-            {addError && <p id="books-add-error" class="folio-inline-warning" role="alert">{addError}</p>}
-
-            <details class="books-optional-fields">
-              <summary>Optional book details</summary>
-              <div class="books-form-grid">
-                <label class="folio-form-field">
-                  <span>ISBN / Standard Number</span>
-                  <input type="text" value={newIsbn} onInput={(e) => setNewIsbn((e.currentTarget as HTMLInputElement).value)} placeholder="10 or 13-digit ISBN" />
-                </label>
-                <label class="folio-form-field">
-                  <span>Original book link</span>
-                  <input type="url" value={newUrl} onInput={(e) => setNewUrl((e.currentTarget as HTMLInputElement).value)} placeholder="https://books.google.com/..." />
-                </label>
-                <label class="folio-form-field field-full">
-                  <span>Why read this?</span>
-                  <textarea rows={2} value={newWhyThis} onInput={(e) => setNewWhyThis((e.currentTarget as HTMLTextAreaElement).value)} placeholder="The question, problem, or branch focus this book serves" />
-                </label>
-              </div>
-            </details>
-
-            <div class="intake-drawer-actions">
-              <button
-                type="submit"
-                class="folio-button folio-button-primary"
-                disabled={isSubmitting || !newTitle.trim() || !newAuthor.trim() || !newBranchId}
-              >
-                {isSubmitting ? 'Adding book…' : 'Save volume'}
-              </button>
-              <button
-                type="button"
-                class="folio-button"
-                onClick={closeAddForm}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </section>
-      )}
-
-      {/* Currently Immersed Spotlight Banner */}
-      <section id="books-reading-desk" class="books-active-spotlight" aria-labelledby="books-reading-title">
-          <div class="active-spotlight-heading">
-            <h2 id="books-reading-title">Reading desk</h2>
-          </div>
-
-          <div class="active-spotlight-list">
-            {readingBooks.slice(0, 1).map((book: LibraryRecord) => {
-              const accent = getBookAccent(sourceTitle(book))
-              const progress = computeBookProgress(book)
-              const nextChapter = bookNextChapter(book)
-              const original = sourceLink(book)
-              const nextUrl = chapterCompanionUrl(nextChapter) || (nextChapter ? original : null)
-              const nextCopy = chapterActionCopy(book, nextChapter)
-              const branchInfo = formatBranchPill(book.branch)
-
-              return (
-                <div class="active-spotlight-card" key={book.id}>
-                  <div
-                    class="spotlight-initials-cover"
-                    style={{ backgroundColor: accent, color: 'var(--studio-action-ink)' }}
-                  >
-                    <span>{getInitials(sourceTitle(book), sourceCreator(book))}</span>
-                  </div>
-
-                  <div class="spotlight-content">
-                    <div class="spotlight-meta-row">
-                      <span class="spotlight-author">{sourceCreator(book)}</span>
-                      {branchInfo && branchInfo.linkable ? (
-                        <a
-                          class="book-branch-badge"
-                          href={`#/map/branch/${encodeURIComponent(String(book.branch?.id || branchInfo.label))}`}
-                        >
-                          <Icon name="branch" size={11} />
-                          <span class="branch-text">{branchInfo.label}</span>
-                          {branchInfo.round && <span class="branch-round-text">{branchInfo.round}</span>}
-                        </a>
-                      ) : branchInfo ? <span class="book-branch-badge is-unverified"><Icon name="branch" size={11} />Unverified · {branchInfo.label}</span> : null}
-                      <CanonMembershipTags book={book} className="book-canon-badge" />
-                    </div>
-
-                    <h2 class="spotlight-book-title">
-                      <a href={objectHref('book', String(book.id))}>{sourceTitle(book)}</a>
-                    </h2>
-
-                    {book.why_this && <p class="spotlight-why-quote">“{book.why_this}”</p>}
-
-                    {progress.total > 0 && (
-                      <div class="spotlight-progress-meter">
-                        <div class="progress-meter-info">
-                          <span>{progress.finished} of {progress.total} chapters complete</span>
-                          <strong>{progress.percent}%</strong>
-                        </div>
-                        <div class="progress-meter-track" role="progressbar" aria-label={`${sourceTitle(book)} chapter progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent}>
-                          <div class="progress-meter-fill" style={{ width: `${progress.percent}%` }} />
-                        </div>
-                        {nextChapter && (
-                          <div class="spotlight-next-chapter">
-                            <span>Up next: </span>
-                            <strong>
-                              {nextChapter.number ? `${nextChapter.number}. ` : ''}
-                              {nextChapter.title}
-                            </strong>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div class="spotlight-actions-bar">
-                      {nextUrl && nextCopy ? (
-                        <a
-                          class="folio-button folio-button-primary"
-                          href={nextUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <Icon name="source" size={14} />
-                          <span>{nextCopy}</span>
-                        </a>
-                      ) : original ? (
-                        <a
-                          class="folio-button folio-button-primary"
-                          href={original}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <Icon name="external" size={14} />
-                          <span>Open original book</span>
-                        </a>
-                      ) : (
-                        <a class="folio-button folio-button-primary" href={objectHref('book', String(book.id))}>Open book record</a>
-                      )}
-
-                      <a class="folio-button" href={objectHref('book', String(book.id))}>
-                        <Icon name="note" size={14} />
-                        <span>Book details</span>
-                      </a>
-                    </div>
-                    <p class="folio-action-note">Opening a chapter or original is passive. Queue is {bookQueueState(book) === 'queued' || bookQueueState(book) === 'in_progress' ? formatStatus(bookQueueState(book)) : 'not tracking this book'}.</p>
-                  </div>
-                </div>
-              )
-            })}
-            {!readingBooks.length && <Empty title="No book is marked Reading now" body="Choose Reading now from a book’s personal state controls. Queue remains a separate commitment." />}
-          </div>
-        </section>
-
-      {/* Book Records Grid / Ledger */}
-      <section id="books-library" class="books-library-section" aria-labelledby="my-books-title">
-        <header class="books-library-heading">
-          <div><p class="folio-kicker">Your durable reading record</p><h2 id="my-books-title">My books</h2></div>
-          <span>{filteredBooks.length} {filteredBooks.length === 1 ? 'book' : 'books'}</span>
-        </header>
-
-        {/* Reading-status summary */}
-        <section class="books-stats-shelf" aria-label="Reading status overview">
-          <div class="books-shelf-nav-pills" role="group" aria-label="Filter My books by reading status">
-            <button
-              type="button"
-              aria-pressed={activeShelf === 'all'}
-              class={`books-shelf-pill ${activeShelf === 'all' ? 'is-active' : ''}`}
-              onClick={() => setActiveShelf('all')}
-            >
-              <span class="pill-title">All books</span>
-              <span class="pill-badge">{stats.totalBooks}</span>
-            </button>
-
-            <button
-              type="button"
-              aria-pressed={activeShelf === 'reading'}
-              class={`books-shelf-pill ${activeShelf === 'reading' ? 'is-active' : ''}`}
-              onClick={() => setActiveShelf('reading')}
-            >
-              <span class="pill-title">
-                {stats.readingCount > 0 && <span class="active-dot" />}
-                Reading now
-              </span>
-              <span class={`pill-badge ${stats.readingCount > 0 ? 'badge-reading' : ''}`}>
-                {stats.readingCount}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              aria-pressed={activeShelf === 'toread'}
-              class={`books-shelf-pill ${activeShelf === 'toread' ? 'is-active' : ''}`}
-              onClick={() => setActiveShelf('toread')}
-            >
-              <span class="pill-title">Saved</span>
-              <span class="pill-badge">{stats.toReadCount}</span>
-            </button>
-
-            <button
-              type="button"
-              aria-pressed={activeShelf === 'finished'}
-              class={`books-shelf-pill ${activeShelf === 'finished' ? 'is-active' : ''}`}
-              onClick={() => setActiveShelf('finished')}
-            >
-              <span class="pill-title">Finished</span>
-              <span class={`pill-badge ${stats.finishedCount > 0 ? 'badge-finished' : ''}`}>
-                {stats.finishedCount}
-              </span>
-            </button>
-          </div>
-        </section>
-
-        {/* Filter Toolbar & Search */}
-        <div class="books-filter-toolbar">
-          <div class="books-search-wrapper">
-            <Icon name="search" size={15} />
-            <input
-              type="search"
-              value={searchQuery}
-              onInput={(e) => setSearchQuery((e.currentTarget as HTMLInputElement).value)}
-              placeholder="Search books by title, author, or branch…"
-              aria-label="Filter books"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                class="books-search-clear"
-                onClick={() => setSearchQuery('')}
-                aria-label="Clear search"
-              >
-                ×
-              </button>
-            )}
-          </div>
-
-          <div class="books-view-controls">
-            <output class="books-results-count" aria-live="polite">
-              <strong>{filteredBooks.length}</strong> {filteredBooks.length === 1 ? 'book' : 'books'}
-            </output>
-          </div>
-        </div>
-
-        {filteredBooks.length ? <>
-            <div class="books-responsive-ledger" aria-label="Book ledger">
-              {visibleBooks.map((book: LibraryRecord) => (
-                <BookLedgerItem
-                  key={book.id}
-                  book={book}
-                  isExpanded={expandedBookId === String(book.id)}
-                  onToggleExpand={() =>
-                    setExpandedBookId(expandedBookId === String(book.id) ? null : String(book.id))
-                  }
-                  onOpenChapterModal={() => setChapterModalBook(book)}
-                  handlers={handlers}
-                />
-              ))}
-            </div>
-            {visibleCount < filteredBooks.length && <div class="books-load-more"><button type="button" class="folio-button" onClick={() => setVisibleCount((count) => count + 12)}>Show 12 more</button><span aria-live="polite">Showing {Math.min(visibleCount, filteredBooks.length)} of {filteredBooks.length} books</span></div>}
-          </> : (
-          <Empty
-            title={searchQuery ? 'No matching books found' : activeShelf === 'reading' ? 'No books currently being read' : activeShelf === 'finished' ? 'No finished books recorded yet' : 'No books saved yet'}
-            body={searchQuery ? 'Try another search query or clear the filter.' : activeShelf === 'reading' ? 'Add the book to Queue when it is ready for a tracked reading session.' : 'Add books with chapters to track deep reading and companion extraction.'}
-          />
-        )}
-      </section>
-
-      <LearnCanonView integrated searchQuery={searchQuery} onClearSearch={() => setSearchQuery('')} />
-
-      {/* Chapter Breakdown Modal */}
-      {chapterModalBook && (
-        <ChapterManagerDialog
-          book={chapterModalBook}
-          onClose={() => setChapterModalBook(null)}
-          onSaved={() => {
-            setChapterModalBook(null)
-            handlers.onReload?.()
-          }}
-        />
-      )}
-
-      {handlers.notice && <p class="folio-action-status" role="status">{handlers.notice}</p>}
+  return <div class="folio-books-view books-reading-fold books-room">
+    <div class="folio-view-intro">
+      <div>
+        <p class="folio-kicker">Library and reading desk</p>
+        <h1>Books</h1>
+        <p>Current reading desk, personal book collection, and canon memberships.</p>
+      </div>
     </div>
-  )
-}
-
-function BookLedgerItem({
-  book,
-  isExpanded,
-  onToggleExpand,
-  onOpenChapterModal,
-  handlers,
-}: {
-  book: LibraryRecord
-  isExpanded: boolean
-  onToggleExpand: () => void
-  onOpenChapterModal: () => void
-  handlers: LibraryViewHandlers
-}) {
-  const accent = getBookAccent(sourceTitle(book))
-  const progress = computeBookProgress(book)
-  const chapters = bookChapters(book)
-  const nextChapter = bookNextChapter(book)
-  const nextUrl = chapterCompanionUrl(nextChapter) || sourceLink(book)
-  const nextCopy = nextChapter ? chapterActionCopy(book, nextChapter) : (nextUrl ? 'Open original book' : null)
-  const isInbox = bookQueueState(book) === 'captured' && String(book.status || '') === 'active'
-  const isReading = bookReadingState(book) === 'reading'
-  const canDeletePermanently = String(book.status || '') !== 'active'
-  const isDeleting = handlers.busyId === `permanent-delete:${book.id}`
-  const branchInfo = formatBranchPill(book.branch)
-
-  return (
-    <article class={`book-ledger-row ${isReading ? 'is-reading-row' : ''}`}>
-      <div class="ledger-row-content">
-        <div
-          class="ledger-avatar"
-          style={{ backgroundColor: accent, color: 'var(--studio-action-ink)' }}
-        >
-          <span>{getInitials(sourceTitle(book), sourceCreator(book))}</span>
-        </div>
-
-        <div class="ledger-main-info">
-          <div class="ledger-author-line">
-            <span class="ledger-author-text">{sourceCreator(book)}</span>
-            <span class="ledger-state-tag">{bookReadingState(book) === 'reading' ? 'Reading now' : formatStatus(bookReadingState(book))}</span>
-            {branchInfo && (
-              <span class={`ledger-branch-tag ${branchInfo.linkable ? '' : 'is-unverified'}`}>
-                {!branchInfo.linkable && 'Unverified · '}
-                {branchInfo.label} {branchInfo.round ? `· ${branchInfo.round}` : ''}
-              </span>
-            )}
-            <CanonMembershipTags book={book} className="ledger-canon-tag" />
+    {primaryBook ? <section id="books-reading-desk" class="reading-fold-current books-current-desk" aria-labelledby="current-book-title">
+      <div class="reading-fold-current-head">
+        <div class="reading-fold-head-main">
+          <div class="reading-fold-status-line">
+            <span class="reading-fold-status"><Icon name="pin" size={12}/>Current Book</span>
           </div>
-
-          <h3 class="ledger-title-text">
-            <a href={objectHref('book', String(book.id))}>{sourceTitle(book)}</a>
-          </h3>
-
-          {book.why_this && <p class="ledger-why-text">{book.why_this}</p>}
+          <h2 id="current-book-title"><a href={objectHref('book', String(primaryBook.id))}>{sourceTitle(primaryBook)}</a></h2>
+          <p class="reading-fold-author">{sourceCreator(primaryBook)}</p>
         </div>
-
-        <div class="ledger-progress-col">
-          {progress.total ? (
-            <div class="ledger-progress-readout">
-              <strong>{progress.percent}%</strong>
-              <small>{progress.finished}/{progress.total} chs</small>
-            </div>
-          ) : (
-            <span class="ledger-empty-chs">0 chapters</span>
-          )}
-        </div>
-
-        <div class="ledger-actions-col">
-          <label class="book-reading-state-control">
-            <span>Personal state</span>
-            <select value={bookReadingState(book)} onChange={(event) => handlers.onSetBookReadingState(book, (event.currentTarget as HTMLSelectElement).value as 'saved' | 'reading' | 'finished')} disabled={handlers.busyId === `reading-state:${book.id}`} aria-label={`Personal reading state for ${sourceTitle(book)}`}>
-              <option value="saved">Saved</option>
-              <option value="reading">Reading now</option>
-              <option value="finished">Finished</option>
-            </select>
-          </label>
-          {nextUrl && nextCopy && <a class="folio-button folio-button-primary folio-btn-sm" href={nextUrl} target="_blank" rel="noreferrer">{nextCopy}</a>}
-          {isInbox && (
-            <button
-              type="button"
-              class="folio-button folio-button-primary folio-btn-sm"
-              onClick={() => handlers.onQueue(book)}
-              disabled={handlers.busyId === book.id}
-            >
-              Queue
-            </button>
-          )}
-
-          <button
-            type="button"
-            class="folio-button folio-btn-sm"
-            onClick={onToggleExpand}
-            aria-expanded={isExpanded}
-            aria-controls={`book-ledger-chapters-${book.id}`}
-          >
-            {isExpanded ? 'Hide' : `${chapters.length} Chs`}
-          </button>
-
-          <a class="folio-button folio-btn-sm" href={objectHref('book', String(book.id))}>
-            Book details
-          </a>
-
-          {canDeletePermanently && (
-            <button
-              type="button"
-              class="folio-btn-quiet-trash"
-              onClick={() => handlers.onDeleteRecommendationPermanently(book)}
-              disabled={isDeleting}
-              title="Delete book"
-              aria-label={`Delete ${sourceTitle(book)} permanently`}
-            >
-              <Icon name="trash" size={14} />
-            </button>
-          )}
+        <div class="reading-fold-head-side">
+          <a class="reading-fold-overview-link" href={objectHref('book', String(primaryBook.id))}>Open book overview</a>
         </div>
       </div>
 
-      {isExpanded && (
-        <div id={`book-ledger-chapters-${book.id}`} class="ledger-expanded-content">
-          <BookChapterRows book={book} handlers={handlers} onEdit={onOpenChapterModal} />
+      {progress && progress.total > 0 && <div class="reading-fold-progress">
+        <div class="reading-fold-progress-meta">
+          <span>{progress.finished} of {progress.total} chapters completed</span>
+          <strong>{progress.percent}%</strong>
         </div>
-      )}
-    </article>
-  )
+        <div class="reading-fold-progress-track" role="progressbar" aria-label={`${sourceTitle(primaryBook)} reading progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent}>
+          <span style={{ width: `${progress.percent}%` }}/>
+        </div>
+      </div>}
+
+      <BookKnowledgeContext book={primaryBook}/>
+
+      {nextChapter ? <section class={`reading-fold-next ${readingComplete ? 'is-reading-complete' : ''}`} aria-labelledby="next-chapter-title">
+        <div class="reading-fold-next-info">
+          <span class="reading-fold-next-kicker">{readingComplete ? 'Reading complete' : 'Up next to read'}</span>
+          <h3 id="next-chapter-title">{readingComplete ? `All ${progress?.total || 0} chapters finished` : <>{nextChapter.number ? `${nextChapter.number}. ` : ''}{nextChapter.title}</>}</h3>
+        </div>
+        <div class="reading-fold-next-actions">
+          <ReadingFormatLinks book={primaryBook} chapter={nextChapter}/>
+          <button
+            type="button"
+            class={`reading-fold-done ${nextChapter.completed ? 'is-completed' : ''}`}
+            onClick={() => handlers.onCompleteChapter(primaryBook, nextChapter)}
+            disabled={handlers.busyId === `${primaryBook.id}:${nextChapter.key}`}
+            aria-busy={handlers.busyId === `${primaryBook.id}:${nextChapter.key}`}
+          >
+            <Icon name={nextChapter.completed ? 'back' : 'check'} size={15}/>
+            <span>{handlers.busyId === `${primaryBook.id}:${nextChapter.key}` ? 'Saving…' : nextChapter.completed ? (readingComplete ? 'Reopen final chapter' : 'Reopen chapter') : 'Mark finished'}</span>
+          </button>
+        </div>
+      </section> : <div class="reading-fold-next reading-fold-next-empty">
+        <div class="reading-fold-next-info">
+          <span class="reading-fold-next-kicker">Status</span>
+          <h3 id="next-chapter-title">No chapters registered yet</h3>
+          <p class="reading-fold-empty-hint">Add chapter breakdown to track reading and attach companions.</p>
+        </div>
+        <a class="reading-fold-overview-link" href={objectHref('book', String(primaryBook.id))}>
+          <span>Open book overview</span>
+          <Icon name="chevron" size={14}/>
+        </a>
+      </div>}
+
+      {primaryBook && bookChapters(primaryBook).length > 0 && <details class="reading-fold-chapter-disclosure">
+        <summary>
+          <div class="reading-fold-summary-label">
+            <Icon name="book" size={15}/>
+            <span>All chapters</span>
+          </div>
+          <span class="reading-fold-summary-side"><small>{bookChapters(primaryBook).length} chapters</small><Icon name="chevron" size={15} class="disclosure-chevron"/></span>
+        </summary>
+        <div class="reading-fold-disclosure-content"><BookChapterRows book={primaryBook} handlers={handlers}/></div>
+      </details>}
+    </section> : <section class="reading-fold-empty" aria-labelledby="choose-current-title">
+      <Icon name="book" size={24}/>
+      <h2 id="choose-current-title">{books.length ? 'Choose a current book' : 'Add your first book'}</h2>
+      <p>{books.length ? 'Make a title current from My Books to activate the reading desk.' : 'Save one title to create your reading desk and chapter ledger.'}</p>
+      {!books.length && addBookButton}
+    </section>}
+
+    <div class="books-room-workspaces">
+      <section id="books-library" class="reading-fold-library books-library-panel" aria-labelledby="my-books-heading">
+          <div class="reading-fold-library-content">
+          <div class="reading-fold-library-topline">
+            <span id="my-books-heading"><strong>My books</strong><small>{bookCounts.reading} reading · {bookCounts.saved} saved · {bookCounts.finished} finished</small></span>
+            {!showAddForm && Boolean(books.length) && addBookButton}
+          </div>
+
+        {showAddForm && <section id="books-add-panel" class="books-add-panel" aria-labelledby="books-add-title">
+          <header><div><p class="folio-object-kicker">New personal book</p><h3 id="books-add-title">Add a book</h3></div><button type="button" onClick={closeAddForm} aria-label="Close add book form"><Icon name="close" size={16}/></button></header>
+          <form onSubmit={handleAddSubmit} aria-describedby={branchDeck.error || addError ? 'books-add-errors' : undefined}>
+            <div class="reading-fold-add-grid">
+              <label>Title<input ref={addTitleRef} value={newTitle} onInput={(event) => setNewTitle((event.currentTarget as HTMLInputElement).value)} required/></label>
+              <label>Author<input value={newAuthor} onInput={(event) => setNewAuthor((event.currentTarget as HTMLInputElement).value)} required/></label>
+              <label>Branch<select value={newBranchId} onChange={(event) => setNewBranchId((event.currentTarget as HTMLSelectElement).value)} required disabled={branchDeck.loading || !branchOptions.length}><option value="">{branchDeck.loading ? 'Loading branches…' : branchOptions.length ? 'Choose a branch' : 'No active branches available'}</option>{branchOptions.map((branch) => <option value={String(branch.id)} key={String(branch.id)}>{branch.label}{branch.category_label ? ` · ${branch.category_label}` : ''}</option>)}</select></label>
+              <label>ISBN <span>optional</span><input value={newIsbn} onInput={(event) => setNewIsbn((event.currentTarget as HTMLInputElement).value)}/></label>
+              <label class="reading-fold-add-wide">Book URL <span>optional</span><input type="url" value={newUrl} onInput={(event) => setNewUrl((event.currentTarget as HTMLInputElement).value)}/></label>
+              <label class="reading-fold-add-wide">Why save it? <span>optional</span><textarea value={newWhyThis} onInput={(event) => setNewWhyThis((event.currentTarget as HTMLTextAreaElement).value)}/></label>
+            </div>
+            {(branchDeck.error || addError) && <div id="books-add-errors" class="reading-fold-form-errors" role="alert">
+              {branchDeck.error && <p class="reading-fold-form-error">Branches could not be loaded. Retry before adding this book.</p>}
+              {addError && <p class="reading-fold-form-error">{addError}</p>}
+            </div>}
+            <div class="reading-fold-add-actions"><button type="submit" disabled={isSubmitting || !newTitle.trim() || !newAuthor.trim() || !newBranchId}>{isSubmitting ? 'Saving…' : 'Save book'}</button><button type="button" onClick={closeAddForm}>Cancel</button></div>
+          </form>
+        </section>}
+
+        <div class="books-library-toolbar">
+          <div class="books-library-search-wrap">
+            <Icon name="search" size={15} class="books-library-search-icon"/>
+            <input class="books-library-search" type="search" value={bookSearch} onInput={(event) => setBookSearch((event.currentTarget as HTMLInputElement).value)} aria-label="Search My Books" placeholder="Search title, author, branch, Canon, or Thread…"/>
+            {bookSearch && <button type="button" onClick={() => setBookSearch('')} aria-label="Clear My Books search"><Icon name="close" size={14}/></button>}
+          </div>
+          <div class="books-library-controls">
+            <div class="books-library-filters" role="group" aria-label="Filter My Books by reading status">
+              {([
+                ['all', 'All', books.length],
+                ['reading', 'Reading', bookCounts.reading],
+                ['saved', 'Saved', bookCounts.saved],
+                ['finished', 'Finished', bookCounts.finished],
+              ] as Array<[BookFilter, string, number]>).map(([key, label, count]) => <button type="button" class={`books-library-filter ${bookFilter === key ? 'is-active' : ''}`} aria-pressed={bookFilter === key} onClick={() => setBookFilter(key)} key={key}><span>{label}</span><small>{count}</small></button>)}
+            </div>
+            <button type="button" class={`books-library-facet-toggle ${showBookFacets ? 'is-active' : ''}`} aria-expanded={showBookFacets} aria-controls="books-library-facets" onClick={() => setShowBookFacets((open) => !open)}>
+              <Icon name="branch" size={14}/><span>Branches &amp; Canon</span>{(selectedBranch || selectedCanon) && <small>{Number(Boolean(selectedBranch)) + Number(Boolean(selectedCanon))}</small>}<Icon name="chevron" size={13} class={showBookFacets ? 'is-up' : ''}/>
+            </button>
+          </div>
+        </div>
+
+        {showBookFacets && <div id="books-library-facets" class="books-library-facet-panel">
+          <div class="books-library-facet-group" role="group" aria-label="Filter My Books by branch">
+            <strong>Branches</strong>
+            <div><button type="button" class={!selectedBranch ? 'is-active' : ''} aria-pressed={!selectedBranch} onClick={() => setSelectedBranch('')}>Any branch</button>{branchFacets.map((facet) => <button type="button" class={selectedBranch === facet.key ? 'is-active' : ''} aria-pressed={selectedBranch === facet.key} onClick={() => setSelectedBranch(selectedBranch === facet.key ? '' : facet.key)} key={facet.key}><span>{facet.label}</span><small>{facet.count}</small></button>)}</div>
+          </div>
+          <div class="books-library-facet-group" role="group" aria-label="Filter My Books by Canon field">
+            <strong>Canon fields</strong>
+            <div><button type="button" class={!selectedCanon ? 'is-active' : ''} aria-pressed={!selectedCanon} onClick={() => setSelectedCanon('')}>Any field</button>{canonFacets.map((facet) => <button type="button" class={selectedCanon === facet.key ? 'is-active' : ''} aria-pressed={selectedCanon === facet.key} onClick={() => setSelectedCanon(selectedCanon === facet.key ? '' : facet.key)} key={facet.key}><span>{facet.label}</span><small>{facet.count}</small></button>)}</div>
+          </div>
+        </div>}
+
+        <div class="books-library-results" aria-live="polite">
+          <span>{filteredBooks.length} {filteredBooks.length === 1 ? 'title' : 'titles'}</span>
+          {(bookSearch || bookFilter !== 'all' || selectedBranch || selectedCanon) && <button type="button" onClick={() => { setBookSearch(''); setBookFilter('all'); setSelectedBranch(''); setSelectedCanon('') }}>Reset filters</button>}
+        </div>
+
+        <div class="books-library-list" aria-label="My Books results">
+          {visibleBookGroups.map((group) => <section class="books-library-branch-group" aria-label={`${bookBranchLabel(group.representative)} books`} key={group.key}>
+            <header class="books-library-branch-heading">
+              <BookBranchPill book={group.representative} className="books-library-group-branch-pill"/>
+              <small>{group.books.length} {group.books.length === 1 ? 'title' : 'titles'} shown</small>
+            </header>
+            <div class="books-library-branch-bands">
+              {BOOK_STATE_ORDER.map((state) => group.states[state].length ? <section class={`books-library-state-band state-${state}`} aria-labelledby={`books-${group.id}-${state}`} key={state}>
+                <header class="books-library-state-heading">
+                  <strong id={`books-${group.id}-${state}`}>{BOOK_STATE_LABELS[state]}</strong>
+                  <span>{group.states[state].length}</span>
+                </header>
+                {group.states[state].map((book) => {
+                  const isPrimary = String(book.id) === String(primaryBook?.id || '')
+                  const titleId = `books-library-title-${String(book.id).replace(/[^a-zA-Z0-9_-]/g, '-')}`
+                  return <article class={`books-library-row ${isPrimary ? 'is-primary' : ''}`} data-state={state} aria-labelledby={titleId} key={String(book.id)}>
+                    <div class="books-library-row-copy">
+                      <h3 id={titleId}><a href={objectHref('book', String(book.id))}>{sourceTitle(book)}</a></h3>
+                      <div class="books-library-row-meta">
+                        <p>{sourceCreator(book)} · {formatStatus(state)}</p>
+                        <BookBranchPill book={book} className="books-library-branch-pill"/>
+                      </div>
+                    </div>
+                    <div class="books-library-row-action">
+                      {isPrimary ? <span class="reading-fold-current-mark"><Icon name="pin" size={13}/>Current</span> : <button class="books-library-primary-action" type="button" aria-label={`Make ${sourceTitle(book)} the current book`} title="Make current" onClick={() => handlers.onSetBookReadingState(book, 'reading', true)} disabled={handlers.busyId === `reading-state:${book.id}`}><Icon name="pin" size={14}/><span>Make current</span></button>}
+                    </div>
+                  </article>
+                })}
+              </section> : null)}
+            </div>
+          </section>)}
+          {!filteredBooks.length && <div class="books-library-empty"><Icon name="search" size={24}/><h3>{books.length ? 'No matching books' : 'No books saved yet'}</h3><p>{books.length ? 'Try another title, author, branch, or reading state.' : 'Add a book with a verified branch to begin your personal reading record.'}</p></div>}
+        </div>
+
+        {filteredBooks.length > BOOK_PAGE_SIZE && <div class="books-library-pagination">
+          {hiddenBookCount > 0 ? <button type="button" class="books-library-more" onClick={() => setVisibleBookCount((count) => Math.min(filteredBooks.length, count + BOOK_PAGE_SIZE))}><span>Show {Math.min(BOOK_PAGE_SIZE, hiddenBookCount)} more books</span><Icon name="chevron" size={15}/></button> : <button type="button" class="books-library-more" onClick={() => setVisibleBookCount(BOOK_PAGE_SIZE)}><span>Show fewer books</span><Icon name="chevron" size={15} class="is-up"/></button>}
+          <small>Showing {visibleBooks.length} of {filteredBooks.length}</small>
+        </div>}
+        </div>
+      </section>
+
+      <div class="reading-fold-canon">
+        <LearnCanonView integrated searchQuery={bookSearch} onClearSearch={() => setBookSearch('')}/>
+      </div>
+    </div>
+
+    {handlers.notice && <p class="reading-fold-notice" role="status">{handlers.notice}</p>}
+  </div>
 }
 
 export function BookChapterRows({
@@ -734,66 +566,21 @@ export function BookChapterRows({
       {chapters.map((chapter: LibraryRecord, index: number) => {
         const isDone = Boolean(chapter.completed || chapter.completed_at)
         const isBusy = handlers.busyId === `${book.id}:${chapter.key}`
-        const htmlArtifact = chapter.html
-        const pdfArtifact = chapter.pdf
 
         return (
           <div class={`chapter-item-row ${isDone ? 'is-completed' : ''}`} key={chapter.key || index}>
             <div class="chapter-item-left">
-              <button
-                type="button"
-                class={`chapter-checkbox-btn ${isDone ? 'is-done' : ''}`}
-                onClick={() => handlers.onCompleteChapter(book, chapter)}
-                disabled={isBusy}
-                title={isDone ? 'Mark as unread' : 'Mark as finished'}
-                aria-label={`${isDone ? 'Mark as unread' : 'Mark as finished'}: ${chapter.title}`}
-                aria-pressed={isDone}
-              >
-                {isDone ? <Icon name="check" size={13} /> : null}
-              </button>
-
+              <span class={`chapter-read-mark ${isDone ? 'is-done' : ''}`} aria-label={isDone ? 'Completed' : 'Unread'}>{isDone && <Icon name="check" size={11}/>}</span>
+              <span class="chapter-item-number">{String(chapter.number || index + 1).padStart(2, '0')}</span>
               <div class="chapter-item-info">
-                <span class="chapter-title-heading">
-                  {chapter.number ? `${chapter.number}. ` : ''}
-                  {chapter.title}
-                </span>
-                <span class="chapter-sub-meta">
-                  {isDone ? (
-                    <span class="meta-done">
-                      Finished {chapter.completed_at ? `· ${formatDate(chapter.completed_at)}` : ''}
-                    </span>
-                  ) : (
-                    <span class="meta-unread">Unread</span>
-                  )}
-                </span>
+                <span class="chapter-title-heading">{chapter.title}</span>
+                {isDone && chapter.completed_at && <span class="chapter-sub-meta"><span class="meta-done">Finished · {formatDate(chapter.completed_at)}</span></span>}
               </div>
             </div>
 
             <div class="chapter-item-actions">
-              {htmlArtifact && (
-                <a
-                  class="folio-file-badge folio-badge-html"
-                  href={artifactLink(htmlArtifact)}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="Read Arabic HTML companion"
-                >
-                  <span class="badge-format">Read HTML</span>
-                </a>
-              )}
-
-              {pdfArtifact && (
-                <a
-                  class="folio-file-badge folio-badge-pdf"
-                  href={artifactLink(pdfArtifact)}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="Download A4 PDF companion"
-                >
-                  <span class="badge-format">PDF</span>
-                </a>
-              )}
-
+              <ReadingFormatLinks book={book} chapter={chapter}/>
+              <button type="button" class={`chapter-row-done ${isDone ? 'is-completed' : ''}`} onClick={() => handlers.onCompleteChapter(book, chapter)} disabled={isBusy} aria-busy={isBusy}>{isBusy ? 'Saving…' : isDone ? 'Reopen' : 'Mark done'}</button>
             </div>
           </div>
         )

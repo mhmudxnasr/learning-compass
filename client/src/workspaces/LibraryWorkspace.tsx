@@ -6,22 +6,18 @@ import { useRoute } from '../app/router'
 import { routeHref as canonicalRouteHref } from '../app/router'
 import { processArtifact, startLearningSession, triageCapture } from './library/actions'
 import {
-  AllSourcesView,
   ArchiveView,
   BooksView,
-  CollectionsView,
   FeedsView,
   FilesView,
   ObjectRouteView,
   QueueView,
   type LibraryViewHandlers,
 } from './library/LibraryViews'
-import { HardcoverJournalView } from './library/HardcoverJournalView'
 import {
   asView,
   artifactSelection,
   bookSelection,
-  collectionSelection,
   listFrom,
   objectHref,
   sourceSelection,
@@ -38,16 +34,12 @@ function endpointFor(view: string, objectType?: string, objectId?: string) {
     const id = encodeURIComponent(objectId)
     if (objectType === 'source' || objectType === 'book') return `/capture/${id}/record`
     if (objectType === 'artifact') return '/artifacts'
-    if (objectType === 'collection') return '/collections'
   }
   switch (asView(view)) {
     case 'feeds': return '/capture/feeds'
-    case 'all': return '/recommendations/list?limit=200'
     case 'files': return '/artifacts'
     case 'books': return '/recommendations/books'
-    case 'journal': return '/hardcover'
-    case 'collections': return '/collections'
-    case 'archive': return '/recommendations/list?limit=200&source=manual'
+    case 'archive': return '/recommendations/list?limit=200&source=manual&status=archived'
     default: return '/capture/queue'
   }
 }
@@ -64,49 +56,42 @@ function actionMessage(error: unknown) {
 function selectionFor(type: LibraryObjectType, item: LibraryRecord): LibrarySelection {
   if (type === 'artifact') return artifactSelection(item)
   if (type === 'book') return bookSelection(item)
-  if (type === 'collection') return collectionSelection(item)
   return sourceSelection(item)
 }
 
 function objectItem(type: LibraryObjectType, data: LibraryRecord, objectId: string) {
   if (type === 'source' || type === 'book') return data.item || listFrom<LibraryRecord>(data, 'books').find((item) => String(item.id) === objectId) || null
   if (type === 'artifact') return listFrom<LibraryRecord>(data, 'artifacts').find((item) => String(item.id) === objectId) || null
-  if (type === 'collection') return listFrom<LibraryRecord>(data, 'collections').find((item) => String(item.id) === objectId) || null
   return null
 }
 
-type LibraryPrimaryMode = 'triage' | 'catalog' | 'assets'
+type LibraryPrimaryMode = 'books' | 'triage' | 'catalog' | 'assets'
 
 const triageFilters: Array<{ key: Extract<LibraryView, 'queue' | 'feeds'>; label: string; description: string }> = [
   { key: 'queue', label: 'Queue', description: 'Committed next' },
   { key: 'feeds', label: 'Feeds', description: 'Subscriptions & articles' },
 ]
 
-const catalogFilters: Array<{ key: Extract<LibraryView, 'all' | 'journal' | 'collections' | 'archive'>; label: string; description: string }> = [
-  { key: 'all', label: 'All', description: 'Every source' },
-  { key: 'journal', label: 'Journal', description: 'KOReader via Hardcover' },
-  { key: 'collections', label: 'Collections', description: 'Purposeful source groups' },
-  { key: 'archive', label: 'Archive', description: 'Completed and excluded' },
-]
-
 const primaryModes: Array<{ key: LibraryPrimaryMode; label: string; description: string; view: LibraryView }> = [
+  { key: 'books', label: 'Books', description: 'Reading desk and personal library', view: 'books' },
   { key: 'triage', label: 'Triage', description: 'Decide what earns attention', view: 'queue' },
-  { key: 'catalog', label: 'Catalog', description: 'Find and revisit sources', view: 'all' },
+  { key: 'catalog', label: 'Archive', description: 'Completed and excluded sources', view: 'archive' },
   { key: 'assets', label: 'Files', description: 'Reading companions and uploads', view: 'files' },
 ]
 
 function primaryModeFor(view: LibraryView, objectType?: LibraryObjectType): LibraryPrimaryMode {
+  if (objectType === 'book' || view === 'books') return 'books'
   if (objectType === 'artifact' || view === 'files') return 'assets'
-  if (objectType === 'collection' || view === 'all' || view === 'books' || view === 'journal' || view === 'collections' || view === 'archive') return 'catalog'
+  if (view === 'archive') return 'catalog'
   return 'triage'
 }
 
 function defaultViewForMode(mode: LibraryPrimaryMode): LibraryView {
-  return mode === 'triage' ? 'queue' : mode === 'catalog' ? 'all' : 'files'
+  return mode === 'books' ? 'books' : mode === 'triage' ? 'queue' : mode === 'catalog' ? 'archive' : 'files'
 }
 
 function libraryHref(mode: LibraryPrimaryMode, focus = defaultViewForMode(mode)) {
-  return canonicalRouteHref('library', mode, focus)
+  return mode === 'books' ? canonicalRouteHref('library', mode) : canonicalRouteHref('library', mode, focus)
 }
 
 function LibraryModeSwitcher({ activeView, objectType, onNavigate }: { activeView: LibraryView; objectType?: LibraryObjectType; onNavigate?: (href: string) => void }) {
@@ -124,8 +109,8 @@ function LibraryModeSwitcher({ activeView, objectType, onNavigate }: { activeVie
         </a>
       })}
     </nav>
-    {activePrimary !== 'assets' && <nav class="workspace-filter-switcher workspace-local-nav" aria-label={`${activePrimary === 'triage' ? 'Triage' : 'Catalog'} filters`}>
-      {(activePrimary === 'triage' ? triageFilters : catalogFilters).map((item) => {
+    {activePrimary === 'triage' && <nav class="workspace-filter-switcher workspace-local-nav" aria-label="Triage filters">
+      {triageFilters.map((item) => {
         const href = libraryHref(activePrimary, item.key)
         return <a key={item.key} href={href} class={activeView === item.key ? 'active' : ''} aria-current={activeView === item.key ? 'page' : undefined} onClick={(event) => { if (!onNavigate) return; event.preventDefault(); navigate(href) }}>
           <strong>{item.label}</strong><small>{item.description}</small>
@@ -140,10 +125,17 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
   const activeRoute = route || localRoute
   const normalizedMode = activeRoute.mode || activeRoute.query.get('mode') || ''
   const normalizedFocus = activeRoute.focus || activeRoute.query.get('focus') || ''
-  const compatibleView = normalizedFocus || (/^(queue|feeds|all|files|books|journal|collections|archive)$/.test(normalizedMode) ? normalizedMode : '') || (/^(queue|feeds|all|files|books|journal|collections|archive)$/.test(activeRoute.view) ? activeRoute.view : '')
-  const view = compatibleView ? asView(compatibleView) : normalizedMode === 'catalog' ? 'all' : normalizedMode === 'assets' ? 'files' : 'queue'
+  const compatibleView = normalizedFocus || (/^(queue|feeds|files|books|archive)$/.test(normalizedMode) ? normalizedMode : '') || (/^(queue|feeds|files|books|archive)$/.test(activeRoute.view) ? activeRoute.view : '')
+  const view = compatibleView ? asView(compatibleView) : normalizedMode === 'catalog' ? 'archive' : normalizedMode === 'assets' ? 'files' : normalizedMode === 'triage' ? 'queue' : 'books'
   const objectType = activeRoute.objectType as LibraryObjectType | undefined
-  const endpoint = endpointFor(view, objectType, activeRoute.objectId)
+  const [queueDelivery, setQueueDelivery] = useState<{ effort?: string; language?: string; delivery_modes?: string[]; depth_tier?: string; matches_only?: boolean }>({})
+  const queueQuery = new URLSearchParams()
+  for (const [key, value] of Object.entries(queueDelivery)) {
+    if (value === undefined || value === false || (Array.isArray(value) && !value.length)) continue
+    queueQuery.set(key, Array.isArray(value) ? value.join(',') : String(value))
+  }
+  const baseEndpoint = endpointFor(view, objectType, activeRoute.objectId)
+  const endpoint = view === 'queue' && !objectType && queueQuery.size ? `${baseEndpoint}?${queueQuery}` : baseEndpoint
   const { data, error, loading, reload } = useData<LibraryRecord>(endpoint)
   const [working, setWorking] = useState('')
   const [blockedId, setBlockedId] = useState('')
@@ -237,12 +229,12 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     finally { setWorking('') }
   }
 
-  const setBookReadingState = async (book: LibraryRecord, state: 'saved' | 'reading' | 'finished') => {
+  const setBookReadingState = async (book: LibraryRecord, state: 'saved' | 'reading' | 'finished', primary = false) => {
     const busyKey = `reading-state:${book.id}`
     setWorking(busyKey); setNotice('')
     try {
-      await api(`/recommendations/books/${encodeURIComponent(String(book.id))}/reading-state`, { method: 'POST', body: JSON.stringify({ state }) })
-      setNotice(`Personal reading state changed to ${state}. Queue was not changed.`)
+      await api(`/recommendations/books/${encodeURIComponent(String(book.id))}/reading-state`, { method: 'POST', body: JSON.stringify({ state, ...(primary ? { primary: true } : {}) }) })
+      setNotice(primary ? 'Pinned as the primary current book.' : `Personal reading state changed to ${state}. Queue was not changed.`)
       reload()
     } catch (actionError) { setNotice(actionMessage(actionError)) }
     finally { setWorking('') }
@@ -252,21 +244,6 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     setWorking('book'); setNotice('')
     try { await api('/recommendations/books', { method: 'POST', body: JSON.stringify(payload) }); setNotice('Book added to Books.'); reload() }
     catch (actionError) { setNotice(actionMessage(actionError)); throw actionError }
-    finally { setWorking('') }
-  }
-
-  const createCollection = async (payload: { name: string; description: string }) => {
-    setWorking('collection'); setNotice('')
-    try { await api('/collections', { method: 'POST', body: JSON.stringify({ ...payload, scope: 'library' }) }); setNotice('Collection created.'); reload() }
-    catch (actionError) { setNotice(actionMessage(actionError)) }
-    finally { setWorking('') }
-  }
-
-  const deleteCollection = async (item: LibraryRecord) => {
-    if (!window.confirm(`Delete collection “${item.name || 'Untitled collection'}”? Its sources will not be deleted.`)) return
-    setWorking(String(item.id)); setNotice('')
-    try { await api(`/collections/${encodeURIComponent(String(item.id))}`, { method: 'DELETE' }); setNotice('Collection deleted.'); reload() }
-    catch (actionError) { setNotice(actionMessage(actionError)) }
     finally { setWorking('') }
   }
 
@@ -386,8 +363,6 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     onCompleteChapter: completeChapter,
     onSetBookReadingState: setBookReadingState,
     onAddBook: addBook,
-    onCreateCollection: createCollection,
-    onDeleteCollection: deleteCollection,
     onAddFeed: addFeed,
     onSyncFeeds: syncFeeds,
     onSyncFeed: syncFeed,
@@ -396,6 +371,7 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     onClearFeedEntries: clearFeedEntries,
     onFeedbackSaved: (sourceId, result) => setFeedbackReceipt({ sourceId, result }),
     onReload: reload,
+    onQueueDeliveryChange: setQueueDelivery,
     feedbackReceipt,
     busyId: working,
     blockedId,
@@ -412,17 +388,14 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     const item = objectItem(objectType, loaded, activeRoute.objectId)
     if (!item) return <ErrorState message={`The ${objectType} “${activeRoute.objectId}” is not available in this library.`} retry={reload}/>
     const objectData = objectType === 'source' || objectType === 'book' ? { ...loaded, [objectType]: item } : { [objectType]: item }
-    const backView = objectType === 'artifact' ? 'files' : objectType === 'book' ? 'books' : objectType === 'collection' ? 'collections' : 'all'
-    return <div class="library-workspace workspace-surface">{modeSwitcher}<ObjectRouteView type={objectType} data={objectData} handlers={handlers} onBack={() => go(objectType === 'book' ? canonicalRouteHref('learn', 'canon') : viewHref(backView))}/></div>
+    const backView = objectType === 'artifact' ? 'files' : objectType === 'book' ? 'books' : 'queue'
+    return <div class={`library-workspace workspace-surface ${objectType === 'book' ? 'is-books-room' : ''}`}>{modeSwitcher}<ObjectRouteView type={objectType} data={objectData} handlers={handlers} onBack={() => go(viewHref(backView))}/></div>
   }
 
   const content = view === 'queue' ? <QueueView data={loaded} handlers={handlers}/> :
       view === 'feeds' ? <FeedsView data={loaded} handlers={handlers}/> :
-        view === 'all' ? <AllSourcesView data={loaded} handlers={handlers}/> :
-          view === 'files' ? <FilesView data={loaded} handlers={handlers}/> :
+        view === 'files' ? <FilesView data={loaded} handlers={handlers}/> :
             view === 'books' ? <BooksView data={loaded} handlers={handlers}/> :
-              view === 'journal' ? <HardcoverJournalView data={loaded} onReload={reload}/> :
-              view === 'collections' ? <CollectionsView data={loaded} handlers={handlers}/> :
-                <ArchiveView data={loaded} handlers={handlers}/>
-  return <div class="library-workspace workspace-surface">{modeSwitcher}{content}</div>
+              <ArchiveView data={loaded} handlers={handlers}/>
+  return <div class={`library-workspace workspace-surface ${view === 'books' ? 'is-books-room' : ''}`}>{modeSwitcher}{content}</div>
 }

@@ -5,6 +5,8 @@ import { compileMemoryContext, isMemoryOwnershipAllowed, isMemoryTaskKind, write
 import { loadCaptureQueue } from '../services/capture-queue'
 import { loadHermesBrief } from '../services/agent-briefing'
 import { AGENT_CONTRACT_VERSION, AGENT_PROTOCOL, type AgentMethod, buildAgentOpenApi, buildCapabilityCatalog, resolveCapabilityReadbacks } from '../services/agent-capabilities'
+import { MAINTENANCE_CRON, runMaintenance } from '../services/maintenance'
+import { loadOperationalHealth } from '../services/operational-health'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const sqliteTime = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString().slice(0, 19).replace('T', ' ')
@@ -19,7 +21,9 @@ const CAPABILITIES = [
   ['GET', '/agent/context', 'Read the compact taste and learning context.'],
   ['GET', '/agent/briefing', 'Read the deterministic next-action brief shared with the Home workspace.'],
   ['GET', '/agent/activity', 'Read recent Hermes receipts, audit events, and operational status.'],
-  ['GET', '/agent/system', 'Read the user-visible runtime, storage, schedule, and service inventory.'],
+  ['GET', '/agent/system', 'Read the user-visible runtime, storage, schedule, recovery, and service inventory.'],
+  ['GET', '/health/ready', 'Read canonical production readiness across storage, integrity, jobs, maintenance, and recovery.'],
+  ['POST', '/agent/maintenance/run', 'Run the configured maintenance workflow on demand and persist a task-level receipt.'],
   ['GET', '/dashboard/briefing', 'Read Momentum, active Queue files, weekly progress, and current insight.'],
   ['GET', '/capture', 'Read captured source records.'],
   ['POST', '/capture', 'Save a URL, text, or artifact as a source record.'],
@@ -37,8 +41,8 @@ const CAPABILITIES = [
   ['GET', '/compass/pick', 'Read the newest active ready/started Compass Pick; multiple concurrent picks may exist.'],
   ['GET', '/compass/context', 'Read the bounded canonical Thread, profile, exclusions, history, and candidate contract before Hermes researches recommendation candidates.'],
   ['POST', '/compass/semantic/index', 'Explicitly index changed Learning Compass sources, Threads, Notes, and Units into the private semantic retrieval index; no recommendation is created.'],
-  ['POST', '/compass/picks', 'Submit 3–8 candidates for server-owned adaptive Compass Pick selection while queued/in-progress Queue count is below five; does not auto-start.'],
-  ['POST', '/compass/evaluate', 'Dry-run v1 and v2 scoring for 3–8 candidates without creating a pick.'],
+  ['POST', '/compass/picks', 'Submit 3–24 candidates for server-owned adaptive Compass Pick selection while queued/in-progress Queue count is below five; does not auto-start.'],
+  ['POST', '/compass/evaluate', 'Dry-run v1 and v2 scoring for 3–24 candidates without creating a pick.'],
   ['POST', '/compass/pick/:id/candidates', 'Expand an abstained Compass Pick with additional candidates and rescore the complete set up to eight.'],
   ['POST', '/compass/pick/:id/start', 'Explicitly start any ready Compass Pick through the normal Queue/session workflow; the five-item cap is enforced.'],
   ['POST', '/compass/pick/:id/feedback', 'Record explicit Compass Pick outcome, rating, reason tags, and reflection.'],
@@ -46,8 +50,9 @@ const CAPABILITIES = [
   ['GET', '/feedback/context', 'Read all archived feedback with the current profile and knowledge nodes for evidence-based learning.'],
   ['POST', '/recommendations/push', 'Create or update a recommendation with deduplication.'],
   ['POST', '/recommendations/action', 'Change status, rating, review, consumed date, or register an item-specific NotebookLM URL.'],
+  ['PATCH', '/recommendations/:id/source-url', 'Replace the preferred Original source URL while preserving the previous archive URL.'],
   ['GET', '/recommendations/books', 'Read the unified Books workspace projection, including personal state, normalized chapters, progress, next action, and book-scoped file links.'],
-  ['POST', '/recommendations/books/:id/reading-state', 'Set a personal saved, reading, or finished book state without changing Queue commitment.'],
+  ['POST', '/recommendations/books/:id/reading-state', 'Set personal saved, reading, or finished state without changing Queue commitment; primary true explicitly pins one Reading book.'],
   ['POST', '/recommendations/books/:id/chapters', 'Register or update book-scoped chapter metadata without creating artifacts.'],
   ['POST', '/recommendations/books/:id/chapters/:chapterKey/complete', 'Mark one book-scoped chapter complete or incomplete.'],
   ['POST', '/recommendations/map', 'Attach one or more completed sources to an existing knowledge-map branch.'],
@@ -69,9 +74,17 @@ const CAPABILITIES = [
   ['DELETE', '/brain/node/:id', 'Delete a leaf knowledge node.'],
   ['POST', '/brain/pattern/strength', 'Promote or demote a pattern.'],
   ['POST', '/brain/contradiction/resolve', 'Resolve a contradiction.'],
+  ['GET', '/brain/resurfacing', 'Read the bounded daily resurfacing item with canonical branch and domain context.'],
+  ['PATCH', '/brain/resurfacing/:recommendationId/preference', 'Explicitly star or unstar one consumed source for resurfacing priority.'],
+  ['POST', '/brain/resurfacing/presentations', 'Record one source presentation idempotently for the current Cairo day.'],
+  ['POST', '/brain/resurfacing/:eventId/action', 'Mark a resurfaced source reviewed, snoozed, or dismissed without changing learning progression.'],
   ['GET', '/knowledge/graph', 'Read the evidence-backed graph.'],
   ['GET', '/notes', 'Read structured notes and sections.'],
+  ['GET', '/notes/:id', 'Read one note dossier with anchored Units, meaningful backlinks, recall, and progressive distillation.'],
   ['POST', '/notes', 'Create a structured note owned by a source, Thread (thread_id), or exact Level (stage_id); a note cannot belong directly to both Thread and Level.'],
+  ['POST', '/notes/:id/distillation/highlights', 'Explicitly retain one checksum-bound claim from the current note text.'],
+  ['POST', '/notes/:id/distillation/syntheses', 'Append one user-authored concise synthesis revision without rewriting the note.'],
+  ['POST', '/notes/:id/distillation/highlights/:highlightId/promote', 'Explicitly promote a retained claim into one anchored Learning Unit.'],
   ['PUT', '/notes/:id', 'Edit a note and its sections.'],
   ['DELETE', '/notes/:id', 'Delete a note and sections.'],
   ['POST', '/notes/:id/process', 'Queue confirmation-gated feedback processing for a personal reflection.'],
@@ -121,8 +134,11 @@ const CAPABILITIES = [
   ['DELETE', '/learning/core/threads/:id/sources/:sourceId', 'Remove a source from a Thread without deleting it.'],
   ['DELETE', '/learning/core/threads/:id', 'Irreversibly delete one exact Learning Thread after explicit confirmation.'],
   ['GET', '/learning/core/units', 'Read atomic anchored Learning Units.'],
+  ['GET', '/learning/core/units/:id', 'Read one anchored Learning Unit with incoming and outgoing explained relationships.'],
   ['POST', '/learning/core/units', 'Create an anchored Learning Unit.'],
   ['POST', '/learning/core/units/:id/relations', 'Create a typed relationship between Learning Units.'],
+  ['GET', '/learning/core/contradictions', 'Read anchored Unit contradictions by review state.'],
+  ['PATCH', '/learning/core/contradictions/:id', 'Accept, resolve, or dismiss one anchored contradiction while preserving its claims and sources.'],
   ['GET', '/annotations', 'Read source-anchored passage annotations with durable locators.'],
   ['POST', '/annotations', 'Create a source-anchored passage annotation in the canonical evidence ledger.'],
   ['GET', '/annotations/:id', 'Read one source annotation and its linked derivations.'],
@@ -138,11 +154,6 @@ const CAPABILITIES = [
   ['POST', '/feedback/proposals/:id/apply', 'Policy-check and automatically apply a Hermes profile proposal.'],
   ['POST', '/feedback/proposals/:id/revert', 'Revert one applied proposal and its typed profile revision.'],
   ['POST', '/feedback/proposals/:id/reject', 'Reject a proposed profile or map change.'],
-  ['GET', '/collections', 'Read collections.'],
-  ['POST', '/collections', 'Create a collection.'],
-  ['DELETE', '/collections/:id', 'Delete a collection and its item links.'],
-  ['POST', '/collections/:id/items', 'Add or replace a collection item.'],
-  ['DELETE', '/collections/:id/items/:recommendation_id', 'Remove a collection item.'],
   ['GET', '/artifacts', 'Read R2 artifact metadata and pairs.'],
   ['POST', '/artifacts', 'Upload an HTML, PDF, or other source artifact.'],
   ['POST', '/artifacts/:id/process', 'Queue idempotent note extraction.'],
@@ -153,7 +164,8 @@ const CAPABILITIES = [
   ['GET', '/dashboard/layout', 'Read dashboard layout.'],
   ['PUT', '/dashboard/layout', 'Edit dashboard layout.'],
   ['GET', '/agent/jobs', 'Read durable jobs.'],
-  ['GET', '/agent/jobs/health', 'Read Hermes job queue health and stale lease counts.'],
+  ['GET', '/agent/jobs/health', 'Read Hermes job queue health, overdue retries, and stale lease counts.'],
+  ['POST', '/agent/jobs/reconcile', 'Dry-run or apply conservative reconciliation of visual jobs against canonical sources and complete R2 pairs.'],
   ['POST', '/agent/jobs/:id/claim', 'Claim a leased job.'],
   ['POST', '/agent/jobs/:id/checkpoint', 'Advance one resumable workflow to its next declared step.'],
   ['POST', '/agent/jobs/:id/complete', 'Complete a leased job with structured output.'],
@@ -318,9 +330,9 @@ app.get('/context', async (c) => {
   const brief = await load<any>('brief', null, () => loadHermesBrief(DB))
   const profileAssertions = await load<any>('profile_assertions', { results: [] }, () => DB.prepare("SELECT assertion_key,category,scope,value_json,weight,confidence,status,source_kind,version,updated_at FROM profile_assertions WHERE status IN ('active','hypothesis') ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,confidence DESC,updated_at DESC LIMIT 100").all())
   const gaps = await load<any>('learning_gaps', { results: [] }, () => Promise.resolve({ results: [] }))
-  const verifiedThreads = await load<any>('verified_threads', { results: [] }, () => DB.prepare(`
-    SELECT id,title,thread_type,guiding_question,definition_of_done,final_synthesis,verified_at,completed_at
-    FROM learning_threads WHERE status='verified' ORDER BY COALESCE(verified_at,completed_at,updated_at) DESC LIMIT 50`).all())
+  const completedThreads = await load<any>('completed_threads', { results: [] }, () => DB.prepare(`
+    SELECT id,title,thread_type,guiding_question,definition_of_done,final_synthesis,completed_at
+    FROM learning_threads WHERE status='verified' ORDER BY COALESCE(completed_at,updated_at) DESC LIMIT 50`).all())
   let neglected: any = { results: [] }
   let mastered: any = { results: [] }
   let blindSpots: any = { results: [] }
@@ -432,7 +444,7 @@ app.get('/context', async (c) => {
     brief,
     neglected_branches: neglected?.results || [],
     learning_gaps: gaps?.results || [],
-    verified_threads: verifiedThreads?.results || [],
+    completed_threads: completedThreads?.results || [],
     legacy_mastered: mastered?.results || [],
     blind_spots: blindSpots?.results || [],
     blacklist: blacklist?.results || [],
@@ -552,13 +564,18 @@ app.get('/capabilities', (c) => {
     method: c.req.query('method'),
     q: c.req.query('q'),
   }
-  const capabilities = buildCapabilityCatalog(CAPABILITIES, filters)
+  const catalog = buildCapabilityCatalog(CAPABILITIES, filters)
+  const summary = c.req.query('view') === 'summary'
+  const capabilities = summary
+    ? catalog.map(({ method, path, description, domain, intent, risk, reversible }) => ({ method, path, description, domain, intent, risk, reversible }))
+    : catalog
   return c.json({
     version: AGENT_CONTRACT_VERSION,
     protocol: AGENT_PROTOCOL,
     description: 'Structured allow-listed control surface for Learning Compass.',
     authentication: 'Writes require x-api-token when API_TOKEN is configured.',
     filters,
+    view: summary ? 'summary' : 'full',
     total: CAPABILITIES.length,
     returned: capabilities.length,
     safety: ['No arbitrary SQL or outbound proxy.', 'Product validation and invariants remain active.', 'Every mutation supports idempotency and is audit logged.'],
@@ -566,38 +583,49 @@ app.get('/capabilities', (c) => {
   })
 })
 
+app.post('/maintenance/run', async (c) => {
+  const receipt = await runMaintenance(c.env, 'manual')
+  return c.json({ ok: receipt.ok, receipt }, receipt.ok ? 200 : 500)
+})
+
 app.get('/system', async (c) => {
   const DB = c.env.DB
-  const [lastSearchSync, feedCount, sourceCount, noteCount, artifactCount, jobCount, annotationCount, receiptCount] = await Promise.all([
-    DB.prepare("SELECT value FROM kv_store WHERE key='fts_last_sync'").first<{ value: string }>(),
+  const [health, feedCount, sourceCount, noteCount, artifactCount, jobCount, annotationCount, receiptCount] = await Promise.all([
+    loadOperationalHealth(c.env),
     DB.prepare('SELECT COUNT(*) count FROM feed_sources WHERE enabled=1').first<{ count: number }>(),
     DB.prepare("SELECT COUNT(*) count FROM recommendations WHERE deleted_at IS NULL").first<{ count: number }>(),
     DB.prepare('SELECT COUNT(*) count FROM notes').first<{ count: number }>(),
     DB.prepare('SELECT COUNT(*) count FROM artifacts').first<{ count: number }>(),
     DB.prepare("SELECT COUNT(*) count FROM agent_jobs WHERE status IN ('pending','running','retry')").first<{ count: number }>(),
-    DB.prepare('SELECT COUNT(*) count FROM source_annotations WHERE status=\'active\'').first<{ count: number }>(),
+    DB.prepare("SELECT COUNT(*) count FROM source_annotations WHERE status='active'").first<{ count: number }>(),
     DB.prepare('SELECT COUNT(*) count FROM agent_receipts').first<{ count: number }>(),
   ])
   return c.json({
-    status: 'active',
+    status: health.status,
+    ready: health.ok,
     service: 'Learning Compass Worker',
     environment: 'Cloudflare edge',
     timezone: 'Africa/Cairo',
     protocol: AGENT_PROTOCOL,
     contract_version: AGENT_CONTRACT_VERSION,
     storage: [
-      { name: 'D1', purpose: 'Canonical sources, Threads, notes, recall, settings, jobs, and audit history', status: 'connected' },
-      { name: 'R2', purpose: 'PDF, HTML, transcript, and generated companion files', status: c.env.ARTIFACTS ? 'connected' : 'unavailable' },
+      { name: 'D1', purpose: 'Canonical sources, Threads, notes, recall, settings, jobs, and audit history', status: health.storage.d1 ? 'connected' : 'unavailable' },
+      { name: 'R2', purpose: 'PDF, HTML, transcript, and generated companion files', status: health.storage.r2 ? 'connected' : 'unavailable' },
       { name: 'Browser', purpose: 'Local preferences and recoverable offline mutations', status: 'client managed' },
     ],
     schedule: [{
       id: 'worker-maintenance',
-      cron: '0 */6 * * *',
+      cron: MAINTENANCE_CRON,
       cadence: 'Every 6 hours',
       timezone: 'UTC',
       responsibilities: ['Refresh enabled RSS/Atom feeds', 'Deliver due reminders', 'Synchronize search indexes', 'Surface neglected knowledge branches', 'Expire reversible undo windows'],
-      last_search_sync: lastSearchSync?.value || null,
+      last_run: health.maintenance?.last_run || null,
+      last_success: health.maintenance?.last_success || null,
+      last_search_sync: health.maintenance?.last_search_sync || null,
+      status: health.maintenance?.ok ? 'healthy' : 'stale',
     }],
+    recovery: health.recovery,
+    operational_health: health,
     on_demand_only: [
       'Hermes job execution',
       'Learning Thread closure and verification',

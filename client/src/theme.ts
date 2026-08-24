@@ -411,6 +411,33 @@ function isDarkColor(c: RGB): boolean {
   return relativeLuminance(c) < 0.35
 }
 
+function contrastBetween(foreground: RGB, background: RGB): number {
+  const lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background))
+  const darker = Math.min(relativeLuminance(foreground), relativeLuminance(background))
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
+/**
+ * Preserve the authored text color when it is already readable, otherwise
+ * move it only as far as necessary toward the light or dark accessible ink.
+ * Both canvas and surface are checked because the same semantic text tokens
+ * are used on each plane.
+ */
+function ensureTextContrast(color: RGB, backgrounds: RGB[], minimum = 4.5): RGB {
+  const minimumContrast = (candidate: RGB) => Math.min(...backgrounds.map(background => contrastBetween(candidate, background)))
+  if (minimumContrast(color) >= minimum) return color
+
+  const anchor = minimumContrast(WHITE) >= minimumContrast(CONTRAST_BLACK) ? WHITE : CONTRAST_BLACK
+  for (let step = 1; step <= 100; step += 1) {
+    const candidate = mixColors(color, anchor, step / 100)
+    if (minimumContrast(candidate) >= minimum) return candidate
+  }
+
+  // Pathological palettes can place surface and canvas at opposite extremes,
+  // where no shared text color can satisfy AA. Return the safest available ink.
+  return anchor
+}
+
 /**
  * Extracts any recognized color codes (Hex or RGB) from arbitrary text input.
  */
@@ -431,6 +458,7 @@ export function extractColorsFromText(text: string): string[] {
 
 const WHITE: RGB = { r: 255, g: 255, b: 255 }
 const BLACK: RGB = { r: 16, g: 14, b: 13 }
+const CONTRAST_BLACK: RGB = { r: 0, g: 0, b: 0 }
 
 // Semantic functional colors (overdue / danger / map) stay recognizable in both modes.
 const SEMANTIC = {
@@ -467,8 +495,11 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
   // Text — near-white on dark shells, deep ink on light shells.
   const parsedInk = palette.ink ? parseColor(palette.ink) : null
   const ink = parsedInk || (dark ? mixColors(shell, WHITE, 0.86) : mixColors(accent, BLACK, 0.62))
-  const secondary = dark ? mixColors(ink, shell, 0.40) : mixColors(ink, accent, 0.35)
-  const muted = mixColors(secondary, shell, dark ? 0.42 : 0.35)
+  const secondaryCandidate = dark ? mixColors(ink, shell, 0.40) : mixColors(ink, accent, 0.35)
+  const mutedCandidate = mixColors(secondaryCandidate, shell, dark ? 0.42 : 0.35)
+  const textPlanes = [canvas, surface]
+  const secondary = ensureTextContrast(secondaryCandidate, textPlanes)
+  const muted = ensureTextContrast(mutedCandidate, textPlanes)
 
   // Rail is the deepest plane, anchored to the brand in light mode, or tinted obsidian in dark mode.
   const rail = parseColor(palette.rail || '') || (dark ? mixColors(mixColors(shell, brand, 0.12), BLACK, 0.40) : adjustBrightness(brand, -15))
@@ -479,8 +510,9 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
   const map = parseColor(palette.map || '') || (dark ? SEMANTIC.mapDark : SEMANTIC.mapLight)
 
   // Determine active rail button background and text contrast
-  const textOn = (background: RGB) => contrastRatio('#ffffff', rgbToHex(background))! >= contrastRatio('#101713', rgbToHex(background))! ? '#ffffff' : '#101713'
+  const textOn = (background: RGB) => contrastRatio('#ffffff', rgbToHex(background))! >= contrastRatio('#000000', rgbToHex(background))! ? '#ffffff' : '#000000'
   const railActiveInk = textOn(brand)
+  const actionInk = textOn(brand)
   const mapInk = textOn(map)
   const dangerInk = textOn(danger)
   const dueInk = textOn(due)
@@ -496,7 +528,7 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
     '--studio-rail-border': railBorder,
     '--studio-rail-active-bg': rgbToHex(brand),
     '--studio-rail-active-ink': railActiveInk,
-    '--studio-action-ink': railActiveInk,
+    '--studio-action-ink': actionInk,
     '--studio-map-ink': mapInk,
     '--studio-danger-ink': dangerInk,
     '--studio-due-ink': dueInk,

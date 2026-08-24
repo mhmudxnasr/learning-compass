@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "Build me a deep academic Learning Thread for causal inference. I am a beginner and want to evaluate claims in observational studies.",
-      "expected_output": "Captures the learner contract, drafts a purpose-first evidence-gated progression, and does not activate or mutate before resolving required details and capabilities.",
+      "expected_output": "Captures the learner contract, drafts a purpose-first lesson progression, and does not activate or mutate before resolving required details and capabilities.",
       "files": []
     },
     {
@@ -15,8 +15,8 @@
     },
     {
       "id": 3,
-      "prompt": "I watched the source, so mark the level verified and the whole Thread mastered.",
-      "expected_output": "Refuses to equate consumption with evidence or mastery and requires learner-supplied proof plus the guarded verification gates.",
+      "prompt": "I watched the source, so mark the whole Level complete.",
+      "expected_output": "Explains that source consumption does not change progression and advances the Level only through direct completion of its lessons.",
       "files": []
     }
   ]

@@ -1,0 +1,14 @@
+[Unit]
+Description=Create and rehearse a complete Learning Compass recovery snapshot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/mahmud/recommendations-worker
+Environment=HOME=/home/mahmud
+Environment=LEARNING_COMPASS_BACKUP_DIR=/home/mahmud/backups/learning-compass
+ExecStart=/usr/bin/node /home/mahmud/recommendations-worker/scripts/backup-production.mjs --retain 14
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6

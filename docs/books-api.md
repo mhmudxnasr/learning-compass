@@ -1,12 +1,12 @@
 # Books API contract
 
-Books is one continuous Learn workspace containing the reading desk, **My books**, and integrated **Canon fields**. There is no Shelf/Canon tab split. A captured book record is owned by `GET /recommendations/books`; its typed dossier, chapter rows, and chapter files stay under Learn → Books rather than creating a competing Library or Canon collection. Canon retains its separate curated-domain model until a selection is explicitly captured, after which the same book identity carries both personal reading state and Canon membership.
+Books is the first Library workspace and contains the reading desk, **My books**, and integrated **Canon fields**. There is no Shelf/Canon tab split. A captured book record is owned by `GET /recommendations/books`; its typed dossier, chapter rows, and chapter files stay under Library → Books without creating a competing Canon collection. Canon retains its separate curated-domain model until a selection is explicitly captured, after which the same book identity carries both personal reading state and Canon membership.
 
 ## Add a book
 
 `POST /recommendations/books`
 
-Requires `title`, `author`, and `branch_id`; `isbn`, `url`, and `why_this` are optional. The branch must exist, be a branch node, and not be pruned. The write atomically stores the canonical branch ID plus its label and round and creates a `captured` record. Missing, unknown, or pruned branches return HTTP 400. If the deduplication key already resolves to a book, the update preserves its explicit personal reading state; only a genuinely new book initializes as `saved`.
+Requires `title`, `author`, and `branch_id`; `isbn`, `url`, and `why_this` are optional. The branch must exist, be a branch node, and not be pruned. The write atomically stores the canonical branch ID plus its label and super category and creates a `captured` record. Missing, unknown, or pruned branches return HTTP 400. If the deduplication key already resolves to a book, the update preserves its explicit personal reading state; only a genuinely new book initializes as `saved`.
 
 ## Read
 
@@ -15,6 +15,7 @@ Requires `title`, `author`, and `branch_id`; `isbn`, `url`, and `why_this` are o
 Returns `{ "books": [...] }`. Each book may include:
 
 - `reading_state`: personal `saved|reading|finished` state, independent from Queue commitment
+- `is_primary`: the one explicitly pinned reading-desk book; no other Reading book is promoted automatically when the pin is absent or cleared
 - `queue_state`: the separate source commitment state
 - `visual.chapters[]`: `{ key, title, number, completed, completed_at }`
 - `visual.chapters[].html`: optional chapter HTML artifact link metadata
@@ -42,7 +43,7 @@ This creates or updates book-scoped chapter rows only. It does not upload files 
 
 ## Set personal reading state
 
-`POST /recommendations/books/:id/reading-state` with `{ "state": "saved|reading|finished" }` updates the Books reading desk without adding the book to Queue. `source_metadata_json.book_reading_state` is authoritative; older status/Queue fields are compatibility fallbacks only when that value is absent. Use `POST /capture/:id/triage` with `{ "action": "dequeue" }` only for an active queued/in-progress commitment; it removes that commitment neutrally. `exclude` remains a negative source decision, and a later dequeue cannot erase its rejected status or outcome.
+`POST /recommendations/books/:id/reading-state` with `{ "state": "saved|reading|finished" }` updates personal reading state without adding the book to Queue. Add `"primary": true` with `state:"reading"` to atomically pin that book to the reading desk and clear the previous pin while leaving other books' reading states unchanged. Setting a pinned book to `saved` or `finished` clears its pin. `source_metadata_json.book_reading_state` and `book_primary` are authoritative; older status/Queue fields are compatibility fallbacks only when explicit values are absent. Use `POST /capture/:id/triage` with `{ "action": "dequeue" }` only for an active queued/in-progress commitment; it removes that commitment neutrally. `exclude` remains a negative source decision, and a later dequeue cannot erase its rejected status or outcome.
 
 ## Add a chapter PDF or HTML
 
@@ -73,10 +74,10 @@ Request `{ "completed": true|false }`. This changes chapter completion metadata 
 ## Hermes invariants
 
 - Read and mutate book chapters through the Books routes.
-- Require and verify a non-pruned branch for every manual book intake; preserve its round everywhere the book renders.
+- Require and verify a non-pruned branch for every manual book intake; preserve its branch context everywhere the book renders.
 - Keep passive My books and dossier links separate from Queue-owned tracked Start/Resume actions.
 - Render a captured Canon selection once as a personal book identity with Canon domain/role metadata; Canon field summaries remain navigation context, not duplicate book cards.
 - Keep book chapter files book-scoped with `scope=book`.
 - Verify the owning book and chapter key before upload or completion.
-- Do not turn a book chapter into a standalone recommendation, captured Library source, Queue item, or general Files entry.
+- Books and book chapters never project into Queue. Reading state, progress, and chapter advancement remain confined to Library → Books.
 - Do not create HTML/PDF artifacts unless the user explicitly requests the chapter files.

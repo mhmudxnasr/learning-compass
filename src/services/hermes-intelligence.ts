@@ -81,18 +81,15 @@ export async function createHermesEvaluatorProposals(db: DBLike, conversationId:
 }
 
 export async function backfillHermesIntelligence(db: DBLike, dryRun = true) {
-  const [missingCards, missingOutcomes, consumedBranches, creators, contradictionCandidates] = await Promise.all([
-    first(db, `SELECT COUNT(*) count FROM srs_drafts d WHERE d.status='approved' AND NOT EXISTS (SELECT 1 FROM srs_cards c WHERE c.question=d.question AND c.answer=d.answer)`),
+  const [missingOutcomes, consumedBranches, creators, contradictionCandidates] = await Promise.all([
     first(db, `SELECT COUNT(*) count FROM recommendations r LEFT JOIN recommendation_outcomes o ON o.recommendation_id=r.id WHERE o.id IS NULL`),
     rows(db, `SELECT COALESCE(m.branch_id,'unmapped') topic,COUNT(*) count,ROUND(AVG(${scoreSql}),2) average_score,MAX(r.consumed_date) last_consumed_at FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='consumed' AND (r.user_score IS NOT NULL OR r.user_rating IN ('love','like','meh','dislike')) GROUP BY topic`),
     rows(db, `SELECT creator,COUNT(*) total,ROUND(AVG(${scoreSql}),2) average_score,MAX(consumed_date) last_feedback_at FROM recommendations WHERE status='consumed' AND creator IS NOT NULL AND creator!='' GROUP BY creator`),
     rows(db, `SELECT a.id source_a,b.id source_b,ma.branch_id topic FROM recommendations a JOIN recommendations b ON a.id<b.id JOIN recommendation_meta ma ON ma.recommendation_id=a.id AND ma.branch_id IS NOT NULL JOIN recommendation_meta mb ON mb.recommendation_id=b.id AND mb.branch_id=ma.branch_id WHERE a.status='consumed' AND b.status='consumed' LIMIT 200`),
   ])
-  const summary: any = { dry_run: dryRun, missing_srs_cards: Number(missingCards?.count || 0), missing_outcomes: Number(missingOutcomes?.count || 0), taste_vectors: consumedBranches.length, creator_trust: creators.length, contradiction_candidates: contradictionCandidates.length, inserted: { srs_cards: 0, outcomes: 0, taste_vectors: 0, creator_trust: 0, contradictions: 0 } }
+  const summary: any = { dry_run: dryRun, missing_outcomes: Number(missingOutcomes?.count || 0), taste_vectors: consumedBranches.length, creator_trust: creators.length, contradiction_candidates: contradictionCandidates.length, inserted: { outcomes: 0, taste_vectors: 0, creator_trust: 0, contradictions: 0 } }
   if (dryRun) return summary
 
-  const drafts = await rows(db, `SELECT d.* FROM srs_drafts d WHERE d.status='approved' AND NOT EXISTS (SELECT 1 FROM srs_cards c WHERE c.question=d.question AND c.answer=d.answer) LIMIT 500`)
-  for (const d of drafts) { const result = await db.prepare(`INSERT OR IGNORE INTO srs_cards (id,recommendation_id,question,answer,topic) VALUES (?,?,?,?,?)`).bind(`backfill_card_${d.id}`, d.recommendation_id || null, d.question, d.answer, d.topic || 'general').run(); summary.inserted.srs_cards += result.meta.changes || 0 }
   const recs = await rows(db, `SELECT r.id,r.creator,r.content_type,r.status,r.user_score,r.user_rating,r.consumed_date,m.branch_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN recommendation_outcomes o ON o.recommendation_id=r.id WHERE o.id IS NULL LIMIT 1000`)
   for (const r of recs) { await refreshRecommendationOutcome(db, r.id); summary.inserted.outcomes++ }
   for (const v of consumedBranches) { await db.prepare(`INSERT INTO taste_vectors (topic,affinity_score,consumption_count,last_consumed_at,updated_at) VALUES (?,?,?,?,datetime('now')) ON CONFLICT(topic) DO UPDATE SET affinity_score=excluded.affinity_score,consumption_count=excluded.consumption_count,last_consumed_at=excluded.last_consumed_at,updated_at=datetime('now')`).bind(v.topic, Number(v.average_score || 0) / 2, Number(v.count || 0), v.last_consumed_at).run(); summary.inserted.taste_vectors++ }

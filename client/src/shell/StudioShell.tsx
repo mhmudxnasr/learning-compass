@@ -58,12 +58,15 @@ export function StudioShell({ route, children, inspector, onInspectorClose, onCa
 
     <aside class="root-rail" aria-label="Main navigation">
       <nav aria-label="Five workspaces">
+        <div class="rail-brand" aria-label="Learning Compass">
+          <span aria-hidden="true">LC</span><strong>Compass</strong>
+        </div>
         <div class="rail-top" aria-label="Global tools">
-          <button type="button" class="rail-command" onClick={onSearch} aria-keyshortcuts="Control+K Meta+K" title="Search (Ctrl/Command K)"><Icon name="search" size={19}/><span class="visually-hidden">Search</span></button>
-      <button type="button" class="rail-command rail-command-capture" onClick={onCapture} title="Save source"><Icon name="capture" size={20}/><span class="visually-hidden">Save source</span></button>
+          <button type="button" class="rail-command" onClick={onSearch} aria-keyshortcuts="Control+K Meta+K" title="Search (Ctrl/Command K)"><Icon name="search" size={19}/><span class="rail-label">Search</span></button>
+          <button type="button" class="rail-command rail-command-capture" onClick={onCapture} title="Save source" aria-label="Save source"><Icon name="capture" size={20}/><span class="rail-label" aria-hidden="true">Capture</span></button>
         </div>
         {roots.map((item) => <a key={item.key} href={routeHref(item.key)} class={route.root === item.key ? 'active' : ''} aria-current={route.root === item.key ? 'page' : undefined} title={item.label} aria-label={item.label}>
-          <Icon name={rootIcons[item.key]} size={20}/>
+          <Icon name={rootIcons[item.key]} size={20}/><span class="rail-label">{item.label}</span>
         </a>)}
         <div class="rail-bottom">
           <span class="sync-pip" title={online ? 'Online and ready to sync' : 'Offline; changes will sync when the connection returns'}><i class={online ? 'online' : 'offline'}/><span class="visually-hidden">{online ? 'Online' : 'Offline'}</span></span>

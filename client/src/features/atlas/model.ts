@@ -5,8 +5,19 @@ export type AtlasNode = {
   super_category?: string
   parent_id?: string | null
   status?: string
-  round_label?: string
   meta_json?: string
+  frontier_state?: FrontierState
+  frontier_reasons?: string[]
+}
+
+export type FrontierState = 'unexplored' | 'weak' | 'deeper-study-ready' | 'saturated' | 'developing'
+
+export const frontierLabels: Record<FrontierState, string> = {
+  unexplored: 'Unexplored',
+  weak: 'Weak',
+  'deeper-study-ready': 'Ready to deepen',
+  saturated: 'Saturated',
+  developing: 'Developing',
 }
 
 export type AtlasEdge = {
@@ -24,6 +35,7 @@ export type AtlasModel = {
   adjacency: Map<string, Set<string>>
   children: Map<string, AtlasNode[]>
   clusters: Map<string, AtlasNode[]>
+  clusterById: Map<string, string>
 }
 
 /** Internal profile roots are useful for storage, not for the learner's map. */
@@ -34,11 +46,23 @@ export function isPrivateAtlasNode(node: AtlasNode) {
 }
 
 export function createAtlasModel(rawNodes: AtlasNode[] = [], rawEdges: AtlasEdge[] = []): AtlasModel {
-  const nodes = (Array.isArray(rawNodes) ? rawNodes : []).filter((node) => node && typeof node === 'object' && node.id && node.label && !isPrivateAtlasNode(node))
+  const candidates = (Array.isArray(rawNodes) ? rawNodes : []).filter((node) => node && typeof node === 'object' && node.id && node.label && !isPrivateAtlasNode(node))
+  const candidateById = new Map(candidates.map((node) => [node.id, node]))
+  const nodes = candidates.filter((node) => {
+    let current: AtlasNode | undefined = node
+    const visited = new Set<string>()
+    while (current && !visited.has(current.id)) {
+      if (String(current.status || '').toLowerCase() === 'pruned') return false
+      visited.add(current.id)
+      current = current.parent_id ? candidateById.get(current.parent_id) : undefined
+    }
+    return true
+  })
   const byId = new Map(nodes.map((node) => [node.id, node]))
   const adjacency = new Map(nodes.map((node) => [node.id, new Set<string>()]))
   const children = new Map<string, AtlasNode[]>()
   const clusters = new Map<string, AtlasNode[]>()
+  const clusterById = new Map<string, string>()
   const seen = new Set<string>()
   const edges = (Array.isArray(rawEdges) ? rawEdges : []).filter((edge) => {
     if (!edge || !byId.has(edge.source_id) || !byId.has(edge.target_id)) return false
@@ -52,12 +76,17 @@ export function createAtlasModel(rawNodes: AtlasNode[] = [], rawEdges: AtlasEdge
 
   for (const node of nodes) {
     const rawCluster = node.super_category?.trim()
-    const cluster = (rawCluster && byId.get(rawCluster)?.label) || rawCluster || ancestorCluster(node, byId) || 'Unassigned'
+    const cluster = (rawCluster && byId.get(rawCluster)?.label)
+      || rawCluster
+      || ((node.type === 'category' || node.type === 'root') ? node.label : '')
+      || ancestorCluster(node, byId)
+      || 'Unassigned'
     clusters.set(cluster, [...(clusters.get(cluster) || []), node])
+    clusterById.set(node.id, cluster)
     if (node.parent_id) children.set(node.parent_id, [...(children.get(node.parent_id) || []), node])
   }
 
-  return { nodes, edges, byId, adjacency, children, clusters }
+  return { nodes, edges, byId, adjacency, children, clusters, clusterById }
 }
 
 function ancestorCluster(node: AtlasNode, byId: Map<string, AtlasNode>) {
@@ -76,31 +105,53 @@ function ancestorCluster(node: AtlasNode, byId: Map<string, AtlasNode>) {
 export function initialVisibleIds(model: AtlasModel) {
   const visible = new Set<string>()
   for (const [clusterName, clusterNodes] of model.clusters) {
-    const r1 = clusterNodes.filter((node) => nodeRound(node) === 'R1')
-    if (!r1.length && clusterName === 'Unassigned' && model.clusters.size > 1) continue
-    const primary = r1.length ? r1 : clusterNodes.filter((node) => node.type === 'category' || node.type === 'root')
-    ;(primary.length ? primary : clusterNodes.filter((node) => node.type === 'branch').slice(0, 3)).forEach((node) => visible.add(node.id))
+    if (clusterName === 'Unassigned' && model.clusters.size > 1) continue
+    const primary = clusterNodes.filter((node) => node.type === 'category' || node.type === 'root' || node.type === 'branch')
+    ;(primary.length ? primary : clusterNodes.slice(0, 3)).forEach((node) => visible.add(node.id))
   }
   if (!visible.size) model.nodes.slice(0, 24).forEach((node) => visible.add(node.id))
   return visible
 }
 
-export function visibleIdsForDepth(model: AtlasModel, depth: 'R1' | 'R2' | 'R3' | 'all') {
+export function visibleIdsForDepth(model: AtlasModel, depth: 'branches' | 'core' | 'all') {
   if (depth === 'all') return new Set(model.nodes.map((node) => node.id))
-  const limit = Number(depth.slice(1))
   const visible = new Set<string>()
   for (const [clusterName, clusterNodes] of model.clusters) {
-    const rounded = clusterNodes.filter((node) => {
-      const round = nodeRound(node)
-      return round && Number(round.slice(1)) <= limit
-    })
-    if (rounded.length) rounded.forEach((node) => visible.add(node.id))
-    else if (clusterName !== 'Unassigned') {
-      const anchor = clusterNodes.find((node) => node.type === 'category' || node.type === 'root')
-      if (anchor) visible.add(anchor.id)
+    if (depth === 'branches') {
+      const primary = clusterNodes.filter((node) => node.type === 'category' || node.type === 'root' || node.type === 'branch')
+      primary.forEach((node) => visible.add(node.id))
+    } else {
+      // Core view: categories, branches, and their direct children
+      const branches = clusterNodes.filter((node) => node.type === 'category' || node.type === 'root' || node.type === 'branch')
+      branches.forEach((node) => {
+        visible.add(node.id)
+        for (const child of model.children.get(node.id) || []) {
+          visible.add(child.id)
+        }
+      })
     }
   }
   return visible.size ? visible : initialVisibleIds(model)
+}
+
+export function visibleIdsForFrontier(model: AtlasModel, current: Set<string>, state: FrontierState | 'all') {
+  if (state === 'all') return current
+  const visible = new Set<string>()
+  for (const id of current) {
+    const node = model.byId.get(id)
+    if (node?.frontier_state !== state) continue
+    visible.add(id)
+    for (const ancestor of nodeAncestry(model, id)) visible.add(ancestor.id)
+  }
+  return visible
+}
+
+export function nodeTypeBadge(node: AtlasNode | undefined): string {
+  if (!node) return 'Node'
+  if (node.type === 'category' || node.type === 'root') return 'Domain'
+  if (node.type === 'branch') return 'Branch'
+  if (node.type === 'leaf') return 'Topic'
+  return node.type || 'Node'
 }
 
 export function expandVisibleIds(model: AtlasModel, current: Set<string>, nodeId: string) {
@@ -122,9 +173,57 @@ export function branchSubtreeIds(model: AtlasModel, nodeId: string) {
   return visible
 }
 
+export function nodeAncestry(model: AtlasModel, nodeId: string): AtlasNode[] {
+  const path: AtlasNode[] = []
+  let current = model.byId.get(nodeId)
+  const visited = new Set<string>()
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id)
+    path.unshift(current)
+    if (!current.parent_id) break
+    current = model.byId.get(current.parent_id)
+  }
+  return path
+}
+
+export function isSubtreeVisible(model: AtlasModel, visible: Set<string>, nodeId: string): boolean {
+  const children = model.children.get(nodeId) || []
+  if (!children.length) return true
+  return children.every((child) => visible.has(child.id))
+}
+
+export function toggleSubtree(model: AtlasModel, current: Set<string>, nodeId: string): Set<string> {
+  const children = model.children.get(nodeId) || []
+  if (!children.length) return current
+  const allVisible = children.every((child) => current.has(child.id))
+  const next = new Set(current)
+  if (allVisible) {
+    // Collapse: remove all descendants of this node
+    const descendants = branchSubtreeIds(model, nodeId)
+    descendants.forEach((id) => {
+      if (id !== nodeId) next.delete(id)
+    })
+  } else {
+    // Expand: add all descendants
+    const descendants = branchSubtreeIds(model, nodeId)
+    descendants.forEach((id) => next.add(id))
+  }
+  return next
+}
+
+export function isolatedVisibleIds(model: AtlasModel, nodeId: string): Set<string> {
+  const visible = branchSubtreeIds(model, nodeId)
+  for (const related of model.adjacency.get(nodeId) || []) visible.add(related)
+  let current = model.byId.get(nodeId)
+  while (current?.parent_id) {
+    visible.add(current.parent_id)
+    current = model.byId.get(current.parent_id)
+  }
+  return visible
+}
+
 export function clusterFor(model: AtlasModel, nodeId: string) {
-  for (const [name, nodes] of model.clusters) if (nodes.some((node) => node.id === nodeId)) return name
-  return 'Unassigned'
+  return model.clusterById.get(nodeId) || 'Unassigned'
 }
 
 export function rootBranchFor(model: AtlasModel, nodeId: string): AtlasNode | undefined {
@@ -171,13 +270,7 @@ export function branchConstellations(model: AtlasModel): Map<string, AtlasNode[]
   return constellations
 }
 
-export function nodeRound(node: AtlasNode) {
-  if (!node) return ''
-  return node.round_label?.toUpperCase() || (typeof node.label === 'string' ? node.label.match(/\bR[1-9]\b/i)?.[0].toUpperCase() : '') || ''
-}
-
 export function nodeTitle(node: AtlasNode) {
   if (!node) return 'Untitled'
-  return (typeof node.label === 'string' ? node.label : '').replace(/\s*\[[^\]]+\]\s*$/, '').trim() || node.id || 'Untitled'
+  return (typeof node.label === 'string' ? node.label : '').replace(/\s*\[(?:R[123]|legacy metadata)\]\s*$/i, '').trim() || node.id || 'Untitled'
 }
-

@@ -2,10 +2,10 @@ export type LearningDisposition = 'undecided' | 'retain' | 'apply' | 'reference'
 
 const makeId = (prefix: string) => `${prefix}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`
 
-export function normalizeDisposition(value: unknown, legacyScore?: number | null): LearningDisposition {
+export function normalizeDisposition(value: unknown): LearningDisposition {
   const normalized = String(value || '').trim().toLowerCase()
   if (['retain', 'apply', 'reference', 'drop', 'undecided'].includes(normalized)) return normalized as LearningDisposition
-  return Number(legacyScore || 0) >= 7 ? 'retain' : 'undecided'
+  return 'undecided'
 }
 
 type LearningEventInput = {
@@ -70,9 +70,9 @@ export async function createConsolidationRun(DB: D1Database, input: {
     ['extract_source', 2, needsKnowledge ? 'pending' : 'waived', needsKnowledge ? 1 : 0, 'preserve_reflection'],
     ['validate_anchors', 3, needsKnowledge ? 'pending' : 'waived', needsKnowledge ? 1 : 0, 'extract_source'],
     ['create_units', 4, needsKnowledge ? 'pending' : 'waived', needsKnowledge ? 1 : 0, 'validate_anchors'],
-    ['prepare_recall', 5, needsKnowledge ? 'pending' : 'waived', needsKnowledge ? 1 : 0, 'create_units'],
+    ['prepare_recall', 5, 'waived', 0, 'create_units'],
     ['attach_map', 6, needsKnowledge ? 'pending' : 'waived', 0, 'create_units'],
-    ['verify_record', 7, needsKnowledge ? 'pending' : 'completed', 1, needsKnowledge ? 'prepare_recall' : 'preserve_reflection'],
+    ['verify_record', 7, needsKnowledge ? 'pending' : 'completed', 1, needsKnowledge ? 'create_units' : 'preserve_reflection'],
   ]
   const statements: D1PreparedStatement[] = [
     DB.prepare(`INSERT INTO consolidation_runs (id,recommendation_id,thread_id,session_id,disposition,state,completed_at) VALUES (?,?,?,?,?,?,CASE WHEN ?='closed' THEN datetime('now') END)`).bind(runId, input.recommendationId, input.threadId || null, input.sessionId, input.disposition, terminalState, terminalState),
@@ -98,7 +98,8 @@ export async function advanceConsolidationForExtraction(DB: D1Database, jobId: s
   if (!runId) return
   await DB.batch([
     DB.prepare(`UPDATE consolidation_steps SET status='completed',result_json=?,completed_at=datetime('now'),updated_at=datetime('now') WHERE run_id=? AND step_key='extract_source'`).bind(JSON.stringify(result || {}), runId),
-    DB.prepare(`UPDATE consolidation_steps SET status='completed',completed_at=datetime('now'),updated_at=datetime('now') WHERE run_id=? AND step_key IN ('validate_anchors','create_units','prepare_recall','verify_record')`).bind(runId),
+    DB.prepare(`UPDATE consolidation_steps SET status='completed',completed_at=datetime('now'),updated_at=datetime('now') WHERE run_id=? AND step_key IN ('validate_anchors','create_units','verify_record')`).bind(runId),
+    DB.prepare(`UPDATE consolidation_steps SET status='waived',completed_at=COALESCE(completed_at,datetime('now')),updated_at=datetime('now') WHERE run_id=? AND step_key='prepare_recall'`).bind(runId),
     DB.prepare(`UPDATE consolidation_steps SET status='waived',completed_at=datetime('now'),updated_at=datetime('now') WHERE run_id=? AND step_key='attach_map' AND status='pending'`).bind(runId),
     DB.prepare(`UPDATE consolidation_runs SET state='closed',completed_at=datetime('now'),updated_at=datetime('now') WHERE id=?`).bind(runId),
   ])

@@ -1,9 +1,7 @@
 export const SOURCE_NOTE_CONTRACT = 'source_note_v2'
 
-const durableCardTypes = new Set(['mechanism', 'comparison', 'boundary', 'sequence', 'decision', 'application', 'causal'])
 const anchorTypes = new Set(['page', 'timestamp', 'section', 'quote', 'url_fragment', 'user_observation'])
 const legacySectionKeys = new Set(['foundation', 'case_studies', 'exploitation', 'defense'])
-const genericCardPrompt = /^(?:what (?:is|are) the (?:main|key|primary)|what (?:is|are) the (?:main )?takeaways?|why is .+ important|according to (?:the )?source|what does the source say)/i
 const genericTitleSuffix = /\s*[—–-]\s*source (?:notes?|study notes?|study guide)$/i
 
 export function countNoteWords(value: unknown): number {
@@ -27,7 +25,6 @@ export function validateSourceNoteCompletion(payload: any, body: any): string[] 
   const sections = Array.isArray(note.sections) ? note.sections : []
   const units = Array.isArray(body?.learning_units) ? body.learning_units : []
   const drafts = Array.isArray(body?.srs_drafts) ? body.srs_drafts : []
-  const recall = body?.recall || {}
 
   if (note.kind === 'reflection') failures.push('source note cannot be a reflection')
   if (!String(note.title || '').trim()) failures.push('source note title is required')
@@ -71,25 +68,7 @@ export function validateSourceNoteCompletion(payload: any, body: any): string[] 
     }
   }
 
-  if (drafts.length > 4) failures.push('recall drafting is sparse: at most four drafts per source')
-  const draftedUnits = new Set<string>()
-  for (const [index, draft] of drafts.entries()) {
-    const unitId = String(draft?.unit_id || '').trim()
-    const question = String(draft?.question || '').trim()
-    if (!unitId || !unitIds.has(unitId)) failures.push(`recall draft ${index + 1} must link to a submitted learning unit`)
-    if (unitId && draftedUnits.has(unitId)) failures.push(`recall draft ${index + 1} duplicates unit ${unitId}`)
-    if (unitId) draftedUnits.add(unitId)
-    if (!durableCardTypes.has(String(draft?.card_type || ''))) failures.push(`recall draft ${index + 1} requires a durable card_type`)
-    if (!question || genericCardPrompt.test(question)) failures.push(`recall draft ${index + 1} uses a generic prompt`)
-    if (!String(draft?.answer || '').trim()) failures.push(`recall draft ${index + 1} requires an answer`)
-    if (!String(draft?.source_anchor || '').trim()) failures.push(`recall draft ${index + 1} requires a visible source_anchor`)
-  }
-
-  if (drafts.length) {
-    if (recall.status !== 'drafted' || Number(recall.count) !== drafts.length) failures.push('recall receipt must report the exact drafted count')
-  } else if (recall.status !== 'none' || !String(recall.reason || '').trim()) {
-    failures.push('zero recall drafts require an explicit no-card reason')
-  }
+  if (drafts.length) failures.push('automated recall drafting is disabled; create cards only through an explicit learner-authored action')
 
   return failures
 }

@@ -11,19 +11,21 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 
 ## Product Invariants
 
-- Product: **Learning Compass**. Visual language: **Botanical Folio / Evidence Studio** — a cypress/cream Evidence Ledger with a persistent desktop root rail, grouped workspace modes, a working canvas, and an optional contextual inspector. On mobile, the rail becomes a five-item bottom dock with inline compact, equal-width mode controls and wrapping subordinate filters. Learn contains finite Threads, one continuous Books room, and Practice. Books integrates the reading desk, My books, and evergreen three-book Canon fields without a Shelf/Canon tab split; Canon remains relationship data and never becomes a sixth root or a second book collection.
+- Product: **Learning Compass**. Visual language: **Botanical Folio / Evidence Studio** — a cypress/cream Evidence Ledger with a persistent desktop root rail, grouped workspace modes, a working canvas, and an optional contextual inspector. On mobile, the rail becomes a five-item bottom dock with inline compact, equal-width mode controls and wrapping subordinate filters. Library begins with one continuous Books room before Triage/Queue; Learn contains finite Threads and Practice. Books integrates the reading desk, My books, and evergreen three-book Canon fields without a Shelf/Canon tab split; Canon remains relationship data and never becomes a sixth root or a second book collection.
 - Loop: capture → curate → consume externally → reflect → notes → review → map update → resurface.
-- D1 is canonical. R2 stores large artifacts. Obsidian is an archive/export for extracted notes only.
-- Every capture, including Telegram and share-target input, becomes a `captured` record in Library → All sources. Queue is a separate explicit commitment.
+- D1 is canonical. R2 stores large artifacts. Obsidian is an archive/export for extracted non-book notes only; book and book-chapter notes remain in Learning Compass.
+- Every capture, including Telegram and share-target input, becomes a durable `captured` source record. Queue is a separate explicit commitment.
 - Queue normally contains at most five queued/in-progress items; overflow requires an explicit override.
 - Consumption happens through the original source or a verified canonical HTML/PDF companion and is tracked through target-aware learning sessions.
-- Notes are structured, editable, and searchable. Notes Extractor source notes default to English; source-original Arabic quotations remain inline with RTL direction. User-authored blocks may preserve their original language and direction.
-- Rating alone never creates notes or recall drafts. Explicit `retain`/`apply` may create source-shaped notes and optional editable SRS drafts; approval is required before Review.
+- Notes are structured, editable, and searchable. Notes Extractor source notes pair precise English source claims with natural Egyptian-Arabic explanation in separate directional blocks. When supported, they include Misconception vs. Truth and every key study or experiment with researchers, year, method, and findings. Handwriting stays verbatim in native note blocks without Obsidian syntax; user-authored blocks preserve their original register and direction.
+- Rating alone never creates notes. Explicit `retain`/`apply` may create source-shaped notes and anchored Learning Units, but no automated workflow generates flash cards or recall drafts. New cards require an explicit learner-authored action.
 - Learning Threads and Levels advance only through direct lesson completion. Projects, sources, notes, ratings, and recall never gate or advance progression.
-- Every captured, recommended, or queued item must persist a verified non-pruned branch and round, and its branch pill must render everywhere that item appears.
+- Resurfacing, frontier states, semantic relationships, contradiction review, note distillation, adaptive depth, perspective diversity, and delivery context are advisory or reflective capabilities only; none can gate or advance progression.
+- Meaningful links and cross-branch bridges derive only from anchored typed Unit relations with canonical branch ownership. Progressive distillation is explicit and additive and never rewrites canonical note text.
+- Every captured, recommended, or queued item must persist a verified non-pruned knowledge branch and domain, and its clean branch pill must render everywhere that item appears.
 - Feedback processing never requests another recommendation automatically.
 - Lite Visual creates one atomically published HTML+PDF R2 pair from one canonical Arabic semantic HTML article; books create one pair per chapter with stable metadata. `extract_source.py` is the sole acquisition entry point: hash-verified cache, Mozilla Readability, Playwright fallback, YouTube captions/yt-dlp/Whisper, PyMuPDF/Tesseract, EPUB spine, Pandoc, or direct UTF-8; authoring stops unless its structured receipt is complete. Read Intent and Frontend Design before authoring, then derive the artifact's typography, color, rhythm, and restrained signature from the source. Only semantic HTML, source-specific CSS, native structures, equations, and rare justified inline SVG are allowed. Raster/generated images, image agents, Visual Mind delegation, preset themes/palettes/layouts, scripts, widgets, and mandatory pauses are forbidden. Gapless checksum-backed source scopes plus deterministic RTL, accessibility, responsive, A4, pagination, and HTML/PDF parity checks produce a hash-bound receipt. Every workflow checkpoint requires exact evidence; generic single-file upload is invalid, the pair publishes together, and the source record is verified. There is no subjective QA score and Notes Extractor never starts automatically.
-- The route registry in `client/src/app/router.ts` exposes five root destinations and 12 grouped modes, with subordinate focus filters. Every root and mode/focus surface must resolve to a real product surface; no generic fallback screens or tabs may expose only infrastructure.
+- The route registry in `client/src/app/router.ts` exposes five root destinations and 12 grouped modes. Library → Archive contains completed and excluded sources only; All sources, Reading journal, and Collections are retired product surfaces. Every remaining root and mode/focus surface must resolve to a real product surface; no generic fallback screens or tabs may expose only infrastructure.
 
 ## Architecture Boundaries
 
@@ -56,6 +58,7 @@ Active Hermes files:
 - `~/.hermes/skills/workflow/learning-compass-operating-system/SKILL.md`
 - `~/.hermes/skills/workflow/learning-compass-self-evolution/SKILL.md`
 - `~/.hermes/skills/workflow/recommendations-worker-ops/SKILL.md`
+- `~/.hermes/skills/devops/cloudflare-ai-pipeline-operations/SKILL.md`
 - `~/.hermes/skills/workflow/learning-compass-site-operator/SKILL.md`
 - `~/.hermes/skills/workflow/agent-cli-delegation/SKILL.md`
 - `~/.hermes/skills/workflow/youtube-playlist-verification/SKILL.md`
@@ -67,6 +70,7 @@ Active Hermes files:
 - `~/.hermes/skills/notebooklm/SKILL.md`
 - `~/.hermes/skills/learning-thread-curation/SKILL.md` → retired (renamed); active name is `~/.hermes/skills/learning/progressive-learning-curriculum/SKILL.md`
 - `~/.hermes/skills/learning/learning-thread-authoring/SKILL.md`
+- `~/.hermes/skills/learning/riyadh-salihin-al-badr/SKILL.md`
 - `~/.hermes/skills/workflow/learning-compass-source-ingestion/SKILL.md`
 - `~/.hermes/skills/learning/learning-hub-companion-authoring/SKILL.md`
 - `~/.hermes/skills/learning/compass-recommendation-workflows/SKILL.md`

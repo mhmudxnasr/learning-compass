@@ -22,13 +22,11 @@ export function progressionRound(evidence: RoundEvidence): 'R1' | 'R2' | 'R3' {
 
 export function displayRound(
   node: { round_label?: string | null; id?: string | null },
-  evidence: RoundEvidence,
-): string {
+  _evidence?: RoundEvidence,
+): string | null {
   const explicit = explicitRound(node.round_label)
   if (explicit) return explicit
-  if (String(node.id || '').startsWith('r2-')) return 'R2'
-  if (String(node.id || '').startsWith('r3-')) return 'R3'
-  return progressionRound(evidence)
+  return null
 }
 
 export function roundEvidenceFromBalance(balanceNode: {

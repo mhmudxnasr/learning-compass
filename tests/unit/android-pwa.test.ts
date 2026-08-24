@@ -18,7 +18,7 @@ test('Android manifest is installable and keeps capture inside the canonical sou
   assert.ok(manifest.icons.some((icon: any) => icon.sizes === '512x512' && icon.type === 'image/png'))
   assert.ok(manifest.icons.some((icon: any) => icon.purpose === 'maskable'))
   assert.equal(manifest.share_target?.action, '/api/share-target')
-  assert.equal(manifest.shortcuts?.[0]?.url, '/#/library?mode=catalog&focus=all&action=capture')
+  assert.equal(manifest.shortcuts?.[0]?.url, '/#/home?action=capture')
   assert.equal(manifest.launch_handler?.client_mode, 'navigate-existing')
 })
 
@@ -50,5 +50,6 @@ test('the app links its manifest, registers the service worker, and exposes a re
   assert.match(worker, /cache\.put\(request, response\.clone\(\)\)/)
   assert.match(worker, /isAppShellNavigation\(url\)/)
   assert.match(worker, /\/icons\/compass-maskable-512\.png/)
-  assert.match(server, /c\.redirect\('\/#\/library\?mode=catalog&focus=all', 303\)/)
+  assert.match(server, /\/#\/library\/source\/\$\{encodeURIComponent\(result\.id\)\}/)
+  assert.match(server, /action: 'capture', share: 'retry'/)
 })

@@ -4,6 +4,8 @@ import { advanceConsolidationForExtraction, failConsolidationForJob } from '../s
 import { applyFeedbackProposal } from '../services/intelligence-v2'
 import { validateLiteVisualCheckpointEvidence } from '../services/lite-visual-workflow'
 import { SOURCE_NOTE_CONTRACT, validateSourceNoteCompletion } from '../services/note-extraction'
+import { loadJobHealth } from '../services/operational-health'
+import { reconcileVisualJobs } from '../services/job-reconciliation'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const sqliteTime = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString().slice(0, 19).replace('T', ' ')
@@ -22,26 +24,14 @@ app.get('/active', async (c) => {
 })
 
 app.get('/health', async (c) => {
-  const [counts, stale, oldest, recentFailures, delayed, deadLetters] = await Promise.all([
-    c.env.DB.prepare(`SELECT status, COUNT(*) AS count FROM agent_jobs GROUP BY status`).all<any>(),
-    c.env.DB.prepare(`SELECT COUNT(*) AS count FROM agent_jobs WHERE status='running' AND lease_expires_at < datetime('now')`).first<any>(),
-    c.env.DB.prepare(`SELECT MIN(created_at) AS created_at FROM agent_jobs WHERE status IN ('pending','retry')`).first<any>(),
-    c.env.DB.prepare(`SELECT COUNT(*) AS count FROM agent_jobs WHERE status='failed' AND datetime(updated_at) >= datetime('now','-24 hours')`).first<any>(),
-    c.env.DB.prepare(`SELECT COUNT(*) AS count FROM agent_job_retries WHERE dead_lettered_at IS NULL AND next_attempt_at > datetime('now')`).first<any>(),
-    c.env.DB.prepare(`SELECT COUNT(*) AS count FROM agent_job_retries WHERE dead_lettered_at IS NOT NULL`).first<any>(),
-  ])
-  const status: Record<string, number> = {}
-  for (const row of counts.results || []) status[row.status] = Number(row.count || 0)
-  return c.json({
-    ok: Number(stale?.count || 0) === 0,
-    status,
-    stale_running: Number(stale?.count || 0),
-    oldest_pending: oldest?.created_at || null,
-    failed_last_24h: Number(recentFailures?.count || 0),
-    delayed_retries: Number(delayed?.count || 0),
-    dead_letters: Number(deadLetters?.count || 0),
-    checked_at: new Date().toISOString(),
-  })
+  const health = await loadJobHealth(c.env.DB)
+  return c.json(health, health.ok ? 200 : 503)
+})
+
+app.post('/reconcile', async (c) => {
+  const body: { apply?: boolean } = await c.req.json<{ apply?: boolean }>().catch(() => ({}))
+  const result = await reconcileVisualJobs(c.env, body.apply === true)
+  return c.json(result, body.apply === true && !result.ok ? 409 : 200)
 })
 
 app.get('/:id', async (c) => {
@@ -124,11 +114,12 @@ app.post('/:id/complete', async (c) => {
     if (job.job_type === 'extract_notes' && payload.output_contract === 'learning_units_v1' && (!Array.isArray(body.learning_units) || body.learning_units.length === 0)) {
       return c.json({ error: 'learning_units_v1 extraction must return at least one anchored learning unit' }, 400)
     }
+    if (job.job_type === 'extract_notes' && body.srs_drafts?.length) return c.json({ error: 'automated_recall_disabled', message: 'Extraction cannot create recall drafts. Cards require an explicit learner-authored action.' }, 400)
     if (job.job_type === 'process_feedback' && (!Array.isArray(body.proposals) || body.proposals.length === 0) && !body.no_change) {
       return c.json({ error: 'feedback processing must return proposals or an evidence-backed no_change decision' }, 400)
     }
     if (job.job_type === 'process_feedback' && (body.note || body.srs_drafts?.length)) {
-      return c.json({ error: 'Taste Mapper may propose changes but Notes Extractor exclusively owns source notes and recall drafts' }, 400)
+      return c.json({ error: 'Taste Mapper may propose changes but cannot create source notes or recall drafts' }, 400)
     }
     if (job.job_type === 'visualise_source') {
       if (job.workflow_step !== 'verify_record') return c.json({ error: 'Lite Visual must reach verify_record before completion', workflow_step: job.workflow_step }, 409)
@@ -164,14 +155,6 @@ app.post('/:id/complete', async (c) => {
       const extraction = payload.output_contract === SOURCE_NOTE_CONTRACT ? body.extraction : null
       statements.push(DB.prepare(`INSERT OR REPLACE INTO notes (id,recommendation_id,title,kind,branch_id,source_url,source_artifact_id,status,provenance_json,thread_id,stage_id,abstract,extraction_contract,source_word_count,note_word_count,source_hash,extraction_adapter,coverage_status,updated_at) VALUES (?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?,?,datetime('now'))`).bind(noteId, note.recommendation_id || null, note.title, note.kind || 'guide', note.branch_id || null, note.source_url || null, note.source_artifact_id || null, JSON.stringify(provenance), levelId ? null : ownerThreadId, levelId, String(note.abstract || '').trim() || null, extraction?.contract || null, extraction?.source_word_count || null, extraction?.note_word_count || null, extraction?.source_hash || null, extraction?.adapter || null, extraction?.coverage_status || null))
       for (const [index, section] of (note.sections || []).entries()) statements.push(DB.prepare(`INSERT OR REPLACE INTO note_sections (id,note_id,section_key,label,content,direction,position,updated_at) VALUES (?,?,?,?,?,?,?,datetime('now'))`).bind(`${noteId}_${section.section_key}`, noteId, section.section_key, section.label, section.content || '', section.direction || 'auto', index))
-      const retain = payload.disposition === 'retain' || payload.disposition === 'apply' || (!payload.disposition && Number(payload.rating || 0) >= 7)
-      if (retain) {
-        for (const [draftIndex, draft] of (body.srs_drafts || []).entries()) {
-          const provenance = Array.isArray(draft.provenance) ? draft.provenance.slice(0, 20).map((item: any) => ({ annotation_id: String(item.annotation_id || '').slice(0, 120), reason: String(item.reason || '').slice(0, 500), confidence: item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))) })).filter((item: any) => item.annotation_id) : []
-          const draftId = String(draft.id || `draft_${job.id}_${draftIndex + 1}`).slice(0, 160)
-          statements.push(DB.prepare(`INSERT OR REPLACE INTO srs_drafts (id,recommendation_id,note_id,question,answer,topic,unit_id,thread_id,stage_id,provenance_json,card_type,source_anchor) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).bind(draftId, note.recommendation_id || null, noteId, draft.question, draft.answer, draft.topic || note.branch_id || 'general', draft.unit_id || null, ownerThreadId, levelId, JSON.stringify(provenance), draft.card_type || null, draft.source_anchor || null))
-        }
-      }
     }
     if (job.job_type === 'extract_notes' && Array.isArray(body.learning_units)) {
       const allowedTypes = new Set(['claim','concept','method','example','question','application','counterclaim'])

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>My Books - 10 directions</title>
+  <style>
+    :root { --ink:#1c211d; --secondary:#525b54; --muted:#707a72; --canvas:#fffdf8; --shell:#f4f1eb; --ledger:#faf8f3; --seam:#d8d2c6; --green:#244f3b; --lichen:#e8f0ea; --map:#315f7b; --ochre:#a85f18; --danger:#a8382b; }
+    * { box-sizing:border-box; }
+    html { background:var(--shell); color:var(--ink); font-family:"IBM Plex Sans",system-ui,sans-serif; }
+    body { margin:0; }
+    button,input { font:inherit; }
+    button,a { -webkit-tap-highlight-color:transparent; }
+    button:focus-visible,a:focus-visible,input:focus-visible { outline:3px solid var(--green); outline-offset:3px; }
+    .lab { min-height:100vh; }
+    .lab-head { position:sticky; z-index:20; top:0; padding:18px clamp(18px,4vw,54px); border-bottom:1px solid var(--seam); background:color-mix(in srgb,var(--canvas) 94%,transparent); backdrop-filter:blur(12px); }
+    .lab-title { display:flex; align-items:end; justify-content:space-between; gap:20px; margin-bottom:14px; }
+    .lab-title h1 { margin:0; font:600 clamp(24px,3vw,38px)/1.05 Georgia,serif; letter-spacing:-.025em; }
+    .lab-title p { max-width:68ch; margin:0; color:var(--secondary); font-size:13px; }
+    .switcher { display:flex; gap:6px; overflow-x:auto; scrollbar-width:thin; }
+    .switcher button { min-width:44px; min-height:44px; padding:7px 13px; border:1px solid var(--seam); border-radius:6px; background:var(--canvas); color:var(--secondary); cursor:pointer; white-space:nowrap; }
+    .switcher button[aria-selected="true"] { border-color:var(--green); background:var(--green); color:var(--canvas); }
+    main { width:min(1500px,100%); margin:auto; padding:clamp(22px,4vw,56px); }
+    .variant { display:none; }
+    .variant.active { display:block; }
+    .variant-head { display:flex; align-items:end; justify-content:space-between; gap:24px; margin-bottom:22px; padding-bottom:14px; border-bottom:1px solid var(--seam); }
+    .variant-head h2 { margin:0 0 5px; font:600 clamp(25px,3vw,38px)/1.1 Georgia,serif; }
+    .variant-head p { max-width:68ch; margin:0; color:var(--secondary); line-height:1.5; }
+    .direction { color:var(--green); font:700 11px/1.2 ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase; }
+    .surface { border:1px solid var(--seam); border-radius:10px; background:var(--canvas); overflow:hidden; }
+    .toolbar { display:grid; grid-template-columns:minmax(220px,1fr) auto; gap:12px; padding:14px 18px; border-bottom:1px solid var(--seam); background:var(--ledger); }
+    .search { min-height:44px; padding:0 14px; border:1px solid var(--seam); border-radius:6px; background:var(--canvas); color:var(--ink); }
+    .filters { display:flex; gap:6px; overflow:auto; }
+    .chip,.action { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 13px; border:1px solid var(--seam); border-radius:999px; background:var(--canvas); color:var(--ink); font-weight:600; text-decoration:none; white-space:nowrap; }
+    .chip.active { border-color:var(--green); background:var(--lichen); color:var(--green); }
+    .action { border-radius:6px; color:var(--green); }
+    .meta { color:var(--muted); font-size:12px; }
+    .tag { display:inline-flex; align-items:center; min-height:28px; padding:3px 9px; border:1px solid var(--seam); border-radius:999px; color:var(--secondary); font-size:11px; text-decoration:none; }
+    .tag.branch { border-color:color-mix(in srgb,var(--green) 28%,var(--seam)); color:var(--green); }
+    .tag.canon { border-color:color-mix(in srgb,var(--map) 28%,var(--seam)); color:var(--map); }
+    .progress { height:4px; border-radius:99px; background:var(--seam); overflow:hidden; }
+    .progress i { display:block; height:100%; background:var(--green); }
+    .title { margin:0; font:600 18px/1.25 Georgia,serif; }
+    .book-link { display:inline-flex; align-items:center; min-height:44px; color:var(--ink); text-decoration:none; }
+    .book-link:hover { color:var(--green); text-decoration:underline; text-underline-offset:4px; }
+
+    /* 1: Calm ledger */
+    .v1-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:20px; min-height:82px; padding:13px 18px; border-bottom:1px solid var(--seam); }
+    .v1-row:last-child { border:0; }
+    .v1-copy { display:grid; gap:5px; }
+    .v1-meta { display:flex; align-items:center; flex-wrap:wrap; gap:7px; }
+
+    /* 2: State bands */
+    .band-head { display:flex; justify-content:space-between; padding:13px 18px; border-bottom:1px solid var(--seam); background:var(--lichen); color:var(--green); }
+    .band-head.saved { background:color-mix(in srgb,var(--ochre) 8%,var(--canvas)); color:var(--ochre); }
+    .band-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(160px,240px) auto; align-items:center; gap:22px; padding:15px 18px; border-bottom:1px solid var(--seam); }
+    .band-progress { display:grid; gap:7px; font-size:12px; }
+
+    /* 3: Editorial index */
+    .index-row { display:grid; grid-template-columns:54px minmax(0,1fr) auto; gap:18px; padding:22px; border-bottom:1px solid var(--seam); }
+    .index-no { color:var(--muted); font:600 12px ui-monospace,monospace; }
+    .index-row .title { font-size:clamp(22px,2.5vw,34px); }
+    .index-copy { display:grid; gap:8px; }
+    .index-side { display:grid; justify-items:end; align-content:start; gap:8px; }
+
+    /* 4: Two-lane desk */
+    .lanes { display:grid; grid-template-columns:.8fr 1.2fr; min-height:500px; }
+    .lane { padding:22px; }
+    .lane + .lane { border-left:1px solid var(--seam); background:var(--ledger); }
+    .lane h3 { margin:0 0 16px; font:600 22px Georgia,serif; }
+    .focus-book { display:grid; gap:14px; padding:22px; border:1px solid var(--seam); border-radius:8px; background:var(--canvas); }
+    .focus-book .title { font-size:30px; }
+    .lane-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:14px; padding:14px 0; border-bottom:1px solid var(--seam); }
+
+    /* 5: Branch first */
+    .branch-block { display:grid; grid-template-columns:230px minmax(0,1fr); border-bottom:1px solid var(--seam); }
+    .branch-label { padding:22px; background:var(--ledger); }
+    .branch-label h3 { margin:0 0 6px; font:600 20px Georgia,serif; }
+    .branch-books { padding:8px 20px; }
+    .branch-book { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:20px; padding:14px 0; border-bottom:1px solid var(--seam); }
+    .branch-book:last-child { border:0; }
+
+    /* 6: Canon aware */
+    .canon-row { display:grid; grid-template-columns:150px minmax(0,1fr) auto; align-items:center; min-height:92px; border-bottom:1px solid var(--seam); }
+    .role { align-self:stretch; display:grid; align-content:center; padding:15px 18px; background:color-mix(in srgb,var(--map) 8%,var(--canvas)); color:var(--map); font:700 11px ui-monospace,monospace; text-transform:uppercase; }
+    .canon-copy { display:grid; gap:7px; padding:15px 20px; }
+    .canon-action { padding-right:18px; }
+
+    /* 7: Progress rail */
+    .rail-list { padding:8px 24px 8px 34px; }
+    .rail-row { position:relative; display:grid; grid-template-columns:minmax(0,1fr) 220px auto; align-items:center; gap:22px; min-height:98px; padding:16px 0 16px 26px; border-bottom:1px solid var(--seam); }
+    .rail-row::before { position:absolute; left:0; top:0; bottom:0; width:1px; background:var(--seam); content:""; }
+    .rail-row::after { position:absolute; left:-5px; top:42px; width:9px; height:9px; border:1px solid var(--green); border-radius:50%; background:var(--canvas); content:""; }
+    .rail-row.current::after { background:var(--green); }
+
+    /* 8: Dense table */
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; min-width:900px; border-collapse:collapse; }
+    th { padding:11px 14px; border-bottom:1px solid var(--seam); background:var(--ledger); color:var(--muted); font:700 10px ui-monospace,monospace; text-align:left; text-transform:uppercase; }
+    td { padding:13px 14px; border-bottom:1px solid var(--seam); vertical-align:middle; }
+    td:first-child { width:38%; }
+
+    /* 9: Shelf stack */
+    .shelf { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; background:var(--seam); }
+    .volume { display:grid; grid-template-columns:34px minmax(0,1fr); min-height:190px; background:var(--canvas); }
+    .spine { display:grid; place-items:center; background:var(--green); color:var(--canvas); font:700 11px ui-monospace,monospace; writing-mode:vertical-rl; transform:rotate(180deg); }
+    .volume:nth-child(2) .spine { background:var(--ochre); }
+    .volume:nth-child(3) .spine { background:var(--map); }
+    .volume-copy { display:grid; align-content:space-between; gap:16px; padding:20px; }
+
+    /* 10: Question led */
+    .question-row { display:grid; grid-template-columns:minmax(260px,.75fr) minmax(0,1.25fr) auto; gap:26px; padding:20px; border-bottom:1px solid var(--seam); }
+    .question-row blockquote { margin:0; color:var(--secondary); font:400 16px/1.55 Georgia,serif; }
+    .question-row blockquote::before { color:var(--green); content:"Why this book? "; font:700 10px ui-monospace,monospace; letter-spacing:.05em; text-transform:uppercase; }
+    .question-meta { display:grid; align-content:start; gap:8px; }
+
+    @media (max-width:760px) {
+      .lab-head { position:static; }
+      .lab-title,.variant-head { align-items:start; flex-direction:column; }
+      main { padding:20px 14px 90px; }
+      .toolbar { grid-template-columns:1fr; }
+      .v1-row,.band-row,.index-row,.rail-row,.question-row { grid-template-columns:1fr; }
+      .index-side { justify-items:start; }
+      .lanes,.branch-block { grid-template-columns:1fr; }
+      .lane + .lane { border-left:0; border-top:1px solid var(--seam); }
+      .branch-label { padding:15px 18px; }
+      .canon-row { grid-template-columns:1fr; }
+      .role { min-height:44px; }
+      .canon-action { padding:0 18px 18px; }
+      .shelf { grid-template-columns:1fr; }
+      .question-row .action,.band-row .action,.rail-row .action,.index-side .action { width:100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="lab">
+    <header class="lab-head">
+      <div class="lab-title"><div><span class="direction">Decision prototype</span><h1>My Books - 10 directions</h1></div><p>Each direction now uses titles, authors, branches, Canon roles, and rationale from your real 36-book production library. Choose the information model before implementation.</p></div>
+      <div class="switcher" role="tablist" aria-label="My Books design variations">
+        <button role="tab" aria-selected="true" data-show="1">1 Ledger</button><button role="tab" aria-selected="false" data-show="2">2 Bands</button><button role="tab" aria-selected="false" data-show="3">3 Index</button><button role="tab" aria-selected="false" data-show="4">4 Lanes</button><button role="tab" aria-selected="false" data-show="5">5 Branches</button><button role="tab" aria-selected="false" data-show="6">6 Canon</button><button role="tab" aria-selected="false" data-show="7">7 Progress</button><button role="tab" aria-selected="false" data-show="8">8 Table</button><button role="tab" aria-selected="false" data-show="9">9 Shelf</button><button role="tab" aria-selected="false" data-show="10">10 Questions</button>
+      </div>
+    </header>
+    <main>
+      <section class="variant active" data-variant="1"><header class="variant-head"><div><span class="direction">Density</span><h2>Calm ledger</h2><p>The restored baseline, refined only through spacing and hierarchy. Fastest scanning and lowest visual overhead.</p></div><span class="tag">8 real books</span></header><div class="surface"><div class="toolbar"><input class="search" aria-label="Search books" placeholder="Search title, author, branch, or Canon"><div class="filters"><span class="chip active">All 36</span><span class="chip">Reading 1</span><span class="chip">Saved 30</span></div></div><div class="v1-row"><div class="v1-copy"><h3 class="title"><a class="book-link" href="#">Psychology: The Science of Mind and Behaviour</a></h3><div class="v1-meta"><span class="meta">Richard Gross - Reading</span><span class="tag branch">Mind & People</span><span class="tag canon">Foundation - Psychology</span></div></div><span class="chip active">Current</span></div><div class="v1-row"><div class="v1-copy"><h3 class="title">Say Nothing: A True Story of Murder and Memory in Northern Ireland</h3><div class="v1-meta"><span class="meta">Patrick Radden Keefe - Saved</span><span class="tag branch">Mind & People</span><span class="tag canon">Representative - Investigative Reporting</span></div></div><a class="action" href="#">Make current</a></div><div class="v1-row"><div class="v1-copy"><h3 class="title">Behind the Beautiful Forevers: Life, Death, and Hope in a Mumbai Undercity</h3><div class="v1-meta"><span class="meta">Katherine Boo - Saved</span><span class="tag branch">Mind & People</span><span class="tag canon">Boundary - Investigative Reporting</span></div></div><a class="action" href="#">Make current</a></div><div class="v1-row"><div class="v1-copy"><h3 class="title">Dune</h3><div class="v1-meta"><span class="meta">Frank Herbert - Saved</span><span class="tag branch">Systems & Craft</span><span class="tag canon">Foundation - Science Fiction</span></div></div><a class="action" href="#">Make current</a></div><div class="v1-row"><div class="v1-copy"><h3 class="title">The Left Hand of Darkness</h3><div class="v1-meta"><span class="meta">Ursula K. Le Guin - Saved</span><span class="tag branch">Systems & Craft</span><span class="tag canon">Representative - Science Fiction</span></div></div><a class="action" href="#">Make current</a></div><div class="v1-row"><div class="v1-copy"><h3 class="title">Disgrace</h3><div class="v1-meta"><span class="meta">J. M. Coetzee - Saved</span><span class="tag branch">Life & Relationships</span><span class="tag canon">Boundary - Literary Fiction</span></div></div><a class="action" href="#">Make current</a></div><div class="v1-row"><div class="v1-copy"><h3 class="title">About Face: The Essentials of Interaction Design</h3><div class="v1-meta"><span class="meta">Alan Cooper, Robert Reimann, David Cronin, and Christopher Noessel - Saved</span><span class="tag branch">Applied Creativity</span><span class="tag canon">Representative - Design</span></div></div><a class="action" href="#">Make current</a></div><div class="v1-row"><div class="v1-copy"><h3 class="title">Design for the Real World: Human Ecology and Social Change</h3><div class="v1-meta"><span class="meta">Victor Papanek - Saved</span><span class="tag branch">Applied Creativity</span><span class="tag canon">Boundary - Design</span></div></div><a class="action" href="#">Make current</a></div></div></section>
+
+      <section class="variant" data-variant="2"><header class="variant-head"><div><span class="direction">State hierarchy</span><h2>Reading bands</h2><p>Reading state becomes the primary structure. Useful when the central question is “what am I doing with these books?”</p></div><span class="tag">Real library sample</span></header><div class="surface"><div class="band-head"><strong>Reading now</strong><span>1 book</span></div><div class="band-row"><div><h3 class="title">Psychology: The Science of Mind and Behaviour</h3><span class="meta">Richard Gross - Mind & People - Foundation, Psychology</span></div><div class="band-progress"><span>Chapter plan not added</span><div class="progress"></div></div><span class="chip active">Current</span></div><div class="band-head saved"><strong>Saved for later</strong><span>30 books</span></div><div class="band-row"><div><h3 class="title">Say Nothing: A True Story of Murder and Memory in Northern Ireland</h3><span class="meta">Patrick Radden Keefe - Investigative Reporting</span></div><div class="band-progress"><span>Chapter plan not added</span><div class="progress"></div></div><a class="action" href="#">Make current</a></div><div class="band-row"><div><h3 class="title">Behind the Beautiful Forevers: Life, Death, and Hope in a Mumbai Undercity</h3><span class="meta">Katherine Boo - Investigative Reporting</span></div><div class="band-progress"><span>Chapter plan not added</span><div class="progress"></div></div><a class="action" href="#">Make current</a></div><div class="band-row"><div><h3 class="title">Dune</h3><span class="meta">Frank Herbert - Science Fiction</span></div><div class="band-progress"><span>Chapter plan not added</span><div class="progress"></div></div><a class="action" href="#">Make current</a></div><div class="band-row"><div><h3 class="title">About Face: The Essentials of Interaction Design</h3><span class="meta">Alan Cooper, Robert Reimann, David Cronin, and Christopher Noessel - Design</span></div><div class="band-progress"><span>Chapter plan not added</span><div class="progress"></div></div><a class="action" href="#">Make current</a></div></div></section>
+
+      <section class="variant" data-variant="3"><header class="variant-head"><div><span class="direction">Typography</span><h2>Editorial index</h2><p>Titles carry the experience. Relationships and state remain available but visually subordinate.</p></div><span class="tag">Real library sample</span></header><div class="surface"><article class="index-row"><span class="index-no">001</span><div class="index-copy"><h3 class="title">Psychology: The Science of Mind and Behaviour</h3><span class="meta">Richard Gross</span><div><span class="tag branch">Mind & People</span> <span class="tag canon">Foundation - Psychology</span></div></div><div class="index-side"><span class="chip active">Reading</span><span class="meta">Current book</span></div></article><article class="index-row"><span class="index-no">002</span><div class="index-copy"><h3 class="title">Say Nothing: A True Story of Murder and Memory in Northern Ireland</h3><span class="meta">Patrick Radden Keefe</span><div><span class="tag branch">Mind & People</span> <span class="tag canon">Representative - Investigative Reporting</span></div></div><div class="index-side"><span class="chip">Saved</span><a class="action" href="#">Make current</a></div></article><article class="index-row"><span class="index-no">003</span><div class="index-copy"><h3 class="title">Behind the Beautiful Forevers: Life, Death, and Hope in a Mumbai Undercity</h3><span class="meta">Katherine Boo</span><div><span class="tag branch">Mind & People</span> <span class="tag canon">Boundary - Investigative Reporting</span></div></div><div class="index-side"><span class="chip">Saved</span><a class="action" href="#">Make current</a></div></article><article class="index-row"><span class="index-no">004</span><div class="index-copy"><h3 class="title">About Face: The Essentials of Interaction Design</h3><span class="meta">Alan Cooper, Robert Reimann, David Cronin, and Christopher Noessel</span><div><span class="tag branch">Applied Creativity</span> <span class="tag canon">Representative - Design</span></div></div><div class="index-side"><span class="chip">Saved</span><a class="action" href="#">Make current</a></div></article></div></section>
+
+      <section class="variant" data-variant="4"><header class="variant-head"><div><span class="direction">Topology</span><h2>Two-lane desk</h2><p>One active reading lane and one reserve lane. Strong commitment boundary, less useful for browsing all 36 titles.</p></div><span class="tag">Commitment-first</span></header><div class="surface lanes"><section class="lane"><h3>Reading now</h3><article class="focus-book"><span class="direction">Current book</span><h4 class="title">Psychology: The Science of Mind and Behaviour</h4><span class="meta">Richard Gross</span><div class="progress"><i style="width:22%"></i></div><span class="meta">4 of 18 chapters</span><a class="action" href="#">Open book</a></article></section><section class="lane"><h3>Saved for later <span class="meta">30</span></h3><article class="lane-row"><div><h4 class="title">A Theory of Justice</h4><span class="meta">John Rawls - Mind & People</span></div><a class="action" href="#">Promote</a></article><article class="lane-row"><div><h4 class="title">About Face</h4><span class="meta">Alan Cooper et al. - Applied Creativity</span></div><a class="action" href="#">Promote</a></article><article class="lane-row"><div><h4 class="title">Behind the Beautiful Forevers</h4><span class="meta">Katherine Boo - Mind & People</span></div><a class="action" href="#">Promote</a></article></section></div></section>
+
+      <section class="variant" data-variant="5"><header class="variant-head"><div><span class="direction">Knowledge context</span><h2>Branch-first library</h2><p>Books are organized by their verified knowledge branch. Strong for curriculum orientation, weaker for reading-state scanning.</p></div><span class="tag">Branch-first</span></header><div class="surface"><section class="branch-block"><header class="branch-label"><h3>Mind & People</h3><span class="meta">14 books</span></header><div class="branch-books"><article class="branch-book"><div><h4 class="title">Psychology: The Science of Mind and Behaviour</h4><span class="meta">Richard Gross - Reading</span></div><span class="chip active">Current</span></article><article class="branch-book"><div><h4 class="title">A Theory of Justice</h4><span class="meta">John Rawls - Saved</span></div><a class="action" href="#">Make current</a></article></div></section><section class="branch-block"><header class="branch-label"><h3>Applied Creativity</h3><span class="meta">8 books</span></header><div class="branch-books"><article class="branch-book"><div><h4 class="title">About Face</h4><span class="meta">Alan Cooper et al. - Saved</span></div><a class="action" href="#">Make current</a></article></div></section></div></section>
+
+      <section class="variant" data-variant="6"><header class="variant-head"><div><span class="direction">Canon relationship</span><h2>Canon-aware rows</h2><p>My Books stays personal, while each row clearly states why that title matters inside Canon.</p></div><span class="tag">Role-first</span></header><div class="surface"><article class="canon-row"><div class="role">Foundation</div><div class="canon-copy"><h3 class="title">Psychology: The Science of Mind and Behaviour</h3><span class="meta">Psychology - Richard Gross - Reading</span><span class="tag branch">Mind & People</span></div><div class="canon-action"><span class="chip active">Current</span></div></article><article class="canon-row"><div class="role">Representative</div><div class="canon-copy"><h3 class="title">A Theory of Justice</h3><span class="meta">Philosophy - John Rawls - Saved</span><span class="tag branch">Mind & People</span></div><div class="canon-action"><a class="action" href="#">Make current</a></div></article><article class="canon-row"><div class="role">Representative</div><div class="canon-copy"><h3 class="title">About Face</h3><span class="meta">Interaction Design - Alan Cooper et al. - Saved</span><span class="tag branch">Applied Creativity</span></div><div class="canon-action"><a class="action" href="#">Make current</a></div></article></div></section>
+
+      <section class="variant" data-variant="7"><header class="variant-head"><div><span class="direction">Progress</span><h2>Reading rail</h2><p>A chronological-feeling rail emphasizes movement and the next available step without turning reading into gamification.</p></div><span class="tag">Progress-first</span></header><div class="surface rail-list"><article class="rail-row current"><div><h3 class="title">Psychology: The Science of Mind and Behaviour</h3><span class="meta">Richard Gross - Current</span></div><div><span class="meta">4 of 18 chapters</span><div class="progress"><i style="width:22%"></i></div></div><a class="action" href="#">Continue</a></article><article class="rail-row"><div><h3 class="title">A Theory of Justice</h3><span class="meta">John Rawls - Saved</span></div><div><span class="meta">No chapter plan</span><div class="progress"></div></div><a class="action" href="#">Make current</a></article><article class="rail-row"><div><h3 class="title">About Face</h3><span class="meta">Alan Cooper et al. - Saved</span></div><div><span class="meta">No chapter plan</span><div class="progress"></div></div><a class="action" href="#">Make current</a></article></div></section>
+
+      <section class="variant" data-variant="8"><header class="variant-head"><div><span class="direction">Operations</span><h2>Dense library table</h2><p>Maximum comparison per viewport. Best for maintenance and sorting; least literary of the directions.</p></div><span class="tag">Data-first</span></header><div class="surface table-wrap"><table><thead><tr><th>Title</th><th>State</th><th>Branch</th><th>Canon</th><th>Progress</th><th>Action</th></tr></thead><tbody><tr><td><strong>Psychology: The Science of Mind and Behaviour</strong><br><span class="meta">Richard Gross</span></td><td>Reading</td><td>Mind & People</td><td>Foundation</td><td>4 / 18 - 22%</td><td><span class="chip active">Current</span></td></tr><tr><td><strong>A Theory of Justice</strong><br><span class="meta">John Rawls</span></td><td>Saved</td><td>Mind & People</td><td>Representative</td><td>Not planned</td><td><a class="action" href="#">Make current</a></td></tr><tr><td><strong>About Face</strong><br><span class="meta">Alan Cooper et al.</span></td><td>Saved</td><td>Applied Creativity</td><td>Representative</td><td>Not planned</td><td><a class="action" href="#">Make current</a></td></tr></tbody></table></div></section>
+
+      <section class="variant" data-variant="9"><header class="variant-head"><div><span class="direction">Object identity</span><h2>Shelf stack</h2><p>Volumes feel distinct through a restrained spine device. More memorable, but lower information density.</p></div><span class="tag">Object-first</span></header><div class="surface shelf"><article class="volume"><div class="spine">CURRENT</div><div class="volume-copy"><div><span class="direction">Reading</span><h3 class="title">Psychology: The Science of Mind and Behaviour</h3><span class="meta">Richard Gross</span></div><div><span class="tag branch">Mind & People</span><p class="meta">Foundation - Psychology</p></div></div></article><article class="volume"><div class="spine">SAVED</div><div class="volume-copy"><div><span class="direction">Saved</span><h3 class="title">A Theory of Justice</h3><span class="meta">John Rawls</span></div><div><span class="tag branch">Mind & People</span><p><a class="action" href="#">Make current</a></p></div></div></article><article class="volume"><div class="spine">SAVED</div><div class="volume-copy"><div><span class="direction">Saved</span><h3 class="title">About Face</h3><span class="meta">Alan Cooper et al.</span></div><div><span class="tag branch">Applied Creativity</span><p><a class="action" href="#">Make current</a></p></div></div></article></div></section>
+
+      <section class="variant" data-variant="10"><header class="variant-head"><div><span class="direction">Purpose</span><h2>Question-led library</h2><p>The reason a book was saved becomes the central scanning field. Best if personal intent is consistently recorded.</p></div><span class="tag">Intent-first</span></header><div class="surface"><article class="question-row"><div class="question-meta"><span class="direction">Reading - Current</span><h3 class="title">Psychology: The Science of Mind and Behaviour</h3><span class="meta">Richard Gross</span><span class="tag branch">Mind & People</span></div><blockquote>Build a comprehensive foundation across the five major theoretical paradigms before specializing.</blockquote><span class="chip active">Current</span></article><article class="question-row"><div class="question-meta"><span class="direction">Saved</span><h3 class="title">A Theory of Justice</h3><span class="meta">John Rawls</span><span class="tag branch">Mind & People</span></div><blockquote>Understand the strongest systematic account of justice before evaluating contemporary political claims.</blockquote><a class="action" href="#">Make current</a></article><article class="question-row"><div class="question-meta"><span class="direction">Saved</span><h3 class="title">About Face</h3><span class="meta">Alan Cooper et al.</span><span class="tag branch">Applied Creativity</span></div><blockquote>Ground interaction design decisions in durable principles rather than interface fashion.</blockquote><a class="action" href="#">Make current</a></article></div></section>
+    </main>
+  </div>
+  <script>
+    const buttons = [...document.querySelectorAll('[data-show]')]
+    const variants = [...document.querySelectorAll('[data-variant]')]
+    function show(id) {
+      buttons.forEach(button => button.setAttribute('aria-selected', String(button.dataset.show === id)))
+      variants.forEach(variant => variant.classList.toggle('active', variant.dataset.variant === id))
+      history.replaceState(null, '', `#${id}`)
+      window.scrollTo({ top: 0, behavior: 'instant' })
+    }
+    buttons.forEach(button => button.addEventListener('click', () => show(button.dataset.show)))
+    const initial = location.hash.slice(1)
+    if (buttons.some(button => button.dataset.show === initial)) show(initial)
+  </script>
+</body>
+</html>

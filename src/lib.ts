@@ -13,7 +13,6 @@ export type Bindings = {
   GOOGLE_API_KEY?: string
   GEMINI_API_KEY?: string
   OPENCODE_ZEN_API_KEY?: string
-  HARDCOVER_API_TOKEN?: string
   TELEGRAM_BOT_TOKEN?: string
   TELEGRAM_WEBHOOK_SECRET?: string
   TELEGRAM_ALLOWED_CHAT_ID?: string

@@ -12,7 +12,7 @@ capture → curate → consume externally → reflect → extract notes
 ```
 
 1. **Capture:** URLs, text, PDFs, HTML, videos, Telegram shares, and RSS/Atom entries become ordinary source records in Library.
-2. **Commit:** an item can be archived, excluded, grouped, or promoted to the active Queue. The Queue normally holds no more than five items.
+2. **Commit:** an item can be archived, excluded, or promoted to the active Queue. The Queue normally holds no more than five items.
 3. **Consume:** opening an item starts or resumes a learning session, then hands off to the original source.
 4. **Return:** the user records a five-part reflection and may complete and rate the session in the same action.
 5. **Process:** structured notes are stored in D1. Large source files and generated reading companions live in R2.
@@ -20,8 +20,6 @@ capture → curate → consume externally → reflect → extract notes
 7. **Learn from history:** ratings, notes, review events, and map coverage inform future resurfacing and taste analysis.
 
 Feedback never requests another recommendation automatically. Finishing one item should close the loop, not create an endless feed.
-
-Library → Reading journal provides a server-side KOReader bridge through Hardcover. An explicit sync mirrors books, quotes, and notes without exposing the token to the browser; choosing a valid Compass branch imports one book and its evidence into canonical D1 records.
 
 ## System shape
 
@@ -63,7 +61,7 @@ Obsidian is an export target, not a second writable database. It must never over
 |---|---|
 | Source records in Library, five-item Queue | Saving should be frictionless; commitment should be scarce. |
 | Consumption at the original source | The system tracks learning without becoming a worse reader for every media format. |
-| Editable recall drafts before approval | Generated questions are suggestions until the learner confirms they are accurate and useful. |
+| Learner-authored Arabic recall cards | Flash cards are never generated automatically; the learner creates each question and answer explicitly. |
 | Leased, idempotent background jobs | A crash or retry must not duplicate notes, cards, artifacts, or taste signals. |
 | One canonical database | Notes, ratings, map state, and automation cannot safely disagree about which copy is current. |
 
@@ -144,13 +142,12 @@ The web app is the canonical Android experience. A Play Store package should use
 
 ### Local secrets
 
-Writes can be protected with `API_TOKEN`. Optional enrichment and delivery integrations use `GOOGLE_API_KEY`, `TELEGRAM_BOT_TOKEN`, and the server-only `HARDCOVER_API_TOKEN`. Hermes owns live web research; the Worker receives and validates its source-grounded candidates. Put local values in `.dev.vars`, which is ignored by Git:
+Writes can be protected with `API_TOKEN`. Optional enrichment and delivery integrations use `GOOGLE_API_KEY` and `TELEGRAM_BOT_TOKEN`. Hermes owns live web research; the Worker receives and validates its source-grounded candidates. Put local values in `.dev.vars`, which is ignored by Git:
 
 ```dotenv
 API_TOKEN="replace-with-a-local-secret"
 GOOGLE_API_KEY=""
 TELEGRAM_BOT_TOKEN=""
-HARDCOVER_API_TOKEN=""
 ```
 
 Never commit `.dev.vars`, `.env`, private keys, or API tokens.
@@ -260,7 +257,7 @@ Do not start with analytics, AI recommendations, or a knowledge graph. First pro
 Build only:
 
 - universal capture;
-- an unlimited Library → All sources catalog;
+- durable captured-source storage without a dedicated Catalog surface;
 - a deliberately small Queue;
 - external-source handoff;
 - resumable Queue handoffs backed by hidden sessions;
@@ -270,7 +267,7 @@ The first success criterion is simple: a captured source can become a completed,
 
 ### Phase 2: make learning durable
 
-Add structured notes, search, ratings, editable recall drafts, approval, and review scheduling. Keep every derived object linked to its source and session.
+Add structured notes, search, ratings, learner-authored recall cards, and review scheduling. Keep every derived object linked to its source and session.
 
 ### Phase 3: add automation
 
@@ -291,7 +288,7 @@ Add offline mutation recovery, large-data tests, bilingual direction handling, r
 - Consumption happens at the original source or a verified canonical Lite Visual companion.
 - Returning with reflection creates one linked structured reflection.
 - Every reflection produces confirmation-gated Taste Mapper proposals.
-- Explicit retain/apply consolidation creates one source-proportional synthesis and zero to four anchored Unit-linked recall drafts—or records why no card is useful. Rating alone never generates recall; approval is required before Review.
+- Explicit retain/apply consolidation creates one source-proportional synthesis and anchored Learning Units but never flash cards. New recall cards require an explicit learner-authored Arabic question and answer.
 - Feedback processing does not request a new recommendation.
 - Completed sources can be explicitly attached to existing knowledge-map nodes; ambiguous matches stay unresolved instead of creating speculative branches.
 - An abstained Compass Pick with a verified or restricted reachable source can be explicitly added to the Queue anyway; the override bypasses only the automatic threshold, and the five-item Queue cap still applies.

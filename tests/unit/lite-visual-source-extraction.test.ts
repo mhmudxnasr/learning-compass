@@ -78,6 +78,33 @@ test('source router visits every text PDF page and preserves page anchors', (t) 
   }
 })
 
+test('EPUB extraction counts image-only spine resources as visited instead of incomplete', () => {
+  const code = `
+import importlib.util, io, json, zipfile
+s=importlib.util.spec_from_file_location('extractor','${extractor}')
+m=importlib.util.module_from_spec(s)
+s.loader.exec_module(m)
+buffer=io.BytesIO()
+with zipfile.ZipFile(buffer, 'w') as archive:
+    archive.writestr('META-INF/container.xml', '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>')
+    archive.writestr('book.opf', '<package xmlns="http://www.idpf.org/2007/opf"><metadata><title>Fixture</title><language>en</language></metadata><manifest><item id="cover" href="cover.xhtml"/><item id="chapter" href="chapter.xhtml"/></manifest><spine><itemref idref="cover"/><itemref idref="chapter"/></spine></package>')
+    archive.writestr('cover.xhtml', '<html><body><img src="cover.jpg" alt=""/></body></html>')
+    archive.writestr('chapter.xhtml', '<html><body><h1>Chapter</h1><p>' + 'complete source text ' * 30 + '</p></body></html>')
+text, metadata, warnings=m.extract_epub(buffer.getvalue())
+print(json.dumps({'text': text, 'metadata': metadata, 'warnings': warnings}))
+`
+  const result = spawnSync('python3', ['-c', code], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  const extracted = JSON.parse(result.stdout)
+  assert.equal(extracted.metadata.checks.complete_spine, true)
+  assert.equal(extracted.metadata.spine_items, 2)
+  assert.equal(extracted.metadata.visited_items, 2)
+  assert.equal(extracted.metadata.extracted_items, 1)
+  assert.deepEqual(extracted.metadata.textless_items, ['cover.xhtml'])
+  assert.match(extracted.text, /complete source text/)
+  assert.match(extracted.warnings[0], /cover\.xhtml/)
+})
+
 test('transcript adapter converts VTT to clean timestamped text and exposes AI-friendly aliases', () => {
   const code = `import importlib.util; s=importlib.util.spec_from_file_location('t','${transcript}'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); raw='WEBVTT\\n\\n00:00:01.000 --> 00:00:03.000\\n<c>مرحبا بكم في الشرح الكامل للمصدر ومعناه وأمثلته وحدوده المهمة جدا</c>\\n\\n00:00:04.000 --> 00:00:06.000\\nنشرح الآن السبب والنتيجة والدليل والتطبيق والخلاصة بوضوح كامل للقارئ\\n'; text=m.parse_vtt(raw, True); print(text); print(m.validate_transcript(text))`
   const result = spawnSync('python3', ['-c', code], { encoding: 'utf8' })

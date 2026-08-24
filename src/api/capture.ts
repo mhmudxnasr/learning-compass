@@ -4,11 +4,11 @@ import { Bindings, safeError } from '../lib'
 import { createCapture } from '../services/capture'
 import { addFeed, syncAllFeeds, syncFeed } from '../services/rss'
 import { recordRecommendationSignal } from '../services/intelligence-v2'
-import { displayRound } from '../services/branch-rounds'
 import { loadCaptureQueue } from '../services/capture-queue'
 import { selectLearningSourceRenditions } from '../services/learning-material-renditions'
 import { projectBook } from '../services/book-projection'
 import { normalizeQualityAssurance } from '../artifact-metadata'
+import { deliveryContextFromQuery, resolveDeliveryContext } from '../services/delivery-context'
 import { LITE_VISUAL_CHECKPOINT_REQUIREMENTS, LITE_VISUAL_SOURCE_EXTRACTION_SCHEMA, LITE_VISUAL_STAGES, LITE_VISUAL_WORKFLOW_CONTRACT, LITE_VISUAL_WORKFLOW_VERSION, resolveLiteVisualResume } from '../services/lite-visual-workflow'
 
 import { activateWaitingRun } from './discovery'
@@ -70,8 +70,10 @@ app.get('/', async (c) => {
 })
 
 app.get('/queue', async (c) => {
-  const items = await loadCaptureQueue(c.env.DB)
-  return c.json({ items, count: items.length, cap: 5 })
+  const delivery = await resolveDeliveryContext(c.env.DB, deliveryContextFromQuery((key) => c.req.query(key)))
+  const matchesOnly = c.req.query('matches_only') === 'true'
+  const items = await loadCaptureQueue(c.env.DB, 50, delivery, matchesOnly)
+  return c.json({ items, count: items.length, cap: 5, matches_only: matchesOnly, delivery_context: delivery, receipt: { order: 'unchanged', filtering: matchesOnly ? 'explicit_matches_only' : 'none', all_items_visible: !matchesOnly } })
 })
 
 app.get('/feeds', async (c) => {
@@ -188,7 +190,7 @@ app.delete('/feeds/:id', async (c) => {
 
 app.post('/:id/triage', async (c) => {
   const body: { action?: 'queue' | 'exclude' | 'dequeue'; thread_id?: string; override_queue_cap?: boolean; reason?: string } = await c.req.json().catch(() => ({}))
-  const item = await c.env.DB.prepare(`SELECT r.id,r.video_url,r.video_title,r.status,r.deleted_at,m.learning_state,m.branch_id,n.id branch_exists,n.label branch_label,n.status branch_status
+  const item = await c.env.DB.prepare(`SELECT r.id,r.video_url,r.video_title,r.content_type,r.status,r.deleted_at,m.learning_state,m.branch_id,n.id branch_exists,n.label branch_label,n.status branch_status
     FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
     LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(c.req.param('id')).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
@@ -225,6 +227,9 @@ app.post('/:id/triage', async (c) => {
     return c.json({ ok: true, state: 'captured' })
   }
   if (body.action !== 'queue') return c.json({ error: 'action must be queue, dequeue, or exclude' }, 400)
+  if (item.content_type === 'book') {
+    return c.json({ error: 'books_separate_from_queue', message: 'Books are tracked separately in the Books room and cannot be added to Queue.' }, 400)
+  }
   if (!item.branch_id || !item.branch_exists) {
     return c.json({ error: 'branch_mapping_required', message: 'Map this source to a verified knowledge branch before adding it to Queue.' }, 409)
   }
@@ -240,12 +245,12 @@ app.post('/:id/triage', async (c) => {
     ? await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=? AND superseded_at IS NULL AND status NOT IN ('verified','abandoned')`).bind(body.thread_id).first<{ id: string }>()
     : null
   if (body.thread_id && !thread) return c.json({ error: 'learning_thread_not_found' }, 404)
-  const active = await c.env.DB.prepare(`SELECT COUNT(*) c FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')`).first<{ c: number }>()
+  const active = await c.env.DB.prepare(`SELECT COUNT(*) c FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')`).first<{ c: number }>()
   const decision = queueDecision(active?.c || 0, body.override_queue_cap === true)
   if (!decision.allowed) return c.json({ error: 'queue_full', ...decision }, 409)
   const result = await c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,updated_at)
     SELECT ?,'queued',datetime('now')
-    WHERE ?=1 OR (SELECT COUNT(*) FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress'))<5
+    WHERE ?=1 OR (SELECT COUNT(*) FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress'))<5
     ON CONFLICT(recommendation_id) DO UPDATE SET learning_state='queued',updated_at=datetime('now')`).bind(c.req.param('id'), body.override_queue_cap === true ? 1 : 0).run()
   if (!result.meta.changes) return c.json({ error: 'queue_full', ...queueDecision(5, false) }, 409)
   if (thread) {
@@ -341,15 +346,15 @@ app.post('/:id/visualise', async (c) => {
 app.get('/:id', async (c) => {
   const row = await c.env.DB.prepare(`SELECT r.*, m.learning_state, m.branch_id, m.tags_json, m.source_metadata_json
     FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?`).bind(c.req.param('id')).first()
-  return row ? c.json({ item: row }) : c.json({ error: 'not found' }, 404)
+  if (!row) return c.json({ error: 'not found' }, 404)
+  const { round: _legacyRound, ...item } = row as any
+  return c.json({ item })
 })
 
 app.get('/:id/record', async (c) => {
   const recommendationId = c.req.param('id')
   const item = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.tags_json,m.source_metadata_json,m.progress_percent,m.estimated_minutes,
-    COALESCE(n.label, r.branch) branch_label,
-    COALESCE(n.status, 'love') branch_status,
-    COALESCE(n.round_label, r.round) round_label
+    n.id verified_branch_id,n.label verified_branch_label,n.status verified_branch_status
     FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(recommendationId).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
   const [sessions, notes, sections, artifacts, drafts, cards, outcome, memories, proposals, jobs, threads, units, anchors, annotations, relations, consolidation, disposition, feedbackRows, canonMembershipRows] = await Promise.all([
@@ -420,12 +425,10 @@ app.get('/:id/record', async (c) => {
   const pdfArtifact = selectedCompanions.pdf || directLegacyArtifacts.find((artifact: any) => /pdf/.test(String(artifact.media_type || '')) || String(artifact.filename || '').toLowerCase().endsWith('.pdf')) || null
   const cardCount = cardRows.length
   const dueCount = cardRows.filter((card: any) => card.due_at && String(card.due_at) <= today).length
-  const noteCount = (notes.results || []).length
-  const branchLabel = item.branch_label || item.branch
-  const branchId = item.branch_id || branchLabel
-  const roundLabel = item.round_label || item.round
-  const round = displayRound({ round_label: roundLabel, id: branchId }, { consumed: item.status === 'consumed' ? 1 : 0, notes: noteCount, cards: cardCount, due: dueCount, recallStrength: null })
-  const branchInfo = branchLabel ? { id: branchId, label: branchLabel, round: roundLabel || round, status: String(item.branch_status || '').trim().toLowerCase() || 'love' } : null
+  const branchVerified = Boolean(item.verified_branch_id) && String(item.verified_branch_status || '').toLowerCase() !== 'pruned'
+  const branchLabel = branchVerified ? item.verified_branch_label : String(item.branch || '').trim() || null
+  const branchId = branchVerified ? item.verified_branch_id : null
+  const branchInfo = branchLabel ? { id: branchId, label: branchLabel, status: branchVerified ? String(item.verified_branch_status || '').trim().toLowerCase() : null, verified: branchVerified, linkable: branchVerified } : null
   const companions = { html: htmlArtifact ? { id: htmlArtifact.id, filename: htmlArtifact.filename, size_bytes: htmlArtifact.size_bytes } : null, pdf: pdfArtifact ? { id: pdfArtifact.id, filename: pdfArtifact.filename, size_bytes: pdfArtifact.size_bytes } : null }
   const companionMetadata = htmlArtifact ? parseJson(htmlArtifact.metadata_json) || {} : {}
   const companion = htmlArtifact && pdfArtifact ? { status: 'ready', pair_id: companionMetadata.pair_id || null, primary: { role: 'html', ...companions.html }, secondary: { role: 'pdf', ...companions.pdf } } : { status: 'not_ready', pair_id: null, primary: null, secondary: null }
@@ -436,10 +439,19 @@ app.get('/:id/record', async (c) => {
   const bookProjection = item.content_type === 'book'
     ? projectBook(item, bookChapters.results || [], artifactsRows)
     : null
+  if (bookProjection) {
+    const primary = await c.env.DB.prepare(`SELECT r.id FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id
+      WHERE r.content_type='book' AND (r.status IS NULL OR r.status!='deleted') AND r.deleted_at IS NULL
+        AND json_extract(COALESCE(m.source_metadata_json,'{}'),'$.book_primary')=1
+        AND json_extract(COALESCE(m.source_metadata_json,'{}'),'$.book_reading_state')='reading'
+      ORDER BY r.updated_at DESC,r.created_at DESC,r.id DESC LIMIT 1`).first<{ id: string }>()
+    bookProjection.is_primary = String(primary?.id || '') === recommendationId
+  }
   const visualObj = bookProjection?.visual || companion
+  const { round: _legacyRound, verified_round_label: _legacyVerifiedRound, ...itemOutput } = item
 
   return c.json({
-    item: { ...item, ...(bookProjection || {}), branch: branchInfo, round: roundLabel || round, branch_label: branchLabel, branch_status: item.branch_status || 'love', round_label: roundLabel, canon_memberships: canonMembershipRows.results || [], visual: visualObj },
+    item: { ...itemOutput, ...(bookProjection || {}), branch: branchInfo, branch_label: branchLabel, branch_status: branchInfo?.status || null, canon_memberships: canonMembershipRows.results || [], visual: visualObj },
     sessions: sessions.results || [],
     threads: threads.results || [],
     annotations: annotationRows,

@@ -242,33 +242,7 @@ window.onload = function() {};
  * Parse uploaded HTML study guide and extract Q&A blocks to create flashcards in srs_cards table.
  */
 app.post('/sync-srs', async (c) => {
-  const { DB } = c.env
-  try {
-    const { html_id, cards } = await c.req.json<{ html_id: string; cards: Array<{ question: string; answer: string; topic?: string }> }>()
-    if (!html_id || !Array.isArray(cards) || cards.length === 0) {
-      return c.json({ error: 'html_id and cards array required' }, 400)
-    }
-
-    const file = await DB.prepare('SELECT filename FROM html_files WHERE id = ?').bind(html_id).first<{ filename: string }>()
-    if (!file) return c.json({ error: 'HTML study guide file not found' }, 404)
-
-    const topic = file.filename.replace(/\.html$/i, '').toLowerCase()
-    let count = 0
-
-    for (const card of cards) {
-      if (!card.question || !card.answer) continue
-      const id = `srs_vault_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-      await DB.prepare(`
-        INSERT INTO srs_cards (id, recommendation_id, question, answer, topic, ease_factor, interval_days, repetitions, due_at)
-        VALUES (?, ?, ?, ?, ?, 2.5, 1, 0, date('now'))
-      `).bind(id, html_id, card.question, card.answer, card.topic || topic).run()
-      count++
-    }
-
-    return c.json({ ok: true, synced_cards: count })
-  } catch (err) {
-    return c.json(safeError('Vault SRS sync failed')(err), 500)
-  }
+  return c.json({ error: 'automated_recall_disabled', message: 'HTML flash-card sync is disabled. Create an Arabic card explicitly in Recall.' }, 409)
 })
 
 export default app

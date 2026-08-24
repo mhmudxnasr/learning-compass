@@ -1,4 +1,4 @@
-export const AGENT_CONTRACT_VERSION = '2026-08-22'
+export const AGENT_CONTRACT_VERSION = '2026-08-24'
 export const AGENT_PROTOCOL = 'learning-compass-agent-http/2'
 
 export type AgentMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -49,14 +49,23 @@ const BODY_SCHEMAS: Record<string, JsonSchema> = {
     effort: { type: 'string', enum: ['light', 'moderate', 'deep'] }, length_minutes: { type: 'integer', minimum: 0, maximum: 100000 },
   }, ['outcome']),
   'POST /notes': objectSchema({ title: { type: 'string', minLength: 1 }, recommendation_id: { type: 'string' }, thread_id: { type: 'string' }, stage_id: { type: 'string' }, lesson_id: { type: 'string' }, kind: { type: 'string' }, status: { type: 'string' }, sections: { type: 'array', items: { type: 'object' } } }, ['title']),
+  'POST /notes/:id/distillation/highlights': objectSchema({ section_key: { type: 'string', minLength: 1, maxLength: 120 }, block_index: { type: 'integer', minimum: 0 }, block_checksum: { type: 'string', minLength: 1, maxLength: 160 }, claim_text: { type: 'string', minLength: 1, maxLength: 4000 } }, ['section_key', 'block_index', 'block_checksum', 'claim_text']),
+  'POST /notes/:id/distillation/syntheses': objectSchema({ synthesis_text: { type: 'string', minLength: 1, maxLength: 4000 } }, ['synthesis_text']),
+  'POST /learning/core/units/:id/relations': objectSchema({ target_unit_id: { type: 'string', minLength: 1 }, relation_type: { type: 'string', enum: ['supports', 'contradicts', 'qualifies', 'example_of', 'depends_on', 'applies_to'] }, confidence: { type: 'number', minimum: 0, maximum: 1 }, why: { type: 'string', minLength: 1, maxLength: 4000 }, source_anchor_id: { type: 'string', minLength: 1 }, target_anchor_id: { type: 'string', minLength: 1 } }, ['target_unit_id', 'relation_type', 'why', 'source_anchor_id']),
+  'PATCH /learning/core/contradictions/:id': objectSchema({ review_state: { type: 'string', enum: ['accepted', 'resolved', 'dismissed'] }, resolution: { type: 'string', maxLength: 4000 } }, ['review_state']),
+  'PATCH /brain/resurfacing/:recommendationId/preference': objectSchema({ starred: { type: 'boolean' } }, ['starred']),
+  'POST /brain/resurfacing/presentations': objectSchema({ recommendation_id: { type: 'string', minLength: 1, maxLength: 100 } }, ['recommendation_id']),
+  'POST /brain/resurfacing/:eventId/action': objectSchema({ action: { type: 'string', enum: ['reviewed', 'snooze', 'dismissed'] } }, ['action']),
   'POST /recommendations/map': objectSchema({ ids: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 50 }, branch_id: { type: 'string', minLength: 1 } }, ['ids', 'branch_id']),
+  'PATCH /recommendations/:id/source-url': objectSchema({ source_url: { type: 'string', format: 'uri' } }, ['source_url']),
   'POST /learning/core/threads/:id/stages/:stageId/lessons': objectSchema({ position: { type: 'integer', minimum: 0 }, title: { type: 'string', minLength: 1 }, description: { type: 'string' }, objective: { type: 'string' }, content: { type: 'string' }, estimated_minutes: { type: 'integer', minimum: 1, maximum: 600 }, legacy_item_id: { type: 'string' }, why_learn: { type: 'string' }, why_now: { type: 'string' }, takeaway: { type: 'string' } }, ['title']),
   'POST /learning/core/threads/:id/lessons/:lessonId/sources': objectSchema({ recommendation_id: { type: 'string', minLength: 1 }, role: { type: 'string', enum: ['primary', 'case', 'challenge', 'reference', 'optional'] }, position: { type: 'integer', minimum: 0 }, branch_id: { type: 'string', minLength: 1 } }, ['recommendation_id', 'role', 'branch_id']),
   'POST /learning/core/canon/domains': objectSchema({ title: { type: 'string', minLength: 1 }, slug: { type: 'string' }, kind: { type: 'string', enum: ['family', 'domain'] }, parent_id: { type: 'string' }, branch_id: { type: 'string', minLength: 1 }, boundary: { type: 'string', minLength: 1 }, orientation: { type: 'string' }, sort_order: { type: 'integer' } }, ['title', 'branch_id', 'boundary']),
   'PATCH /learning/core/canon/domains/:id': objectSchema({ title: { type: 'string' }, boundary: { type: 'string' }, orientation: { type: 'string' }, branch_id: { type: 'string' }, curation_status: { type: 'string', enum: ['unmapped', 'curating', 'complete'] }, validation_state: { type: 'string', enum: ['untested', 'exploring', 'field_tested'] }, sort_order: { type: 'integer' } }),
   'PUT /learning/core/canon/domains/:id/entries/:role': objectSchema({ title: { type: 'string', minLength: 1 }, author: { type: 'string', minLength: 1 }, canonical_url: { type: 'string', format: 'uri' }, isbn: { type: 'string' }, why_slot: { type: 'string', minLength: 1 }, beginner_case: { type: 'string', minLength: 1 }, expert_case: { type: 'string', minLength: 1 }, unique_contribution: { type: 'string', minLength: 1 }, limitations: { type: 'string', minLength: 1 }, difficulty: { type: 'string', minLength: 1 }, rejected_alternative: { type: 'string', minLength: 1 }, rejection_reason: { type: 'string', minLength: 1 }, evidence: { type: 'array', minItems: 1 }, recommendation_id: { type: 'string' }, editorial_status: { type: 'string', enum: ['draft', 'reviewed', 'approved'] }, validation_state: { type: 'string', enum: ['untested', 'exploring', 'field_tested'] }, replacement_reason: { type: 'string' } }, ['title', 'author', 'why_slot', 'beginner_case', 'expert_case', 'unique_contribution', 'limitations', 'difficulty', 'rejected_alternative', 'rejection_reason']),
   'POST /learning/srs/review': objectSchema({ card_id: { type: 'string', minLength: 1 }, grade: { type: 'integer', minimum: 0, maximum: 5 } }, ['card_id', 'grade']),
-  'POST /learning/srs/create': objectSchema({ thread_id: { type: 'string' }, stage_id: { type: 'string' }, lesson_id: { type: 'string' }, note_id: { type: 'string' }, recommendation_id: { type: 'string' }, question: { type: 'string', minLength: 1 }, answer: { type: 'string', minLength: 1 }, topic: { type: 'string' }, branch: { type: 'string' } }, ['question', 'answer']),
+  'PUT /srs/drafts/:id': objectSchema({ question: { type: 'string', minLength: 1, description: 'Recall question written primarily in Arabic.' }, answer: { type: 'string', minLength: 1, description: 'Recall answer written primarily in Arabic.' }, topic: { type: 'string' }, branch: { type: 'string' }, card_type: { type: 'string' }, source_anchor: { type: 'string' } }),
+  'POST /learning/srs/create': objectSchema({ thread_id: { type: 'string' }, stage_id: { type: 'string' }, lesson_id: { type: 'string' }, note_id: { type: 'string' }, recommendation_id: { type: 'string' }, question: { type: 'string', minLength: 1, description: 'Recall question written primarily in Arabic.' }, answer: { type: 'string', minLength: 1, description: 'Recall answer written primarily in Arabic.' }, topic: { type: 'string' }, branch: { type: 'string' } }, ['question', 'answer']),
   'POST /notebooklm/learning/route': objectSchema({
     recommendation_id: { type: 'string', minLength: 1 },
     purpose: { type: 'string', enum: ['learn', 'orientation', 'review', 'teach-back', 'presentation'] },
@@ -106,11 +115,20 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /feedback/record': '/capture/:id/record',
   'POST /sessions/start': '/sessions',
   'POST /recommendations/map': '/capture/:id/record',
+  'PATCH /brain/resurfacing/:recommendationId/preference': '/brain/resurfacing',
+  'POST /brain/resurfacing/presentations': '/brain/resurfacing',
+  'POST /brain/resurfacing/:eventId/action': '/brain/resurfacing',
   'POST /recommendations/action': '/capture/:id/record',
+  'PATCH /recommendations/:id/source-url': '/capture/:id/record',
   'DELETE /recommendations/:id/permanent': '/recommendations/list',
   'POST /brain/branch-swipe': '/brain/branch-deck',
   'PUT /brain/profile/assertions/:key': '/brain/profile/intelligence',
   'POST /learning/core/threads': '/learning/core/threads/:id',
+  'POST /notes/:id/distillation/highlights': '/notes/:id',
+  'POST /notes/:id/distillation/syntheses': '/notes/:id',
+  'POST /notes/:id/distillation/highlights/:highlightId/promote': '/notes/:id',
+  'POST /learning/core/units/:id/relations': '/learning/core/units/:id',
+  'PATCH /learning/core/contradictions/:id': '/learning/core/contradictions',
   'PATCH /learning/core/threads/:id': '/learning/core/threads/:id',
   'POST /learning/core/threads/:id/status': '/learning/core/threads/:id',
   'POST /learning/core/threads/:id/stages/:stageId/start': '/learning/core/threads/:id/path',
@@ -160,6 +178,7 @@ const VERIFICATION_ID_SOURCES: Record<string, string[]> = {
   'POST /feedback/record': ['body.recommendation_id', 'response.recommendation_id', 'response.source.id'],
   'POST /recommendations/map': ['body.ids', 'body.id', 'response.sources.*.id'],
   'POST /recommendations/action': ['body.ids', 'body.id', 'response.ids'],
+  'PATCH /recommendations/:id/source-url': ['response.id'],
   'POST /learning/core/threads': ['response.id'],
   'POST /learning/core/canon/domains': ['response.id'],
   'POST /learning/srs/review': ['body.card_id'],
@@ -226,7 +245,7 @@ const deriveRisk = (method: AgentMethod, path: string) => {
 
 const reversible = (method: AgentMethod, path: string) => {
   if (/permanent|\/threads\/:id$|\/artifacts\/:id$|\/notes\/:id$|\/learning\/srs\/cards\/:id$/.test(path)) return false
-  return method !== 'DELETE' || /feeds|collections/.test(path)
+  return method !== 'DELETE' || /feeds/.test(path)
 }
 
 export function buildCapabilityCatalog(capabilities: readonly CapabilityTuple[], filters: { domain?: string; intent?: string; method?: string; q?: string } = {}) {

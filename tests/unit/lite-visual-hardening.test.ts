@@ -45,6 +45,13 @@ test('source-scope builder partitions every word and leaves explicit author summ
   }
 })
 
+test('workflow runner reuses an unchanged passing pair instead of rerendering a conflicting PDF', () => {
+  const code = `import importlib.util,tempfile,json,hashlib,pathlib; s=importlib.util.spec_from_file_location('r','${runner}'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); d=pathlib.Path(tempfile.mkdtemp()); paths={name:d/name for name in ['source.txt','source-scope.json','coverage-ledger.json','companion.html','companion.pdf','validation-receipt.json']}; [path.write_text(name,encoding='utf-8') for name,path in paths.items() if name != 'validation-receipt.json']; checks={'source_coverage':True,'claim_traceability':True,'canonical_html':True,'code_only':True,'rtl':True,'accessibility':True,'responsive':True,'print_a4':True,'pdf_parity':True}; receipt={'schema_version':'lite-visual-validation/v5','status':'passed','checks':checks,'source_sha256':m.digest(paths['source.txt']),'source_scope_sha256':m.digest(paths['source-scope.json']),'coverage_ledger_sha256':m.digest(paths['coverage-ledger.json']),'html_sha256':m.digest(paths['companion.html']),'pdf_sha256':m.digest(paths['companion.pdf'])}; paths['validation-receipt.json'].write_text(json.dumps(receipt),encoding='utf-8'); print(m.current_validation_receipt(paths['source.txt'],paths['source-scope.json'],paths['coverage-ledger.json'],paths['companion.html'],paths['companion.pdf'],paths['validation-receipt.json'])['status']); paths['companion.html'].write_text('changed',encoding='utf-8'); print(m.current_validation_receipt(paths['source.txt'],paths['source-scope.json'],paths['coverage-ledger.json'],paths['companion.html'],paths['companion.pdf'],paths['validation-receipt.json']))`
+  const result = spawnSync('python3', ['-c', code], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout.trim(), 'passed\nNone')
+})
+
 test('Compass profile mirrors all canonical Lite Visual workflow scripts', () => {
   assert.deepEqual(readFileSync(profileValidator), readFileSync(validator))
   assert.deepEqual(readFileSync(profileScopeBuilder), readFileSync(scopeBuilder))

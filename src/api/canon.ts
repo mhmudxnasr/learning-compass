@@ -70,13 +70,28 @@ app.get('/', async (c) => {
     const rows = await c.env.DB.prepare(`SELECT d.*,n.label branch_label,n.status branch_status,n.round_label branch_round,
         p.title family_title,p.slug family_slug,
         (SELECT COUNT(*) FROM canon_entries e WHERE e.domain_id=d.id) entry_count,
+        (SELECT e.title FROM canon_entries e WHERE e.domain_id=d.id AND e.role='foundation' LIMIT 1) entry_foundation_title,
+        (SELECT e.title FROM canon_entries e WHERE e.domain_id=d.id AND e.role='representative' LIMIT 1) entry_representative_title,
+        (SELECT e.title FROM canon_entries e WHERE e.domain_id=d.id AND e.role='boundary' LIMIT 1) entry_boundary_title,
         (SELECT GROUP_CONCAT(e.title,'\u001f') FROM canon_entries e WHERE e.domain_id=d.id ORDER BY CASE e.role WHEN 'foundation' THEN 0 WHEN 'representative' THEN 1 ELSE 2 END) entry_titles
       FROM canon_domains d
       LEFT JOIN tree_nodes n ON n.id=d.branch_id
       LEFT JOIN canon_domains p ON p.id=d.parent_id
       WHERE d.atlas_id=? AND (d.kind='family' OR (d.kind='domain' AND ${filters.length ? filters.join(' AND ') : '1=1'}))
       ORDER BY CASE d.kind WHEN 'family' THEN 0 ELSE 1 END,COALESCE(p.sort_order,d.sort_order),d.sort_order,d.title`).bind(...params).all<any>()
-    const all = (rows.results || []).map((row: any) => ({ ...row, entry_count: Number(row.entry_count || 0), entry_titles: row.entry_titles ? String(row.entry_titles).split('\u001f') : [] }))
+    const all = (rows.results || []).map((row: any) => {
+      const { entry_foundation_title, entry_representative_title, entry_boundary_title, ...domain } = row
+      return {
+        ...domain,
+        entry_count: Number(row.entry_count || 0),
+        entry_titles: row.entry_titles ? String(row.entry_titles).split('\u001f') : [],
+        entry_roles: {
+          foundation: entry_foundation_title || null,
+          representative: entry_representative_title || null,
+          boundary: entry_boundary_title || null,
+        },
+      }
+    })
     const counts = await c.env.DB.prepare(`SELECT COUNT(*) domains,
         SUM(CASE WHEN curation_status='unmapped' THEN 1 ELSE 0 END) unmapped,
         SUM(CASE WHEN curation_status='curating' THEN 1 ELSE 0 END) curating,

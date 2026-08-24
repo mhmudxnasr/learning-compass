@@ -46,7 +46,7 @@ export type Route = {
 
 export const roots: RootDefinition[] = [
   { key: 'home', label: 'Home', defaultMode: 'today', defaultView: 'today' },
-  { key: 'library', label: 'Library', defaultMode: 'triage', defaultFocus: 'queue', defaultView: 'queue' },
+  { key: 'library', label: 'Library', defaultMode: 'books', defaultView: 'books' },
   { key: 'learn', label: 'Learn', defaultMode: 'paths', defaultView: 'paths' },
   { key: 'map', label: 'Map', defaultMode: 'atlas', defaultView: 'atlas' },
   { key: 'settings', label: 'Settings', defaultMode: 'personal', defaultFocus: 'profile', defaultView: 'profile' },
@@ -60,13 +60,14 @@ export const modes: Record<RootKey, ModeDefinition[]> = {
     { key: 'today', label: 'Today', description: 'Decide what matters next.', defaultView: 'today' },
   ],
   library: [
+    { key: 'books', label: 'Books', description: 'Read and organize the personal book library.', defaultView: 'books' },
     {
       key: 'triage', label: 'Triage', description: 'Capture, decide, and commit sources.', defaultView: 'queue', defaultFocus: 'queue',
       focuses: [focus('queue', 'Queue', 'The five sources you committed to next.'), focus('feeds', 'RSS Feeds', 'Subscriptions and imported feed entries.')],
     },
     {
-      key: 'catalog', label: 'Catalog', description: 'Find and filter source material.', defaultView: 'all', defaultFocus: 'all',
-      focuses: [focus('all', 'All sources', 'Every source in one searchable ledger.'), focus('journal', 'Reading journal', 'KOReader books, highlights, and notes mirrored through Hardcover.'), focus('collections', 'Collections', 'Focused groups of related learning objects.'), focus('archive', 'Archive', 'Completed and excluded sources kept for recovery.')],
+      key: 'catalog', label: 'Archive', description: 'Recover completed and excluded sources.', defaultView: 'archive', defaultFocus: 'archive',
+      focuses: [focus('archive', 'Archive', 'Completed and excluded sources kept for recovery.')],
     },
     {
       key: 'assets', label: 'Assets', description: 'Open files and reading companions.', defaultView: 'files', defaultFocus: 'files',
@@ -76,19 +77,13 @@ export const modes: Record<RootKey, ModeDefinition[]> = {
   learn: [
     { key: 'paths', label: 'Threads', description: 'Build and follow finite learning paths.', defaultView: 'paths' },
     {
-      key: 'canon', label: 'Books', description: 'Read, organize, and explore foundational field paths.', defaultView: 'books',
-    },
-    {
       key: 'practice', label: 'Practice', description: 'Retrieve and make knowledge durable.', defaultView: 'notes', defaultFocus: 'notes',
-      focuses: [focus('notes', 'Notes', 'Structured, editable bilingual notes.'), focus('recall', 'Recall', 'Due review plus drafts awaiting approval.')],
+      focuses: [focus('notes', 'Notes', 'Structured, editable bilingual notes.'), focus('recall', 'Recall', 'Due review plus drafts awaiting approval.'), focus('contradictions', 'Contradictions', 'Review grounded tensions between retained ideas.')],
     },
   ],
   map: [
     { key: 'atlas', label: 'Atlas', description: 'See the connected topology of what you know.', defaultView: 'atlas' },
-    {
-      key: 'review', label: 'Review', description: 'Tune branches, coverage, and attention.', defaultView: 'branches', defaultFocus: 'branches',
-      focuses: [focus('branches', 'Branches', 'Keep, prune, promote, hold, add, and undo.'), focus('balance', 'Balance', 'Coverage, retention, and attention drift.')],
-    },
+    { key: 'review', label: 'Review', description: 'Decide branch status, priority, scope, and attention.', defaultView: 'branches' },
   ],
   settings: [
     {
@@ -137,21 +132,21 @@ const legacyDestinations: Record<string, LegacyDestination> = {
   '/insights/overview': { root: 'home', mode: 'today' },
   '/curate/queue': { root: 'library', mode: 'triage', focus: 'queue' },
   '/library/queue': { root: 'library', mode: 'triage', focus: 'queue' },
-  '/curate/inbox': { root: 'library', mode: 'catalog', focus: 'all' },
-  '/library/inbox': { root: 'library', mode: 'catalog', focus: 'all' },
+  '/curate/inbox': { root: 'library', mode: 'catalog', focus: 'archive' },
+  '/library/inbox': { root: 'library', mode: 'catalog', focus: 'archive' },
   '/curate/feeds': { root: 'library', mode: 'triage', focus: 'feeds' },
   '/library/feeds': { root: 'library', mode: 'triage', focus: 'feeds' },
   '/curate/rss': { root: 'library', mode: 'triage', focus: 'feeds' },
   '/library/rss': { root: 'library', mode: 'triage', focus: 'feeds' },
-  '/curate/discovery': { root: 'library', mode: 'catalog', focus: 'all' },
-  '/library/all': { root: 'library', mode: 'catalog', focus: 'all' },
-  '/curate/books': { root: 'learn', mode: 'canon' },
-  '/library/books': { root: 'learn', mode: 'canon' },
-  '/learn/books': { root: 'learn', mode: 'canon' },
-  '/library/journal': { root: 'library', mode: 'catalog', focus: 'journal' },
-  '/library/hardcover': { root: 'library', mode: 'catalog', focus: 'journal' },
-  '/curate/collections': { root: 'library', mode: 'catalog', focus: 'collections' },
-  '/library/collections': { root: 'library', mode: 'catalog', focus: 'collections' },
+  '/curate/discovery': { root: 'library', mode: 'catalog', focus: 'archive' },
+  '/library/all': { root: 'library', mode: 'catalog', focus: 'archive' },
+  '/curate/books': { root: 'library', mode: 'books' },
+  '/library/books': { root: 'library', mode: 'books' },
+  '/learn/books': { root: 'library', mode: 'books' },
+  '/library/journal': { root: 'library', mode: 'catalog', focus: 'archive' },
+  '/library/hardcover': { root: 'library', mode: 'catalog', focus: 'archive' },
+  '/curate/collections': { root: 'library', mode: 'catalog', focus: 'archive' },
+  '/library/collections': { root: 'library', mode: 'catalog', focus: 'archive' },
   '/curate/archive': { root: 'library', mode: 'catalog', focus: 'archive' },
   '/library/archive': { root: 'library', mode: 'catalog', focus: 'archive' },
   '/learn/files': { root: 'library', mode: 'assets', focus: 'files' },
@@ -159,19 +154,20 @@ const legacyDestinations: Record<string, LegacyDestination> = {
   '/library/files': { root: 'library', mode: 'assets', focus: 'files' },
   '/learn/hub': { root: 'learn', mode: 'paths' },
   '/learn/paths': { root: 'learn', mode: 'paths' },
-  '/learn/canon': { root: 'learn', mode: 'canon' },
+  '/learn/canon': { root: 'library', mode: 'books' },
   '/vault/notes': { root: 'learn', mode: 'practice', focus: 'notes' },
   '/learn/reflections': { root: 'learn', mode: 'practice', focus: 'notes' },
   '/learn/notes': { root: 'learn', mode: 'practice', focus: 'notes' },
   '/learn/cards': { root: 'learn', mode: 'practice', focus: 'recall' },
   '/learn/review': { root: 'learn', mode: 'practice', focus: 'recall' },
   '/learn/recall': { root: 'learn', mode: 'practice', focus: 'recall' },
+  '/learn/contradictions': { root: 'learn', mode: 'practice', focus: 'contradictions' },
   '/learn/activity': { root: 'settings', mode: 'data' },
-  '/map/deck': { root: 'map', mode: 'review', focus: 'branches' },
-  '/map/branches': { root: 'map', mode: 'review', focus: 'branches' },
-  '/map/coverage': { root: 'map', mode: 'review', focus: 'balance' },
-  '/map/balance': { root: 'map', mode: 'review', focus: 'balance' },
-  '/insights/learning': { root: 'map', mode: 'review', focus: 'balance' },
+  '/map/deck': { root: 'map', mode: 'review' },
+  '/map/branches': { root: 'map', mode: 'review' },
+  '/map/coverage': { root: 'map', mode: 'review' },
+  '/map/balance': { root: 'map', mode: 'review' },
+  '/insights/learning': { root: 'map', mode: 'review' },
   '/settings/profile': { root: 'settings', mode: 'personal', focus: 'profile' },
   '/settings/appearance': { root: 'settings', mode: 'personal', focus: 'preferences' },
   '/settings/learning': { root: 'settings', mode: 'personal', focus: 'preferences' },
@@ -189,21 +185,21 @@ const legacyDestinations: Record<string, LegacyDestination> = {
 const legacySegments: Record<RootKey, Record<string, LegacyDestination>> = {
   home: { today: { root: 'home', mode: 'today' } },
   library: {
-    queue: { root: 'library', mode: 'triage', focus: 'queue' }, inbox: { root: 'library', mode: 'catalog', focus: 'all' },
+    queue: { root: 'library', mode: 'triage', focus: 'queue' }, inbox: { root: 'library', mode: 'catalog', focus: 'archive' },
     feeds: { root: 'library', mode: 'triage', focus: 'feeds' }, rss: { root: 'library', mode: 'triage', focus: 'feeds' },
-    all: { root: 'library', mode: 'catalog', focus: 'all' }, books: { root: 'library', mode: 'catalog', focus: 'books' },
-    journal: { root: 'library', mode: 'catalog', focus: 'journal' }, hardcover: { root: 'library', mode: 'catalog', focus: 'journal' },
-    collections: { root: 'library', mode: 'catalog', focus: 'collections' }, archive: { root: 'library', mode: 'catalog', focus: 'archive' },
+    all: { root: 'library', mode: 'catalog', focus: 'archive' }, books: { root: 'library', mode: 'books' },
+    journal: { root: 'library', mode: 'catalog', focus: 'archive' }, hardcover: { root: 'library', mode: 'catalog', focus: 'archive' },
+    collections: { root: 'library', mode: 'catalog', focus: 'archive' }, archive: { root: 'library', mode: 'catalog', focus: 'archive' },
     files: { root: 'library', mode: 'assets', focus: 'files' },
   },
   learn: {
-    hub: { root: 'learn', mode: 'paths' }, paths: { root: 'learn', mode: 'paths' }, canon: { root: 'learn', mode: 'canon' }, notes: { root: 'learn', mode: 'practice', focus: 'notes' },
+    hub: { root: 'learn', mode: 'paths' }, paths: { root: 'learn', mode: 'paths' }, canon: { root: 'library', mode: 'books' }, notes: { root: 'learn', mode: 'practice', focus: 'notes' },
     reflections: { root: 'learn', mode: 'practice', focus: 'notes' }, cards: { root: 'learn', mode: 'practice', focus: 'recall' },
-    review: { root: 'learn', mode: 'practice', focus: 'recall' }, recall: { root: 'learn', mode: 'practice', focus: 'recall' },
+    review: { root: 'learn', mode: 'practice', focus: 'recall' }, recall: { root: 'learn', mode: 'practice', focus: 'recall' }, contradictions: { root: 'learn', mode: 'practice', focus: 'contradictions' },
   },
   map: {
-    deck: { root: 'map', mode: 'review', focus: 'branches' }, branches: { root: 'map', mode: 'review', focus: 'branches' },
-    coverage: { root: 'map', mode: 'review', focus: 'balance' }, balance: { root: 'map', mode: 'review', focus: 'balance' },
+    deck: { root: 'map', mode: 'review' }, branches: { root: 'map', mode: 'review' },
+    coverage: { root: 'map', mode: 'review' }, balance: { root: 'map', mode: 'review' },
   },
   settings: {
     profile: { root: 'settings', mode: 'personal', focus: 'profile' }, preferences: { root: 'settings', mode: 'personal', focus: 'preferences' },
@@ -214,8 +210,8 @@ const legacySegments: Record<RootKey, Record<string, LegacyDestination>> = {
 
 const objectTypes: Record<RootKey, string[]> = {
   home: [],
-  library: ['source', 'artifact', 'collection'],
-  learn: ['thread', 'level', 'note', 'unit', 'card', 'lesson', 'canon-domain', 'book'],
+  library: ['source', 'artifact', 'book'],
+  learn: ['thread', 'level', 'note', 'unit', 'card', 'lesson', 'canon-domain'],
   map: ['node', 'branch'],
   settings: [],
 }
@@ -307,14 +303,14 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const raw = (rawHash || '/home').replace(/\/$/, '') || '/home'
   const [rawPath, queryString = ''] = raw.split('?')
   const originalQuery = new URLSearchParams(queryString)
-  const movedBookObject = rawPath.match(/^\/library\/book\/([^/]+)$/)
+  const movedBookObject = rawPath.match(/^\/learn\/book\/([^/]+)$/)
   const oldThread = rawPath.match(/^\/learn\/hub\/([^/]+)$/)
-  const oldTypedPath = movedBookObject ? `/learn/book/${movedBookObject[1]}` : oldThread ? `/learn/thread/${oldThread[1]}` : rawPath
+  const oldTypedPath = movedBookObject ? `/library/book/${movedBookObject[1]}` : oldThread ? `/learn/thread/${oldThread[1]}` : rawPath
   const lessonPath = oldTypedPath.match(/^\/learn\/(?:thread\/([^/]+)\/lesson|t\/([^/]+)\/l)\/([^/]+)$/)
   const levelPath = oldTypedPath.match(/^\/learn\/(?:thread\/([^/]+)\/level|t\/([^/]+)\/v)\/([^/]+)$/)
   const canonDomainPath = oldTypedPath.match(/^\/learn\/canon\/([^/]+)$/)
-  const movedBooksQuery = rawPath === '/library' && (originalQuery.get('focus') === 'books' || originalQuery.get('mode') === 'books')
-  const exactAlias = movedBooksQuery ? { root: 'learn' as const, mode: 'canon' } : legacyDestinations[rawPath]
+  const movedBooksQuery = (rawPath === '/library' && originalQuery.get('focus') === 'books') || (rawPath === '/learn' && originalQuery.get('mode') === 'canon')
+  const exactAlias = movedBooksQuery ? { root: 'library' as const, mode: 'books' } : legacyDestinations[rawPath]
   const pathParts = oldTypedPath.replace(/^\//, '').split('/').filter(Boolean)
   const candidateRoot = (exactAlias?.root || pathParts[0]) as RootKey
   const knownRoot = roots.some((item) => item.key === candidateRoot)
@@ -347,17 +343,20 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const pathState = segmentState || (pathSegment && modeMeta(root, pathSegment) ? { root, mode: pathSegment } : undefined)
   const queryMode = originalQuery.get('mode') || undefined
   const queryFocus = originalQuery.get('focus') || undefined
-  const requestedMode = movedBookObject || movedBooksQuery ? 'canon' : queryMode || exactAlias?.mode || pathState?.mode
+  const requestedMode = movedBookObject || movedBooksQuery ? 'books' : queryMode || exactAlias?.mode || pathState?.mode
   const rawRequestedFocus = movedBookObject || movedBooksQuery ? undefined : queryFocus || exactAlias?.focus || pathState?.focus
-  const legacyBooksFocus = root === 'learn' && requestedMode === 'canon' && ['shelf', 'atlas'].includes(String(rawRequestedFocus || ''))
-  const requestedFocus = legacyBooksFocus ? undefined : rawRequestedFocus
+  const legacyBooksFocus = root === 'library' && requestedMode === 'books' && ['shelf', 'atlas'].includes(String(rawRequestedFocus || ''))
+  const retiredCatalogFocus = root === 'library' && requestedMode === 'catalog' && ['all', 'journal', 'collections'].includes(String(rawRequestedFocus || ''))
+  const retiredMapFocus = root === 'map' && requestedMode === 'review' && ['branches', 'balance'].includes(String(rawRequestedFocus || ''))
+  const requestedFocus = legacyBooksFocus || retiredMapFocus ? undefined : retiredCatalogFocus ? 'archive' : rawRequestedFocus
   const state = normalizeState(root, requestedMode, requestedFocus)
   const invalidObject = objectRoute && (!objectType || !objectTypes[root].includes(objectType))
   const invalidModePath = !objectRoute && pathParts.length > 1 && !exactAlias && !pathState && !modeMeta(root, pathSegment)
   const invalid = state.invalid || Boolean(invalidObject) || Boolean(invalidModePath)
   const query = exactAlias ? mergeRecoveryQuery(originalQuery, state.mode, state.focus) : originalQuery
-  const forceLegacyFocus = Boolean(exactAlias || modePrefixedObject || queryFocus)
-  const forceLegacyMode = Boolean((exactAlias || modePrefixedObject || queryFocus) && root !== 'settings')
+  const canonicalBooksRecovery = root === 'library' && state.mode === 'books' && Boolean(movedBookObject || movedBooksQuery || exactAlias?.mode === 'books')
+  const forceLegacyFocus = Boolean((exactAlias || modePrefixedObject || queryFocus) && !canonicalBooksRecovery)
+  const forceLegacyMode = Boolean((exactAlias || modePrefixedObject || queryFocus) && !canonicalBooksRecovery && root !== 'settings')
   const canonical = invalidObject || invalidModePath
     ? canonicalRoot(root, defaultState(root).mode, defaultState(root).focus)
     : objectRoute
@@ -369,7 +368,7 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
       : canonicalRoot(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
   const rawComparable = rawPath + (queryString ? `?${queryString}` : '')
   const changed = canonical !== rawComparable
-  const recovered = Boolean(exactAlias || movedBookObject || legacyBooksFocus || oldThread || (pathParts.length > 1 && !objectRoute && canonical !== rawComparable) || invalid)
+  const recovered = Boolean(exactAlias || movedBookObject || legacyBooksFocus || retiredCatalogFocus || retiredMapFocus || oldThread || (pathParts.length > 1 && !objectRoute && canonical !== rawComparable) || invalid)
   const route = {
     root,
     mode: state.mode,
@@ -395,7 +394,6 @@ function normalizeHrefState(root: RootKey, requestedMode?: string, requestedFocu
 
 /** Return a root URL; modes are groups and focus is local query state. */
 export function routeHref(root: RootKey, mode?: string, focusValue?: string) {
-  if (root === 'library' && (mode === 'books' || focusValue === 'books')) return routeHref('learn', 'canon')
   const state = normalizeHrefState(root, mode, focusValue)
   const explicitLeaf = Boolean(mode && !modeMeta(root, mode) && leafMeta(root, mode))
   const explicitFocus = Boolean(focusValue)
@@ -437,7 +435,11 @@ export function useRoute() {
     }
     const query = params.toString()
     const canonicalHash = `#${canonicalPath}${query ? `?${query}` : ''}`
-    if (location.hash !== canonicalHash) history.replaceState(history.state, '', canonicalHash)
+    if (location.hash !== canonicalHash) {
+      history.replaceState(history.state, '', canonicalHash)
+      const dismiss = window.setTimeout(() => setRoute(parseRoute(canonicalHash)), 2400)
+      return () => window.clearTimeout(dismiss)
+    }
   }, [route])
   return route
 }

@@ -4,23 +4,12 @@ import { activateWaitingRun } from './discovery'
 import { normalizeQualityAssurance } from '../artifact-metadata'
 import { classifyRecommendationFeedback } from '../intelligence-v2'
 import { recordRecommendationSignal, syncRecommendationFeedbackSignals } from '../services/intelligence-v2'
-import { buildLearningBalance } from '../services/learning-balance'
-import { displayRound, explicitRound, roundEvidenceFromBalance } from '../services/branch-rounds'
 import { chapterMetadataFromArtifact, projectBook } from '../services/book-projection'
+import { scheduleResurfacing } from '../services/resurfacing'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
 export const bookVisibilityPredicate = (alias = 'r') => `(${alias}.status IS NULL OR ${alias}.status!='deleted') AND ${alias}.deleted_at IS NULL`
-
-const bookPersistedOrPrefixRound = (book: Record<string, any>) => {
-  if (!book.verified_branch_id) return null
-  const persisted = explicitRound(book.verified_round_label || book.round)
-  if (persisted) return persisted
-  const branchId = String(book.verified_branch_id)
-  if (branchId.startsWith('r2-')) return 'R2'
-  if (branchId.startsWith('r3-')) return 'R3'
-  return null
-}
 
 app.get('/active', async (c) => {
   const { DB } = c.env
@@ -29,7 +18,8 @@ app.get('/active', async (c) => {
     const res = await DB.prepare(
       `SELECT * FROM recommendations WHERE status = 'active' ORDER BY created_at DESC`
     ).all<Recommendation>()
-    return c.json({ recommendations: res.results || [] })
+    const recommendations = (res.results || []).map((row: any) => { const { round: _legacyRound, ...item } = row; return item })
+    return c.json({ recommendations })
   } catch (err) {
     return c.json(safeError('Active failed')(err), 500)
   }
@@ -52,9 +42,13 @@ app.get('/list', async (c) => {
   const bindings: (string | number)[] = []
 
   if (status) {
-    if (!VALID_STATUS.has(status)) return c.json({ error: 'invalid status' }, 400)
-    where.push('recommendations.status = ?')
-    bindings.push(status)
+    if (status === 'archived') {
+      where.push("recommendations.status IN ('consumed','rejected')")
+    } else {
+      if (!VALID_STATUS.has(status)) return c.json({ error: 'invalid status' }, 400)
+      where.push('recommendations.status = ?')
+      bindings.push(status)
+    }
   } else {
     where.push("(recommendations.status IS NULL OR recommendations.status != 'deleted') AND recommendations.deleted_at IS NULL")
   }
@@ -94,7 +88,6 @@ app.get('/list', async (c) => {
     const [rows, countRow] = await Promise.all([
       DB.prepare(`SELECT recommendations.*,
         COALESCE(n.label, recommendations.branch) branch_label,
-        COALESCE(n.round_label, recommendations.round) round_label,
         COALESCE(n.status, 'love') branch_status,
         (SELECT ns.id FROM notes ns WHERE ns.recommendation_id = recommendations.id ORDER BY ns.updated_at DESC LIMIT 1) note_id,
         (SELECT ns.title FROM notes ns WHERE ns.recommendation_id = recommendations.id ORDER BY ns.updated_at DESC LIMIT 1) note_title,
@@ -112,15 +105,13 @@ app.get('/list', async (c) => {
     c.header('Content-Range', `items ${offset}-${offset + (rows.results?.length || 0)}/${countRow?.c || 0}`)
     const items = (rows.results || []).map((row: any) => {
       const branchLabel = row.branch_label || row.branch
-      const roundLabel = row.round_label || row.round
+      const { round: _legacyRound, round_label: _legacyRoundLabel, ...item } = row
       return {
-        ...row,
+        ...item,
         branch_label: branchLabel,
-        round_label: roundLabel,
         branch: branchLabel ? {
           id: row.branch_id || branchLabel,
           label: branchLabel,
-          round: roundLabel,
           status: row.branch_status || 'love',
         } : null,
         note: row.note_id ? { id: row.note_id, title: row.note_title || 'Field note' } : null,
@@ -140,7 +131,7 @@ app.get('/books', async (c) => {
   const allowed = new Set(['active', 'consumed', 'rejected'])
   if (status && !allowed.has(status)) return c.json({ error: 'invalid status' }, 400)
   const query = `SELECT r.*,m.learning_state,m.priority_rank,m.branch_id,m.source_metadata_json,
-    n.id verified_branch_id,n.label verified_branch_label,n.status verified_branch_status,n.round_label verified_round_label,
+    n.id verified_branch_id,n.label verified_branch_label,n.status verified_branch_status,
     (SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND t.status NOT IN ('verified','abandoned') ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 1) thread_id
     FROM recommendations r
     LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
@@ -151,8 +142,7 @@ app.get('/books', async (c) => {
   const books = rows.results || []
   const ids = books.map((book: any) => book.id)
   const placeholders = ids.map(() => '?').join(',')
-  const needsBalance = books.some((book: any) => book.verified_branch_id && !bookPersistedOrPrefixRound(book))
-  const [artifacts, jobs, canonMembershipRows, chapterResult, balance] = await Promise.all([
+  const [artifacts, jobs, canonMembershipRows, threadRows, chapterResult] = await Promise.all([
     ids.length
       ? c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,created_at FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${placeholders}) ORDER BY created_at DESC,id DESC`).bind(...ids).all<any>()
       : Promise.resolve({ results: [] }),
@@ -166,9 +156,14 @@ app.get('/books', async (c) => {
       ORDER BY d.sort_order,d.title,CASE e.role WHEN 'foundation' THEN 0 WHEN 'representative' THEN 1 ELSE 2 END`).bind(...ids).all<any>()
       : Promise.resolve({ results: [] }),
     ids.length
+      ? c.env.DB.prepare(`SELECT ts.recommendation_id,t.id,t.title,t.thread_type,t.status,ts.role,ts.expected_contribution
+      FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id
+      WHERE ts.recommendation_id IN (${placeholders}) AND ts.status!='removed'
+      ORDER BY CASE t.status WHEN 'active' THEN 0 WHEN 'draft' THEN 1 ELSE 2 END,t.updated_at DESC,t.title`).bind(...ids).all<any>()
+      : Promise.resolve({ results: [] }),
+    ids.length
       ? c.env.DB.prepare(`SELECT recommendation_id,chapter_key,chapter_title,position,completed_at FROM book_visual_chapters WHERE recommendation_id IN (${placeholders}) ORDER BY position,chapter_key`).bind(...ids).all<any>()
       : Promise.resolve({ results: [] }),
-    needsBalance ? buildLearningBalance(c.env.DB, 90).catch(() => null) : Promise.resolve(null),
   ])
   const canonMemberships = new Map<string, any[]>()
   for (const membership of canonMembershipRows.results || []) {
@@ -187,7 +182,23 @@ app.get('/books', async (c) => {
       role: membership.role,
     })
   }
-  const balanceByBranch = new Map((balance?.branches || []).map((branch: any) => [String(branch.id), branch]))
+  const threadsByBook = new Map<string, any[]>()
+  for (const thread of threadRows.results || []) {
+    const recommendationId = String(thread.recommendation_id)
+    let bucket = threadsByBook.get(recommendationId)
+    if (!bucket) {
+      bucket = []
+      threadsByBook.set(recommendationId, bucket)
+    }
+    bucket.push({
+      id: thread.id,
+      title: thread.title,
+      thread_type: thread.thread_type,
+      status: thread.status,
+      role: thread.role,
+      expected_contribution: thread.expected_contribution,
+    })
+  }
   const artifactsByBook = new Map<string, any[]>()
   for (const row of artifacts.results || []) {
     let metadata: any = {}
@@ -213,6 +224,10 @@ app.get('/books', async (c) => {
   }
   const projections = new Map<string, any>()
   for (const book of books) projections.set(String(book.id), projectBook(book, chaptersByBook.get(String(book.id)) || [], artifactsByBook.get(String(book.id)) || []))
+  const primaryBookId = books.find((book: any) => {
+    const projection = projections.get(String(book.id))
+    return projection?.is_primary && projection?.reading_state === 'reading'
+  })?.id
   for (const row of jobs.results || []) {
     let payload: any = {}
     try { payload = JSON.parse(row.payload_json || '{}') } catch {}
@@ -230,50 +245,62 @@ app.get('/books', async (c) => {
       const verified = Boolean(book.verified_branch_id)
       const branchLabel = verified ? book.verified_branch_label : String(book.branch || '').trim() || null
       const branchId = verified ? book.verified_branch_id : null
-      const balanceBranch = verified ? balanceByBranch.get(String(branchId)) : null
-      const roundLabel = verified
-        ? bookPersistedOrPrefixRound(book) || displayRound({ id: branchId }, roundEvidenceFromBalance(balanceBranch))
-        : null
       const branchInfo = branchLabel ? {
         id: branchId,
         label: branchLabel,
-        round: roundLabel,
         status: verified ? book.verified_branch_status : null,
         verified,
         linkable: verified,
       } : null
+      const { round: _legacyRound, verified_round_label: _legacyVerifiedRound, ...bookRecord } = book
       return {
-        ...book,
+        ...bookRecord,
         source_metadata_json: undefined,
         verified_branch_id: undefined,
         verified_branch_label: undefined,
         verified_branch_status: undefined,
-        verified_round_label: undefined,
         ...projection,
+        is_primary: String(book.id) === String(primaryBookId || ''),
         branch: branchInfo,
         branch_label: branchLabel,
         branch_status: verified ? book.verified_branch_status : null,
-        round: roundLabel,
         canon_memberships: canonMemberships.get(String(book.id)) || [],
+        threads: threadsByBook.get(String(book.id)) || [],
       }
     }),
   })
 })
 
-// Personal book reading state is intentionally separate from Queue commitment.
+// Personal book reading state and the pinned reading desk are separate from Queue commitment.
 app.post('/books/:id/reading-state', async (c) => {
   const recommendationId = c.req.param('id')
-  const body = await c.req.json<{ state?: string }>().catch(() => ({} as { state?: string }))
+  const body = await c.req.json<{ state?: string; primary?: boolean }>().catch(() => ({} as { state?: string; primary?: boolean }))
   const readingState = String(body.state || '').trim().toLowerCase()
   if (!['saved', 'reading', 'finished'].includes(readingState)) return c.json({ error: 'state must be saved, reading, or finished' }, 400)
+  if (body.primary === true && readingState !== 'reading') return c.json({ error: 'the primary book must be in reading state' }, 400)
   const book = await c.env.DB.prepare(`SELECT r.id,m.learning_state FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=? AND r.content_type='book' AND ${bookVisibilityPredicate('r')} AND lower(COALESCE(n.status,''))!='pruned'`).bind(recommendationId).first<any>()
   if (!book) return c.json({ error: 'book not found' }, 404)
-  await c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,source_metadata_json,updated_at)
-    VALUES (?,COALESCE(?,'captured'),json_object('book_reading_state',?),datetime('now'))
+
+  const writeTarget = (includePrimary: boolean) => c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,source_metadata_json,updated_at)
+    VALUES (?,COALESCE(?,'captured'),${includePrimary ? "json_object('book_reading_state',?,'book_primary',?)" : "json_object('book_reading_state',?)"},datetime('now'))
     ON CONFLICT(recommendation_id) DO UPDATE SET
       source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json),
-      updated_at=datetime('now')`).bind(recommendationId, book.learning_state || null, readingState).run()
-  return c.json({ ok: true, recommendation_id: recommendationId, reading_state: readingState, queue_state: book.learning_state || 'captured' })
+      updated_at=datetime('now')`)
+
+  if (body.primary === true) {
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE recommendation_meta SET source_metadata_json=json_patch(COALESCE(source_metadata_json,'{}'),json_object('book_primary',0)),updated_at=datetime('now')
+        WHERE recommendation_id IN (SELECT id FROM recommendations WHERE content_type='book')`),
+      writeTarget(true).bind(recommendationId, book.learning_state || null, readingState, 1),
+    ])
+  } else {
+    const clearPrimary = readingState !== 'reading' || body.primary === false
+    const statement = writeTarget(clearPrimary)
+    await (clearPrimary
+      ? statement.bind(recommendationId, book.learning_state || null, readingState, 0)
+      : statement.bind(recommendationId, book.learning_state || null, readingState)).run()
+  }
+  return c.json({ ok: true, recommendation_id: recommendationId, reading_state: readingState, is_primary: body.primary === true, queue_state: book.learning_state || 'captured' })
 })
 
 app.post('/books/:id/chapters/:chapterKey/complete', async (c) => {
@@ -361,23 +388,24 @@ app.post('/books', async (c) => {
   const dedupKey = `book_${isbn || slug}`
   const id = `book_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   try {
-    const branch = await c.env.DB.prepare(`SELECT id,label,status,round_label FROM tree_nodes WHERE id=? AND type='branch' AND status!='pruned'`).bind(branchId).first<{ id: string; label: string; status: string; round_label: string | null }>()
+    const branch = await c.env.DB.prepare(`SELECT id,label,status FROM tree_nodes WHERE id=? AND type='branch' AND status!='pruned'`).bind(branchId).first<{ id: string; label: string; status: string }>()
     if (!branch) return c.json({ error: 'valid non-pruned branch_id required' }, 400)
     const existing = await c.env.DB.prepare('SELECT id FROM recommendations WHERE dedup_key=?').bind(dedupKey).first<{ id: string }>()
     const recommendationId = existing?.id || id
     await c.env.DB.batch([
       c.env.DB.prepare(`INSERT INTO recommendations
-        (id,video_title,creator,content_type,video_url,why_this,branch,round,verified,status,user_rating,dedup_key,updated_at)
-        VALUES (?,?,?,?,?,?,?,?,datetime('now'),'active','unset',?,datetime('now'))
-        ON CONFLICT(dedup_key) DO UPDATE SET video_title=excluded.video_title,creator=excluded.creator,video_url=excluded.video_url,why_this=excluded.why_this,branch=excluded.branch,round=excluded.round,updated_at=datetime('now')`)
-        .bind(recommendationId, title, author, 'book', url, body.why_this?.trim() || null, branch.label, branch.round_label || 'R1', dedupKey),
+        (id,video_title,creator,content_type,video_url,why_this,branch,verified,status,user_rating,dedup_key,updated_at)
+        VALUES (?,?,?,?,?,?,?,datetime('now'),'active','unset',?,datetime('now'))
+        ON CONFLICT(dedup_key) DO UPDATE SET video_title=excluded.video_title,creator=excluded.creator,video_url=excluded.video_url,why_this=excluded.why_this,branch=excluded.branch,updated_at=datetime('now')`)
+        .bind(recommendationId, title, author, 'book', url, body.why_this?.trim() || null, branch.label, dedupKey),
       c.env.DB.prepare(`INSERT INTO recommendation_meta
         (recommendation_id,learning_state,branch_id,source_metadata_json,updated_at) VALUES (?,'captured',?,?,datetime('now'))
         ON CONFLICT(recommendation_id) DO UPDATE SET branch_id=excluded.branch_id,source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json),updated_at=datetime('now')`)
         .bind(recommendationId, branch.id, JSON.stringify({ isbn: isbn || null, source: 'bookshelf', ...(existing ? {} : { book_reading_state: 'saved' }) })),
     ])
-    const saved = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,n.label branch_label,n.round_label,n.status branch_status FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(recommendationId).first<any>()
-    return c.json({ ok: true, book: saved, duplicate: Boolean(existing) }, existing ? 200 : 201)
+    const saved = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,n.label branch_label,n.status branch_status FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(recommendationId).first<any>()
+    const { round: _legacyRound, ...book } = saved || {}
+    return c.json({ ok: true, book, duplicate: Boolean(existing) }, existing ? 200 : 201)
   } catch (error) { return c.json(safeError('Book save failed')(error), 500) }
 })
 
@@ -612,6 +640,34 @@ app.post('/action', async (c) => {
   return c.json({ ok: true, count: ids.length })
 })
 
+app.patch('/:id/source-url', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json<{ source_url?: string }>().catch(() => null)
+  if (!body || !isValidUrl(body.source_url)) return c.json({ error: 'valid source_url required' }, 400)
+
+  const sourceUrl = normalizeUrlForDedup(body.source_url)
+  const target = await c.env.DB.prepare(`SELECT id,video_title,content_type,video_url,dedup_key,status,deleted_at FROM recommendations WHERE id=?`).bind(id).first<any>()
+  if (!target || target.status === 'deleted' || target.deleted_at) return c.json({ error: 'recommendation_not_found' }, 404)
+  if (target.video_url === sourceUrl) return c.json({ ok: true, reused: true, id, previous_url: target.video_url, source_url: sourceUrl, dedup_key: target.dedup_key })
+
+  const dedupKey = deriveDedupKey({ video_url: sourceUrl, video_title: target.video_title, content_type: target.content_type })
+  const collision = await c.env.DB.prepare(`SELECT id FROM recommendations WHERE dedup_key=? AND id!=? AND deleted_at IS NULL`).bind(dedupKey, id).first<{ id: string }>()
+  if (collision) return c.json({ error: 'source_url_conflict', recommendation_id: collision.id }, 409)
+
+  const changedAt = new Date().toISOString()
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE recommendations SET video_url=?,dedup_key=?,updated_at=datetime('now') WHERE id=?`).bind(sourceUrl, dedupKey, id),
+    c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,source_metadata_json,updated_at) VALUES (?,?,datetime('now'))
+      ON CONFLICT(recommendation_id) DO UPDATE SET source_metadata_json=json_set(
+        COALESCE(recommendation_meta.source_metadata_json,'{}'),
+        '$.preferred_source_url',?,
+        '$.archive_source_url',COALESCE(json_extract(recommendation_meta.source_metadata_json,'$.archive_source_url'),?),
+        '$.source_url_updated_at',?
+      ),updated_at=datetime('now')`).bind(id, JSON.stringify({ preferred_source_url: sourceUrl, archive_source_url: target.video_url, source_url_updated_at: changedAt }), sourceUrl, target.video_url, changedAt),
+  ])
+  return c.json({ ok: true, reused: false, id, previous_url: target.video_url, source_url: sourceUrl, dedup_key: dedupKey })
+})
+
 // POST /recommendations/map — attach completed sources to an existing map node.
 app.post('/map', async (c) => {
   const { DB } = c.env
@@ -658,9 +714,13 @@ app.post('/delete', async (c) => {
         DB.prepare("INSERT OR REPLACE INTO undo_queue (id, table_name, row_id, snapshot_json, expires_at) VALUES (?, 'recommendations', ?, ?, datetime('now', '+30 seconds'))")
           .bind(body.id, body.id, JSON.stringify(row)),
         DB.prepare("UPDATE recommendations SET status='deleted',deleted_at=datetime('now'),updated_at=datetime('now') WHERE id=?").bind(body.id),
+        DB.prepare("UPDATE recommendation_meta SET source_metadata_json=json_patch(COALESCE(source_metadata_json,'{}'),json_object('book_primary',0)),updated_at=datetime('now') WHERE recommendation_id=?").bind(body.id),
       ])
     } else {
-      await DB.prepare("UPDATE recommendations SET status='deleted',deleted_at=datetime('now'),updated_at=datetime('now') WHERE id=?").bind(body.id).run()
+      await DB.batch([
+        DB.prepare("UPDATE recommendations SET status='deleted',deleted_at=datetime('now'),updated_at=datetime('now') WHERE id=?").bind(body.id),
+        DB.prepare("UPDATE recommendation_meta SET source_metadata_json=json_patch(COALESCE(source_metadata_json,'{}'),json_object('book_primary',0)),updated_at=datetime('now') WHERE recommendation_id=?").bind(body.id),
+      ])
     }
     try { await activateWaitingRun(DB) } catch {}
     return c.json({ ok: true })
@@ -777,23 +837,6 @@ app.get('/check-blacklist', async (c) => {
   }
 })
 
-// ---------- MEMORY: spaced resurfacing ----------
-// On consume, schedule three review stages (30/90/180 days). If a row already
-// exists for this recommendation we leave it (don't double-schedule).
-async function scheduleResurfacing(DB: any, recId: string) {
-  const existing = await DB.prepare('SELECT id FROM resurfacing WHERE recommendation_id = ? AND resolved_at IS NULL LIMIT 1').bind(recId).first()
-  if (existing) return
-  const stages = ['30d', '90d', '180d']
-  const offsets = [30, 90, 180]
-  const stmts = stages.map((stage, i) =>
-    DB.prepare(
-      `INSERT INTO resurfacing (recommendation_id, stage, due_at, notes)
-       VALUES (?, ?, date('now', '+' || ? || ' days'), ?)`
-    ).bind(recId, stage, offsets[i], 'auto-scheduled on consume')
-  )
-  await DB.batch(stmts)
-}
-
 // ---------- MEMORY: contradiction detection ----------
 async function detectContradiction(DB: any, recId: string) {
   const me = await DB.prepare('SELECT id, dedup_key, user_rating, user_review, video_title FROM recommendations WHERE id = ?').bind(recId).first()
@@ -834,7 +877,7 @@ app.get('/export', async (c) => {
   const offset = Math.max(parseInt(c.req.query('offset') || '0'), 0)
   try {
     const result = await DB.prepare('SELECT * FROM recommendations ORDER BY created_at DESC LIMIT ? OFFSET ?').bind(limit, offset).all<Recommendation>()
-    const items = result.results || []
+    const items = (result.results || []).map((row: any) => { const { round: _legacyRound, ...item } = row; return item })
 
     if (format === 'md') {
       const header = '| Title | Creator | URL | Why | Status | Rating | Review | Tags |\n| --- | --- | --- | --- | --- | --- | --- | --- |'

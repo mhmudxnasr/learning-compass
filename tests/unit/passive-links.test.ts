@@ -11,13 +11,19 @@ test('Home source and file links remain passive and hand tracked starts to Queue
   assert.match(home, /href=\{routeHref\('library', 'triage', 'queue'\)\}>Open Queue to start/)
   assert.match(home, /href=\{routeHref\('library', 'assets', 'files'\)\}>All files/)
   assert.match(home, /folio-home-feeds/)
-  assert.match(home, /href=\{routeHref\('library', 'triage', 'feeds'\)\}>Open Feeds/)
+  assert.match(home, /href=\{routeHref\('library', 'triage', 'feeds'\)\}/)
   assert.match(home, /folio-home-thread-lesson/)
-  assert.match(home, /lessonHref\(String\(thread\.id\), activeLesson\.id\)/)
+  assert.match(home, /lessonHref\(String\(thread\.id\), lesson\.id\)/)
   assert.equal(home.includes('openLearningTarget('), false)
   assert.equal(home.includes('startExternal('), false)
   assert.equal(home.includes('startLearningSession('), false)
   assert.equal(home.includes('onStart('), false)
+})
+
+test('Home shows an expanded resurfacing item first and renders no empty shelf', () => {
+  assert.ok(home.indexOf('{resurfacingItem && <section class="folio-home-resurfacing"') < home.indexOf('<section class="folio-home-focus"'))
+  assert.doesNotMatch(home, /Nothing is due today/)
+  assert.doesNotMatch(home, /<details[^>]*folio-home-resurfacing/)
 })
 
 test('Library object and file links never start learning sessions', () => {
@@ -33,13 +39,14 @@ test('Library object and file links never start learning sessions', () => {
 })
 
 test('the unified Books workspace and dossier expose passive access, not tracked Resume actions', () => {
-  const bookObject = libraryViews.slice(libraryViews.indexOf('function BookObject'), libraryViews.indexOf('function CollectionObject'))
+  const bookObject = libraryViews.slice(libraryViews.indexOf('function BookObject'))
   assert.equal(booksView.includes('startLearningSession('), false)
   assert.equal(booksView.includes('handlers.onStart('), false)
   assert.doesNotMatch(booksView, />\s*Resume\s*</)
   assert.doesNotMatch(booksView, /Continue Reading/)
-  assert.match(booksView, /chapterActionCopy/)
-  assert.match(booksView, /Book details/)
-  assert.match(bookObject, /Opening the original or a companion is passive/)
+  assert.match(booksView, /ReadingFormatLinks/)
+  assert.match(booksView, />Open book overview<\/a>/)
+  assert.match(bookObject, /<ReadingFormatLinks book=\{book\}/)
+  assert.equal(bookObject.includes('sourceLink('), false)
   assert.equal(bookObject.includes('handlers.onStart('), false)
 })

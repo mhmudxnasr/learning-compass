@@ -5,6 +5,7 @@ import { loadSettings } from '../services/settings'
 import { buildLearningBalance } from '../services/learning-balance'
 import { recordLearningEvent } from '../services/learning-core'
 import { LearningScopeError, resolveLearningScope, type ResolvedLearningScope } from '../services/learning-scope'
+import { validateArabicRecall } from '../services/recall-language'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -214,6 +215,8 @@ app.post('/srs/create', async (c) => {
   try {
     const { recommendation_id, note_id, thread_id, stage_id, lesson_id, question, answer, topic, branch } = await c.req.json<{ recommendation_id?: string; note_id?: string; thread_id?: string; stage_id?: string; lesson_id?: string; question: string; answer: string; topic?: string; branch?: string }>()
     if (!question || !answer) return c.json({ error: 'question and answer required' }, 400)
+    const languageError = validateArabicRecall(question, answer)
+    if (languageError) return c.json({ error: 'recall_language_required', message: languageError }, 400)
     const scope = await resolveRecallScope(DB, { thread_id, stage_id, lesson_id, note_id })
 
     const id = `card_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
@@ -229,12 +232,11 @@ app.post('/srs/create', async (c) => {
   }
 })
 
-// Direct text-to-card generation created ungrounded, duplicate study clutter.
-// Recall drafts now come only from the anchored source-note extraction contract.
+// Automated text-to-card generation creates ungrounded, duplicate study clutter.
 app.post('/srs/generate', async (c) => {
   return c.json({
     error: 'direct_recall_generation_retired',
-    message: 'Recall drafts are created only from anchored ideas during source-note extraction. Reprocess the source note instead of pasting free text.',
+    message: 'Automatic flashcard generation is disabled. Create an Arabic card explicitly from the Recall or learning workspace.',
   }, 409)
 })
 

@@ -81,6 +81,12 @@ export function App() {
   const route = useRoute()
   const capturePayload = route.query.get('capture') || ''
   const captureAction = route.query.get('action') === 'capture'
+  const shareState = route.query.get('share')
+  const captureNotice = shareState === 'retry'
+    ? 'The shared source was not saved. Your input is preserved—try again when the connection is stable.'
+    : shareState === 'invalid'
+      ? 'The shared item was empty or too large. Add a link, title, or note before saving.'
+      : ''
   const [captureOpen, setCaptureOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [selection, setSelection] = useState<InspectorSelection | null>(null)
@@ -112,12 +118,23 @@ export function App() {
   }, [capturePayload, captureAction])
 
   useEffect(() => {
-    const onOnline = () => { setOnline(true); void flushOfflineMutations() }
+    const retryQueuedWrites = () => { if (typeof document === 'undefined' || document.visibilityState === 'visible') void flushOfflineMutations() }
+    const onOnline = () => { setOnline(true); retryQueuedWrites() }
     const onOffline = () => setOnline(false)
+    const onVisibility = () => retryQueuedWrites()
     addEventListener('online', onOnline)
     addEventListener('offline', onOffline)
-    void flushOfflineMutations()
-    return () => { removeEventListener('online', onOnline); removeEventListener('offline', onOffline) }
+    addEventListener('focus', retryQueuedWrites)
+    document.addEventListener('visibilitychange', onVisibility)
+    const retryTimer = window.setInterval(retryQueuedWrites, 30000)
+    retryQueuedWrites()
+    return () => {
+      removeEventListener('online', onOnline)
+      removeEventListener('offline', onOffline)
+      removeEventListener('focus', retryQueuedWrites)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.clearInterval(retryTimer)
+    }
   }, [])
 
   useEffect(() => {
@@ -131,15 +148,18 @@ export function App() {
     if (routedMapSelection) navigate(routeHref('map', route.mode, route.focus))
     else if (route.root === 'library' && route.objectId) {
       const from = route.query.get('from')
-      const view = from || (route.objectType === 'artifact' ? 'files' : route.objectType === 'book' ? 'books' : route.objectType === 'collection' ? 'collections' : 'all')
+      const view = from || (route.objectType === 'artifact' ? 'files' : route.objectType === 'book' ? 'books' : 'queue')
       navigate(routeHref('library', view))
     }
   }
   const refreshWorkspace = () => setRefreshKey((value) => value + 1)
   const closeCapture = () => {
     setCaptureOpen(false)
-    if (capturePayload || captureAction) navigate(routeHref('library', 'catalog', 'all'))
+    if (capturePayload || captureAction) navigate(routeHref('home'))
   }
+  const workspaceKey = route.root === 'map'
+    ? `map-${route.mode}:${refreshKey}`
+    : `${route.canonical}:${refreshKey}`
 
   return <AppErrorBoundary>
     <StudioShell
@@ -151,11 +171,11 @@ export function App() {
       online={online}
     >
       <AndroidInstallBanner />
-      <div key={`${route.canonical}:${refreshKey}`}>
+      <div key={workspaceKey}>
         {workspace(route, () => setCaptureOpen(true), setSelection)}
       </div>
     </StudioShell>
-    <CaptureDialog open={captureOpen} initialSource={capturePayload} onClose={closeCapture} onCaptured={refreshWorkspace}/>
+    <CaptureDialog open={captureOpen} initialSource={capturePayload} initialStatus={captureNotice} onClose={closeCapture} onCaptured={refreshWorkspace}/>
     <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)}/>
   </AppErrorBoundary>
 }

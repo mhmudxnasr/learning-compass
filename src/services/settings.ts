@@ -1,3 +1,5 @@
+import { defaultDeliveryContext, normalizeDeliveryContext, type DeliveryContext } from './delivery-context.ts'
+
 export type TasteMapSettings = {
   appearance: { theme: string; density: 'comfortable' | 'balanced' | 'compact'; radius?: 'sharp' | 'soft' | 'round'; font_size?: 'small' | 'medium' | 'large'; reduced_motion?: boolean; custom_palette?: Record<string, string>; font?: string; custom_font?: Record<string, string>; typography?: Record<string, number> }
   learning: { retention: 85 | 90 | 95; queue_cap: 5 }
@@ -6,6 +8,7 @@ export type TasteMapSettings = {
   profile_proposals: { review_required: boolean }
   profile_automation: { mode: 'automatic' | 'manual'; policy_version: 'profile_v2' }
   recommendation_engine: { mode: 'shadow' | 'v2'; engine_version: 'v2'; objective_version: 'learning_value_v2' }
+  delivery_context: DeliveryContext
   atlas: {
     arrows: boolean
     text_fade_threshold: number
@@ -16,6 +19,7 @@ export type TasteMapSettings = {
     center_force: number
     repel_force: number
     link_force: number
+    focus_dimming: boolean
   }
 }
 
@@ -27,16 +31,18 @@ export const defaultSettings: TasteMapSettings = {
   profile_proposals: { review_required: true },
   profile_automation: { mode: 'manual', policy_version: 'profile_v2' },
   recommendation_engine: { mode: 'shadow', engine_version: 'v2', objective_version: 'learning_value_v2' },
+  delivery_context: defaultDeliveryContext,
   atlas: {
-    arrows: true,
-    text_fade_threshold: -0.7,
-    node_size: 0.58,
-    link_thickness: 1.16,
-    branch_link_thickness: 1,
+    arrows: false,
+    text_fade_threshold: 0.15,
+    node_size: 0.85,
+    link_thickness: 1.4,
+    branch_link_thickness: 1.5,
     animate: true,
-    center_force: 0.52,
-    repel_force: 10,
-    link_force: 1,
+    center_force: 0.65,
+    repel_force: 14,
+    link_force: 1.25,
+      focus_dimming: true,
   },
 }
 
@@ -86,6 +92,7 @@ export function normalizeSettings(input: unknown): TasteMapSettings {
     profile_proposals: { review_required: bool((source.profile_proposals as any)?.review_required, defaultSettings.profile_proposals.review_required) },
     profile_automation: { mode: oneOf((source.profile_automation as any)?.mode, ['automatic', 'manual'] as const, defaultSettings.profile_automation.mode), policy_version: 'profile_v2' },
     recommendation_engine: { mode: oneOf((source.recommendation_engine as any)?.mode, ['shadow', 'v2'] as const, defaultSettings.recommendation_engine.mode), engine_version: 'v2', objective_version: 'learning_value_v2' },
+    delivery_context: normalizeDeliveryContext(source.delivery_context),
     atlas: {
       arrows: bool((source.atlas as any)?.arrows, defaultSettings.atlas.arrows),
       text_fade_threshold: clamp((source.atlas as any)?.text_fade_threshold, -1, 1, defaultSettings.atlas.text_fade_threshold),
@@ -94,8 +101,9 @@ export function normalizeSettings(input: unknown): TasteMapSettings {
       branch_link_thickness: clamp((source.atlas as any)?.branch_link_thickness, 0.1, 6, defaultSettings.atlas.branch_link_thickness),
       animate: bool((source.atlas as any)?.animate, defaultSettings.atlas.animate),
       center_force: clamp((source.atlas as any)?.center_force, 0, 2, defaultSettings.atlas.center_force),
-      repel_force: clamp((source.atlas as any)?.repel_force, 0, 40, defaultSettings.atlas.repel_force),
+      repel_force: clamp((source.atlas as any)?.repel_force, 0, 50, defaultSettings.atlas.repel_force),
       link_force: clamp((source.atlas as any)?.link_force, 0, 3, defaultSettings.atlas.link_force),
+      focus_dimming: bool((source.atlas as any)?.focus_dimming, defaultSettings.atlas.focus_dimming),
     },
   }
 }

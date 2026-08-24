@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
 import { loadHermesBrief } from '../services/agent-briefing'
+import { selectHomeLessonTurns } from '../services/home-threads'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -16,10 +17,10 @@ app.get('/briefing', async (c) => {
          (SELECT COUNT(*) FROM notes n WHERE n.recommendation_id=r.id) note_count
          FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
          LEFT JOIN tree_nodes n ON n.id=m.branch_id
-         WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')
+         WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')
         ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE due_at<=date('now')`).first<any>(),
-      DB.prepare(`SELECT COUNT(*) count FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND m.learning_state='captured'`).first<any>(),
+      DB.prepare(`SELECT COUNT(*) count FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND m.learning_state='captured'`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM feedback_proposals WHERE status='pending'`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM srs_drafts WHERE status='draft'`).first<any>(),
       DB.prepare(`SELECT
@@ -39,7 +40,49 @@ app.get('/briefing', async (c) => {
     ])
 
     const activeItems = active.results || []
-    const activeThread = await DB.prepare(`SELECT * FROM learning_threads WHERE status='active' ORDER BY priority DESC,updated_at DESC LIMIT 1`).first<any>()
+    const activeThreadsResult = await DB.prepare(`SELECT t.*,
+      (SELECT COUNT(*) FROM learning_path_stages s WHERE s.thread_id=t.id) stage_count,
+      (SELECT COUNT(*) FROM thread_lessons l WHERE l.thread_id=t.id) lesson_count,
+      (SELECT COUNT(*) FROM thread_lessons l WHERE l.thread_id=t.id AND l.status='completed') completed_lesson_count
+      FROM learning_threads t WHERE t.status IN ('active','paused','draft') AND t.superseded_at IS NULL
+      ORDER BY CASE t.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,t.priority DESC,t.updated_at DESC`).all<any>()
+    const activeThreads = activeThreadsResult.results || []
+    const threadIds = activeThreads.map((thread: any) => thread.id)
+    let homeThreads: any[] = []
+    if (threadIds.length) {
+      const threadMatches = threadIds.map(() => '?').join(',')
+      const stages = await DB.prepare(`SELECT * FROM learning_path_stages WHERE thread_id IN (${threadMatches}) ORDER BY thread_id,position`).bind(...threadIds).all<any>()
+      const currentStages = activeThreads.map((thread: any) => {
+        const threadStages = (stages.results || []).filter((stage: any) => stage.thread_id === thread.id)
+        return threadStages.find((stage: any) => ['available','in_progress'].includes(stage.status))
+          || threadStages.find((stage: any) => stage.status === 'locked')
+          || threadStages[threadStages.length - 1]
+          || null
+      })
+      const stageIds = currentStages.filter(Boolean).map((stage: any) => stage.id)
+      const lessons = stageIds.length
+        ? await DB.prepare(`SELECT * FROM thread_lessons WHERE stage_id IN (${stageIds.map(() => '?').join(',')}) ORDER BY stage_id,position`).bind(...stageIds).all<any>()
+        : { results: [] as any[] }
+      const visibleLessonIds: string[] = []
+      homeThreads = activeThreads.map((thread: any, index: number) => {
+        const stage = currentStages[index]
+        if (!stage) return { ...thread, current_stage: null }
+        const stageLessons = (lessons.results || []).filter((lesson: any) => lesson.stage_id === stage.id)
+        const visibleLessons = selectHomeLessonTurns(stageLessons)
+        visibleLessonIds.push(...visibleLessons.map((lesson: any) => lesson.id))
+        return { ...thread, current_stage: { ...stage, lessons: visibleLessons } }
+      })
+      if (visibleLessonIds.length) {
+        const lessonSources = await DB.prepare(`SELECT ls.*,r.creator,r.content_type FROM thread_lesson_sources ls JOIN recommendations r ON r.id=ls.recommendation_id WHERE ls.lesson_id IN (${visibleLessonIds.map(() => '?').join(',')}) ORDER BY ls.lesson_id,ls.position`).bind(...visibleLessonIds).all<any>()
+        homeThreads = homeThreads.map((thread: any) => ({
+          ...thread,
+          current_stage: thread.current_stage ? {
+            ...thread.current_stage,
+            lessons: thread.current_stage.lessons.map((lesson: any) => ({ ...lesson, sources: (lessonSources.results || []).filter((source: any) => source.lesson_id === lesson.id) })),
+          } : null,
+        }))
+      }
+    }
     const openConsolidations = await DB.prepare(`SELECT cr.id,cr.recommendation_id,cr.state,cr.failure_reason,r.video_title FROM consolidation_runs cr JOIN recommendations r ON r.id=cr.recommendation_id WHERE cr.state NOT IN ('closed','waived') ORDER BY cr.requested_at LIMIT 10`).all<any>()
     const verifiedOutcomes = await DB.prepare(`SELECT COUNT(*) count FROM learning_threads WHERE status='verified' AND verified_at>=datetime('now','-30 days')`).first<any>()
     const hermesBrief = await loadHermesBrief(DB)
@@ -117,7 +160,8 @@ app.get('/briefing', async (c) => {
       queue_count: activeItems.length,
       recent: recent.results || [],
       recent_signal: latestSignal?.summary || null,
-      active_thread: activeThread ? { ...activeThread, evidence_requirements: [] } : null,
+      active_threads: homeThreads,
+      active_thread: homeThreads[0] || null,
       open_cognitive_loops: openConsolidations.results || [],
       verified_learning_outcomes_30d: Number(verifiedOutcomes?.count || 0),
     })

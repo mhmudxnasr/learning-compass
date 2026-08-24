@@ -69,10 +69,42 @@ export async function loadThreadLearningMaterials(db: D1Database, threadId: stri
   const lessons = lessonsResult.results || []
   const levelIds = new Set(levels.map((level: any) => String(level.id)))
   const [notesResult, filesResult, cardsResult, draftsResult] = await Promise.all([
-    db.prepare(`SELECT * FROM notes WHERE thread_id=? OR stage_id IN (SELECT id FROM learning_path_stages WHERE thread_id=?) OR lesson_id IN (SELECT id FROM thread_lessons WHERE thread_id=?) ORDER BY updated_at DESC LIMIT 500`).bind(thread.threadId, thread.threadId, thread.threadId).all<any>(),
-    db.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,thread_id,stage_id,lesson_id,created_at FROM artifacts WHERE thread_id=? OR stage_id IN (SELECT id FROM learning_path_stages WHERE thread_id=?) OR lesson_id IN (SELECT id FROM thread_lessons WHERE thread_id=?) ORDER BY created_at DESC LIMIT 500`).bind(thread.threadId, thread.threadId, thread.threadId).all<any>(),
-    db.prepare(`SELECT c.*,COALESCE((SELECT title FROM notes WHERE id=c.note_id LIMIT 1),(SELECT video_title FROM recommendations WHERE id=c.recommendation_id LIMIT 1),'Direct Card') AS source_title FROM srs_cards c WHERE c.thread_id=? OR c.stage_id IN (SELECT id FROM learning_path_stages WHERE thread_id=?) OR c.lesson_id IN (SELECT id FROM thread_lessons WHERE thread_id=?) ORDER BY c.due_at,c.question LIMIT 1000`).bind(thread.threadId, thread.threadId, thread.threadId).all<any>(),
-    db.prepare(`SELECT d.*,COALESCE((SELECT title FROM notes WHERE id=d.note_id LIMIT 1),(SELECT video_title FROM recommendations WHERE id=d.recommendation_id LIMIT 1),'Direct Draft') AS source_title FROM srs_drafts d WHERE d.thread_id=? OR d.stage_id IN (SELECT id FROM learning_path_stages WHERE thread_id=?) OR d.lesson_id IN (SELECT id FROM thread_lessons WHERE thread_id=?) ORDER BY d.created_at DESC LIMIT 1000`).bind(thread.threadId, thread.threadId, thread.threadId).all<any>(),
+    db.prepare(`
+      SELECT * FROM (
+        SELECT * FROM notes WHERE thread_id=?
+        UNION
+        SELECT n.* FROM notes n JOIN learning_path_stages s ON s.id=n.stage_id WHERE s.thread_id=?
+        UNION
+        SELECT n.* FROM notes n JOIN thread_lessons l ON l.id=n.lesson_id WHERE l.thread_id=?
+      ) ORDER BY updated_at DESC LIMIT 500
+    `).bind(thread.threadId, thread.threadId, thread.threadId).all<any>(),
+    db.prepare(`
+      SELECT * FROM (
+        SELECT id,filename,media_type,size_bytes,metadata_json,thread_id,stage_id,lesson_id,created_at FROM artifacts WHERE thread_id=?
+        UNION
+        SELECT a.id,a.filename,a.media_type,a.size_bytes,a.metadata_json,a.thread_id,a.stage_id,a.lesson_id,a.created_at FROM artifacts a JOIN learning_path_stages s ON s.id=a.stage_id WHERE s.thread_id=?
+        UNION
+        SELECT a.id,a.filename,a.media_type,a.size_bytes,a.metadata_json,a.thread_id,a.stage_id,a.lesson_id,a.created_at FROM artifacts a JOIN thread_lessons l ON l.id=a.lesson_id WHERE l.thread_id=?
+      ) ORDER BY created_at DESC LIMIT 500
+    `).bind(thread.threadId, thread.threadId, thread.threadId).all<any>(),
+    db.prepare(`
+      SELECT * FROM (
+        SELECT c.*,COALESCE((SELECT title FROM notes WHERE id=c.note_id LIMIT 1),(SELECT video_title FROM recommendations WHERE id=c.recommendation_id LIMIT 1),'Direct Card') AS source_title FROM srs_cards c WHERE c.thread_id=?
+        UNION
+        SELECT c.*,COALESCE((SELECT title FROM notes WHERE id=c.note_id LIMIT 1),(SELECT video_title FROM recommendations WHERE id=c.recommendation_id LIMIT 1),'Direct Card') AS source_title FROM srs_cards c JOIN learning_path_stages s ON s.id=c.stage_id WHERE s.thread_id=?
+        UNION
+        SELECT c.*,COALESCE((SELECT title FROM notes WHERE id=c.note_id LIMIT 1),(SELECT video_title FROM recommendations WHERE id=c.recommendation_id LIMIT 1),'Direct Card') AS source_title FROM srs_cards c JOIN thread_lessons l ON l.id=c.lesson_id WHERE l.thread_id=?
+      ) ORDER BY due_at,question LIMIT 1000
+    `).bind(thread.threadId, thread.threadId, thread.threadId).all<any>(),
+    db.prepare(`
+      SELECT * FROM (
+        SELECT d.*,COALESCE((SELECT title FROM notes WHERE id=d.note_id LIMIT 1),(SELECT video_title FROM recommendations WHERE id=d.recommendation_id LIMIT 1),'Direct Draft') AS source_title FROM srs_drafts d WHERE d.thread_id=?
+        UNION
+        SELECT d.*,COALESCE((SELECT title FROM notes WHERE id=d.note_id LIMIT 1),(SELECT video_title FROM recommendations WHERE id=d.recommendation_id LIMIT 1),'Direct Draft') AS source_title FROM srs_drafts d JOIN learning_path_stages s ON s.id=d.stage_id WHERE s.thread_id=?
+        UNION
+        SELECT d.*,COALESCE((SELECT title FROM notes WHERE id=d.note_id LIMIT 1),(SELECT video_title FROM recommendations WHERE id=d.recommendation_id LIMIT 1),'Direct Draft') AS source_title FROM srs_drafts d JOIN thread_lessons l ON l.id=d.lesson_id WHERE l.thread_id=?
+      ) ORDER BY created_at DESC LIMIT 1000
+    `).bind(thread.threadId, thread.threadId, thread.threadId).all<any>(),
   ])
   const notes = notesResult.results || []
   const sectionsByNote = new Map<string, any[]>()

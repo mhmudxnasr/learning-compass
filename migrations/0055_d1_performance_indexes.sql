@@ -1,0 +1,23 @@
+-- D1 Performance & Row-Read Optimization Indexes
+CREATE INDEX IF NOT EXISTS idx_learning_path_stages_thread_pos ON learning_path_stages(thread_id, position);
+CREATE INDEX IF NOT EXISTS idx_learning_path_stages_thread_status ON learning_path_stages(thread_id, status);
+CREATE INDEX IF NOT EXISTS idx_thread_lessons_stage_pos ON thread_lessons(stage_id, position);
+CREATE INDEX IF NOT EXISTS idx_thread_lessons_stage_status ON thread_lessons(stage_id, status);
+CREATE INDEX IF NOT EXISTS idx_thread_lessons_thread_stage ON thread_lessons(thread_id, stage_id, position);
+CREATE INDEX IF NOT EXISTS idx_learning_path_items_stage_req_status ON learning_path_items(stage_id, required, status);
+CREATE INDEX IF NOT EXISTS idx_thread_projects_stage_type_status ON thread_projects(stage_id, type, status);
+CREATE INDEX IF NOT EXISTS idx_thread_projects_thread_type_status ON thread_projects(thread_id, type, status);
+CREATE INDEX IF NOT EXISTS idx_notes_stage ON notes(stage_id);
+CREATE INDEX IF NOT EXISTS idx_notes_stage_updated ON notes(stage_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_notes_thread_stage_lesson ON notes(thread_id, stage_id, lesson_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_stage ON artifacts(stage_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_stage_created ON artifacts(stage_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_artifacts_thread_stage_lesson ON artifacts(thread_id, stage_id, lesson_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_rec_id ON artifacts(json_extract(metadata_json, '$.recommendation_id'));
+CREATE INDEX IF NOT EXISTS idx_artifacts_pair_id ON artifacts(json_extract(metadata_json, '$.pair_id'));
+CREATE INDEX IF NOT EXISTS idx_agent_jobs_rec_id ON agent_jobs(json_extract(payload_json, '$.recommendation_id'));
+CREATE INDEX IF NOT EXISTS idx_srs_cards_stage ON srs_cards(stage_id);
+CREATE INDEX IF NOT EXISTS idx_srs_drafts_stage ON srs_drafts(stage_id);
+CREATE INDEX IF NOT EXISTS idx_recommendations_status_created ON recommendations(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_recommendation_meta_rec_learning ON recommendation_meta(recommendation_id, learning_state);
+CREATE INDEX IF NOT EXISTS idx_learning_threads_status_prio ON learning_threads(status, priority, updated_at);

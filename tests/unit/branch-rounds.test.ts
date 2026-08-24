@@ -29,12 +29,11 @@ test('explicitRound normalizes R1..R5 labels and rejects garbage', () => {
   assert.equal(explicitRound(null), null)
 })
 
-test('displayRound prefers explicit label, then id prefix, then progression', () => {
-  assert.equal(displayRound({ round_label: 'R2', id: 'r1-test' }, { consumed: 0, notes: 0, cards: 0, due: 0, recallStrength: null }), 'R2')
-  assert.equal(displayRound({ round_label: null, id: 'r2-whatever' }, { consumed: 0, notes: 0, cards: 0, due: 0, recallStrength: null }), 'R2')
-  assert.equal(displayRound({ round_label: null, id: 'r3-deep' }, { consumed: 0, notes: 0, cards: 0, due: 0, recallStrength: null }), 'R3')
-  assert.equal(displayRound({ round_label: null, id: 'systems-dynamics' }, { consumed: 0, notes: 0, cards: 0, due: 0, recallStrength: null }), 'R1')
-  assert.equal(displayRound({ round_label: null, id: 'systems-dynamics' }, { consumed: 3, notes: 1, cards: 3, due: 0, recallStrength: 0.66 }), 'R3')
+test('displayRound returns explicit label when provided and null otherwise', () => {
+  assert.equal(displayRound({ round_label: 'R2', id: 'r1-test' }), 'R2')
+  assert.equal(displayRound({ round_label: 'R3', id: 'branch-1' }), 'R3')
+  assert.equal(displayRound({ round_label: null, id: 'systems-dynamics' }), null)
+  assert.equal(displayRound({ round_label: undefined, id: 'taz' }), null)
 })
 
 test('roundEvidenceFromBalance maps balance node fields', () => {

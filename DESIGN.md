@@ -1,52 +1,205 @@
-# Botanical Folio — Learning Compass Design System
+---
+name: Botanical Folio
+description: Evidence Ledger and calm botanical study studio for Learning Compass
+colors:
+  rail-bg: "#16281f"
+  shell-bg: "#f4f1eb"
+  ledger-bg: "#faf8f3"
+  canvas-bg: "#fffdf8"
+  inspector-bg: "#f7f5ee"
+  ink: "#1c211d"
+  secondary: "#525b54"
+  muted: "#707a72"
+  seams: "#e2ddd2"
+  cypress: "#244f3b"
+  lichen: "#e8f0ea"
+  focus: "#2f634b"
+  due: "#a85f18"
+  danger: "#a8382b"
+  map: "#315f7b"
+typography:
+  display:
+    fontFamily: "IBM Plex Sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    fontSize: "clamp(24px, 3.5vw, 36px)"
+    fontWeight: 650
+    lineHeight: 1.2
+  headline:
+    fontFamily: "IBM Plex Sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    fontSize: "clamp(18px, 2.5vw, 24px)"
+    fontWeight: 600
+    lineHeight: 1.3
+  title:
+    fontFamily: "IBM Plex Sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    fontSize: "16px"
+    fontWeight: 600
+    lineHeight: 1.4
+  body:
+    fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, -apple-system, BlinkMacSystemFont, sans-serif"
+    fontSize: "14px"
+    fontWeight: 400
+    lineHeight: 1.6
+  reading:
+    fontFamily: "Literata, Georgia, 'Times New Roman', serif"
+    fontSize: "16px"
+    fontWeight: 400
+    lineHeight: 1.75
+  mono:
+    fontFamily: "IBM Plex Mono, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+    fontSize: "12px"
+    fontWeight: 500
+    lineHeight: 1.4
+rounded:
+  control: "6px"
+  card: "8px"
+  panel: "10px"
+  pill: "999px"
+spacing:
+  xs: "4px"
+  sm: "8px"
+  md: "16px"
+  lg: "24px"
+  xl: "32px"
+components:
+  button-primary:
+    backgroundColor: "{colors.cypress}"
+    textColor: "{colors.canvas-bg}"
+    rounded: "{rounded.control}"
+    padding: "8px 16px"
+  button-secondary:
+    backgroundColor: "{colors.ledger-bg}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    padding: "8px 16px"
+---
 
-## Register
+# Design System: Botanical Folio
 
-Learning Compass is a **Botanical Folio / Evidence Ledger**: a green-and-cream evidence studio for one learner. The material is quiet and editorial, but the interface is operationally dense where evidence, sources, and decisions require it. The center canvas is the place where work happens; surrounding planes provide orientation and context.
+Resurfacing uses one quiet Memory Shelf card on Home with a canonical branch pill and explicit Star, Reviewed, Snooze, and Dismiss controls. Note distillation stays inside the reader as progressive disclosure. Meaningful links show relation type, explanation, counterpart Unit, source anchor, and branch identity. Contradictions live under Learn → Practice; frontier states remain restrained Map signals rather than a new root destination.
 
-## Tokens
+## Overview
 
-- Rail: `#16281f`; shell: `#f4f1eb`; ledger: `#faf8f3`; canvas: `#fffdf8`; inspector: `#f7f5ee`.
-- Ink: `#1c211d`; secondary: `#525b54`; muted: `#707a72`; seams: `#e2ddd2`.
-- Cypress: `#244f3b`; lichen: `#e8f0ea`; focus: `#2f634b`; due: `#a85f18`; danger: `#a8382b`; map: `#315f7b`.
-- UI/body: IBM Plex Sans and IBM Plex Sans Arabic. Long-form reading and reflection use Literata with an Arabic fallback. Measurements use IBM Plex Mono.
-- Controls use 6–8px radii; structural panels use 10px radii; major layout seams remain square. Shadows are reserved for floating dialogs, menus, and dragged objects.
-- Color is paired with icon and text. Sage identifies sources, ochre identifies notes and due work, and cobalt identifies paths/map objects; color is never the only state signal.
+**Creative North Star: "The Evidence Sanctuary"**
 
-## Shell
+Learning Compass is a quiet, editorial evidence ledger and botanical study studio for one learner. The material palette uses green-and-cream planes with high tactile contrast. The center canvas is where deep study, reading, and curriculum progression occur; surrounding planes provide stable context and orientation.
 
-Desktop uses a persistent root rail, a flexible working canvas, and an optional contextual inspector when an object is selected. The rail contains Capture, Search, the five roots, and sync state. There is no permanent context pane; grouped modes and focus filters are local canvas controls. The inspector exposes properties, relationships, provenance, files, history, and lifecycle actions for the selected object.
+**Key Characteristics:**
+- High informational density without cognitive clutter or decorative noise.
+- Clean 1px hairline seams, deliberate typography hierarchy, and purposeful whitespace.
+- Semantic day/night/custom color tokens ensuring accessible WCAG AA contrast (≥4.5:1 text, ≥3:1 large text).
+- Strict elimination of AI tells: zero arbitrary side-tab border stripes, zero chunky card-top borders, zero layout-thrashing animations.
 
-The five root destinations are Home, Library, Learn, Map, and Settings. Their 12 grouped modes are Today; Triage, Catalog, Assets; Threads, Books, Practice; Atlas, Review; and Personal, Data & recovery, System. Queue, RSS Feeds, All sources, Files, Reading journal, Collections, Archive, Notes, Recall, Branches, Balance, Learning profile, and Preferences are subordinate focus filters or mode surfaces, not peer destinations. Books is intentionally a single surface with no subordinate Shelf/Canon control.
+## Colors
 
-On mobile and tablet, the root rail becomes a compact five-item bottom dock. Search and Capture remain available as separate global utilities so the dock contains exactly the five roots. Grouped modes and focus filters remain inline compact, horizontally scrollable controls. The inspector becomes a full-height sheet or pushed detail view with a stable Back path. The dock never obscures a primary action, and tablet layouts retain the canvas plus optional inspector where width allows.
+The Botanical Folio palette balances calm botanical greens and warm paper neutrals with precise semantic signals.
 
-Installed Android mode uses the same shell with `viewport-fit=cover`: top utilities and the five-root dock clear display cutouts and gesture navigation, the utility bar stays available as the native top action surface, and browser overscroll is removed. The install card is a compact Evidence Ledger notice with equal explicit Install app and Not now actions; it appears only when Android reports install eligibility and never becomes a recurring engagement prompt. Launcher shortcuts enter existing destinations rather than creating Android-only navigation.
+### Primary
+- **Cypress** (#244f3b): Primary brand accent, active controls, committed paths, and major actions.
+- **Lichen** (#e8f0ea): Soft botanical tint for active state backgrounds and highlighted ledger rows.
 
-## Content grammar
+### Secondary
+- **Map Blue** (#315f7b): Knowledge atlas, branch relationships, and structural field links.
+- **Ochre / Due** (#a85f18): Notes, recall schedules, and actionable due work.
 
-Reading journal is a Catalog focus, not a new root or mode. Its compact catalogue card keeps identity, sync state, and four ledger totals in one ruled surface; one adjacent command bar holds search and entry filters. Book/progress rows follow immediately, without a separate KPI band or branch-assignment controls.
+### Tertiary
+- **Danger** (#a8382b): Destructive actions, warnings, and unrecoverable deletions.
+- **Focus Green** (#2f634b): Keyboard focus rings and active progression indicators.
 
-Home is an Evidence Desk: resume the active Thread/source, show one next action, expose only actionable due work, and keep capture close. Library is one source ledger with Triage, Catalog, and Assets modes plus focus filters for Queue, RSS Feeds, All sources, Files, Reading journal, Collections, and Archive. Learn contains Threads, Books, and Practice. Books is one editorial reading room: current reading and next chapter lead, a shared search and reading-state controls organize My books, and Canon fields provide curated three-book paths without rendering a second book collection. Queue alone owns session Start/Resume. Complete **Ready to explore** trios are actionable, while unfinished **Coming next** coverage is disclosed without a false path action; surprise discovery can choose only a complete trio. A captured Canon selection renders once in My books with personal state plus Canon domain/role. A ready domain presents Foundation, Representative, and Boundary as one vertical field guide with explicit capture and Thread creation only after at least one book is captured. Each typed book opens a dedicated dossier with an editorial identity header, passive access, complete chapter ledger, notes/evidence, recall, connections, session history, files, and feedback; anchored section navigation never hides these records behind tabs. A Thread level is a focused workbench: it identifies the current level, makes one ready lesson the dominant action, presents lessons as a numbered curriculum spine, and states the lesson-completion finish line. Projects, notes, sources, ratings, and recall remain contextual tools and never gate or advance progression. Map is the spatial knowledge workspace: Atlas and Review modes use Branches and Balance focus filters. Settings is a dedicated utility surface with Personal, Data & recovery, and System modes.
+### Neutral
+- **Deep Rail** (#16281f): Desktop navigation spine background.
+- **Shell** (#f4f1eb): Outer studio background and utility surfaces.
+- **Ledger** (#faf8f3): Secondary cards, lists, and inactive panel surfaces.
+- **Canvas** (#fffdf8): Primary working reading surface and editorial sheets.
+- **Seams** (#e2ddd2): 1px hairline structural borders and dividers.
+- **Ink** (#1c211d): Primary readable foreground typography.
+- **Secondary Ink** (#525b54): Secondary descriptions, metadata labels, and supporting copy.
+- **Muted Ink** (#707a72): Tertiary timestamps, keyboard shortcuts, and disabled hints.
 
-Preferences alter the complete studio rather than styling only the Settings preview. The surface leads with the active visual system and four complete workspace styles, keeps comfort and learning-behavior decisions visible, and progressively discloses the theme gallery, font family, detailed typography, custom visual-system workshop, and Map physics. Desktop pairs the controls with a sticky, non-interactive studio specimen; narrower layouts move that specimen into the reading flow. Semantic day/night/custom theme tokens own all planes and their contrasting action text; font size, density, and corner style flow through shared shell, canvas, row, panel, filter, and control dimensions; reduced motion disables transitions and animation globally. Every preference must survive reload and preserve visible keyboard focus, contrast, and touch targets.
+### Named Rules
+**The Hairline Seam Rule.** Structure is defined by 1px hairline borders (`var(--studio-seam)`) and tonal plane shifts, never by heavy multi-pixel border stripes or decorative drop-shadow halos.
 
-Rows are dense, aligned, and object-shaped rather than equal card grids. An object header contains type, title, lifecycle state, primary action, and overflow. Selection is URL-restorable where deep linking matters. Empty, loading, partial, stale, error, offline, conflict, overflow, recovery, and destructive-action states are purposeful and use the same ledger grammar.
+## Typography
 
-Queue is a bounded commitment shelf. Its default Gallery view presents every active commitment as a compact equal-weight source tile for comprehensive comparison; the alternate Ledger view preserves the dense ranked record layout. Each source gets a rank, rationale, one explicit Start/Resume action, and separate Record, Not now, and Bad fit paths. Notes are editorial documents backed by atomic anchored Learning Units. Their reading surface hides source-system front matter, preserves meaningful Markdown structure, keeps a 45–75ch manuscript measure, resolves direction per block, and places the Evidence Ledger index in the correct reading margin; editing remains lossless and separate from reading. Branch review shows real evidence before Keep, Prune, Promote, Hold, Add, or Undo. Contradictory ratings are evidence about taste, not contradictory claims in the map.
+**Display Font:** IBM Plex Sans (with -apple-system, BlinkMacSystemFont, Segoe UI, Roboto fallback)
+**Body Font:** IBM Plex Sans and IBM Plex Sans Arabic
+**Reading Font:** Literata (with Georgia, serif fallback)
+**Mono Font:** IBM Plex Mono (SFMono-Regular, Menlo, Monaco fallback)
 
-Source and companion links are passive. Only Queue or Compass starts a learning session. Internal job plumbing, prompt payloads, and infrastructure-only controls stay out of normal product surfaces. Settings → System is descriptive and guarded, with storage ownership, schedules, service health, and safety boundaries visible without exposing secrets.
+**Character:** Technical precision paired with editorial elegance. Clean modern grotesk for studio operations, classical literary serif for long-form reading, and monospaced figures for metrics and ledger IDs.
 
-## Typography, motion, and access
+### Hierarchy
+- **Display** (650 weight, clamp(24px, 3.5vw, 36px), 1.2 line-height): Workspace headers and major topic anchors.
+- **Headline** (600 weight, clamp(18px, 2.5vw, 24px), 1.3 line-height): Section titles and dossier sheet headings.
+- **Title** (600 weight, 16px, 1.4 line-height): Object titles, card headers, and lesson names.
+- **Body** (400 weight, 14px, 1.6 line-height): General interface copy and property values; 65–75ch measure on reading surfaces.
+- **Reading** (400 weight, 16px, 1.75 line-height): Source notes, extracted companions, and personal reflections.
+- **Label** (500 weight, 12px, 0.04em letter-spacing): Metadata badges, timestamps, and status pills.
+- **Mono** (500 weight, 12px, 1.4 line-height): Ledger IDs, byte counts, and revision hashes.
 
-Use alignment, type hierarchy, seams, and whitespace to organize dense information. Motion communicates continuity—pane opening, selection, reordering, and object focus—not ambience or page-load choreography. Reduced motion removes transitions. Keyboard navigation, visible focus, semantic landmarks, strong contrast, thumb-reachable actions, and mixed-direction English/Egyptian-Arabic note blocks are first-class requirements.
+## Layout
 
-The graph remains a real, lazy-loaded Cytoscape canvas with search, filtering, touch navigation, list alternatives, and a responsive inspector. It must not be flattened into a decorative image.
+Desktop uses a compact 120px labeled left rail, a flexible working canvas, and an optional contextual inspector. On mobile/tablet, the rail becomes a thumb-accessible 5-item bottom dock (44px min touch target), and the inspector transforms into a full-height sheet.
 
-## Boundaries
+## Elevation & Depth
 
-- Keep the five-destination route model, 12 grouped modes, and subordinate focus-filter contract; do not reintroduce feature sprawl as peer destinations.
-- Keep the persistent desktop rail, canvas, optional inspector, and mobile five-item dock/sheet adaptation consistent across roots.
-- Do not turn the product into a generic white/gray SaaS dashboard, a repeated card wall, or a metric-ring hero.
-- Do not use decorative motion, emoji UI, rasterized mockup text, generated-logo artwork, or infrastructure-only fallback screens.
-- Preserve the learning loop, source/session distinction, direct lesson progression, reversible feedback, D1/R2 ownership, and all API compatibility.
+Surfaces rest flat at rest using subtle tonal layering between Canvas, Ledger, and Shell. Elevation is reserved strictly for floating dialogs, menus, and dragged objects.
+
+### Shadow Vocabulary
+- **Subtle Ledger** (`box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05)`): Light card definition at rest.
+- **Floating Overlay** (`box-shadow: 0 12px 32px rgba(22, 40, 31, 0.12)`): Modal dialogs, dropdown menus, and popovers.
+
+## Shapes
+
+- **Controls:** 6px radius (`var(--studio-radius-control)`).
+- **Cards & Rows:** 8px radius (`var(--studio-radius-card)`).
+- **Panels & Sheets:** 10px radius (`var(--studio-radius-panel)`).
+- **Pills & Badges:** 999px radius.
+
+## Components
+
+### Map Review Branch Dossier
+- **Composition:** A compact branch index, an editable central dossier, and a persistent signals-and-decision rail on desktop. Narrow screens preserve that order as index, decision rail, then dossier so consequential actions remain discoverable.
+- **Decision controls:** Keep active, Make first priority, Pause branch, and Archive branch remain visible together. Active uses Cypress, priority uses Map Blue, pause stays neutral, and archive uses Danger without making destructive treatment dominant.
+- **Signals:** Attention window, recent share, filed sources/notes/Units/recall, and priority alignment use live Worker projections. Signals explain decisions; they never become a separate Balance tab.
+- **Structure:** Branch scope, topics, category, and boundary edit inline. The branch ledger remains in the same dossier and typed branch routes preserve selection.
+
+### Atlas Interaction
+
+- **Viewport use:** The Atlas canvas fills all workspace height remaining below the Map mode switcher; it never stops at a fixed minimum or leaves a blank lower half on tall desktop displays.
+- **Selection:** One tap selects a node without moving the camera or changing branch depth.
+- **Expansion:** Double-tapping a node toggles its complete subtree without changing zoom; double-tapping empty canvas fits the graph.
+- **Layout:** Domains, branches, and topics open in stable hierarchy-aware orbits; rectangular label collision prevents unreadable piles while preserving branch structure.
+- **Direct manipulation:** Dragging a branch carries every visible descendant with it, then releases the subtree as one stable constellation.
+- **Force motion:** Drag release preserves momentum and lets charge, center attraction, and link springs visibly rebalance the graph. Force controls remain functional independently of the Display transition toggle, accept true zero values, and stay numerically bounded at their maximum settings. Hover wakes only the local neighborhood, highlighting and gently pulsing connected nodes and paths; reduced motion keeps the same relationship highlight without spatial movement.
+- **Stable opening:** Initial load and depth changes preserve the hierarchy-aware constellation instead of automatically running forces toward the center. Physics wakes only from direct manipulation or force-control input and always cools to rest.
+- **Scale:** Overview zoom prioritizes domains and branches; topic labels appear only when the camera is close enough to read them.
+- **Default density:** Atlas opens with arrows off, focus dimming on, 0.85× nodes, 1.4× evidence links, 1.5× hierarchy links, and balanced 14 / 0.65 / 1.25 charge-center-spring forces so the complete graph remains legible before customization.
+- **Recovery:** Search restores the selected node with its ancestry, conflicting filters are cleared explicitly, and an empty filtered canvas always offers a direct reset.
+- **Overlays:** Controls, the node drawer, breadcrumbs, minimap, and viewport tools remain independently operable and never cover the control that opened them.
+
+### Buttons
+- **Shape:** Rounded rectangle (6px radius).
+- **Primary:** Cypress background (#244f3b), Canvas ink (#fffdf8), 8px 16px padding.
+- **Secondary:** Ledger background (#faf8f3), Seam border (1px), Ink text (#1c211d).
+- **Hover / Focus:** 1.5px Focus ring (#2f634b) with 2px offset; subtle tonal background shift.
+
+### Cards & Ledger Rows
+- **Corner Style:** 8px radius.
+- **Background:** Ledger or Canvas depending on depth hierarchy.
+- **Border:** 1px solid Seams (#e2ddd2).
+- **Internal Padding:** 14px 18px.
+
+### Inputs & Search Fields
+- **Style:** 1px Seam border, Canvas background, 6px radius.
+- **Focus:** 1.5px Cypress border with subtle outer ring.
+
+## Do's and Don'ts
+
+### Do:
+- **Do** maintain strict WCAG AA contrast (≥4.5:1 text, ≥3:1 large text) across all themes.
+- **Do** ensure every interactive target on mobile and tablet is at least 44×44px.
+- **Do** use semantic CSS tokens for all colors, radii, and typography scales.
+
+### Don't:
+- **Don't** use multi-pixel colored side-tab borders (≥2px colored border-left/right) on cards or list items.
+- **Don't** animate layout properties like `width`, `height`, `margin`, or `padding` that trigger layout recalculations.
+- **Don't** add decorative chunky colored top-borders to rounded cards.

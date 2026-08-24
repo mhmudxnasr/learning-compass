@@ -32,7 +32,7 @@ const filterOptions = [
   { key: 'current', label: 'Current Work' },
   { key: 'active', label: 'Active' },
   { key: 'paused', label: 'Paused' },
-  { key: 'verified', label: 'Completed' },
+  { key: 'completed', label: 'Completed' },
   { key: 'all', label: 'All Threads' },
 ]
 
@@ -54,9 +54,9 @@ export function LearnPathsView() {
       filter === 'all'
         ? true
         : filter === 'current'
-        ? !['verified', 'abandoned'].includes(path.status)
-        : filter === 'verified'
-        ? path.status === 'verified'
+        ? !['completed', 'abandoned'].includes(path.status)
+        : filter === 'completed'
+        ? path.status === 'completed'
         : path.status === filter
     const matchesQuery = !query || `${path.title} ${path.guiding_question || ''} ${path.thread_type || ''}`.toLowerCase().includes(query.toLowerCase())
     return matchesFilter && matchesQuery
@@ -111,7 +111,7 @@ export function LearnPathsView() {
         <div class="learn-header-content">
           <p class="folio-object-kicker">Learning Compass · Curriculum Paths</p>
           <h1 id="learn-threads-title">Structured Learning Threads</h1>
-          <p class="folio-lede">Finite, purposeful curriculum threads leading to genuine mastery, verified understanding, and real-world capability.</p>
+          <p class="folio-lede">Finite, purposeful curriculum Threads built from direct lesson progress and real-world capability.</p>
         </div>
         <button
           class="button primary folio-primary thread-new-btn"

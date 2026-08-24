@@ -1,0 +1,80 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+
+test('Worker exports real scheduled maintenance and declares its cron', () => {
+  const index = readFileSync('src/index.ts', 'utf8')
+  const config = readFileSync('wrangler.toml', 'utf8')
+  const maintenance = readFileSync('src/services/maintenance.ts', 'utf8')
+  assert.match(config, /\[triggers\][\s\S]*crons = \["0 \*\/6 \* \* \*"\]/)
+  assert.match(config, /\[observability\][\s\S]*enabled = true/)
+  assert.match(index, /export default \{\s*fetch: app\.fetch,\s*scheduled,/)
+  assert.match(index, /runMaintenance\(env, 'cron'\)/)
+  assert.match(maintenance, /recommendation_meta m/)
+  assert.doesNotMatch(maintenance, /substr\(dedup_key/)
+})
+
+test('canonical readiness replaces shallow and oversized operational checks', () => {
+  const index = readFileSync('src/index.ts', 'utf8')
+  const health = readFileSync('src/services/operational-health.ts', 'utf8')
+  const panel = readFileSync('client/src/workspaces/OperationalHealthPanel.tsx', 'utf8')
+  assert.match(index, /app\.get\('\/health\/live'/)
+  assert.match(index, /app\.get\('\/health\/ready', readiness\)/)
+  assert.match(health, /loadIntegrityHealth/)
+  assert.match(health, /loadJobHealth/)
+  assert.match(health, /loadMaintenanceHealth/)
+  assert.match(health, /loadRecoveryHealth/)
+  assert.doesNotMatch(panel, /\/analytics\/hermes['"]/)
+  assert.match(panel, /\/agent\/system/)
+})
+
+test('capture, Telegram, offline writes, and visual retries preserve durable recovery paths', () => {
+  const index = readFileSync('src/index.ts', 'utf8')
+  const migration = readFileSync('migrations/0054_production_operations.sql', 'utf8')
+  const api = readFileSync('client/src/api.ts', 'utf8')
+  const reconciliation = readFileSync('src/services/job-reconciliation.ts', 'utf8')
+  assert.match(index, /share_target_capture_failed/)
+  assert.match(index, /share: 'retry'/)
+  assert.match(index, /status='processing'/)
+  assert.match(index, /status='failed'/)
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS recovery_backups/)
+  assert.match(migration, /Historical review preserved in quarantine/)
+  assert.match(api, /network_timeout_queued/)
+  assert.match(api, /queueOnNetworkError: false/)
+  assert.match(api, /headers\['x-client-mutation-id'\]/)
+  assert.match(reconciliation, /ARTIFACTS\.head/)
+  assert.match(reconciliation, /validation-passed HTML\/PDF pair/)
+})
+
+test('browser reminders require an explicit device subscription and expose a real delivery test', () => {
+  const settings = readFileSync('client/src/workspaces/NotificationSettings.tsx', 'utf8')
+  const android = readFileSync('client/src/app/android.tsx', 'utf8')
+  const notifications = readFileSync('src/api/notifications.ts', 'utf8')
+  assert.match(settings, /pushManager\.subscribe/)
+  assert.match(settings, /Notification\.requestPermission/)
+  assert.match(settings, /\/notifications\/test/)
+  assert.match(settings, /DEVICE_SUBSCRIPTION_KEY/)
+  assert.match(android, /Reminders can be enabled separately in Preferences/)
+  assert.match(notifications, /status = 'delivered'/)
+})
+
+test('full recovery snapshots include D1, every R2 object, and a disposable restore rehearsal', () => {
+  const backup = readFileSync('scripts/backup-production.mjs', 'utf8')
+  const rehearsal = readFileSync('scripts/rehearse-recovery.mjs', 'utf8')
+  const service = readFileSync('ops/systemd/learning-compass-backup.service', 'utf8')
+  const timer = readFileSync('ops/systemd/learning-compass-backup.timer', 'utf8')
+  assert.match(backup, /wrangler', 'd1', 'execute'/)
+  assert.match(backup, /wrangler', 'r2', 'object', 'get'/)
+  assert.match(backup, /learning-compass-full-recovery-v2/)
+  assert.match(rehearsal, /PRAGMA integrity_check/)
+  assert.match(rehearsal, /recovery_backups/)
+  assert.match(service, /backup-production\.mjs --retain 14/)
+  assert.match(timer, /OnCalendar=\*-\*-\* 03:17:00/)
+})
+
+test('unexpected request failures return a structured request-id envelope', () => {
+  const index = readFileSync('src/index.ts', 'utf8')
+  assert.match(index, /app\.onError/)
+  assert.match(index, /request_id: requestId/)
+  assert.match(index, /unhandled_request_error/)
+})

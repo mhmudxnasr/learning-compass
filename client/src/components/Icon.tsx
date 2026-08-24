@@ -1,6 +1,6 @@
 import { ComponentChildren } from 'preact'
 
-export type IconName = 'home' | 'library' | 'learn' | 'map' | 'settings' | 'search' | 'capture' | 'queue' | 'inbox' | 'rss' | 'source' | 'file' | 'book' | 'collection' | 'archive' | 'note' | 'recall' | 'path' | 'branch' | 'balance' | 'close' | 'more' | 'chevron' | 'external' | 'check' | 'clock' | 'sync' | 'menu' | 'back' | 'trash' | 'edit' | 'spark' | 'sun' | 'moon' | 'palette' | 'lock' | 'warning' | 'copy'
+export type IconName = 'home' | 'library' | 'learn' | 'map' | 'settings' | 'search' | 'capture' | 'queue' | 'inbox' | 'rss' | 'source' | 'file' | 'book' | 'archive' | 'note' | 'recall' | 'path' | 'branch' | 'balance' | 'close' | 'more' | 'chevron' | 'external' | 'check' | 'clock' | 'sync' | 'menu' | 'back' | 'trash' | 'edit' | 'pin' | 'spark' | 'sun' | 'moon' | 'palette' | 'lock' | 'warning' | 'copy'
 
 const paths: Record<IconName, ComponentChildren> = {
   home: <><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10M9.5 20v-6h5v6"/></>,
@@ -16,7 +16,6 @@ const paths: Record<IconName, ComponentChildren> = {
   source: <><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5M9 12h6M9 16h6"/></>,
   file: <><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/></>,
   book: <><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 0-3 3z"/><path d="M5 4v16a3 3 0 0 1 3-3h11"/></>,
-  collection: <><path d="M4 7h6l2 2h8v11H4z"/><path d="M4 7V4h6l2 2h8v3"/></>,
   archive: <><path d="M4 7h16v13H4zM3 3h18v4H3z"/><path d="M9 11h6"/></>,
   note: <><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></>,
   recall: <><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6"/><path d="M4 4v4.6h4.6M12 8v5l3 2"/></>,
@@ -34,6 +33,7 @@ const paths: Record<IconName, ComponentChildren> = {
   back: <path d="m15 18-6-6 6-6"/>,
   trash: <><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14"/><path d="M10 11v6M14 11v6"/></>,
   edit: <><path d="m4 20 4.5-1 10-10-3.5-3.5-10 10z"/><path d="m13.5 7 3.5 3.5"/></>,
+  pin: <><path d="M12 17v5M7 3h10l-2 5 3 3H6l3-3z"/></>,
   spark: <><path d="m12 3 1.2 4.8L18 9l-4.8 1.2L12 15l-1.2-4.8L6 9l4.8-1.2z"/><path d="m19 16 .6 2.4L22 19l-2.4.6L19 22l-.6-2.4L16 19l2.4-.6z"/></>,
   sun: <><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></>,
   moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>,

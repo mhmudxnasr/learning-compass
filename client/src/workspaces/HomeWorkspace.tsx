@@ -1,12 +1,12 @@
-import { useState } from 'preact/hooks'
-import { formatDate, labelize } from '../api'
+import { useEffect, useState } from 'preact/hooks'
+import { api, formatDate, labelize } from '../api'
 import { useData } from '../app/useData'
 import { ErrorState, Empty, Loading } from '../components/States'
 import { Icon } from '../components/Icon'
 import { objectHref as canonicalObjectHref, routeHref } from '../app/router'
 import { sourceCreator, sourceFormat, sourceLink, sourceTitle, type LibraryRecord } from './library/types'
 import { lessonHref } from './learn/helpers'
-import type { PathResponse, PathStage, ThreadLesson } from './learn/types'
+import type { PathRecord, PathStage, ThreadLesson } from './learn/types'
 
 export type HomeSelection = {
   type: 'source' | 'thread'
@@ -20,6 +20,24 @@ export type HomeWorkspaceProps = {
   onCapture?: () => void
   onInspect?: (selection: HomeSelection) => void
   onNavigate?: (href: string) => void
+}
+
+type HomeThread = PathRecord & {
+  current_stage?: (PathStage & { lessons: ThreadLesson[] }) | null
+}
+
+type ResurfacingItem = {
+  recommendation_id: string
+  title: string
+  creator?: string | null
+  content_type?: string | null
+  source_url?: string | null
+  due_at: string
+  starred: boolean
+  branch: { id: string; label: string }
+  domain: { id: string; label: string }
+  companions: { html?: { id: string } | null; pdf?: { id: string } | null }
+  presentation?: { id: string; action?: string | null } | null
 }
 
 function navigate(href: string, onNavigate?: (href: string) => void) {
@@ -38,71 +56,55 @@ function sourceFileLabel(file: LibraryRecord) {
 export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspaceProps) {
   const { data, error, loading, reload } = useData<LibraryRecord>('/dashboard/briefing')
   const { data: feedsData } = useData<{ feeds?: LibraryRecord[] }>('/capture/feeds')
+  const { data: resurfacingData, reload: reloadResurfacing } = useData<{ item?: ResurfacingItem | null }>('/brain/resurfacing?limit=5')
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
+  const [resurfacingItem, setResurfacingItem] = useState<ResurfacingItem | null>(null)
+  const [resurfacingBusy, setResurfacingBusy] = useState('')
+
+  useEffect(() => { setResurfacingItem(resurfacingData?.item || null) }, [resurfacingData?.item])
+  useEffect(() => {
+    const item = resurfacingData?.item
+    if (!item || item.presentation) return
+    let live = true
+    api<{ presentation: { id: string; action?: string | null } }>('/brain/resurfacing/presentations', {
+      method: 'POST', body: JSON.stringify({ recommendation_id: item.recommendation_id }),
+    }).then((result) => {
+      if (live) setResurfacingItem((current) => current?.recommendation_id === item.recommendation_id ? { ...current, presentation: result.presentation } : current)
+    }).catch(() => undefined)
+    return () => { live = false }
+  }, [resurfacingData?.item?.recommendation_id, resurfacingData?.item?.presentation?.id])
+
+  const setResurfacingStar = async () => {
+    if (!resurfacingItem || resurfacingBusy) return
+    setResurfacingBusy('star')
+    try {
+      const starred = !resurfacingItem.starred
+      await api(`/brain/resurfacing/${encodeURIComponent(resurfacingItem.recommendation_id)}/preference`, { method: 'PATCH', body: JSON.stringify({ starred }) })
+      setResurfacingItem({ ...resurfacingItem, starred })
+    } finally { setResurfacingBusy('') }
+  }
+
+  const actOnResurfacing = async (action: 'reviewed' | 'snooze' | 'dismissed') => {
+    const eventId = resurfacingItem?.presentation?.id
+    if (!eventId || resurfacingBusy) return
+    setResurfacingBusy(action)
+    try {
+      await api(`/brain/resurfacing/${encodeURIComponent(eventId)}/action`, { method: 'POST', body: JSON.stringify({ action }) })
+      setResurfacingItem(null)
+      reloadResurfacing()
+    } finally { setResurfacingBusy('') }
+  }
+
+  const briefing = data || {}
+  const threads = (Array.isArray(briefing.active_threads) ? briefing.active_threads : briefing.active_thread ? [briefing.active_thread] : []) as HomeThread[]
 
   if (loading) return <Loading label="Loading Home"/>
   if (error) return <ErrorState message={error} retry={reload}/>
-  const briefing = data || {}
   const items = Array.isArray(briefing.active_items) ? briefing.active_items : []
   const activeSource = (selectedSourceId ? items.find((item: LibraryRecord) => String(item.id) === String(selectedSourceId)) : null)
     || items.find((item: LibraryRecord) => item.learning_state === 'in_progress')
     || items[0]
-  const thread = briefing.active_thread
-  const threadId = thread?.id ? String(thread.id) : null
-  const { data: threadPath } = useData<PathResponse>(threadId ? `/learning/core/threads/${encodeURIComponent(threadId)}/path` : undefined)
-
-  const stages = threadPath?.stages || []
-  let activeLessonWithStage: { stage: PathStage; lesson: ThreadLesson } | null = null
-
-  for (const stage of stages) {
-    const inProg = stage.lessons?.find((l) => l.status === 'in_progress')
-    if (inProg) {
-      activeLessonWithStage = { stage, lesson: inProg }
-      break
-    }
-  }
-
-  if (!activeLessonWithStage && stages.length > 0) {
-    const currentStage = threadPath?.current_stage || stages.find((s) => ['available', 'in_progress', 'ready_to_verify'].includes(s.status)) || stages[0]
-    const nextLesson = currentStage?.lessons?.find((l) => l.status !== 'completed') || currentStage?.lessons?.[0]
-    if (nextLesson && currentStage) {
-      activeLessonWithStage = { stage: currentStage, lesson: nextLesson }
-    }
-  }
-
-  const activeLesson = activeLessonWithStage?.lesson
-  const activeLessonStage = activeLessonWithStage?.stage
-  const totalStages = stages.length || Number(thread?.stage_count || 0)
-  const allLessons = stages.flatMap((s) => s.lessons || [])
-  const totalLessons = allLessons.length || Number(thread?.lesson_count || 0)
-  const completedLessons = allLessons.length
-    ? allLessons.filter((l) => l.status === 'completed').length
-    : Number(thread?.completed_lesson_count || 0)
-  const progressPct = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0
-  const stageLabel = activeLessonStage
-    ? (activeLessonStage.title && new RegExp(`^level\\s*${activeLessonStage.position}\\b`, 'i').test(activeLessonStage.title)
-        ? activeLessonStage.title
-        : `Level ${activeLessonStage.position}${activeLessonStage.title ? ` · ${activeLessonStage.title}` : ''}`)
-    : `${totalStages} Level${totalStages === 1 ? '' : 's'}`
-
-  const activeLessonSources = activeLesson?.sources || []
-  const activePrimarySource = activeLessonSources.find((s) => s.role === 'primary') || activeLessonSources[0]
-  const activeSourceCue = [
-    activePrimarySource?.content_type ? labelize(activePrimarySource.content_type) : null,
-    activePrimarySource?.creator || null,
-    activeLesson?.estimated_minutes ? `~${activeLesson.estimated_minutes} min` : null,
-  ].filter(Boolean).join(' · ')
-
-  const activeLessonHref = activeLesson ? lessonHref(String(thread.id), activeLesson.id) : '#'
-  const stageLessons = activeLessonStage?.lessons || []
-  const activeLessonIndex = activeLesson ? stageLessons.findIndex((l) => l.id === activeLesson.id) : 0
-  const visibleLessons = stageLessons.length > 0
-    ? stageLessons.slice(Math.max(0, activeLessonIndex), Math.max(0, activeLessonIndex) + 3)
-    : activeLesson ? [activeLesson] : []
-
   const feeds = Array.isArray(feedsData?.feeds) ? feedsData.feeds : []
-  const hermesBrief = briefing.hermes_brief || { next_action: briefing.next_action_detail, blockers: {}, counts: {} }
-  const nextAction = hermesBrief.next_action || briefing.next_action_detail
   const files = activeSource ? (briefing.artifacts || []).filter((file: LibraryRecord) => String(file.recommendation_id) === String(activeSource.id)) : []
   const htmlFile = files.find((f: LibraryRecord) => String(f.role || '').toLowerCase() === 'html' || /html/i.test(String(f.media_type || f.filename || '')))
   const pdfFile = files.find((f: LibraryRecord) => String(f.role || '').toLowerCase() === 'pdf' || /pdf/i.test(String(f.media_type || f.filename || '')))
@@ -114,7 +116,14 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
     || null
   const openSource = () => {
     if (!activeSource) return
-    const selection: HomeSelection = { type: 'source', id: String(activeSource.id), title: sourceTitle(activeSource), data: activeSource, route: canonicalObjectHref('library', 'source', String(activeSource.id)) }
+    const isBook = activeSource.content_type === 'book' || activeSource.is_book_chapter
+    const selection: HomeSelection = {
+      type: 'source',
+      id: String(activeSource.id),
+      title: sourceTitle(activeSource),
+      data: activeSource,
+      route: isBook ? canonicalObjectHref('library', 'book', String(activeSource.book_id || activeSource.id), 'books') : canonicalObjectHref('library', 'source', String(activeSource.id))
+    }
     onInspect?.(selection)
   }
 
@@ -127,18 +136,31 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
       </button>
     </header>
 
-    {nextAction && <section class="folio-hermes-brief" aria-labelledby="hermes-brief-title">
-      <div class="folio-hermes-brief-copy">
-        <p class="folio-kicker">Hermes brief</p>
-        <h2 id="hermes-brief-title">{nextAction.label}</h2>
-        <p>{nextAction.reason}</p>
-        {hermesBrief.blockers && (Number(hermesBrief.blockers.pending_proposals || 0) > 0 || Number(hermesBrief.blockers.active_jobs || 0) > 0) && <small class="folio-hermes-brief-meta">
-          {Number(hermesBrief.blockers.pending_proposals || 0) > 0 ? `${hermesBrief.blockers.pending_proposals} proposal${Number(hermesBrief.blockers.pending_proposals) === 1 ? '' : 's'} waiting` : ''}
-          {Number(hermesBrief.blockers.pending_proposals || 0) > 0 && Number(hermesBrief.blockers.active_jobs || 0) > 0 ? ' · ' : ''}
-          {Number(hermesBrief.blockers.active_jobs || 0) > 0 ? `${hermesBrief.blockers.active_jobs} active job${Number(hermesBrief.blockers.active_jobs) === 1 ? '' : 's'}` : ''}
-        </small>}
+    {resurfacingItem && <section class="folio-home-resurfacing" aria-labelledby="home-resurfacing-title">
+      <div class="folio-section-heading">
+        <div>
+          <p class="folio-kicker">Memory shelf</p>
+          <h2 id="home-resurfacing-title">Daily resurfacing</h2>
+        </div>
+        <button type="button" class={`folio-button folio-resurfacing-star${resurfacingItem.starred ? ' is-starred' : ''}`} onClick={setResurfacingStar} disabled={Boolean(resurfacingBusy)} aria-pressed={resurfacingItem.starred} title="Prioritize this source in resurfacing">{resurfacingItem.starred ? 'Starred' : 'Star'}</button>
       </div>
-      <a class="folio-button folio-button-primary" href={nextAction.href || routeHref('home', 'today')}>Open next action</a>
+      <article class="folio-resurfacing-card">
+        <div class="folio-resurfacing-copy">
+          <a class="folio-badge folio-badge-branch" href={`#/map/branch/${encodeURIComponent(resurfacingItem.branch.id)}`} title="Open branch dossier"><span class="badge-format">Branch</span><span>{resurfacingItem.branch.label}</span></a>
+          <h3>{resurfacingItem.title}</h3>
+          <p class="folio-record-meta">{[resurfacingItem.creator, resurfacingItem.content_type ? labelize(resurfacingItem.content_type) : null, `Due ${formatDate(resurfacingItem.due_at)}`, resurfacingItem.domain.label].filter(Boolean).join(' · ')}</p>
+          <div class="folio-resurfacing-links" aria-label="Passive source links">
+            {resurfacingItem.source_url && <a class="folio-quick-link" href={resurfacingItem.source_url} target="_blank" rel="noreferrer">Original</a>}
+            {resurfacingItem.companions?.html && <a class="folio-quick-link" href={`/artifacts/${resurfacingItem.companions.html.id}`} target="_blank" rel="noreferrer">HTML</a>}
+            {resurfacingItem.companions?.pdf && <a class="folio-quick-link" href={`/artifacts/${resurfacingItem.companions.pdf.id}`} target="_blank" rel="noreferrer">PDF</a>}
+          </div>
+        </div>
+        <div class="folio-resurfacing-actions" aria-label="Resurfacing actions">
+          <button type="button" class="folio-button folio-button-primary" disabled={!resurfacingItem.presentation?.id || Boolean(resurfacingBusy)} onClick={() => actOnResurfacing('reviewed')}>Reviewed</button>
+          <button type="button" class="folio-button" disabled={!resurfacingItem.presentation?.id || Boolean(resurfacingBusy)} onClick={() => actOnResurfacing('snooze')}>Snooze 7 days</button>
+          <button type="button" class="folio-button folio-button-quiet" disabled={!resurfacingItem.presentation?.id || Boolean(resurfacingBusy)} onClick={() => actOnResurfacing('dismissed')}>Dismiss</button>
+        </div>
+      </article>
     </section>}
 
     <section class="folio-home-focus" aria-labelledby="home-focus-title">
@@ -198,87 +220,39 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
     </section>
 
     <div class="folio-home-sequence">
-      <section class="folio-home-thread" aria-labelledby="home-thread-title">
-        <div class="folio-section-heading">
+      <section class="folio-home-threads" aria-labelledby="home-threads-title">
+        <div class="folio-section-heading folio-home-threads-heading">
           <div>
-            <p class="folio-kicker">Active Thread</p>
-            <h2 id="home-thread-title">{thread?.title || 'No active Thread'}</h2>
+            <p class="folio-kicker">Current rotation</p>
+            <h2 id="home-threads-title">{threads.length ? `One turn from each Thread` : 'No current Threads'}</h2>
           </div>
-          <a
-            class="folio-heading-link"
-            href={thread ? `#/learn/thread/${encodeURIComponent(String(thread.id))}` : routeHref('learn', 'paths')}
-            title={thread ? 'Open Thread' : 'Browse Threads'}
-            aria-label={thread ? 'Open Thread' : 'Browse Threads'}
-          >
+          <a class="folio-heading-link" href={routeHref('learn', 'paths')} title="Browse Threads" aria-label="Browse Threads">
             <Icon name="learn" size={21}/>
           </a>
         </div>
-        {thread ? (
-          <>
-            {totalLessons > 0 && (
-              <div class="folio-home-thread-progress" aria-label={`Thread progress: ${completedLessons} of ${totalLessons} lessons completed (${progressPct}%)`}>
-                <div class="folio-home-thread-progress-meta">
-                  <span>{stageLabel}</span>
-                  <span>{completedLessons}/{totalLessons} lessons ({progressPct}%)</span>
-                </div>
-                <div class="folio-home-thread-progress-track">
-                  <div class="folio-home-thread-progress-fill" style={{ width: `${progressPct}%` }}/>
-                </div>
+        {threads.length ? <div class="folio-home-thread-list">
+          {threads.map((thread) => {
+            const stage = thread.current_stage
+            const lesson = stage?.lessons?.[0]
+            const primarySource = lesson?.sources?.find((source) => source.role === 'primary') || lesson?.sources?.[0]
+            const sourceCue = lesson ? [primarySource?.content_type ? labelize(primarySource.content_type) : null, primarySource?.creator || null, lesson.estimated_minutes ? `~${lesson.estimated_minutes} min` : null].filter(Boolean).join(' · ') : ''
+            const location = lesson && stage ? `Level ${stage.position} · Lesson ${String(lesson.position + 1).padStart(2, '0')}` : stage?.title || 'Learning path'
+            const title = lesson?.title || (stage?.status === 'completed' ? 'Level completed' : 'Open learning path')
+            const status = lesson?.status === 'in_progress' ? 'In progress' : stage?.status === 'completed' ? 'Completed' : 'Ready'
+            const href = lesson ? lessonHref(String(thread.id), lesson.id) : `#/learn/thread/${encodeURIComponent(String(thread.id))}`
+            return <a key={thread.id} class={`folio-home-thread-lesson${lesson?.status === 'in_progress' ? ' is-active' : ''}`} href={href} title={`Open ${thread.title}: ${title}`} role="listitem">
+              <div class="folio-home-thread-copy">
+                <span class="folio-object-kicker" dir="auto">{thread.title}</span>
+                <strong class="folio-home-thread-lesson-title" dir="auto">{title}</strong>
+                <small>{location}{sourceCue ? ` · ${sourceCue}` : ''}</small>
               </div>
-            )}
-            {visibleLessons.length > 0 && activeLessonStage ? (
-              <div class="folio-home-thread-lesson-list" role="list">
-                {visibleLessons.map((lesson) => {
-                  const lessonSources = lesson.sources || []
-                  const primarySource = lessonSources.find((s) => s.role === 'primary') || lessonSources[0]
-                  const sourceCue = [
-                    primarySource?.content_type ? labelize(primarySource.content_type) : null,
-                    primarySource?.creator || null,
-                    lesson.estimated_minutes ? `~${lesson.estimated_minutes} min` : null,
-                  ].filter(Boolean).join(' · ')
-                  const isCurrent = activeLesson && lesson.id === activeLesson.id
-
-                  return (
-                    <a
-                      key={lesson.id}
-                      class={`folio-home-thread-lesson${isCurrent ? ' is-active' : ''}`}
-                      href={isCurrent ? activeLessonHref : lessonHref(String(thread.id), lesson.id)}
-                      title={`Open Level ${activeLessonStage.position} · Lesson ${String(lesson.position + 1).padStart(2, '0')}: ${lesson.title}`}
-                      role="listitem"
-                    >
-                      <div class="folio-home-thread-copy">
-                        <span class="folio-object-kicker">
-                          Level {activeLessonStage.position} · Lesson {String(lesson.position + 1).padStart(2, '0')}
-                        </span>
-                        <strong class="folio-home-thread-lesson-title">{lesson.title}</strong>
-                        {sourceCue && <small>{sourceCue}</small>}
-                      </div>
-                      <div class="folio-home-thread-action">
-                        <span class={`folio-status-mark${lesson.status === 'in_progress' ? ' is-in-progress' : lesson.status === 'completed' ? ' is-completed' : ''}`}>
-                          {lesson.status === 'in_progress' ? 'In progress' : lesson.status === 'completed' ? 'Completed' : 'Ready'}
-                        </span>
-                        <Icon name="chevron" size={15}/>
-                      </div>
-                    </a>
-                  )
-                })}
-              </div>
-            ) : (
-              <a
-                class="folio-home-thread-lesson"
-                href={`#/learn/thread/${encodeURIComponent(String(thread.id))}`}
-                title="Open Thread"
-              >
-                <div class="folio-home-thread-copy">
-                  <strong class="folio-home-thread-lesson-title">Open learning path</strong>
-                </div>
+              <div class="folio-home-thread-action">
+                <span class={`folio-status-mark${lesson?.status === 'in_progress' ? ' is-in-progress' : ''}`}>{status}</span>
                 <Icon name="chevron" size={15}/>
-              </a>
-            )}
-          </>
-        ) : (
-          <p class="folio-record-note">Create a Thread before Queue can become a learning commitment.</p>
-        )}
+              </div>
+            </a>
+          })}
+        </div> : <p class="folio-record-note">Create a Thread before Queue can become a learning commitment.</p>}
       </section>
 
       <section class="folio-home-queue" aria-labelledby="home-queue-title">
@@ -315,7 +289,7 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
             })}
           </div>
         ) : (
-          <p class="folio-record-note">Queue is empty. Save a source, then commit it from All sources when it earns your attention.</p>
+          <p class="folio-record-note">Queue is empty. Add a source here only when it has earned your attention.</p>
         )}
       </section>
 
@@ -351,7 +325,5 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
         )}
       </section>
     </div>
-
-      <section class="folio-home-capture-signal" aria-label="Capture signal"><div><p class="folio-kicker">Capture signal</p><h2>Feeds & Subscriptions</h2><p>Manage RSS feeds and imported articles directly in Library.</p></div><div class="folio-row-actions"><button type="button" class="folio-button folio-button-primary" onClick={() => onCapture ? onCapture() : navigate(routeHref('library', 'catalog', 'all'), onNavigate)}><Icon name="capture" size={16}/>Save source</button><a class="folio-button" href={routeHref('library', 'triage', 'feeds')}>Open Feeds</a></div></section>
   </div>
 }

@@ -28,6 +28,8 @@ dark-patterns-deep-dive.html
 .tmp/
 tmp/
 test-results/
+backups/
+.impeccable/
 
 # Wrangler configs that may contain account IDs
 .wrangler/

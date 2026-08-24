@@ -6,8 +6,8 @@ import { objectHref, routeHref } from '../../app/router'
 import { Empty, ErrorState, Loading } from '../../components/States'
 import { Icon } from '../../components/Icon'
 import { buildNoteReaderDocument, directionForText, NoteReaderBlock } from './noteReader'
-import { Direction, NoteDossierResponse, NoteRecord, NotesResponse } from './types'
-import { directionValue, formatDate, noteHref } from './helpers'
+import { Direction, DistillationBlock, NoteDossierResponse, NoteRecord, NotesResponse } from './types'
+import { directionValue, formatDate, lessonHref, noteHref, threadHref } from './helpers'
 
 type NoteFilter = 'all' | 'source' | 'personal' | 'reflection'
 
@@ -194,14 +194,29 @@ function NoteDetailWorkspace({ noteId, allNotes, reloadLibrary }: { noteId: stri
   const [editing, setEditing] = useState(false)
   const [message, setMessage] = useState('')
   const [working, setWorking] = useState(false)
+  const [activeOutlineId, setActiveOutlineId] = useState('')
+  const [selectedBlock, setSelectedBlock] = useState('')
+  const [claimText, setClaimText] = useState('')
+  const [synthesisText, setSynthesisText] = useState('')
 
   if (dossier.loading && !dossier.data) return <Loading label="Loading note" />
   if (dossier.error && !dossier.data) return <ErrorState message={dossier.error} retry={dossier.reload} />
   if (!dossier.data) return <Empty title="Note not found" body="This note is no longer available." />
 
-  const { note, related_notes: relatedNotes, units, recall } = dossier.data
+  const { note, related_notes: relatedNotes, units, backlinks, recall, distillation } = dossier.data
   const document = buildNoteReaderDocument(note)
   const sourceUrl = note.source_url || document.contentSourceUrl || note.rec_video_url || note.rec_source_url
+  const overviewTarget: { href: string; kind: 'lesson' | 'thread' | 'book' | 'source' | 'external'; title: string } | null = note.lesson_id && note.owner_thread_id
+    ? { href: lessonHref(note.owner_thread_id, note.lesson_id), kind: 'lesson', title: 'Open lesson overview' }
+    : note.thread_id
+      ? { href: threadHref(note.thread_id), kind: 'thread', title: 'Open Thread overview' }
+      : note.recommendation_id
+        ? note.content_type === 'book'
+          ? { href: objectHref('library', 'book', note.recommendation_id, 'books'), kind: 'book', title: 'Open book overview' }
+          : { href: objectHref('library', 'source', note.recommendation_id), kind: 'source', title: 'Open source inspector' }
+        : sourceUrl
+          ? { href: sourceUrl, kind: 'external', title: 'Open original source' }
+          : null
   const reflection = note.kind === 'guide' ? relatedNotes.find((item) => item.kind === 'reflection') : null
   const sourceNote = note.kind === 'reflection' ? relatedNotes.find((item) => item.kind === 'guide') : null
   const reflectionDocument = reflection ? buildNoteReaderDocument(reflection) : null
@@ -212,6 +227,47 @@ function NoteDetailWorkspace({ noteId, allNotes, reloadLibrary }: { noteId: stri
   const nextNote = currentIndex >= 0 && currentIndex < allNotes.length - 1 ? allNotes[currentIndex + 1] : null
 
   const goBack = () => { location.hash = routeHref('learn', 'practice', 'notes').slice(1) }
+  const goToOutline = (id: string) => {
+    globalThis.document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setActiveOutlineId(id)
+  }
+
+  const blockKey = (block: DistillationBlock) => `${block.section_key}:${block.block_index}:${block.checksum}`
+  const chosenBlock = distillation?.blocks.find((block) => blockKey(block) === selectedBlock)
+
+  const addHighlight = async (event: Event) => {
+    event.preventDefault()
+    if (!chosenBlock || !claimText.trim()) return
+    setWorking(true)
+    try {
+      await api(`/notes/${encodeURIComponent(note.id)}/distillation/highlights`, { method: 'POST', body: JSON.stringify({ section_key: chosenBlock.section_key, block_index: chosenBlock.block_index, block_checksum: chosenBlock.checksum, claim_text: claimText.trim() }) })
+      setClaimText('')
+      setSelectedBlock('')
+      setMessage('Claim highlighted.')
+      dossier.reload()
+    } catch (error: unknown) { setMessage(error instanceof Error ? error.message : 'Highlight failed.') } finally { setWorking(false) }
+  }
+
+  const addSynthesis = async (event: Event) => {
+    event.preventDefault()
+    if (!synthesisText.trim()) return
+    setWorking(true)
+    try {
+      await api(`/notes/${encodeURIComponent(note.id)}/distillation/syntheses`, { method: 'POST', body: JSON.stringify({ synthesis_text: synthesisText.trim() }) })
+      setSynthesisText('')
+      setMessage('Synthesis revision retained.')
+      dossier.reload()
+    } catch (error: unknown) { setMessage(error instanceof Error ? error.message : 'Synthesis failed.') } finally { setWorking(false) }
+  }
+
+  const promoteHighlight = async (highlightId: string) => {
+    setWorking(true)
+    try {
+      await api(`/notes/${encodeURIComponent(note.id)}/distillation/highlights/${encodeURIComponent(highlightId)}/promote`, { method: 'POST' })
+      setMessage('Highlight promoted to a retained Unit.')
+      dossier.reload()
+    } catch (error: unknown) { setMessage(error instanceof Error ? error.message : 'Promotion failed.') } finally { setWorking(false) }
+  }
 
   const copyNote = async () => {
     const text = (note.sections || []).map((section) => `## ${section.label || section.section_key}\n\n${section.content}`).join('\n\n')
@@ -233,59 +289,106 @@ function NoteDetailWorkspace({ noteId, allNotes, reloadLibrary }: { noteId: stri
   if (editing) return <NoteEditor note={note} onCancel={() => setEditing(false)} onDelete={remove} onSaved={() => { setEditing(false); dossier.reload(); reloadLibrary(); setMessage('Saved.') }} />
 
   return (
-    <section class="folio-note-reading note-reading-workspace">
-      <header class="note-reading-actions">
-        <button class="button quiet" type="button" onClick={goBack}>← Notes</button>
+    <section class="folio-note-reading note-reading-workspace scholar-note-workspace">
+      <header class="note-reading-actions scholar-note-actions">
         <div>
-          <button class="button quiet" type="button" onClick={copyNote}><Icon name="copy" size={14} />Copy</button>
-          {note.kind === 'guide' && <button class="button quiet" type="button" onClick={reprocess} disabled={working}>Reprocess</button>}
-          {sourceUrl && <a class="button quiet" href={sourceUrl} target="_blank" rel="noreferrer"><Icon name="external" size={13} />Source</a>}
+          <button class="button secondary" type="button" onClick={copyNote}><Icon name="copy" size={14} />Copy</button>
+          {note.kind === 'guide' && <button class="button secondary" type="button" onClick={reprocess} disabled={working}>Reprocess</button>}
+          {overviewTarget && <a class="button secondary" href={overviewTarget.href} title={overviewTarget.title} target={overviewTarget.kind === 'external' ? '_blank' : undefined} rel={overviewTarget.kind === 'external' ? 'noreferrer' : undefined}><Icon name={overviewTarget.kind === 'lesson' ? 'learn' : overviewTarget.kind === 'thread' ? 'path' : overviewTarget.kind === 'book' ? 'book' : overviewTarget.kind === 'external' ? 'external' : 'source'} size={13} />{overviewTarget.kind === 'lesson' ? 'Lesson' : overviewTarget.kind === 'thread' ? 'Thread' : overviewTarget.kind === 'book' ? 'Book' : 'Source'} <span class="folio-branch-pill">{note.branch_label || note.branch_id || 'Unassigned'}</span></a>}
           <button class="button primary" type="button" aria-label="Edit note" onClick={() => setEditing(true)}><Icon name="edit" size={14} />Edit</button>
         </div>
       </header>
       {message && <output class="folio-status" aria-live="polite">{message}</output>}
 
-      <article class="folio-reading-body note-manuscript">
-        <header class="note-manuscript-head">
-          <p class="folio-object-kicker">{note.kind === 'guide' ? 'Source synthesis' : note.kind === 'reflection' ? 'My reflection' : 'Note'}</p>
-          <h1 dir={directionForText(note.title)}>{note.title}</h1>
-          <div class="note-manuscript-meta folio-note-meta"><span>{note.branch_label || note.branch_id || 'Unassigned'}</span><span>{document.readingMinutes} min</span><span>{document.wordCount.toLocaleString()} words</span><span>Updated {formatDate(note.updated_at)}</span>{sourceUrl && <a href={sourceUrl} target="_blank" rel="noreferrer">Source</a>}</div>
-          {note.abstract && <p class="note-abstract" dir={directionForText(note.abstract)}>{note.abstract}</p>}
-        </header>
+      <div class="scholar-note-shell">
+        <aside class="scholar-note-nav" aria-label="Note sections">
+          <strong>Chapter sections</strong>
+          <div>
+            {(document.outline.length ? document.outline : document.sections.map((section) => ({ id: `section-${section.key}`, label: section.label || 'Note', level: 1, sectionKey: section.key }))).map((item, index) => (
+              <button class={`${activeOutlineId === item.id || (!activeOutlineId && index === 0) ? 'active' : ''} level-${item.level}`} type="button" onClick={() => goToOutline(item.id)} key={`${item.id}-${index}`}>{item.label}</button>
+            ))}
+          </div>
+          {(prevNote || nextNote) && <nav class="scholar-note-neighbors" aria-label="Other notes">{prevNote && <a href={noteHref(prevNote.id)}>Previous<br /><span>{prevNote.title}</span></a>}{nextNote && <a href={noteHref(nextNote.id)}>Next<br /><span>{nextNote.title}</span></a>}</nav>}
+        </aside>
 
-        {reflectionDocument && reflectionDocument.sections.length > 0 && (
-          <section class="note-personal-reflection" aria-labelledby="personal-reflection-title">
-            <h2 id="personal-reflection-title">My reflection</h2>
-            <div class="folio-reading-copy">{reflectionDocument.sections.flatMap((section) => section.blocks).map((block, index) => <ReaderBlockComponent block={block} key={index} />)}</div>
-          </section>
-        )}
+        <main class="scholar-note-document">
+          <header class="scholar-note-head">
+            <span class="folio-branch-pill">{note.branch_label || note.branch_id || 'Unassigned'}</span>
+            <p>{note.kind === 'guide' ? 'Source synthesis' : note.kind === 'reflection' ? 'My reflection' : 'Knowledge note'}</p>
+            <h1 dir={directionForText(note.title)}>{note.title}</h1>
+            <div class="scholar-note-meta"><span>{document.readingMinutes} min</span><span>{document.wordCount.toLocaleString()} words</span><span>Updated {formatDate(note.updated_at)}</span></div>
+            {note.abstract && <p class="note-abstract" dir={directionForText(note.abstract)}>{note.abstract}</p>}
+          </header>
 
-        <div class="folio-reading-copy note-source-body">
-          {document.sections.length ? document.sections.map((section, sectionIndex) => (
-            <section id={`section-${section.key}`} class="note-reading-section" key={section.key}>
-              {(document.sections.length > 1 || (section.label && section.label.toLowerCase() !== note.title.toLowerCase())) && <h2 class="note-section-label">{section.label}</h2>}
-              {section.blocks.map((block, blockIndex) => <ReaderBlockComponent block={block} key={blockIndex} />)}
-            </section>
-          )) : <Empty title="This note is empty" body="Edit the note to add content." />}
-        </div>
+          {document.sections.length ? (
+            <div class="scholar-note-bilingual">
+              <article class="scholar-language-column scholar-language-english" aria-label="English synthesis">
+                <div class="scholar-language-head"><strong>English synthesis</strong><span>Source argument and cases</span></div>
+                {document.sections.map((section) => {
+                  const blocks = section.blocks.filter((block) => block.direction === 'ltr')
+                  if (!blocks.length) return null
+                  return <section id={`section-${section.key}`} class="note-reading-section" key={`en-${section.key}`}>{document.sections.length > 1 && section.label && <h2 class="note-section-label">{section.label}</h2>}{blocks.map((block, index) => <ReaderBlockComponent block={block} key={index} />)}</section>
+                })}
+                {reflectionDocument?.sections.map((section) => section.blocks.filter((block) => block.direction === 'ltr').map((block, index) => <ReaderBlockComponent block={block} key={`reflection-en-${section.key}-${index}`} />))}
+              </article>
 
-        {sourceNote && <aside class="note-related-source"><span>Source synthesis</span><a href={noteHref(sourceNote.id)}>{sourceNote.title} →</a></aside>}
+              <article class="scholar-language-column scholar-language-arabic" aria-label="Arabic interpretation" dir="rtl">
+                <div class="scholar-language-head"><strong>التفسير الشخصي</strong><span>الملاحظات والتطبيق</span></div>
+                {document.sections.map((section) => {
+                  const blocks = section.blocks.filter((block) => block.direction === 'rtl')
+                  if (!blocks.length) return null
+                  return <section class="note-reading-section" key={`ar-${section.key}`}>{blocks.map((block, index) => <ReaderBlockComponent block={block} key={index} />)}</section>
+                })}
+                {reflectionDocument?.sections.map((section) => section.blocks.filter((block) => block.direction === 'rtl').map((block, index) => <ReaderBlockComponent block={block} key={`reflection-ar-${section.key}-${index}`} />))}
+              </article>
+            </div>
+          ) : <Empty title="This note is empty" body="Edit the note to add content." />}
+        </main>
 
-        {units.length > 0 && (
-          <section class="note-retained-ideas" aria-labelledby="retained-ideas-title">
-            <div class="note-section-heading"><div><p class="folio-object-kicker">Grounded in the source</p><h2 id="retained-ideas-title">Ideas worth keeping</h2></div><span class="folio-measure">{units.length}</span></div>
-            <ol>
-              {units.map((unit) => {
-                const anchor = unit.anchors[0]
-                const recallState = cardUnits.has(unit.id) ? 'In review' : draftUnits.has(unit.id) ? 'Draft waiting' : 'No card needed'
-                return <li key={unit.id}><div><span class="note-unit-type">{unit.unit_type}</span><strong>{unit.statement}</strong></div><small>{anchor ? `${anchor.anchor_type}: ${anchor.locator}` : 'No source locator'} · {recallState}</small></li>
-              })}
-            </ol>
-          </section>
-        )}
+        <aside class="scholar-note-tools" aria-label="Study tools">
+          <strong class="scholar-tools-title">Study tools</strong>
+          <section><span>Knowledge branch</span><a class="folio-branch-pill" href={objectHref('map', 'branch', note.branch_id || note.branch_label || '')}>{note.branch_label || note.branch_id || 'Unassigned'}</a></section>
+          <section><span>Source</span>{sourceUrl ? <a class="relation-source-link" href={sourceUrl} target="_blank" rel="noreferrer">Open original source <span class="folio-branch-pill">{note.branch_label || note.branch_id || 'Unassigned'}</span></a> : <p>No source link</p>}</section>
+          <section><span>Record</span><p>{document.wordCount.toLocaleString()} words · {document.readingMinutes} min</p><p>{note.status || 'Published'} · {formatDate(note.updated_at)}</p></section>
+          {sourceNote && <section><span>Source synthesis</span><a href={noteHref(sourceNote.id)}>{sourceNote.title}</a></section>}
+          {relatedNotes.length > 0 && <section><span>Related notes</span><div class="scholar-related-notes">{relatedNotes.slice(0, 5).map((related) => <a href={noteHref(related.id)} key={related.id}>{related.title}</a>)}</div></section>}
+          <section><span>Retention</span><p>{units.length} retained ideas</p><p>{recall.cards.length} recall cards · {recall.drafts.length} drafts</p></section>
+        </aside>
+      </div>
 
-        {(prevNote || nextNote) && <nav class="note-pagination" aria-label="Other notes">{prevNote ? <a href={noteHref(prevNote.id)}>← {prevNote.title}</a> : <span />}{nextNote && <a href={noteHref(nextNote.id)}>{nextNote.title} →</a>}</nav>}
-      </article>
+      {distillation && (
+        <section class="note-distillation scholar-retained-ideas" aria-labelledby="distillation-title">
+          <div class="note-section-heading"><div><p class="folio-object-kicker">Manual, additive distillation</p><h2 id="distillation-title">Claims and synthesis</h2></div><span class="folio-measure">{distillation.highlights.length} highlights</span></div>
+          <div class="note-distillation-grid">
+            <div class="note-distillation-column">
+              <form onSubmit={addHighlight}>
+                <label>Source block<select value={selectedBlock} onChange={(event) => setSelectedBlock((event.target as HTMLSelectElement).value)} required><option value="">Choose an exact block</option>{distillation.blocks.map((block) => <option value={blockKey(block)} key={blockKey(block)}>{block.section_label || block.section_key} · {block.text.slice(0, 90)}</option>)}</select></label>
+                {chosenBlock && <blockquote dir={directionForText(chosenBlock.text)}>{chosenBlock.text}</blockquote>}
+                <label>Your claim<textarea rows={3} value={claimText} onInput={(event) => setClaimText((event.target as HTMLTextAreaElement).value)} required /></label>
+                <button class="button secondary" type="submit" disabled={working || !chosenBlock || !claimText.trim()}>Add highlight</button>
+              </form>
+              <div class="note-highlight-list">
+                {distillation.highlights.map((highlight) => <article class={highlight.stale ? 'is-stale' : ''} key={highlight.id}><div><strong>{highlight.claim_text}</strong>{highlight.stale && <span>Source changed</span>}</div><blockquote dir={directionForText(highlight.source_text)}>{highlight.source_text}</blockquote><small>{highlight.section_key} · block {highlight.block_index + 1} · {highlight.block_checksum.slice(0, 10)}</small>{highlight.promoted_unit_id ? <a href={objectHref('learn', 'unit', highlight.promoted_unit_id)}>Open retained Unit</a> : <button class="button quiet" type="button" disabled={working || !distillation.can_promote} onClick={() => promoteHighlight(highlight.id)}>Promote to Unit</button>}</article>)}
+              </div>
+            </div>
+            <div class="note-distillation-column">
+              <form onSubmit={addSynthesis}>
+                <label>New concise synthesis<textarea rows={5} value={synthesisText} onInput={(event) => setSynthesisText((event.target as HTMLTextAreaElement).value)} required /></label>
+                <button class="button secondary" type="submit" disabled={working || !synthesisText.trim()}>Append revision</button>
+              </form>
+              <ol class="note-synthesis-history">{distillation.synthesis_revisions.map((revision) => <li key={revision.id}><small>Revision {revision.revision} · {formatDate(revision.created_at)}</small><p dir={directionForText(revision.synthesis_text)}>{revision.synthesis_text}</p></li>)}</ol>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {units.length > 0 && (
+        <section class="note-retained-ideas scholar-retained-ideas" aria-labelledby="retained-ideas-title">
+          <div class="note-section-heading"><div><p class="folio-object-kicker">Grounded in the source</p><h2 id="retained-ideas-title">Ideas worth keeping</h2></div><span class="folio-measure">{units.length}</span></div>
+          <ol>{units.map((unit) => { const anchor = unit.anchors[0]; const recallState = cardUnits.has(unit.id) ? 'In review' : draftUnits.has(unit.id) ? 'Draft waiting' : 'No card needed'; return <li key={unit.id}><div><span class="note-unit-type">{unit.unit_type}</span><strong>{unit.statement}</strong></div><small>{anchor ? `${anchor.anchor_type}: ${anchor.locator}` : 'No source locator'} · {recallState}</small></li> })}</ol>
+        </section>
+      )}
+      {backlinks.length > 0 && <section class="note-retained-ideas scholar-retained-ideas note-backlinks" aria-labelledby="note-backlinks-title"><div class="note-section-heading"><div><p class="folio-object-kicker">Connected through retained ideas</p><h2 id="note-backlinks-title">Meaningful backlinks</h2></div><span class="folio-measure">{backlinks.length}</span></div><div class="unit-relations">{backlinks.map((relation) => <article key={relation.id}><div><strong>{relation.relation_type.replace(/_/g, ' ')}</strong><span class="folio-branch-pill">{relation.counterpart.branch.label} · {relation.counterpart.branch.domain}</span></div><a href={objectHref('learn', 'unit', relation.counterpart.unit_id)}>{relation.counterpart.statement}</a><p>{relation.why}</p>{relation.counterpart.anchor && <small>Anchor: {relation.counterpart.anchor.locator}</small>}</article>)}</div></section>}
     </section>
   )
 }

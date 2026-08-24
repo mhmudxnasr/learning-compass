@@ -12,6 +12,16 @@ test('Compass ignores started picks whose recommendation is already completed or
   assert.equal(compassPickIsUnresolved('ready', 'consumed'), false)
 })
 
+test('Compass bounds repeated current-pick context and persistence work', () => {
+  const source = readFileSync(new URL('../../src/api/compass.ts', import.meta.url), 'utf8')
+  const currentPick = source.slice(source.indexOf('async function currentPick'), source.indexOf('async function activeQueueCount'))
+  assert.match(currentPick, /for \(let attempt = 0; attempt < 25; attempt\+\+\)/)
+  assert.match(currentPick, /coverageAnchors \|\|= await loadThreadCoverageAnchors\(DB\)/)
+  assert.match(currentPick, /storedPickCoverageConflict\(DB, pick\.id, coverageAnchors\)/)
+  assert.equal((currentPick.match(/loadThreadCoverageAnchors\(DB\)/g) || []).length, 1)
+  assert.match(source, /DB\.batch\(decisions\.v2\.scored\.map/)
+})
+
 test('Compass reports comparative selection and current learning load', () => {
   const source = readFileSync(new URL('../../src/api/compass.ts', import.meta.url), 'utf8')
   assert.match(source, /selection_explanation: selectionExplanation/)
@@ -119,7 +129,6 @@ test('Compass labels decision confidence honestly and stores observational expos
   assert.match(source, /position: 1,/)
   assert.match(source, /candidate_count: Number\(pick\.candidate_count \|\| 0\),/)
   assert.match(source, /branch_id: winner\?\.branch_id \|\| null,/)
-  assert.match(source, /round,/)
   assert.match(source, /target_lesson_id: targetLessonId,/)
   assert.doesNotMatch(source, /discount position bias/)
 })
@@ -197,11 +206,12 @@ test('the router exposes five roots and twelve grouped modes with focus state', 
   assert.equal(declaredModes.length, 12)
   assert.equal(new Set(declaredModes.map((mode) => `${mode.root}/${mode.key}`)).size, 12)
   assert.ok(declaredModes.every((mode) => mode.label.trim() && mode.description.trim()))
-  assert.equal(views.library.length, 7)
+  assert.equal(views.library.length, 5)
   assert.equal(views.learn.length, 4)
-  assert.equal(modes.learn.find((mode) => mode.key === 'canon')?.label, 'Books')
-  assert.equal(modes.learn.find((mode) => mode.key === 'canon')?.focuses, undefined)
-  assert.ok(!modes.library.find((mode) => mode.key === 'catalog')?.focuses?.some((item) => item.key === 'books'))
+  assert.equal(modes.library[0]?.key, 'books')
+  assert.equal(modes.learn.some((mode) => mode.key === 'canon'), false)
+  assert.equal(modes.library.find((mode) => mode.key === 'catalog')?.label, 'Archive')
+  assert.deepEqual(modes.library.find((mode) => mode.key === 'catalog')?.focuses?.map((item) => item.key), ['archive'])
   for (const root of roots) {
     assert.equal(routeHref(root.key), `#/${root.key}`)
     assert.equal(routeHref(root.key, root.defaultMode), `#/${root.key}`)
@@ -211,32 +221,45 @@ test('the router exposes five roots and twelve grouped modes with focus state', 
       else assert.equal(href, `#/${root.key}?mode=${mode.key}`)
     }
   }
-  assert.equal(routeHref('library', 'books'), '#/learn?mode=canon')
-  assert.equal(routeHref('library', 'journal'), '#/library?mode=catalog&focus=journal')
+  assert.equal(routeHref('library', 'books'), '#/library')
+  assert.equal(routeHref('library', 'catalog'), '#/library?mode=catalog')
   assert.equal(routeHref('learn', 'notes'), '#/learn?mode=practice&focus=notes')
-  assert.equal(routeHref('learn', 'canon'), '#/learn?mode=canon')
-  assert.equal(routeHref('map', 'branches'), '#/map?mode=review&focus=branches')
+  assert.equal(routeHref('map', 'review'), '#/map?mode=review')
   assert.equal(routeHref('settings', 'profile'), '#/settings?focus=profile')
   assert.equal(routeHref('learn', 'practice', 'notes'), '#/learn?mode=practice&focus=notes')
+  assert.equal(routeHref('learn', 'practice', 'contradictions'), '#/learn?mode=practice&focus=contradictions')
+})
+
+test('Library Archive requests completed and excluded records before pagination', () => {
+  const workspace = readFileSync(new URL('../../client/src/workspaces/LibraryWorkspace.tsx', import.meta.url), 'utf8')
+  const recommendations = readFileSync(new URL('../../src/api/recommendations.ts', import.meta.url), 'utf8')
+  assert.match(workspace, /recommendations\/list\?limit=200&source=manual&status=archived/)
+  assert.match(recommendations, /status === 'archived'[\s\S]*recommendations\.status IN \('consumed','rejected'\)/)
 })
 
 test('root modes parse from query state while typed object links keep their identity', () => {
   for (const href of ['#/library?mode=catalog&focus=books', '#/library?mode=books', '#/library/books', '#/curate/books']) {
     const books = parseRoute(href)
-    assert.equal(books.root, 'learn')
-    assert.equal(books.mode, 'canon')
+    assert.equal(books.root, 'library')
+    assert.equal(books.mode, 'books')
     assert.equal(books.focus, undefined)
     assert.equal(books.view, 'books')
-    assert.equal(books.canonical, '/learn?mode=canon')
+    assert.equal(books.canonical, '/library')
     assert.equal(books.objectId, undefined)
     assert.equal(books.notFound, undefined)
   }
 
   const journal = parseRoute('#/library/hardcover')
   assert.equal(journal.mode, 'catalog')
-  assert.equal(journal.focus, 'journal')
-  assert.equal(journal.view, 'journal')
-  assert.equal(journal.canonical, '/library?mode=catalog&focus=journal')
+  assert.equal(journal.focus, 'archive')
+  assert.equal(journal.view, 'archive')
+  assert.equal(journal.canonical, '/library?mode=catalog&focus=archive')
+
+  const retiredCatalog = parseRoute('#/library?mode=catalog&focus=all')
+  assert.equal(retiredCatalog.focus, 'archive')
+  assert.equal(retiredCatalog.view, 'archive')
+  assert.equal(retiredCatalog.canonical, '/library?mode=catalog&focus=archive')
+  assert.equal(retiredCatalog.notFound, undefined)
 
   const oldQueue = parseRoute('#/curate/queue')
   assert.equal(oldQueue.canonical, '/library?mode=triage&focus=queue')
@@ -251,31 +274,32 @@ test('root modes parse from query state while typed object links keep their iden
   assert.equal(oldThread.objectId, 'path 1')
 
   const canon = parseRoute('#/learn/canon/behavioral-psychology')
-  assert.equal(canon.mode, 'canon')
+  assert.equal(canon.mode, 'paths')
   assert.equal(canon.objectType, 'canon-domain')
   assert.equal(canon.objectId, 'behavioral-psychology')
   assert.equal(canon.canonical, '/learn/canon/behavioral-psychology')
 
   const book = parseRoute('#/learn/book/book%201?mode=canon&focus=shelf')
-  assert.equal(book.root, 'learn')
-  assert.equal(book.mode, 'canon')
+  assert.equal(book.root, 'library')
+  assert.equal(book.mode, 'books')
   assert.equal(book.focus, undefined)
   assert.equal(book.objectType, 'book')
   assert.equal(book.objectId, 'book 1')
-  assert.equal(book.canonical, '/learn/book/book%201?mode=canon')
+  assert.equal(book.canonical, '/library/book/book%201')
   assert.equal(book.notFound, undefined)
 
   const oldAtlas = parseRoute('#/learn?mode=canon&focus=atlas')
+  assert.equal(oldAtlas.root, 'library')
   assert.equal(oldAtlas.focus, undefined)
   assert.equal(oldAtlas.view, 'books')
-  assert.equal(oldAtlas.canonical, '/learn?mode=canon')
+  assert.equal(oldAtlas.canonical, '/library')
   assert.equal(oldAtlas.notFound, undefined)
 
   const movedBook = parseRoute('#/library/book/book%201')
-  assert.equal(movedBook.root, 'learn')
+  assert.equal(movedBook.root, 'library')
   assert.equal(movedBook.objectType, 'book')
   assert.equal(movedBook.objectId, 'book 1')
-  assert.equal(movedBook.canonical, '/learn/book/book%201?mode=canon')
+  assert.equal(movedBook.canonical, '/library/book/book%201')
 
   const lesson = parseRoute('#/learn/thread/thread%201/lesson/lesson%202')
   assert.equal(lesson.objectType, 'lesson')
@@ -294,11 +318,20 @@ test('root modes parse from query state while typed object links keep their iden
   assert.equal(compactLevel.canonical, '/learn/t/thread%201/v/level%202')
 
   const oldMapObject = parseRoute('#/map/branches/branch/branch%201')
-  assert.equal(oldMapObject.canonical, '/map/branch/branch%201?mode=review&focus=branches')
+  assert.equal(oldMapObject.canonical, '/map/branch/branch%201?mode=review')
   assert.equal(oldMapObject.mode, 'review')
-  assert.equal(oldMapObject.focus, 'branches')
+  assert.equal(oldMapObject.focus, undefined)
   assert.equal(oldMapObject.objectType, 'branch')
   assert.equal(oldMapObject.objectId, 'branch 1')
+
+  for (const href of ['#/map?mode=review&focus=branches', '#/map?mode=review&focus=balance', '#/map/balance']) {
+    const review = parseRoute(href)
+    assert.equal(review.mode, 'review')
+    assert.equal(review.focus, undefined)
+    assert.equal(review.view, 'branches')
+    assert.equal(review.canonical, '/map?mode=review')
+    assert.equal(review.notFound, undefined)
+  }
 
   const staleMode = parseRoute('#/settings/appearance')
   assert.equal(staleMode.canonical, '/settings?focus=preferences')
@@ -307,8 +340,8 @@ test('root modes parse from query state while typed object links keep their iden
 
   const unknown = parseRoute('#/library/not-a-mode')
   assert.equal(unknown.root, 'library')
-  assert.equal(unknown.mode, 'triage')
-  assert.equal(unknown.focus, 'queue')
+  assert.equal(unknown.mode, 'books')
+  assert.equal(unknown.focus, undefined)
   assert.equal(unknown.notFound, true)
   assert.equal(unknown.recoveredFrom, '/library/not-a-mode')
 })
@@ -316,6 +349,6 @@ test('root modes parse from query state while typed object links keep their iden
 test('typed object links preserve the five-root contract', () => {
   assert.equal(objectHref('library', 'source', 'rec/1'), '#/library/source/rec%2F1')
   assert.equal(objectHref('learn', 'thread', 'path 1'), '#/learn/thread/path%201')
-  assert.equal(objectHref('learn', 'book', 'book 1', 'canon'), '#/learn/book/book%201?mode=canon')
-  assert.equal(objectHref('map', 'branch', 'branch 1', 'branches'), '#/map/branch/branch%201?mode=review&focus=branches')
+  assert.equal(objectHref('library', 'book', 'book 1', 'books'), '#/library/book/book%201')
+  assert.equal(objectHref('map', 'branch', 'branch 1', 'review'), '#/map/branch/branch%201?mode=review')
 })

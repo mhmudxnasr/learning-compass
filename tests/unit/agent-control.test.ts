@@ -42,7 +42,7 @@ const agentRequest = (body: unknown) => agentApp.request('https://example.test/r
 
 test('agent capability catalog is structured, filterable, and safety-aware', () => {
   const catalog = buildCapabilityCatalog(sample)
-  assert.equal(AGENT_CONTRACT_VERSION, '2026-08-22')
+  assert.equal(AGENT_CONTRACT_VERSION, '2026-08-24')
   assert.equal(AGENT_PROTOCOL, 'learning-compass-agent-http/2')
   assert.equal(catalog.length, sample.length)
   assert.deepEqual(buildCapabilityCatalog(sample, { domain: 'capture', intent: 'update' }).map((item) => item.path), ['/capture/:id/triage'])
@@ -120,11 +120,28 @@ test('feedback extraction follows disposition and source notes stay source-shape
   const product = readFileSync(new URL('../../src/api/product.ts', import.meta.url), 'utf8')
   const jobs = readFileSync(new URL('../../src/api/jobs.ts', import.meta.url), 'utf8')
   assert.match(product, /complete && \(disposition === 'retain' \|\| disposition === 'apply'\) \? id\('job'\) : null/)
-  assert.match(product, /knowledgeRequested \|\| body\.auto_enqueue === true/)
+  assert.match(product, /if \(knowledgeRequested\)/)
+  assert.doesNotMatch(product, /auto_enqueue/)
   assert.doesNotMatch(product, /rating\.score >= 8/)
   assert.doesNotMatch(product, /settings\.srs_drafts\.auto_extract/)
+  assert.doesNotMatch(jobs, /payload\.rating[\s\S]*>= 7/)
   assert.match(jobs, /one or more complete source-shaped sections/)
   assert.doesNotMatch(jobs, /complete bilingual English and Egyptian Arabic sections/)
+})
+
+test('automated recall is disabled while manual write paths enforce Arabic', () => {
+  const jobs = readFileSync(new URL('../../src/api/jobs.ts', import.meta.url), 'utf8')
+  const learning = readFileSync(new URL('../../src/api/learning.ts', import.meta.url), 'utf8')
+  const product = readFileSync(new URL('../../src/api/product.ts', import.meta.url), 'utf8')
+  const vault = readFileSync(new URL('../../src/api/vault.ts', import.meta.url), 'utf8')
+  const intelligence = readFileSync(new URL('../../src/services/hermes-intelligence.ts', import.meta.url), 'utf8')
+  assert.match(jobs, /automated_recall_disabled/)
+  assert.doesNotMatch(jobs, /INSERT OR REPLACE INTO srs_drafts/)
+  assert.match(learning, /validateArabicRecall/)
+  assert.match(product, /validateArabicRecall/)
+  assert.match(vault, /automated_recall_disabled/)
+  assert.doesNotMatch(vault, /INSERT INTO srs_cards/)
+  assert.doesNotMatch(intelligence, /INSERT OR IGNORE INTO srs_cards/)
 })
 
 test('agent context and tools enforce canonical v2 semantics', () => {
@@ -135,13 +152,13 @@ test('agent context and tools enforce canonical v2 semantics', () => {
   }
   assert.equal(agent.includes("AVG(CASE WHEN user_rating IN ('love','like') THEN 1 ELSE 0 END) as mastery_rate"), false)
   assert.ok(agent.includes('learning_gaps'))
-  assert.ok(agent.includes('verified_threads'))
+  assert.ok(agent.includes('completed_threads'))
   assert.ok(agent.includes('legacy_mastered'))
   assert.ok(agent.includes("return c.json(payload, requiredUnavailable ? 503 : 200)"))
   assert.ok(agent.includes('loadCaptureQueue(DB, 50)'))
   assert.ok(agent.includes('HAVING MAX(COALESCE(dm.last_consumed, dr.last_consumed)) IS NULL'))
   assert.equal(agent.includes('HAVING last_consumed IS NULL'), false)
-  assert.ok(capture.includes('loadCaptureQueue(c.env.DB)'))
+  assert.match(capture, /loadCaptureQueue\(c\.env\.DB,\s*50,\s*delivery,\s*matchesOnly\)/)
 })
 
 test('recommendation engine rollout cannot bypass readiness gates through generic settings', () => {

@@ -2,14 +2,13 @@ import type { Bindings } from '../lib'
 
 export type HermesNextAction = {
   id: string
-  kind: 'review' | 'record_evidence' | 'continue' | 'approve_recall' | 'curate' | 'repair'
+  kind: 'review' | 'continue' | 'approve_recall' | 'curate' | 'repair'
   label: string
   reason: string
   target: string
   href: string
   priority: 'high' | 'medium' | 'low'
   thread_id?: string
-  requirement_id?: string
   stage_id?: string
   recommendation_id?: string
   source_id?: string
@@ -52,7 +51,7 @@ export async function loadHermesBrief(DB: Database) {
     next_action = {
       id: `consolidation:${consolidation.id}`, kind: 'repair', label: 'Resolve an open consolidation loop',
       reason: `${consolidation.video_title || 'A completed source'} still has unfinished consolidation work.`,
-      target: `library.source.${consolidation.recommendation_id}`, href: `#/library?mode=catalog&focus=all&object=source:${encodeURIComponent(consolidation.recommendation_id)}`,
+      target: `library.source.${consolidation.recommendation_id}`, href: `#/library/source/${encodeURIComponent(consolidation.recommendation_id)}`,
       priority: 'high', source_id: consolidation.recommendation_id, recommendation_id: consolidation.recommendation_id,
     }
   } else if (queue) {
@@ -71,12 +70,12 @@ export async function loadHermesBrief(DB: Database) {
     next_action = {
       id: 'captured-sources', kind: 'curate', label: 'Review captured sources',
       reason: `${count(inbox)} captured ${count(inbox) === 1 ? 'source needs' : 'sources need'} a decision.`,
-      target: 'library.all', href: '#/library?mode=catalog&focus=all', priority: 'low',
+      target: 'home.capture', href: '#/home?action=capture', priority: 'low',
     }
   } else {
     next_action = {
       id: 'capture', kind: 'curate', label: 'Capture the next useful source',
-      reason: 'The active Queue and captured sources are clear.', target: 'library.all', href: '#/library?mode=catalog&focus=all', priority: 'low',
+      reason: 'The active Queue and captured sources are clear.', target: 'home.capture', href: '#/home?action=capture', priority: 'low',
     }
   }
 
