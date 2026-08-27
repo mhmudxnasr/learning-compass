@@ -76,3 +76,61 @@ test('preferred source URL replacement rejects an existing source identity', asy
   assert.deepEqual(await response.json(), { error: 'source_url_conflict', recommendation_id: 'rec-existing' })
   assert.equal(DB.batchStatements.length, 0)
 })
+
+class ContentTypeDatabase {
+  rows: Array<{ id: string; video_url: string; content_type: string; status: string; deleted_at: null }> = []
+  updates: Array<{ sql: string; args: unknown[] }> = []
+
+  prepare(sql: string) {
+    const statement = {
+      sql,
+      args: [] as unknown[],
+      bind: (...args: unknown[]) => {
+        statement.args = args
+        return statement
+      },
+      all: async () => ({ results: this.rows.filter((row) => statement.args.includes(row.id)) }),
+    }
+    return statement
+  }
+
+  async batch(statements: Array<{ sql: string; args: unknown[] }>) {
+    this.updates.push(...statements)
+    return []
+  }
+}
+
+test('bulk content-type repair updates only preconditioned YouTube sources', async () => {
+  const DB = new ContentTypeDatabase()
+  DB.rows = [
+    { id: 'rec-1', video_url: 'https://www.youtube.com/watch?v=one', content_type: 'article', status: 'active', deleted_at: null },
+    { id: 'rec-2', video_url: 'https://youtu.be/two', content_type: 'audio lecture', status: 'active', deleted_at: null },
+  ]
+  const response = await app.request('/content-types', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ids: ['rec-1', 'rec-2'], content_type: 'video', expected_content_types: ['article', 'audio lecture'] }),
+  }, { DB } as any)
+  const body = await response.json() as any
+
+  assert.equal(response.status, 200)
+  assert.equal(body.updated, 2)
+  assert.deepEqual(DB.updates.map((statement) => statement.args), [['rec-1'], ['rec-2']])
+  assert.ok(DB.updates.every((statement) => statement.sql.includes("content_type='video'")))
+})
+
+test('bulk content-type repair rejects non-YouTube records before writing', async () => {
+  const DB = new ContentTypeDatabase()
+  DB.rows = [
+    { id: 'rec-1', video_url: 'https://example.com/lesson', content_type: 'article', status: 'active', deleted_at: null },
+  ]
+  const response = await app.request('/content-types', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ids: ['rec-1'], content_type: 'video', expected_content_types: ['article'] }),
+  }, { DB } as any)
+
+  assert.equal(response.status, 409)
+  assert.deepEqual(await response.json(), { error: 'video_type_requires_youtube_url', ids: ['rec-1'] })
+  assert.equal(DB.updates.length, 0)
+})

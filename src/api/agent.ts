@@ -127,6 +127,7 @@ const CAPABILITIES = [
   ['POST', '/recommendations/push', 'Create or update a recommendation with deduplication.'],
   ['POST', '/recommendations/action', 'Change status, rating, review, consumed date, or register an item-specific NotebookLM URL.'],
   ['PATCH', '/recommendations/:id/source-url', 'Replace the preferred Original source URL while preserving the previous archive URL.'],
+  ['PATCH', '/recommendations/content-types', 'Correct a bounded set of verified YouTube source records to the canonical video content type.'],
   ['GET', '/recommendations/books', 'Read the unified Books workspace projection, including personal state, normalized chapters, progress, next action, and book-scoped file links.'],
   ['POST', '/recommendations/books/:id/reading-state', 'Set personal saved, reading, or finished state without changing Queue commitment; primary true explicitly pins one Reading book.'],
   ['POST', '/recommendations/books/:id/chapters', 'Register or update book-scoped chapter metadata without creating artifacts.'],

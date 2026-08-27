@@ -1,5 +1,9 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-08-27 (Riyadh source-type repair, deployed)
+
+All 294 lesson sources in `شرح رياض الصالحين — الشيخ عبد الرزاق البدر` now retain their existing canonical YouTube URLs and read `content_type=video`. A bounded preconditioned `PATCH /recommendations/content-types` route corrected the 293 stale `article`/`audio lecture` classifications without changing source identity, Thread attachment, branch ownership, or artifacts; it rejects missing/deleted records, changed prior types, duplicates, and non-YouTube URLs before writing. Production readback confirms 294/294 video records, zero mismatches, 18 complete Lite Visual HTML/PDF pairs, 276 sources without a complete pair, 2/183 completed Levels, and 7/294 completed lessons. Verification passes 333 unit tests with two existing skips, TypeScript, the 116.94 KB gzip production build, 30 agent-contract tests across 119 owned routes, focused repair tests, and `git diff --check`. Worker version `9d950650-eccd-405e-bd85-9cd6257c030a` is deployed; rollback version is `5ad589b7-d710-447e-b388-e3318b846847`.
+
 ## Current truth — 2026-08-27 (Learn opens on Notes, deployed)
 
 The Learn root now opens Practice → Notes by default. Threads remains directly addressable through `#/learn?mode=paths`, and typed Thread, Level, Lesson, Note, Unit, Recall Card, and Canon-domain routes retain their owning Learn mode without adding redundant query state. Thread breadcrumbs return to the explicit Threads index instead of the new Learn default. The installed PWA shell cache advances to `learning-compass-shell-v45`.

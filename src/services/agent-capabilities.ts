@@ -183,6 +183,11 @@ const BODY_SCHEMAS: Record<string, JsonSchema> = {
   'POST /brain/resurfacing/:eventId/action': objectSchema({ action: { type: 'string', enum: ['reviewed', 'snooze', 'dismissed'] } }, ['action']),
   'POST /recommendations/map': objectSchema({ ids: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 50 }, branch_id: { type: 'string', minLength: 1 } }, ['ids', 'branch_id']),
   'PATCH /recommendations/:id/source-url': objectSchema({ source_url: { type: 'string', format: 'uri' } }, ['source_url']),
+  'PATCH /recommendations/content-types': objectSchema({
+    ids: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 100 }, minItems: 1, maxItems: 500, uniqueItems: true },
+    content_type: { type: 'string', enum: ['video'] },
+    expected_content_types: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 80 }, minItems: 1, uniqueItems: true },
+  }, ['ids', 'content_type', 'expected_content_types']),
   'POST /learning/core/threads/:id/stages/:stageId/lessons': objectSchema({ position: { type: 'integer', minimum: 0 }, title: { type: 'string', minLength: 1 }, description: { type: 'string' }, objective: { type: 'string' }, content: { type: 'string' }, estimated_minutes: { type: 'integer', minimum: 1, maximum: 600 }, legacy_item_id: { type: 'string' }, why_learn: { type: 'string' }, why_now: { type: 'string' }, takeaway: { type: 'string' } }, ['title']),
   'PATCH /learning/core/threads/:id/lessons/:lessonId': objectSchema({
     status: {
@@ -276,6 +281,7 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /brain/resurfacing/:eventId/action': '/brain/resurfacing',
   'POST /recommendations/action': '/capture/:id/record',
   'PATCH /recommendations/:id/source-url': '/capture/:id/record',
+  'PATCH /recommendations/content-types': null,
   'DELETE /recommendations/:id/permanent': '/recommendations/list',
   'POST /brain/branch-swipe': '/brain/branch-deck',
   'PUT /brain/profile/assertions/:key': '/brain/profile/intelligence',

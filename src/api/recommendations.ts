@@ -8,6 +8,7 @@ import { chapterMetadataFromArtifact, projectBook } from '../services/book-proje
 import { scheduleResurfacing } from '../services/resurfacing'
 import { enrichRecommendationRows } from '../services/recommendation-enrichment'
 import { personalStateFromBookState } from '../services/personal-library'
+import { chunkForD1 } from '../services/d1-query.ts'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -703,6 +704,57 @@ app.patch('/:id/source-url', async (c) => {
       ),updated_at=datetime('now')`).bind(id, JSON.stringify({ preferred_source_url: sourceUrl, archive_source_url: target.video_url, source_url_updated_at: changedAt }), sourceUrl, target.video_url, changedAt),
   ])
   return c.json({ ok: true, reused: false, id, previous_url: target.video_url, source_url: sourceUrl, dedup_key: dedupKey })
+})
+
+app.patch('/content-types', async (c) => {
+  const body = await c.req.json<{
+    ids?: string[]
+    content_type?: string
+    expected_content_types?: string[]
+  }>().catch(() => null)
+  const ids = [...new Set((body?.ids || []).filter((id) => isNonEmptyStr(id, 100)))]
+  const expectedTypes = [...new Set((body?.expected_content_types || []).filter((type) => isNonEmptyStr(type, 80)))]
+  if (!body || ids.length < 1 || ids.length > 500 || ids.length !== (body.ids || []).length) {
+    return c.json({ error: '1-500 unique valid ids required' }, 400)
+  }
+  if (body.content_type !== 'video') return c.json({ error: 'content_type must be video' }, 400)
+  if (!expectedTypes.length || expectedTypes.length !== (body.expected_content_types || []).length) {
+    return c.json({ error: 'expected_content_types required' }, 400)
+  }
+
+  try {
+    const rowBatches = await Promise.all(chunkForD1(ids).map((batch) => c.env.DB.prepare(
+      `SELECT id,video_url,content_type,status,deleted_at FROM recommendations WHERE id IN (${batch.map(() => '?').join(',')})`
+    ).bind(...batch).all<any>()))
+    const rows = rowBatches.flatMap((batch) => batch.results || [])
+    const byId = new Map(rows.map((row: any) => [row.id, row]))
+    const missing = ids.filter((id) => !byId.has(id))
+    if (missing.length) return c.json({ error: 'recommendation_not_found', ids: missing }, 404)
+
+    const unavailable = rows.filter((row: any) => row.status === 'deleted' || row.deleted_at)
+    if (unavailable.length) return c.json({ error: 'recommendation_not_available', ids: unavailable.map((row: any) => row.id) }, 409)
+    const unexpected = rows.filter((row: any) => !expectedTypes.includes(String(row.content_type || '')))
+    if (unexpected.length) return c.json({
+      error: 'content_type_precondition_failed',
+      items: unexpected.map((row: any) => ({ id: row.id, content_type: row.content_type || null })),
+    }, 409)
+    const nonYoutube = rows.filter((row: any) => {
+      try {
+        const host = new URL(String(row.video_url || '')).hostname.toLowerCase().replace(/^www\./, '')
+        return !['youtube.com', 'youtu.be', 'music.youtube.com'].includes(host)
+      } catch { return true }
+    })
+    if (nonYoutube.length) return c.json({ error: 'video_type_requires_youtube_url', ids: nonYoutube.map((row: any) => row.id) }, 409)
+
+    for (const batch of chunkForD1(ids)) {
+      await c.env.DB.batch(batch.map((id) => c.env.DB.prepare(
+        `UPDATE recommendations SET content_type='video',updated_at=datetime('now') WHERE id=?`
+      ).bind(id)))
+    }
+    return c.json({ ok: true, requested: ids.length, updated: ids.length, content_type: 'video', ids })
+  } catch (err) {
+    return c.json(safeError('Content type repair failed')(err), 500)
+  }
 })
 
 // POST /recommendations/map — attach completed sources to an existing map node.
