@@ -629,7 +629,7 @@ The repository currently has extensive concurrent staged, unstaged, deleted, and
 - Documented as deployed.
 - Verified live.
 
-The repository currently contains 62 migration files through `0060_note_distillation.sql`, including two separate `0027` migrations.
+The repository currently contains 64 migration files through `0062_free_tier_budget.sql`, including two separate `0027` migrations.
 
 ## Evidence Not Included In This Brief
 
@@ -948,6 +948,6 @@ The brief was synthesized from the current repository and these canonical or imp
 - `client/src/app/router.ts`
 - Current Home, Library, Learn, Map, Settings, Books, Notes, Recall, Atlas, and Branch client implementations.
 - Current Worker routes and services.
-- `schema.sql` and all migrations through `0060_note_distillation.sql`.
+- `schema.sql` and all migrations through `0062_free_tier_budget.sql`.
 
 When this brief conflicts with historical entries, use the newest non-superseded `CURRENT_STATE.md` behavior, the current implementation, and live API verification in that order. Do not treat an old release-history entry as an operating requirement.

@@ -1,4 +1,4 @@
-export const AGENT_CONTRACT_VERSION = '2026-08-24'
+export const AGENT_CONTRACT_VERSION = '2026-08-26'
 export const AGENT_PROTOCOL = 'learning-compass-agent-http/2'
 
 export type AgentMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -13,8 +13,115 @@ const objectSchema = (properties: Record<string, JsonSchema> = {}, required: str
   additionalProperties: true,
 })
 
+const MAX_PERSONAL_RELEASE_YEAR = new Date().getUTCFullYear() + 5
+
+const PERSONAL_LIBRARY_PROPERTIES: Record<string, JsonSchema> = {
+  title: { type: 'string', minLength: 1, maxLength: 500 },
+  creator: { type: 'string', maxLength: 300 },
+  item_type: { type: 'string', enum: ['book', 'movie', 'series', 'podcast', 'course', 'game', 'album', 'other'] },
+  state: {
+    type: 'string',
+    enum: ['planned', 'in_progress', 'completed', 'paused', 'dropped'],
+    description: 'Canonical personal lifecycle field. Use completed for watched, read, or finished; do not send personal_state.',
+  },
+  branch_id: { type: 'string', minLength: 1, maxLength: 160 },
+  url: { type: 'string', format: 'uri' },
+  release_year: {
+    type: 'integer',
+    minimum: 1800,
+    maximum: MAX_PERSONAL_RELEASE_YEAR,
+    description: 'Canonical release-year field; do not send year.',
+  },
+  duration_minutes: { type: 'integer', minimum: 0, maximum: 1000000 },
+  progress_current: { type: 'number', minimum: 0, maximum: 1000000 },
+  progress_total: { type: 'number', exclusiveMinimum: 0, maximum: 1000000 },
+  progress_unit: { type: 'string', maxLength: 40 },
+  rating: { type: 'number', minimum: 0, maximum: 10 },
+  tags: { type: 'array', items: { type: 'string', maxLength: 60 }, maxItems: 20 },
+  personal_note: { type: 'string', maxLength: 5000 },
+}
+
+const PERSONAL_LIBRARY_PATCH_PROPERTIES: Record<string, JsonSchema> = { ...PERSONAL_LIBRARY_PROPERTIES }
+delete PERSONAL_LIBRARY_PATCH_PROPERTIES.item_type
+
+const COMPASS_EVIDENCE_SCHEMA = objectSchema({
+  claim: {
+    type: 'string',
+    minLength: 12,
+    maxLength: 4000,
+    description: 'A concrete source-supported claim; generic relevance claims are not evidence.',
+  },
+  source_url: { type: 'string', format: 'uri', pattern: '^https?://', description: 'Direct public HTTP(S) source for this claim.' },
+  anchor: { type: 'string', minLength: 1, maxLength: 1000, description: 'Preferred precise section, timestamp, page, or quotation anchor.' },
+}, ['claim', 'source_url'])
+
+const COMPASS_EDITORIAL_REVIEW_SCHEMA = objectSchema({
+  verdict: { type: 'string', enum: ['recommend'] },
+  why_worth_time: { type: 'string', minLength: 30, maxLength: 4000 },
+  unique_value: { type: 'string', minLength: 30, maxLength: 4000 },
+  depth: { type: 'string', enum: ['substantive', 'deep'] },
+}, ['verdict', 'why_worth_time', 'unique_value', 'depth'])
+
+const COMPASS_PERSPECTIVE_SCHEMA = {
+  ...objectSchema({
+    viewpoint: { type: 'string', minLength: 1, maxLength: 160 },
+    school: { type: 'string', minLength: 1, maxLength: 160 },
+    evidence_indexes: { type: 'array', items: { type: 'integer', minimum: 0, maximum: 3 }, minItems: 1, maxItems: 4 },
+  }, ['evidence_indexes']),
+  anyOf: [{ required: ['viewpoint'] }, { required: ['school'] }],
+}
+
+const COMPASS_CANDIDATE_SCHEMA = objectSchema({
+  canonical_url: { type: 'string', format: 'uri', pattern: '^https?://' },
+  title: { type: 'string', minLength: 1, maxLength: 500 },
+  creator: { type: 'string', minLength: 1, maxLength: 300 },
+  format: { type: 'string', minLength: 1, maxLength: 80 },
+  source_class: { type: 'string', minLength: 1, maxLength: 80 },
+  branch_id: { type: 'string', minLength: 1, maxLength: 160 },
+  expected_contribution: { type: 'string', minLength: 12, maxLength: 4000 },
+  evidence: { type: 'array', items: COMPASS_EVIDENCE_SCHEMA, minItems: 1, maxItems: 4 },
+  editorial_review: COMPASS_EDITORIAL_REVIEW_SCHEMA,
+  lane: { type: 'string', enum: ['fit', 'bridge', 'challenge'] },
+  target_lesson_id: { type: 'string', minLength: 1, maxLength: 200 },
+  summary: { type: 'string', minLength: 1, maxLength: 1800 },
+  concepts: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 160 }, minItems: 2, maxItems: 8 },
+  mechanism: { type: 'string', minLength: 1, maxLength: 500 },
+  mechanisms: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 240 }, minItems: 1, maxItems: 8 },
+  duration_minutes: { type: 'number', minimum: 0, maximum: 100000 },
+  paywalled: { type: 'boolean' },
+  effort: { type: 'string', enum: ['light', 'moderate', 'deep'] },
+  language: { type: 'string', enum: ['en', 'ar'] },
+  delivery_modes: { type: 'array', items: { type: 'string', enum: ['read', 'watch', 'listen', 'practice'] }, minItems: 1, maxItems: 4 },
+  depth_tier: { type: 'string', enum: ['introductory', 'intermediate', 'advanced'] },
+  source_proximity: { type: 'string', enum: ['primary', 'near_primary', 'secondary', 'unknown'] },
+  perspective: COMPASS_PERSPECTIVE_SCHEMA,
+}, ['canonical_url', 'title', 'creator', 'format', 'source_class', 'branch_id', 'expected_contribution', 'evidence', 'editorial_review'])
+
+const COMPASS_PICK_SCHEMA = objectSchema({
+  request_id: { type: 'string', minLength: 1, maxLength: 160 },
+  strategy: { type: 'string', enum: ['fit', 'bridge', 'challenge'] },
+  intent: { type: 'string', enum: ['solve_problem', 'build_skill', 'deepen_thread', 'discover', 'queue_fill'] },
+  thread_id: { type: 'string', minLength: 1, maxLength: 200 },
+  allow_books: { type: 'boolean' },
+  delivery_context: objectSchema({
+    effort: { type: 'string', enum: ['light', 'moderate', 'deep'] },
+    language: { type: 'string', enum: ['any', 'en', 'ar'] },
+    delivery_modes: { type: 'array', items: { type: 'string', enum: ['read', 'watch', 'listen', 'practice'] }, maxItems: 4 },
+    depth_tier: { type: 'string', enum: ['adaptive', 'introductory', 'intermediate', 'advanced'] },
+  }),
+  candidates: { type: 'array', items: COMPASS_CANDIDATE_SCHEMA, minItems: 3, maxItems: 24 },
+}, ['intent', 'thread_id', 'candidates'])
+
 const BODY_SCHEMAS: Record<string, JsonSchema> = {
   'POST /capture': objectSchema({ source: { type: 'string', minLength: 1 }, title: { type: 'string' }, artifact_id: { type: 'string' }, branch_id: { type: 'string', minLength: 1 }, branch_reason: { type: 'string', maxLength: 500 } }, ['source', 'branch_id']),
+  'POST /capture/personal': objectSchema(PERSONAL_LIBRARY_PROPERTIES, ['title', 'item_type', 'state', 'branch_id']),
+  'PATCH /capture/personal/:id': objectSchema(PERSONAL_LIBRARY_PATCH_PROPERTIES),
+  'POST /assistant/interpret': objectSchema({ message: { type: 'string', minLength: 1, maxLength: 12000 }, mode: { type: 'string', enum: ['log', 'questions', 'mixed'] } }, ['message']),
+  'POST /hardcover/sync': objectSchema({}, []),
+  'POST /hardcover/import': objectSchema({ branch_id: { type: 'string', minLength: 1, maxLength: 160 }, book_ids: { type: 'array', items: { type: 'integer', minimum: 1 }, maxItems: 500 } }, ['branch_id']),
+  'POST /capture/feeds': objectSchema({ url: { type: 'string', format: 'uri' }, branch_id: { type: 'string', minLength: 1 }, limit: { type: 'integer', minimum: 1, maximum: 20 } }, ['url', 'branch_id']),
+  'POST /capture/feeds/sync': objectSchema({ limit: { type: 'integer', minimum: 1, maximum: 20 } }),
+  'POST /capture/feeds/:id/sync': objectSchema({ limit: { type: 'integer', minimum: 1, maximum: 20 } }),
   'POST /annotations': objectSchema({
     recommendation_id: { type: 'string', minLength: 1 },
     artifact_id: { type: 'string' },
@@ -28,17 +135,35 @@ const BODY_SCHEMAS: Record<string, JsonSchema> = {
     language: { type: 'string' },
     source_checksum: { type: 'string' },
   }, ['recommendation_id', 'locator_type', 'quote']),
-  'POST /capture/:id/triage': objectSchema({ action: { type: 'string', enum: ['queue', 'exclude'] }, override_queue_cap: { type: 'boolean' } }, ['action']),
+  'POST /capture/:id/triage': objectSchema({
+    action: {
+      type: 'string',
+      enum: ['queue', 'dequeue', 'exclude'],
+      description: 'queue creates a commitment, dequeue neutrally returns an active Queue item to captured, and exclude is an administrative exclusion.',
+    },
+    thread_id: { type: 'string', minLength: 1, description: 'Optional open Thread to associate while queueing.' },
+    override_queue_cap: { type: 'boolean', description: 'Explicit Queue-cap override; used only with action=queue.' },
+    reason: { type: 'string', minLength: 1, maxLength: 120, description: 'Administrative exclusion reason; used only with action=exclude.' },
+  }, ['action']),
   'POST /sessions/start': objectSchema({ recommendation_id: { type: 'string' }, thread_id: { type: 'string' }, target_kind: { type: 'string' }, target_artifact_id: { type: 'string' } }, ['recommendation_id', 'thread_id', 'target_kind']),
-  'POST /feedback/record': objectSchema({
-    recommendation_id: { type: 'string' }, source_url: { type: 'string', format: 'uri' }, title: { type: 'string' }, thread_id: { type: 'string' },
-    feedback: { type: 'string', minLength: 1, maxLength: 10000 }, score: { type: 'number', minimum: 0, maximum: 10 },
-    completion_state: { type: 'string', enum: ['completed', 'in_progress', 'stopped'] },
-    disposition: { type: 'string', enum: ['undecided', 'retain', 'apply', 'reference', 'drop'] },
-    reason_tags: { type: 'array', items: { type: 'string', maxLength: 40 }, maxItems: 8 },
-    expected: { type: 'string', maxLength: 2000 }, actual: { type: 'string', maxLength: 2000 },
-    effort: { type: 'string', enum: ['light', 'moderate', 'deep'] }, length_minutes: { type: 'integer', minimum: 0, maximum: 100000 },
-  }, ['feedback']),
+  'POST /feedback/record': {
+    ...objectSchema({
+      recommendation_id: { type: 'string', minLength: 1, description: 'Exact canonical source ID; do not send source_id.' }, source_url: { type: 'string', format: 'uri' }, title: { type: 'string', minLength: 1, description: 'Exact source title fallback when no canonical ID or URL is available.' }, thread_id: { type: 'string' }, branch_id: { type: 'string', minLength: 1, maxLength: 160 },
+      feedback: { type: 'string', minLength: 1, maxLength: 10000, description: 'The user\'s exact feedback preserved verbatim; never summarize or omit it.' }, score: { type: 'number', minimum: 0, maximum: 10, description: 'Canonical numeric rating field. Include it whenever the user supplied a rating; do not send rating.' },
+      completion_state: { type: 'string', enum: ['completed', 'in_progress', 'stopped'] },
+      disposition: { type: 'string', enum: ['undecided', 'retain', 'apply', 'reference', 'drop'] },
+      reason_tags: { type: 'array', items: { type: 'string', maxLength: 40 }, maxItems: 8 },
+      expected: { type: 'string', maxLength: 2000 }, actual: { type: 'string', maxLength: 2000 },
+      effort: { type: 'string', enum: ['light', 'moderate', 'deep'] }, length_minutes: { type: 'integer', minimum: 0, maximum: 100000 },
+    }, ['feedback']),
+    anyOf: [
+      { required: ['recommendation_id'] },
+      { required: ['source_url'] },
+      { required: ['title'] },
+    ],
+  },
+  'POST /compass/picks': COMPASS_PICK_SCHEMA,
+  'POST /compass/evaluate': COMPASS_PICK_SCHEMA,
   'POST /compass/pick/:id/feedback': objectSchema({
     outcome: { type: 'string', enum: ['started', 'completed', 'dismissed', 'declined', 'abandoned'] },
     score: { type: 'number', minimum: 0, maximum: 10 },
@@ -59,6 +184,17 @@ const BODY_SCHEMAS: Record<string, JsonSchema> = {
   'POST /recommendations/map': objectSchema({ ids: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 50 }, branch_id: { type: 'string', minLength: 1 } }, ['ids', 'branch_id']),
   'PATCH /recommendations/:id/source-url': objectSchema({ source_url: { type: 'string', format: 'uri' } }, ['source_url']),
   'POST /learning/core/threads/:id/stages/:stageId/lessons': objectSchema({ position: { type: 'integer', minimum: 0 }, title: { type: 'string', minLength: 1 }, description: { type: 'string' }, objective: { type: 'string' }, content: { type: 'string' }, estimated_minutes: { type: 'integer', minimum: 1, maximum: 600 }, legacy_item_id: { type: 'string' }, why_learn: { type: 'string' }, why_now: { type: 'string' }, takeaway: { type: 'string' } }, ['title']),
+  'PATCH /learning/core/threads/:id/lessons/:lessonId': objectSchema({
+    status: {
+      type: 'string',
+      enum: ['not_started', 'in_progress', 'completed'],
+      description: 'Direct learner-confirmed lesson state. Send not_started to reopen a completed lesson.',
+    },
+    why_learn: { type: 'string', maxLength: 4000 },
+    why_now: { type: 'string', maxLength: 4000 },
+    takeaway: { type: 'string', maxLength: 4000 },
+    content: { type: 'string', maxLength: 12000 },
+  }, ['status']),
   'POST /learning/core/threads/:id/lessons/:lessonId/sources': objectSchema({ recommendation_id: { type: 'string', minLength: 1 }, role: { type: 'string', enum: ['primary', 'case', 'challenge', 'reference', 'optional'] }, position: { type: 'integer', minimum: 0 }, branch_id: { type: 'string', minLength: 1 } }, ['recommendation_id', 'role', 'branch_id']),
   'POST /learning/core/canon/domains': objectSchema({ title: { type: 'string', minLength: 1 }, slug: { type: 'string' }, kind: { type: 'string', enum: ['family', 'domain'] }, parent_id: { type: 'string' }, branch_id: { type: 'string', minLength: 1 }, boundary: { type: 'string', minLength: 1 }, orientation: { type: 'string' }, sort_order: { type: 'integer' } }, ['title', 'branch_id', 'boundary']),
   'PATCH /learning/core/canon/domains/:id': objectSchema({ title: { type: 'string' }, boundary: { type: 'string' }, orientation: { type: 'string' }, branch_id: { type: 'string' }, curation_status: { type: 'string', enum: ['unmapped', 'curating', 'complete'] }, validation_state: { type: 'string', enum: ['untested', 'exploring', 'field_tested'] }, sort_order: { type: 'integer' } }),
@@ -91,6 +227,18 @@ const BODY_SCHEMAS: Record<string, JsonSchema> = {
     transfer_question_count: { type: 'integer' },
     error: { type: 'string' },
   }, ['kind', 'recommendation_id', 'notebook_id', 'notebook_url', 'status']),
+  'POST /agent/jobs/reconcile': objectSchema({ apply: { type: 'boolean', description: 'False performs a dry reconciliation report; true applies only the conservative declared repairs.' } }),
+  'POST /agent/jobs/:id/claim': objectSchema({ worker: { type: 'string', minLength: 1, maxLength: 120, description: 'Stable lease owner reused for heartbeat, checkpoint, completion, and failure.' } }, ['worker']),
+  'POST /agent/jobs/:id/checkpoint': objectSchema({
+    worker: { type: 'string', minLength: 1, maxLength: 120 },
+    step: { type: 'string', minLength: 1, maxLength: 120, description: 'The next workflow step declared by the exact job payload.' },
+    evidence: { type: 'object', description: 'Step-specific deterministic evidence required by the job contract.' },
+  }, ['worker', 'step', 'evidence']),
+  'POST /agent/jobs/:id/complete': objectSchema({ worker: { type: 'string', minLength: 1, maxLength: 120, description: 'Must match the active lease owner; all other fields are job-output-contract specific.' } }, ['worker']),
+  'POST /agent/jobs/:id/fail': objectSchema({ worker: { type: 'string', minLength: 1, maxLength: 120 }, error: { type: 'string', minLength: 1, maxLength: 1000 } }, ['worker', 'error']),
+  'POST /agent/jobs/:id/replay': objectSchema({}, []),
+  'POST /agent/jobs/:id/cancel': objectSchema({}, []),
+  'POST /agent/jobs/:id/heartbeat': objectSchema({ worker: { type: 'string', minLength: 1, maxLength: 120 } }, ['worker']),
   'PATCH /learning/core/threads/:id/projects/:projectId': objectSchema({ status: { type: 'string', enum: ['not_started', 'in_progress', 'completed', 'deferred'] } }, ['status']),
   'PATCH /learning/core/threads/:id/stages/:stageId': objectSchema({ position: { type: 'integer', minimum: 0 }, title: { type: 'string' }, objective: { type: 'string' }, description: { type: 'string' }, stage_type: { type: 'string', enum: ['orientation', 'curriculum', 'application', 'advanced'] }, output_description: { type: 'string' } }),
   'POST /agent/request': objectSchema({
@@ -108,11 +256,19 @@ const BODY_SCHEMAS: Record<string, JsonSchema> = {
 
 const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /capture': '/capture/:id',
+  'POST /capture/personal': '/capture/personal/:id',
+  'PATCH /capture/personal/:id': '/capture/personal/:id',
+  'POST /hardcover/sync': '/hardcover',
+  'POST /hardcover/import': '/hardcover',
+  'POST /capture/feeds': '/capture/feeds',
+  'POST /capture/feeds/sync': '/capture/feeds',
+  'POST /capture/feeds/:id/sync': '/capture/feeds/:id/entries',
   'POST /annotations': '/annotations/:id',
   'POST /annotations/:id/archive': '/annotations/:id',
   'POST /capture/:id/triage': '/capture/:id/record',
   'POST /capture/:id/visualise': '/capture/:id/record',
   'POST /feedback/record': '/capture/:id/record',
+  'POST /compass/picks': '/compass/pick/:pick_id',
   'POST /sessions/start': '/sessions',
   'POST /recommendations/map': '/capture/:id/record',
   'PATCH /brain/resurfacing/:recommendationId/preference': '/brain/resurfacing',
@@ -127,6 +283,7 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /notes/:id/distillation/highlights': '/notes/:id',
   'POST /notes/:id/distillation/syntheses': '/notes/:id',
   'POST /notes/:id/distillation/highlights/:highlightId/promote': '/notes/:id',
+  'DELETE /notes/:id': '/notes/:id',
   'POST /learning/core/units/:id/relations': '/learning/core/units/:id',
   'PATCH /learning/core/contradictions/:id': '/learning/core/contradictions',
   'PATCH /learning/core/threads/:id': '/learning/core/threads/:id',
@@ -151,6 +308,14 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /learning/srs/create': '/learning/srs/cards/:card_id',
   'POST /notebooklm/learning/route': '/notebooklm/learning/receipts?recommendation_id=:recommendation_id',
   'POST /notebooklm/learning/receipts': '/notebooklm/learning/receipts?recommendation_id=:recommendation_id',
+  'POST /agent/jobs/reconcile': '/agent/jobs/active',
+  'POST /agent/jobs/:id/claim': '/agent/jobs/:id',
+  'POST /agent/jobs/:id/checkpoint': '/agent/jobs/:id',
+  'POST /agent/jobs/:id/complete': '/agent/jobs/:id',
+  'POST /agent/jobs/:id/fail': '/agent/jobs/:id',
+  'POST /agent/jobs/:id/replay': '/agent/jobs/:id',
+  'POST /agent/jobs/:id/cancel': '/agent/jobs/:id',
+  'POST /agent/jobs/:id/heartbeat': '/agent/jobs/:id',
   'PUT /settings/:key': '/settings',
   'PUT /dashboard/layout': '/dashboard/layout',
 }
@@ -158,6 +323,7 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
 const PRECONDITION_OVERRIDES: Record<string, string[]> = {
   'POST /capture/:id/triage': ['Read the exact capture before changing Queue state.', 'Queue cap and branch preflight must pass.'],
   'DELETE /recommendations/:id/permanent': ['Target must be archived/non-active.', 'Explicit irreversible confirmation is required.'],
+  'DELETE /notes/:id': ['Read and resolve the exact note before irreversible deletion.', 'Explicit destructive intent is required.'],
   'DELETE /learning/core/threads/:id': ['Read the exact Thread and require explicit destructive intent.'],
   'POST /compass/pick/:id/start': ['The pick must be ready and Queue must be below the cap.'],
   'POST /learning/srs/review': ['The learner must supply or confirm the recall grade.', 'Confirm the exact card state before recording the review.'],
@@ -165,6 +331,7 @@ const PRECONDITION_OVERRIDES: Record<string, string[]> = {
 
 const PRECONDITION_PATH_OVERRIDES: Record<string, string> = {
   'DELETE /recommendations/:id/permanent': '/capture/:id/record',
+  'DELETE /notes/:id': '/notes/:id',
   'DELETE /learning/core/threads/:id': '/learning/core/threads/:id',
   'POST /learning/srs/review': '/learning/srs/cards/:id',
   'POST /analytics/hermes/engine/activate': '/analytics/hermes/engine',
@@ -175,7 +342,10 @@ const PRECONDITION_PATH_OVERRIDES: Record<string, string> = {
 
 const VERIFICATION_ID_SOURCES: Record<string, string[]> = {
   'POST /capture': ['response.id'],
+  'POST /capture/personal': ['response.item.id'],
+  'PATCH /capture/personal/:id': ['response.item.id'],
   'POST /feedback/record': ['body.recommendation_id', 'response.recommendation_id', 'response.source.id'],
+  'POST /compass/picks': ['response.pick_id'],
   'POST /recommendations/map': ['body.ids', 'body.id', 'response.sources.*.id'],
   'POST /recommendations/action': ['body.ids', 'body.id', 'response.ids'],
   'PATCH /recommendations/:id/source-url': ['response.id'],
@@ -199,13 +369,37 @@ const valuesAt = (value: any, pointer: string): string[] => {
   return visit(value, 0).filter((item) => typeof item === 'string' && item.length > 0)
 }
 
+const escapePattern = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const capabilityPathSource = (path: string, capture = false) => path.split('/').map((segment) =>
+  /^:[A-Za-z][A-Za-z0-9_]*$/.test(segment) ? (capture ? '([^/?#]+)' : '[^/?#]+') : escapePattern(segment),
+).join('/')
+
+export const agentCapabilityPathPattern = (path: string) => new RegExp(`^${capabilityPathSource(path)}(?:\\?[^#]*)?$`)
+
+export const agentReadbackPathPattern = (template: string) => {
+  let source = ''
+  let cursor = 0
+  for (const match of template.matchAll(/:([A-Za-z][A-Za-z0-9_]*)/g)) {
+    source += escapePattern(template.slice(cursor, match.index)) + '[^/?#&]+'
+    cursor = Number(match.index) + match[0].length
+  }
+  source += escapePattern(template.slice(cursor))
+  return new RegExp(`^${source}$`)
+}
+
+const decodePathPart = (value: string) => {
+  try { return decodeURIComponent(value) } catch { return value }
+}
+
 export function resolveCapabilityReadbacks(key: string, template: string | null, capabilityPath: string, concretePath: string, body?: any, response?: any) {
   if (!template) return [] as string[]
-  const names = [...capabilityPath.matchAll(/:([^/]+)/g)].map((match) => match[1])
-  const pattern = new RegExp('^' + capabilityPath.replace(/:[^/]+/g, '([^/]+)') + '(?:\\?.*)?$')
-  const concreteValues = concretePath.match(pattern)?.slice(1) || []
+  const names = [...capabilityPath.matchAll(/:([A-Za-z][A-Za-z0-9_]*)/g)].map((match) => match[1])
+  let concretePathname = concretePath.split(/[?#]/, 1)[0]
+  try { concretePathname = new URL(concretePath, 'https://agent.invalid').pathname } catch { /* use the bounded path fallback */ }
+  const pattern = new RegExp(`^${capabilityPathSource(capabilityPath, true)}$`)
+  const concreteValues = concretePathname.match(pattern)?.slice(1).map(decodePathPart) || []
   const params = Object.fromEntries(names.map((name, index) => [name, concreteValues[index]]))
-  const placeholders = [...template.matchAll(/:([^/]+)/g)].map((match) => match[1])
+  const placeholders = [...template.matchAll(/:([A-Za-z][A-Za-z0-9_]*)/g)].map((match) => match[1])
   if (!placeholders.length) return [template]
   const placeholder = placeholders[0]
   const direct = params[placeholder] || body?.[placeholder]
@@ -214,7 +408,7 @@ export function resolveCapabilityReadbacks(key: string, template: string | null,
     return valuesAt(root === 'body' ? body : response, rest.join('.'))
   })
   const values = [...new Set([...(direct ? [direct] : []), ...configured])]
-  return values.map((value) => template.replace(`:${placeholder}`, encodeURIComponent(String(value))))
+  return values.map((value) => template.replace(new RegExp(`:${placeholder}(?![A-Za-z0-9_])`), encodeURIComponent(String(value))))
 }
 
 const segmentDomain = (path: string) => {
@@ -238,7 +432,7 @@ const deriveIntent = (method: AgentMethod, path: string) => {
 
 const deriveRisk = (method: AgentMethod, path: string) => {
   if (method === 'GET') return 'low'
-  if (/permanent|\/learning\/core\/threads\/:id$|engine\/activate|recalibrate|repair|notifications\/test/.test(path)) return 'high'
+  if (/permanent|\/learning\/core\/threads\/:id$|\/notes\/:id$|engine\/activate|recalibrate|repair|notifications\/test/.test(path)) return 'high'
   if (path === '/learning/srs/review' || /\/verify$/.test(path) || /\/stages\/[^/]+\/start$/.test(path)) return 'high'
   return 'medium'
 }
@@ -352,7 +546,7 @@ export function buildAgentOpenApi(origin: string, capabilities: readonly Capabil
     paths,
     components: {
       securitySchemes: {
-        ApiToken: { type: 'apiKey', in: 'header', name: 'x-api-token', description: 'Required for writes when API_TOKEN is configured.' },
+        ApiToken: { type: 'apiKey', in: 'header', name: 'x-api-token', description: 'Installed-client credential for private API operations; browsers may use a signed session.' },
       },
       schemas: {
         AgentAssertion: objectSchema({ path: { type: 'string', pattern: '^/' }, field: { type: 'string', minLength: 1 }, equals: {} }, ['path', 'field', 'equals']),

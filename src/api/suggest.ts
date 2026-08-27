@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { Bindings, safeError } from '../lib'
+import { Bindings, safeError, safeErrorMessage } from '../lib'
 import { freeAi } from '../services/ai'
 import { formatNoteAnchors, selectCurationMode, computeDialecticDivergenceScore } from '../domain'
 
@@ -186,7 +186,7 @@ CURATION INSTRUCTIONS:
 
 
   } catch (err) {
-    console.error('Suggest failed', err)
+    console.error('Suggest failed', safeErrorMessage(err))
     return c.json(safeError('Suggest failed')(err), 500)
   }
 })

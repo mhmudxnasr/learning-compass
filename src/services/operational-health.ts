@@ -1,5 +1,6 @@
 import type { Bindings } from '../lib'
 import { MAINTENANCE_STALE_AFTER_MS } from './maintenance'
+import { DELAYED_RETRY_COUNT_SQL, OVERDUE_RETRY_COUNT_SQL } from './job-retry-health.ts'
 
 const BACKUP_STALE_AFTER_MS = 26 * 60 * 60 * 1000
 const RETRY_STALE_AFTER_MINUTES = 30
@@ -36,9 +37,9 @@ export async function loadJobHealth(DB: D1Database) {
     DB.prepare("SELECT COUNT(*) count FROM agent_jobs WHERE status='running' AND lease_expires_at<datetime('now')").first<any>(),
     DB.prepare("SELECT MIN(created_at) created_at FROM agent_jobs WHERE status IN ('pending','retry')").first<any>(),
     DB.prepare("SELECT COUNT(*) count FROM agent_jobs WHERE status='failed' AND datetime(updated_at)>=datetime('now','-24 hours')").first<any>(),
-    DB.prepare("SELECT COUNT(*) count FROM agent_job_retries WHERE dead_lettered_at IS NULL AND next_attempt_at>datetime('now')").first<any>(),
+    DB.prepare(DELAYED_RETRY_COUNT_SQL).first<any>(),
     DB.prepare('SELECT COUNT(*) count FROM agent_job_retries WHERE dead_lettered_at IS NOT NULL').first<any>(),
-    DB.prepare(`SELECT COUNT(*) count FROM agent_jobs WHERE status='retry' AND datetime(updated_at)<datetime('now','-${RETRY_STALE_AFTER_MINUTES} minutes')`).first<any>(),
+    DB.prepare(OVERDUE_RETRY_COUNT_SQL(RETRY_STALE_AFTER_MINUTES)).first<any>(),
   ])
   const status: Record<string, number> = {}
   for (const row of counts.results || []) status[row.status] = Number(row.count || 0)

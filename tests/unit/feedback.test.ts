@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { feedbackMetadata, normalizeStructuredFeedback } from '../../src/services/feedback.ts'
+import { feedbackLifecycle, feedbackMetadata, normalizeStructuredFeedback } from '../../src/services/feedback.ts'
 
 test('structured feedback normalizes completion, tags, effort, and duration', () => {
   assert.deepEqual(normalizeStructuredFeedback({
@@ -18,6 +19,20 @@ test('structured feedback normalizes completion, tags, effort, and duration', ()
     effort: 'deep',
     length_minutes: 42,
   })
+})
+
+test('stopped feedback exits Queue instead of becoming in progress', () => {
+  assert.deepEqual(feedbackLifecycle('stopped'), {
+    complete: false,
+    stopped: true,
+    sessionStatus: 'returned',
+    learningState: 'excluded',
+    progressPercent: 0,
+    recommendationStatus: 'rejected',
+  })
+  const product = readFileSync(new URL('../../src/api/product.ts', import.meta.url), 'utf8')
+  assert.equal((product.match(/feedbackLifecycle\(structured\.completion_state\)/g) || []).length, 2)
+  assert.match(product, /if \(complete \|\| stopped\).*UPDATE compass_picks/)
 })
 
 test('feedback metadata preserves shared fields and route context', () => {

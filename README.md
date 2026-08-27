@@ -1,6 +1,6 @@
 # Learning Compass
 
-Learning Compass is a private, single-user learning system. It collects material from many sources, keeps the active queue small, tracks learning at the original source, turns reflection into structured notes and recall cards, and uses that history to maintain a personal knowledge map.
+Learning Compass is a private, single-user learning system. It collects material from many sources, keeps the active queue small, tracks learning at the original source, and keeps a correctable personal ledger of books, movies, series, podcasts, courses, games, albums, ratings, and progress. Reflection can become structured notes, and that history maintains a personal knowledge map.
 
 Consumption normally happens at the real source. A verified Lite Visual companion is the deliberate exception: it is an Arabic complete-source substitute whose semantic HTML article is canonical and whose linked A4 PDF is printed from that exact file. Learning Compass manages deciding what matters, remembering where you stopped, processing what you learned, and resurfacing it later.
 
@@ -11,12 +11,12 @@ capture → curate → consume externally → reflect → extract notes
         → approve recall cards → review → update map → resurface
 ```
 
-1. **Capture:** URLs, text, PDFs, HTML, videos, Telegram shares, and RSS/Atom entries become ordinary source records in Library.
+1. **Capture:** Global Add anything turns URLs, text, PDFs, HTML, videos, Telegram shares, and RSS/Atom entries into ordinary source records, or logs typed personal media with its own status and progress outside Queue.
 2. **Commit:** an item can be archived, excluded, or promoted to the active Queue. The Queue normally holds no more than five items.
 3. **Consume:** opening an item starts or resumes a learning session, then hands off to the original source.
 4. **Return:** the user records a five-part reflection and may complete and rate the session in the same action.
 5. **Process:** structured notes are stored in D1. Large source files and generated reading companions live in R2.
-6. **Review:** explicit `retain`/`apply` may create a separate source-shaped note and up to four editable recall-card drafts. Rating alone never creates them; a draft must be approved before entering spaced repetition.
+6. **Review:** explicit `retain`/`apply` may create a separate source-shaped note and anchored Learning Units. Automated flash-card generation is disabled; every new recall card requires an explicit learner-authored Arabic question and answer.
 7. **Learn from history:** ratings, notes, review events, and map coverage inform future resurfacing and taste analysis.
 
 Feedback never requests another recommendation automatically. Finishing one item should close the loop, not create an endless feed.
@@ -45,7 +45,7 @@ The browser uses hash routes, so the Worker serves one application shell. The Wo
 
 | Data | Source of truth |
 |---|---|
-| Captures, queue, sessions, notes, ratings, cards, settings, and map | D1 |
+| Captures, typed personal library, queue, sessions, notes, ratings, cards, settings, and map | D1 |
 | PDFs, HTML, transcripts, and generated companions | R2 |
 | Pending offline mutations | IndexedDB until synchronized |
 | UI preferences and resumable client state | Local storage |
@@ -55,11 +55,14 @@ The browser uses hash routes, so the Worker serves one application shell. The Wo
 
 Obsidian is an export target, not a second writable database. It must never overwrite D1.
 
+Settings → Data & recovery starts with the Personal Data Studio: real counts and distributions, complete search/type/status filtering, inline editing of every useful personal field, and portable JSON/Markdown exports. Its Personal Assistant accepts ordinary Egyptian-Arabic or English notes about what was watched, read, heard, studied, or played, turns them into a reviewable preview, and can ask short follow-up questions to learn taste and interests. It never writes without explicit confirmation. The page also exposes an explicit Hardcover sync/import flow: the server-only token refreshes a mirrored reading library, and each import requires a verified branch before books enter the typed personal ledger. The same page exposes five named data-trust contracts over D1: source identity, verified branch coverage, canonical uniqueness, learning-event lineage, and RSS default-branch validity. Both areas show exact counts rather than inventing a generic engagement or AI-quality score. RSS subscriptions require one reviewed branch; newly created source records inherit it in the same capture path, while a deduplicated source keeps its existing reviewed mapping and the import receipt reports the conflict.
+
 ### Why these boundaries exist
 
 | Choice | Reason |
 |---|---|
 | Source records in Library, five-item Queue | Saving should be frictionless; commitment should be scarce. |
+| Personal-media state beside canonical source identity | Watch/read history can inform direct preferences without pretending that every item is a queued lesson or a second disconnected database. |
 | Consumption at the original source | The system tracks learning without becoming a worse reader for every media format. |
 | Learner-authored Arabic recall cards | Flash cards are never generated automatically; the learner creates each question and answer explicitly. |
 | Leased, idempotent background jobs | A crash or retry must not duplicate notes, cards, artifacts, or taste signals. |
@@ -86,6 +89,7 @@ tests/unit/                   domain and route-contract tests
 tests/e2e/                    real Worker + browser acceptance tests
 docs/API.md                   active HTTP contracts
 docs/architecture.md          concise implementation notes
+docs/hermes-production.md     Hermes manager operations, SLOs, recovery, and release gate
 docs/release-checklist.md     production release procedure
 ```
 
@@ -140,17 +144,20 @@ HTML reading companions are cached automatically after their first successful on
 
 The web app is the canonical Android experience. A Play Store package should use a Trusted Web Activity over this same PWA plus verified Digital Asset Links; do not fork the product into a separate WebView client.
 
-### Local secrets
+### Integration secrets
 
-Writes can be protected with `API_TOKEN`. Optional enrichment and delivery integrations use `GOOGLE_API_KEY` and `TELEGRAM_BOT_TOKEN`. Hermes owns live web research; the Worker receives and validates its source-grounded candidates. Put local values in `.dev.vars`, which is ignored by Git:
+Learning Compass itself does not require an API token or browser unlock step. Reads and writes are available directly at the Worker URL. Telegram and optional external-provider integrations still use their own dedicated secrets.
+
+Optional enrichment and delivery integrations use `GOOGLE_API_KEY` and `TELEGRAM_BOT_TOKEN`. Hermes owns live web research; the Worker receives and validates its source-grounded candidates. Put local values in `.dev.vars`, which is ignored by Git:
 
 ```dotenv
-API_TOKEN="replace-with-a-local-secret"
 GOOGLE_API_KEY=""
 TELEGRAM_BOT_TOKEN=""
 ```
 
 Never commit `.dev.vars`, `.env`, private keys, or API tokens.
+
+The checked-in development commands retain their loopback-only write-rate-limit bypass for local test speed. Never configure that bypass in production.
 
 ## Commands
 
@@ -181,6 +188,7 @@ Do not add a destination merely to expose a table, job, storage bucket, or inter
 - HTTP parsing and response shaping belong in `src/api/`.
 - UI state and presentation belong in `client/`.
 - Durable structured state belongs in D1.
+- Dynamic requests must pass the UTC-day free-tier circuit breaker: 4,000,000 estimated rows read and 70,000 estimated rows written. Inspect `/health/free-tier-budget`; never bypass the guard during normal operation.
 - Large binary or generated files belong in R2.
 - Slow automated processing belongs in a leased Hermes job.
 
@@ -311,5 +319,7 @@ npx wrangler deploy --config wrangler.toml
 ```
 
 Code deployment and data changes are separate operations. D1 or R2 data-only writes do not require a Worker deployment.
+
+Current deployed Worker version: `5ad589b7-d710-447e-b388-e3318b846847`. The deployed PWA shell cache is `learning-compass-shell-v45`.
 
 The production Worker, R2 bucket, cache names, protocol name, cron name, and Hermes paths retain legacy identifiers for compatibility even though the product and repository are named Learning Compass.

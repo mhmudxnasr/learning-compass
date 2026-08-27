@@ -95,7 +95,9 @@ app.post('/rerank', async (c) => {
     const active = await DB.prepare("SELECT r.*,m.branch_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status = 'active' ORDER BY r.created_at DESC").all<any>()
     const headers: Record<string, string> = {}
     const token = c.req.header('x-api-token')
+    const cookie = c.req.header('cookie')
     if (token) headers['x-api-token'] = token
+    if (cookie) headers.cookie = cookie
     const vectorsRes = await fetch(new URL('/taste/vector', c.req.url).toString(), { headers })
     const vectorData = await vectorsRes.json<any>()
     const vMap = new Map<string, number>()
@@ -104,10 +106,11 @@ app.post('/rerank', async (c) => {
     }
 
     const reranked = (active.results || []).map((item: any) => {
+      const { round: _legacyRound, round_label: _legacyRoundLabel, ...source } = item
       const topic = canonicalTasteIdentity(item.branch_id, 'unmapped')
       const affinity = vMap.get(topic) || 1.0
       const score = affinity * (item.why_this ? 1.2 : 1.0)
-      return { ...item, topic, rank_score: parseFloat(score.toFixed(2)) }
+      return { ...source, topic, rank_score: parseFloat(score.toFixed(2)) }
     }).sort((a, b) => b.rank_score - a.rank_score)
 
     return c.json({ items: reranked, count: reranked.length })

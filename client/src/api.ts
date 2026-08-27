@@ -1,3 +1,5 @@
+import { authFetch } from './auth'
+
 export class ApiError extends Error {
   public status: number
   public body: any
@@ -58,7 +60,7 @@ export async function api<T = any>(url: string, init?: ApiRequestInit): Promise<
   const { timeoutMs: _timeoutMs, queueOnNetworkError = true, ...requestInit } = init || {}
   let response: Response
   try {
-    response = await fetch(url, { ...requestInit, headers, signal: controller.signal })
+    response = await authFetch(url, { ...requestInit, headers, signal: controller.signal })
   } catch (error) {
     const callerAborted = Boolean(init?.signal?.aborted) && !timedOut
     if (mutation && queueOnNetworkError && !callerAborted && typeof indexedDB !== 'undefined') {

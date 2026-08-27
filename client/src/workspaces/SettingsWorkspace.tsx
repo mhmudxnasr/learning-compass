@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { api, flushOfflineMutations, formatDate, labelize, listOfflineMutations, resolveOfflineMutation } from '../api'
+import { authFetch } from '../auth'
 import { ErrorState, Empty, Loading } from '../components/States'
 import { HermesActivityPanel } from './HermesActivityPanel'
 import { OperationalHealthPanel } from './OperationalHealthPanel'
@@ -7,6 +8,7 @@ import { NotificationSettings } from './NotificationSettings'
 import { useData } from '../app/useData'
 import { useRoute } from '../app/router'
 import { THEME_PRESETS, FONT_PRESETS, THEME_VARIANTS, applyTheme, applyFont, applyDisplayPreferences, applyTypography, getSavedTheme, getSavedFontId, getSavedCustomFont, getSavedCustomPalette, getSavedDisplayPreferences, getSavedTypography, getSavedThemePair, saveThemePair, contrastRatio, extractColorsFromText, normalizeColor, normalizeCustomFont, type CustomPalette, type CustomFont, type DisplayPreferences, type TypographyPreferences, type ThemePair, DEFAULT_CUSTOM_PALETTE, DEFAULT_CUSTOM_FONT, DEFAULT_TYPOGRAPHY } from '../theme'
+import { PersonalDataStudio } from './settings/PersonalDataStudio'
 
 export type SettingsView = 'profile' | 'preferences' | 'data' | 'system'
 export type SettingsMode = 'personal' | 'data' | 'system'
@@ -30,6 +32,7 @@ export type SettingsWorkspaceProps = {
   route?: SettingsRouteInput
   view?: SettingsView
   onRouteChange?: (route: SettingsWorkspaceRoute) => void
+  onCapture?: () => void
 }
 
 type ProfileRecord = Record<string, any>
@@ -57,6 +60,14 @@ type SystemPayload = {
   recovery?: { ok?: boolean; latest?: { id?: string; created_at?: string; restore_rehearsed_at?: string; artifact_count?: number; d1_bytes?: number } | null; age_ms?: number | null }
   on_demand_only?: string[]
   counts?: Record<string, number>
+  data_quality?: {
+    status?: 'trusted' | 'needs_attention'
+    checked_at?: string
+    summary?: { passing?: number; failing?: number; total?: number }
+    scope?: 'active_sources'
+    counts?: { active_sources?: number; stored_sources?: number; learning_events?: number; enabled_feeds?: number }
+    checks?: Array<{ id: string; dimension: string; label: string; status: 'passing' | 'failing'; affected: number; total: number; coverage_percent: number; message: string }>
+  }
   safety?: string[]
 }
 
@@ -409,7 +420,7 @@ function ThemeContextPreview() {
     <div class="theme-preview-heading"><span class="settings-active-label">Live preview</span><h2 id="appearance-preview-title">Your studio in context</h2><p>Colors, type, spacing, and corners update here as you make changes.</p></div>
     <div class="theme-preview-frame" aria-hidden="true">
       <div class="theme-preview-sidebar"><strong>LC</strong><i class="active" /><i /><i /><i /></div>
-      <div class="theme-preview-content"><div class="theme-preview-toolbar"><span>Today</span><em>Capture</em></div><article class="theme-preview-card"><div><strong>Build a calmer review loop</strong><small>Current Thread · lesson ready</small></div><span class="theme-preview-score">R2</span></article><div class="theme-preview-grid"><div class="theme-preview-alert"><strong>Next action</strong><span>Continue the next lesson in your Thread.</span></div><div class="theme-preview-chart"><i style="height:35%"/><i style="height:55%"/><i style="height:48%"/><i style="height:78%"/><i style="height:66%"/><i style="height:90%"/></div></div><div class="theme-preview-actions"><span>Not now</span><strong>Open Thread</strong></div></div>
+      <div class="theme-preview-content"><div class="theme-preview-toolbar"><span>Today</span><em>Capture</em></div><article class="theme-preview-card"><div><strong>Build a calmer review loop</strong><small>Current Thread · lesson ready</small></div><span class="theme-preview-score">Ready</span></article><div class="theme-preview-grid"><div class="theme-preview-alert"><strong>Next action</strong><span>Continue the next lesson in your Thread.</span></div><div class="theme-preview-chart"><i style="height:35%"/><i style="height:55%"/><i style="height:48%"/><i style="height:78%"/><i style="height:66%"/><i style="height:90%"/></div></div><div class="theme-preview-actions"><span>Not now</span><strong>Open Thread</strong></div></div>
     </div>
     <div class="theme-preview-scope"><span>Home</span><span>Library</span><span>Learn</span><span>Map</span><span>Settings</span></div>
   </section>
@@ -1503,7 +1514,7 @@ function OfflineQueue() {
   )
 }
 
-function DataView() {
+function DataView({ onCapture }: { onCapture?: () => void }) {
   const system = useData<SystemPayload>('/agent/system')
   const [downloading, setDownloading] = useState('')
 
@@ -1513,7 +1524,7 @@ function DataView() {
   const triggerExport = async (url: string, filename: string) => {
     try {
       setDownloading(filename)
-      const res = await fetch(url)
+      const res = await authFetch(url)
       if (!res.ok) throw new Error(`Export failed (${res.status})`)
       const blob = await res.blob()
       const blobUrl = URL.createObjectURL(blob)
@@ -1531,43 +1542,71 @@ function DataView() {
     }
   }
 
+  const quality = system.data?.data_quality
+  const qualityTrusted = quality?.status === 'trusted'
+
   return (
     <div class="settings-page data-settings-page">
       <section class="settings-intro">
         <span class="eyebrow">Settings / Data & recovery</span>
-        <h1>Export and recover your learning record</h1>
-        <p>Portable source exports are available here. Complete recovery is handled by the verified daily D1 and R2 snapshot shown below.</p>
+        <h1>Shape, inspect, and recover your data</h1>
+        <p>Manage the records that help Learning Compass understand you, then verify their quality, portability, and recovery.</p>
       </section>
+      <PersonalDataStudio onCapture={onCapture} />
       <OfflineQueue />
+      <section class="data-trust-panel" aria-labelledby="data-trust-title">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">Data contracts</span>
+            <h2 id="data-trust-title">Can this learning record be trusted?</h2>
+          </div>
+          <span class={`data-trust-state ${qualityTrusted ? 'is-trusted' : 'is-warning'}`}>{qualityTrusted ? 'Trusted' : 'Needs attention'}</span>
+        </div>
+        {quality?.checks?.length ? <>
+          <div class="data-trust-summary">
+            <strong>{Number(quality.summary?.passing || 0)} / {Number(quality.summary?.total || quality.checks.length)}</strong>
+            <span>contracts passing across {Number(quality.counts?.active_sources || 0)} active sources, {Number(quality.counts?.learning_events || 0)} learning events, and {Number(quality.counts?.enabled_feeds || 0)} feeds.</span>
+          </div>
+          <div class="data-trust-grid">
+            {quality.checks.map((item) => <article class={`data-trust-check ${item.status === 'passing' ? 'is-passing' : 'is-failing'}`} key={item.id}>
+              <div><span>{labelize(item.dimension)}</span><strong>{item.label}</strong></div>
+              <em>{item.status === 'passing' ? 'Pass' : `${item.affected} affected`}</em>
+              <p>{item.message}</p>
+              <small>{item.coverage_percent}% coverage · {item.total} checked</small>
+            </article>)}
+          </div>
+          <p class="settings-help">These are explicit completeness, validity, uniqueness, and lineage checks—not an opaque engagement score. Last checked {formatDate(quality.checked_at)}.</p>
+        </> : <Empty title="Data contracts unavailable" body="The runtime inventory did not return a data-quality report. Refresh status before relying on this record." />}
+      </section>
       <section>
         <div class="section-head">
-          <h2>Portable source exports</h2>
-          <span>Readable copies of recommendation history—not a full-system backup</span>
+          <h2>Portable library exports</h2>
+          <span>Personal records and source history—not a full-system backup</span>
         </div>
         <div class="setting-row">
           <div>
-            <strong>Source library JSON</strong>
-            <span>Download recommendation history and metadata for portability or inspection. Notes, Threads, recall, settings, and R2 files are not included.</span>
+            <strong>Personal and source library JSON</strong>
+            <span>Download typed media status, progress, ratings, tags, personal notes, branch context, and recommendation history. Notes, Threads, recall, settings, and R2 files are not included.</span>
           </div>
           <button
             type="button"
             class="button secondary"
             disabled={Boolean(downloading)}
-            onClick={() => triggerExport('/recommendations/export?format=json&limit=5000', 'learning-compass-library.json')}
+            onClick={() => triggerExport('/recommendations/export?format=json&limit=5000', 'learning-compass-data.json')}
           >
             {downloading.endsWith('.json') ? 'Exporting…' : 'Download JSON'}
           </button>
         </div>
         <div class="setting-row">
           <div>
-            <strong>Source library Markdown</strong>
-            <span>Download a readable ledger of your captured and consumed sources.</span>
+            <strong>Personal and source library Markdown</strong>
+            <span>Download a readable ledger with type, status, progress, rating, branch, link, and personal note.</span>
           </div>
           <button
             type="button"
             class="button secondary"
             disabled={Boolean(downloading)}
-            onClick={() => triggerExport('/recommendations/export?format=md&limit=5000', 'learning-compass-library.md')}
+            onClick={() => triggerExport('/recommendations/export?format=md&limit=5000', 'learning-compass-data.md')}
           >
             {downloading.endsWith('.md') ? 'Exporting…' : 'Download Markdown'}
           </button>
@@ -1649,7 +1688,7 @@ function SystemView() {
   return <div class="system-console settings-system-page"><section class="system-hero"><div><span class="eyebrow">Settings / System</span><h1>System status and advanced operations</h1><p>Check the health of Learning Compass, review Hermes activity, and inspect the allow-listed operations available to the product.</p></div><div class="system-hero-actions"><a href="/agent/openapi.json" target="_blank" rel="noreferrer">Open API specification ↗</a><button type="button" onClick={() => { capabilities.reload(); system.reload() }}>Refresh status</button></div></section><OperationalHealthPanel /><HermesActivityPanel /><div class="system-summary"><div><strong>{operations.length}</strong><span>API operations</span></div><div><strong>{operations.length - writes}</strong><span>Read operations</span></div><div><strong>{writes}</strong><span>Guarded writes</span></div><div><strong>{system.data?.schedule?.length || 0}</strong><span>Configured schedules</span></div></div><section><div class="section-head"><h2>Runtime and storage</h2><span>{system.data?.status || 'unknown'}</span></div><div class="system-health-grid"><article><i class="healthy" /><span><strong>{system.data?.service || 'Learning Compass Worker'}</strong><small>{system.data?.environment || 'Runtime available'}</small></span></article>{(system.data?.storage || []).map((item) => <article key={item.name}><i class={/connected|managed|active/i.test(item.status) ? 'healthy' : 'warning'} /><span><strong>{item.name}</strong><small>{labelize(item.status)}</small></span></article>)}</div></section><div class="system-two-column"><section><div class="section-head"><h2>Schedules</h2><span>{system.data?.schedule?.length || 0} configured</span></div><div class="schedule-list">{(system.data?.schedule || []).length ? system.data!.schedule!.map((item) => <article key={item.id}><div class="schedule-head"><span class="method-badge method-post">CRON</span><div><strong>{item.cadence}</strong><code>{item.cron} · {item.timezone}</code></div></div><ul>{(item.responsibilities || []).map((responsibility) => <li key={responsibility}>{responsibility}</li>)}</ul><small>Last success {item.last_success ? formatDate(item.last_success) : 'not recorded'} · search {item.last_search_sync ? formatDate(item.last_search_sync) : 'not recorded'}</small></article>) : <Empty title="No schedules configured" body="Maintenance remains on-demand until a schedule is explicitly configured." />}</div></section><section><div class="section-head"><h2>On demand only</h2><span>{system.data?.on_demand_only?.length || 0} workflows</span></div><div class="on-demand-list">{(system.data?.on_demand_only || []).map((item) => <div key={item}><i /><span>{item}</span></div>)}</div></section></div><section><div class="section-head"><h2>Advanced API operations</h2><span>{filtered.length} of {operations.length}</span></div><div class="api-catalog-head"><div class="api-filters"><label>Search path or capability<input value={query} onInput={(event) => setQuery((event.target as HTMLInputElement).value)} placeholder="e.g. profile, export, notes" /></label><label>Method<select value={method} onChange={(event) => setMethod((event.target as HTMLSelectElement).value)}><option value="ALL">All methods</option>{[...new Set(operations.map((item) => item.method))].sort().map((item) => <option key={item} value={item}>{item}</option>)}</select></label></div></div>{filtered.length ? <div class="api-groups">{(Object.entries(grouped) as Array<[string, Capability[]]>).map(([area, items]) => <section key={area}><div class="api-group-title"><h3>{area}</h3><span>{items.length}</span></div><div class="api-operation-list">{items.map((item) => <article key={`${item.method}:${item.path}`}><span class={`method-badge method-${item.method.toLowerCase()}`}>{item.method}</span><code>{item.path}</code><p>{item.description}</p><small>{item.method === 'GET' ? 'Read only' : 'Validated · audit logged'}</small></article>)}</div></section>)}</div> : <Empty title="No operations match" body="Try a broader search or reset the method filter." action={<button type="button" class="button secondary" onClick={() => { setQuery(''); setMethod('ALL') }}>Clear filters</button>} />}</section><section class="system-safety"><div class="section-head"><h2>Safety boundaries</h2><span>{capabilities.data?.authentication || 'Product validation remains active'}</span></div>{(system.data?.safety || []).map((item) => <span key={item}>{item}</span>)}</section></div>
 }
 
-export function SettingsWorkspace({ route, view, onRouteChange }: SettingsWorkspaceProps) {
+export function SettingsWorkspace({ route, view, onRouteChange, onCapture }: SettingsWorkspaceProps) {
   const routed = useRoute()
   const query = route?.query || routed.query
   const requestedMode = route?.mode || routed.mode || query.get('mode') || route?.view || route?.slug || view || routed.view
@@ -1657,7 +1696,7 @@ export function SettingsWorkspace({ route, view, onRouteChange }: SettingsWorksp
   const activeMode: SettingsMode = requestedMode === 'data' ? 'data' : requestedMode === 'system' ? 'system' : 'personal'
   const activeFocus: SettingsFocus = requestedFocus === 'preferences' || requestedMode === 'preferences' ? 'preferences' : 'profile'
   const activeView = normalizeView(activeMode === 'personal' ? activeFocus : activeMode)
-  return <div class="settings-workspace workspace-surface"><SettingsModeSwitcher active={activeMode} focus={activeFocus} onRouteChange={onRouteChange} />{activeView === 'profile' && <ProfileView />}{activeView === 'preferences' && <PreferencesView />}{activeView === 'data' && <DataView />}{activeView === 'system' && <SystemView />}</div>
+  return <div class="settings-workspace workspace-surface"><SettingsModeSwitcher active={activeMode} focus={activeFocus} onRouteChange={onRouteChange} />{activeView === 'profile' && <ProfileView />}{activeView === 'preferences' && <PreferencesView />}{activeView === 'data' && <DataView onCapture={onCapture} />}{activeView === 'system' && <SystemView />}</div>
 }
 
 export default SettingsWorkspace

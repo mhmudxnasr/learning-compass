@@ -22,7 +22,7 @@ async function verifiedBranch(db: D1Database, id: string) {
 }
 
 async function loadDomain(db: D1Database, idOrSlug: string) {
-  return db.prepare(`SELECT d.*,n.label branch_label,n.status branch_status,n.round_label branch_round,
+  return db.prepare(`SELECT d.*,n.label branch_label,n.status branch_status,
       p.title family_title,p.slug family_slug
     FROM canon_domains d
     LEFT JOIN tree_nodes n ON n.id=d.branch_id
@@ -67,7 +67,7 @@ app.get('/', async (c) => {
     if (curationStates.has(status)) { filters.push(`d.curation_status=?`); params.push(status) }
     if (validationStates.has(validation)) { filters.push(`d.validation_state=?`); params.push(validation) }
     if (family) { filters.push(`(d.parent_id=? OR d.id=?)`); params.push(family, family) }
-    const rows = await c.env.DB.prepare(`SELECT d.*,n.label branch_label,n.status branch_status,n.round_label branch_round,
+    const rows = await c.env.DB.prepare(`SELECT d.*,n.label branch_label,n.status branch_status,
         p.title family_title,p.slug family_slug,
         (SELECT COUNT(*) FROM canon_entries e WHERE e.domain_id=d.id) entry_count,
         (SELECT e.title FROM canon_entries e WHERE e.domain_id=d.id AND e.role='foundation' LIMIT 1) entry_foundation_title,

@@ -48,11 +48,13 @@ app.get('/', async (c) => {
   c.header('Cache-Control', 'no-store')
   const q = (c.req.query('q') || '').trim()
   if (!q || q.length < 2) return c.json({ groups: { recs: [], nodes: [], vault: [], patterns: [], threads: [], units: [], notes: [], artifacts: [], assertions: [], memories: [], annotations: [] }, q })
+  if (q.length > 200) return c.json({ error: 'q must contain at most 200 characters' }, 400)
+  const boundedLike = `%${q.replace(/([\\%_])/g, '\\$1')}%`
 
   try {
     const like = `%${q}%`
-    const [fts, nodes, vault, patterns, threads, units, notes, artifacts, assertions, memories, annotations] = await Promise.all([
-      DB.prepare("SELECT source, ref_id FROM search_idx WHERE search_idx MATCH ? LIMIT 16").bind(q).all<{ source: string, ref_id: string }>(),
+    const [indexed, nodes, vault, patterns, threads, units, notes, artifacts, assertions, memories, annotations] = await Promise.all([
+      DB.prepare("SELECT source,ref_id FROM search_idx WHERE text LIKE ? ESCAPE '\\' ORDER BY updated_at DESC,source,ref_id LIMIT 16").bind(boundedLike).all<{ source: string, ref_id: string }>(),
       DB.prepare("SELECT id, label, type, status, super_category FROM tree_nodes WHERE id LIKE ? OR label LIKE ? ORDER BY type, id LIMIT 8")
         .bind(`%${q}%`, `%${q}%`).all<any>(),
       DB.prepare("SELECT id, filename, created_at FROM html_files WHERE filename LIKE ? ORDER BY created_at DESC LIMIT 8")
@@ -69,10 +71,10 @@ app.get('/', async (c) => {
     ])
 
     const recIds: string[] = []
-    const ftsIds = { unit: [] as string[], note: [] as string[], assertion: [] as string[], memory: [] as string[], annotation: [] as string[] }
-    for (const r of (fts.results || [])) {
+    const indexedIds = { unit: [] as string[], note: [] as string[], assertion: [] as string[], memory: [] as string[], annotation: [] as string[] }
+    for (const r of (indexed.results || [])) {
       if (r.source === 'rec') recIds.push(r.ref_id)
-      if (r.source in ftsIds) ftsIds[r.source as keyof typeof ftsIds].push(r.ref_id)
+      if (r.source in indexedIds) indexedIds[r.source as keyof typeof indexedIds].push(r.ref_id)
     }
 
     let recs: any[] = []
@@ -84,16 +86,16 @@ app.get('/', async (c) => {
       ).bind(...recIds).all<any>()
       recs = res.results || []
     }
-    const fromFts = async (ids: string[], sql: string) => {
+    const fromIndex = async (ids: string[], sql: string) => {
       if (!ids.length) return []
       return (await DB.prepare(sql.replace('$ids', ids.map(() => '?').join(','))).bind(...ids).all<any>()).results || []
     }
-    const [ftsUnits, ftsNotes, ftsAssertions, ftsMemories, ftsAnnotations] = await Promise.all([
-      fromFts(ftsIds.unit, 'SELECT id,unit_type,statement,user_synthesis,status,recommendation_id FROM learning_units WHERE id IN ($ids)'),
-      fromFts(ftsIds.note, 'SELECT id,title,kind,recommendation_id FROM notes WHERE id IN ($ids)'),
-      fromFts(ftsIds.assertion, 'SELECT assertion_key,category,value_json,confidence FROM profile_assertions WHERE assertion_key IN ($ids)'),
-      fromFts(ftsIds.memory, "SELECT id,memory_key,memory_kind,value_json,confidence FROM hermes_memory WHERE id IN ($ids) AND status IN ('active','approved')"),
-      fromFts(ftsIds.annotation, 'SELECT id,recommendation_id,locator_type,quote,language,created_at FROM source_annotations WHERE id IN ($ids) AND status=\'active\''),
+    const [indexedUnits, indexedNotes, indexedAssertions, indexedMemories, indexedAnnotations] = await Promise.all([
+      fromIndex(indexedIds.unit, 'SELECT id,unit_type,statement,user_synthesis,status,recommendation_id FROM learning_units WHERE id IN ($ids)'),
+      fromIndex(indexedIds.note, 'SELECT id,title,kind,recommendation_id FROM notes WHERE id IN ($ids)'),
+      fromIndex(indexedIds.assertion, 'SELECT assertion_key,category,value_json,confidence FROM profile_assertions WHERE assertion_key IN ($ids)'),
+      fromIndex(indexedIds.memory, "SELECT id,memory_key,memory_kind,value_json,confidence FROM hermes_memory WHERE id IN ($ids) AND status IN ('active','approved')"),
+      fromIndex(indexedIds.annotation, 'SELECT id,recommendation_id,locator_type,quote,language,created_at FROM source_annotations WHERE id IN ($ids) AND status=\'active\''),
     ])
     const merge = (direct: any[], indexed: any[], key: string) => [...indexed, ...direct.filter((item) => !indexed.some((match) => match[key] === item[key]))]
 
@@ -105,12 +107,12 @@ app.get('/', async (c) => {
         vault: vault.results || [],
         patterns: patterns.results || [],
         threads: threads.results || [],
-        units: merge(units.results || [], ftsUnits, 'id'),
-        notes: merge(notes.results || [], ftsNotes, 'id'),
+        units: merge(units.results || [], indexedUnits, 'id'),
+        notes: merge(notes.results || [], indexedNotes, 'id'),
         artifacts: artifacts.results || [],
-        assertions: merge(assertions.results || [], ftsAssertions, 'assertion_key'),
-        memories: merge(memories.results || [], ftsMemories, 'id'),
-        annotations: merge(annotations.results || [], ftsAnnotations, 'id'),
+        assertions: merge(assertions.results || [], indexedAssertions, 'assertion_key'),
+        memories: merge(memories.results || [], indexedMemories, 'id'),
+        annotations: merge(annotations.results || [], indexedAnnotations, 'id'),
       },
     })
   } catch {

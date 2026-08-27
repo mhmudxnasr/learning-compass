@@ -1,0 +1,28 @@
+{
+  "schema": "hermes-prompt-budget/v1",
+  "platform": "telegram",
+  "max_system_prompt_bytes": 25831,
+  "max_tool_schema_bytes": 24115,
+  "max_fixed_payload_bytes": 49946,
+  "max_skills_index_bytes": 2698,
+  "expected_tools": [
+    "memory",
+    "patch",
+    "process",
+    "read_file",
+    "search_files",
+    "skill_manage",
+    "skill_view",
+    "skills_list",
+    "terminal",
+    "vision_analyze",
+    "web_extract",
+    "web_search",
+    "write_file"
+  ],
+  "tool_schema_sha256": "d7f3d55ea7ca95731ea2e02010286df8eec20eb168b8926ce86722f8a11ca799",
+  "require_memory_readable": true,
+  "require_memory_within_limits": true,
+  "require_memory_tail_loaded": true,
+  "require_no_duplicate_memory_entries": true
+}

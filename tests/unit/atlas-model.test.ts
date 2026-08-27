@@ -4,7 +4,7 @@ import { branchConstellations, branchSubtreeIds, createAtlasModel, expandVisible
 
 test('atlas model removes dangling and duplicate edges', () => {
   const nodes = [
-    { id: 'a', label: 'A', type: 'branch', super_category: 'Mind', round_label: 'R1' },
+    { id: 'a', label: 'A', type: 'branch', super_category: 'Mind' },
     { id: 'b', label: 'B', type: 'leaf', parent_id: 'a' },
   ]
   const edges = [

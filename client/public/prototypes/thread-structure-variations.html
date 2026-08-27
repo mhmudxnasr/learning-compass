@@ -1,0 +1,985 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Learning Compass — Whole Thread structure lab</title>
+  <style>
+    :root {
+      --ink:#18211c;
+      --secondary:#4b5a51;
+      --muted:#5f6d64;
+      --canvas:#fffdf7;
+      --shell:#f1eee6;
+      --ledger:#f8f5ee;
+      --lichen:#e5eee6;
+      --moss:#b9cabd;
+      --seam:#d8d2c5;
+      --seam-strong:#b8b1a4;
+      --cypress:#1f513b;
+      --cypress-deep:#143b2b;
+      --ochre:#8a4d12;
+      --ochre-soft:#f4e8d9;
+      --map:#315f76;
+      --map-soft:#e4edf1;
+      --danger:#8b3026;
+      --danger-soft:#f5e6e2;
+      --focus:#0d6043;
+      --rail:116px;
+      --shadow:0 18px 50px rgba(28,43,34,.12);
+      --ease:cubic-bezier(.16,1,.3,1);
+    }
+    * { box-sizing:border-box; }
+    html { min-width:320px; background:var(--shell); color:var(--ink); font-family:"IBM Plex Sans","Noto Sans",system-ui,sans-serif; scroll-behavior:smooth; }
+    body { margin:0; min-width:320px; }
+    button,input,select { font:inherit; }
+    button,a,input,select { -webkit-tap-highlight-color:transparent; }
+    button { color:inherit; }
+    a { color:var(--cypress); text-underline-offset:4px; }
+    button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible { outline:3px solid var(--focus); outline-offset:3px; }
+    ::selection { background:var(--cypress); color:var(--canvas); }
+    * { scrollbar-color:var(--moss) transparent; scrollbar-width:thin; }
+    *::-webkit-scrollbar { width:10px; height:10px; }
+    *::-webkit-scrollbar-thumb { border:3px solid transparent; border-radius:10px; background:var(--moss); background-clip:padding-box; }
+    .skip-link { position:fixed; z-index:100; top:10px; left:10px; padding:12px 16px; border-radius:4px; background:var(--cypress-deep); color:white; transform:translateY(-150%); }
+    .skip-link:focus { transform:translateY(0); }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+    .lab-header { position:sticky; z-index:30; top:0; padding:18px clamp(16px,3vw,42px) 14px; border-bottom:1px solid var(--seam); background:rgba(255,253,247,.96); box-shadow:0 9px 26px rgba(28,43,34,.06); }
+    .lab-copy { display:flex; align-items:end; justify-content:space-between; gap:28px; width:min(1560px,100%); margin:0 auto 14px; }
+    .lab-copy h1 { max-width:17ch; margin:0; font:600 clamp(25px,3vw,40px)/1.02 "Literata",Georgia,serif; letter-spacing:-.032em; text-wrap:balance; }
+    .lab-copy p { max-width:76ch; margin:0; color:var(--secondary); font-size:13px; line-height:1.55; }
+    .direction-tabs { display:flex; gap:6px; width:min(1560px,100%); margin:auto; overflow-x:auto; padding:3px 3px 7px; }
+    .direction-tabs button { min-height:44px; flex:0 0 auto; padding:8px 13px; border:1px solid var(--seam); border-radius:5px; background:var(--canvas); color:var(--secondary); font-weight:650; cursor:pointer; white-space:nowrap; }
+    .direction-tabs button[aria-selected="true"] { border-color:var(--cypress); background:var(--cypress); color:var(--canvas); }
+    .lab-main { width:min(1560px,100%); margin:auto; padding:clamp(22px,4vw,54px); }
+    .direction-brief { display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,.65fr); align-items:end; gap:clamp(20px,4vw,54px); margin:0 0 22px; padding-bottom:18px; border-bottom:1px solid var(--seam-strong); }
+    .direction-brief h2 { max-width:18ch; margin:0 0 7px; font:600 clamp(28px,3.4vw,48px)/1.02 "Literata",Georgia,serif; letter-spacing:-.035em; text-wrap:balance; }
+    .direction-brief p { max-width:72ch; margin:0; color:var(--secondary); line-height:1.6; }
+    .brief-tradeoff { display:grid; gap:6px; padding:14px 0 2px 18px; border-left:1px solid var(--seam-strong); }
+    .brief-tradeoff strong { color:var(--cypress); font-size:12px; letter-spacing:.02em; }
+    .brief-tradeoff span { color:var(--secondary); font-size:13px; line-height:1.5; }
+
+    .compass-shell { display:grid; grid-template-columns:var(--rail) minmax(0,1fr); min-height:900px; border:1px solid var(--seam-strong); border-radius:7px; background:var(--canvas); box-shadow:var(--shadow); overflow:clip; container:prototype / inline-size; }
+    .root-rail { position:relative; z-index:3; display:grid; grid-template-rows:auto 1fr auto; min-width:0; padding:19px 12px 14px; border-right:1px solid var(--seam); background:var(--cypress-deep); color:#f7f3e9; }
+    .root-brand { display:grid; gap:2px; min-height:62px; padding:5px 6px 15px; border-bottom:1px solid rgba(255,255,255,.22); text-decoration:none; color:inherit; }
+    .root-brand strong { font:600 15px/1.05 "Literata",Georgia,serif; letter-spacing:-.015em; }
+    .root-brand small { color:#c5d5ca; font-size:9px; letter-spacing:.08em; text-transform:uppercase; }
+    .root-nav { display:grid; align-content:start; gap:5px; padding-top:18px; }
+    .root-nav a { display:grid; place-items:center; min-height:54px; padding:6px 4px; border:1px solid transparent; border-radius:4px; color:#d7e1da; font-size:11px; font-weight:650; line-height:1.1; text-align:center; text-decoration:none; }
+    .root-nav a:hover { border-color:rgba(255,255,255,.26); color:white; }
+    .root-nav a[aria-current="page"] { border-color:#d7e1da; background:rgba(255,255,255,.09); color:white; }
+    .rail-context { padding:14px 5px 4px; border-top:1px solid rgba(255,255,255,.22); color:#c5d5ca; font-size:10px; line-height:1.45; }
+    .mobile-dock { display:none; }
+    .workspace { min-width:0; background:var(--canvas); }
+    .workspace-topline { display:flex; min-height:45px; align-items:center; justify-content:space-between; gap:18px; padding:8px clamp(16px,3vw,34px); border-bottom:1px solid var(--seam); background:var(--ledger); }
+    .breadcrumbs { display:flex; min-width:0; align-items:center; gap:8px; color:var(--muted); font-size:12px; white-space:nowrap; }
+    .breadcrumbs a { flex:0 0 auto; }
+    .breadcrumbs span:last-child { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+    .branch-pill { display:inline-flex; min-height:28px; align-items:center; padding:4px 9px; border:1px solid var(--moss); border-radius:999px; color:var(--cypress); font-size:11px; font-weight:650; white-space:nowrap; }
+
+    .thread-spine { display:grid; grid-template-columns:minmax(0,1fr) minmax(250px,340px); gap:clamp(22px,4vw,56px); padding:clamp(24px,4vw,48px) clamp(18px,4vw,48px) 24px; border-bottom:1px solid var(--seam); }
+    .thread-title { max-width:24ch; margin:0 0 11px; font:600 clamp(29px,4vw,55px)/1.02 "Literata",Georgia,serif; letter-spacing:-.038em; overflow-wrap:anywhere; text-wrap:balance; }
+    .guiding-question { max-width:72ch; margin:0; color:var(--secondary); font:400 clamp(14px,1.5vw,17px)/1.65 "Literata",Georgia,serif; }
+    .spine-progress { display:grid; align-content:start; gap:12px; padding:4px 0; }
+    .spine-position { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding-bottom:10px; border-bottom:1px solid var(--seam); }
+    .spine-position strong { font:600 22px/1 "IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+    .spine-position span { color:var(--secondary); font-size:12px; }
+    .progress-track { height:5px; border-radius:999px; background:var(--seam); overflow:hidden; }
+    .progress-track i { display:block; width:1.4%; height:100%; background:var(--cypress); }
+    .current-level { display:grid; gap:4px; }
+    .current-level strong { font-size:14px; }
+    .current-level span { color:var(--secondary); font-size:12px; }
+    .spine-action { display:flex; min-height:48px; align-items:center; justify-content:space-between; gap:14px; padding:10px 14px; border:1px solid var(--cypress); border-radius:5px; background:var(--cypress); color:white; text-align:left; cursor:pointer; }
+    .spine-action span { display:grid; gap:2px; }
+    .spine-action small { color:#cfe0d5; font-size:10px; font-weight:650; letter-spacing:.03em; text-transform:uppercase; }
+    .spine-action strong { font-size:13px; line-height:1.3; }
+    .spine-rule { margin:0; color:var(--muted); font-size:11px; line-height:1.45; }
+    .thread-sections { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border-bottom:1px solid var(--seam-strong); background:var(--ledger); }
+    .thread-sections button { position:relative; min-height:50px; border:0; border-right:1px solid var(--seam); background:transparent; color:var(--secondary); font-weight:680; cursor:pointer; }
+    .thread-sections button:last-child { border-right:0; }
+    .thread-sections button:hover { background:var(--lichen); color:var(--cypress); }
+    .thread-sections button[aria-current="page"] { background:var(--canvas); color:var(--cypress-deep); }
+    .thread-sections button[aria-current="page"]::after { position:absolute; right:18px; bottom:-1px; left:18px; height:2px; background:var(--cypress); content:""; }
+    .view-area { min-height:580px; padding:clamp(20px,3.4vw,42px); animation:view-settle 420ms var(--ease) both; }
+    @keyframes view-settle { from { opacity:.75; transform:translateY(7px); clip-path:inset(0 0 8px 0); } to { opacity:1; transform:none; clip-path:inset(0); } }
+    @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .view-area { animation:none; } }
+
+    .view-head { display:flex; align-items:end; justify-content:space-between; gap:22px; margin-bottom:22px; padding-bottom:13px; border-bottom:1px solid var(--seam); }
+    .view-head h2 { margin:0 0 5px; font:600 clamp(24px,3vw,36px)/1.08 "Literata",Georgia,serif; letter-spacing:-.027em; }
+    .view-head p { max-width:68ch; margin:0; color:var(--secondary); font-size:13px; line-height:1.55; }
+    .count-line { flex:0 0 auto; color:var(--muted); font:600 12px/1.2 "IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+    .surface { border:1px solid var(--seam); border-radius:5px; background:var(--canvas); }
+    .surface + .surface { margin-top:18px; }
+    .section-title { margin:0; font:600 clamp(20px,2.3vw,29px)/1.15 "Literata",Georgia,serif; letter-spacing:-.022em; overflow-wrap:anywhere; }
+    .copy { max-width:72ch; color:var(--secondary); line-height:1.62; }
+    .meta { color:var(--muted); font-size:12px; line-height:1.45; }
+    .mono { font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+    .state { display:inline-flex; min-height:28px; align-items:center; justify-content:center; padding:3px 9px; border:1px solid var(--seam-strong); border-radius:999px; color:var(--secondary); font-size:11px; font-weight:680; white-space:nowrap; }
+    .state.current,.state.ready { border-color:var(--moss); background:var(--lichen); color:var(--cypress-deep); }
+    .state.needs { border-color:#d6b58f; background:var(--ochre-soft); color:#713c0e; }
+    .state.approved { border-color:#a9c8b2; background:var(--lichen); color:var(--cypress); }
+    .state.rejected { border-color:#d5aaa2; background:var(--danger-soft); color:var(--danger); }
+    .action,.quiet-action,.level-select,.lesson-select { min-height:44px; border:1px solid var(--seam-strong); border-radius:4px; background:var(--canvas); color:var(--cypress); font-weight:680; cursor:pointer; }
+    .action { display:inline-flex; align-items:center; justify-content:center; padding:8px 14px; }
+    .action.primary { border-color:var(--cypress); background:var(--cypress); color:white; }
+    .action:hover,.quiet-action:hover,.level-select:hover,.lesson-select:hover { border-color:var(--cypress); background:var(--lichen); }
+    .action.primary:hover { background:var(--cypress-deep); color:white; }
+    button:disabled { opacity:.48; cursor:not-allowed; }
+    .control-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+    .filters { display:flex; flex-wrap:wrap; gap:7px; }
+    .filter { min-height:44px; padding:7px 12px; border:1px solid var(--seam); border-radius:999px; background:var(--canvas); color:var(--secondary); font-weight:650; cursor:pointer; }
+    .filter[aria-pressed="true"] { border-color:var(--cypress); background:var(--lichen); color:var(--cypress-deep); }
+    .search-field { display:grid; gap:6px; min-width:min(100%,280px); }
+    .search-field span { color:var(--secondary); font-size:12px; font-weight:650; }
+    .search-field input { width:100%; min-height:44px; padding:8px 12px; border:1px solid var(--seam-strong); border-radius:4px; background:var(--canvas); color:var(--ink); }
+    .curriculum-search,.material-controls { margin-bottom:18px; }
+    .space-top-sm { margin-top:18px; }
+    .space-top-md { margin-top:24px; }
+    .space-top-lg { margin-top:28px; }
+    .space-bottom-xs { margin-bottom:8px; }
+    .quiet-action.bare-action { border:0; text-align:left; }
+    .empty { padding:34px; border:1px dashed var(--seam-strong); color:var(--secondary); text-align:center; }
+    .non-gating { padding:11px 14px; border:1px solid var(--moss); border-radius:4px; background:var(--lichen); color:var(--cypress-deep); font-size:12px; line-height:1.5; }
+    .level-select,.lesson-select { width:100%; padding:9px 11px; text-align:left; }
+    .level-select[aria-current="true"],.lesson-select[aria-current="true"] { border-color:var(--cypress); background:var(--lichen); color:var(--cypress-deep); }
+    .level-line { display:flex; min-width:0; align-items:center; justify-content:space-between; gap:12px; }
+    .level-line strong { min-width:0; overflow-wrap:anywhere; }
+    .level-line .mono { flex:0 0 auto; }
+    .lesson-row { display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; gap:12px; min-height:58px; padding:8px 12px; border-bottom:1px solid var(--seam); }
+    .lesson-row:last-child { border-bottom:0; }
+    .lesson-row.current { background:var(--lichen); }
+    .lesson-row button { display:block; min-height:44px; padding:6px 0; border:0; background:transparent; color:var(--ink); font-weight:650; text-align:left; cursor:pointer; overflow-wrap:anywhere; }
+    .lesson-index { color:var(--muted); font:600 11px "IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+    .lesson-source { color:var(--muted); font-size:11px; white-space:nowrap; }
+    .level-summary { display:grid; grid-template-columns:64px minmax(0,1fr) auto; align-items:center; gap:16px; min-height:82px; padding:13px 16px; border-bottom:1px solid var(--seam); }
+    .level-summary:last-child { border-bottom:0; }
+    .level-summary h3 { margin:0 0 4px; font:600 18px/1.2 "Literata",Georgia,serif; }
+    .level-number { color:var(--cypress); font:600 20px "IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+    .level-actions { display:flex; align-items:center; gap:8px; }
+    .project-row,.material-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; padding:16px; border-bottom:1px solid var(--seam); }
+    .project-row:last-child,.material-row:last-child { border-bottom:0; }
+    .project-row h3,.material-row h3 { margin:0 0 5px; font:600 17px/1.25 "Literata",Georgia,serif; overflow-wrap:anywhere; }
+    .project-row p,.material-row p { max-width:74ch; margin:0; color:var(--secondary); font-size:13px; line-height:1.55; }
+    .material-row [dir="rtl"] { font-family:"Noto Sans Arabic","IBM Plex Sans",sans-serif; text-align:right; }
+    .material-owner { display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; }
+    .owner-pill { display:inline-flex; min-height:27px; align-items:center; padding:3px 8px; border:1px solid var(--seam); border-radius:999px; color:var(--secondary); font-size:10px; }
+    .stats-line { display:flex; flex-wrap:wrap; gap:1px; border:1px solid var(--seam); background:var(--seam); }
+    .stat-cell { flex:1 1 120px; min-width:0; padding:13px 15px; background:var(--ledger); }
+    .stat-cell strong { display:block; margin-bottom:3px; font:600 17px "IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+    .stat-cell span { color:var(--secondary); font-size:11px; }
+
+    /* 1 — Vertical journey */
+    .vertical-focus { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(250px,.75fr); gap:1px; background:var(--seam); }
+    .vertical-focus > * { padding:clamp(18px,3vw,30px); background:var(--canvas); }
+    .vertical-focus h3 { margin:0 0 8px; font:600 clamp(23px,2.6vw,34px)/1.12 "Literata",Georgia,serif; }
+    .journey { position:relative; margin-top:20px; padding-left:36px; }
+    .journey::before { position:absolute; top:18px; bottom:18px; left:15px; width:1px; background:var(--seam-strong); content:""; }
+    .journey-level { position:relative; padding:0 0 22px; }
+    .journey-level::before { position:absolute; top:14px; left:-26px; width:9px; height:9px; border:1px solid var(--cypress); border-radius:50%; background:var(--canvas); content:""; }
+    .journey-level.current::before { background:var(--cypress); }
+    .journey-head { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:14px; min-height:44px; padding:4px 0; }
+    .journey-head button { min-height:44px; border:0; background:transparent; color:var(--ink); font:600 18px/1.2 "Literata",Georgia,serif; text-align:left; cursor:pointer; }
+    .journey-body { margin-top:8px; border:1px solid var(--seam); background:var(--canvas); }
+    .journey-project { margin-top:8px; padding:12px; border-top:1px solid var(--seam); color:var(--secondary); font-size:12px; }
+
+    /* 2 — Split workbench */
+    .workbench { display:grid; grid-template-columns:minmax(170px,220px) minmax(0,1fr) minmax(210px,280px); min-height:560px; border:1px solid var(--seam); }
+    .workbench-nav,.workbench-inspector { padding:15px; background:var(--ledger); }
+    .workbench-nav { border-right:1px solid var(--seam); }
+    .workbench-inspector { border-left:1px solid var(--seam); }
+    .workbench-canvas { min-width:0; padding:clamp(18px,3vw,30px); }
+    .workbench h3 { margin:0 0 13px; font:600 18px/1.2 "Literata",Georgia,serif; }
+    .workbench-nav .level-select { margin-bottom:6px; }
+    .inspector-block { padding:13px 0; border-bottom:1px solid var(--seam); }
+    .inspector-block:last-child { border-bottom:0; }
+    .inspector-block strong { display:block; margin-bottom:5px; font-size:12px; }
+
+    /* 3 — Level accordion */
+    .accordion { border-top:1px solid var(--seam); }
+    .accordion-item { border-bottom:1px solid var(--seam); }
+    .accordion-trigger { display:grid; grid-template-columns:62px minmax(0,1fr) auto; align-items:center; gap:14px; width:100%; min-height:70px; padding:10px 14px; border:0; background:var(--canvas); text-align:left; cursor:pointer; }
+    .accordion-trigger:hover { background:var(--ledger); }
+    .accordion-trigger[aria-expanded="true"] { background:var(--lichen); }
+    .accordion-trigger strong { font:600 18px/1.2 "Literata",Georgia,serif; }
+    .accordion-panel { padding:0 14px 16px 90px; background:var(--lichen); }
+    .accordion-panel .surface { background:var(--canvas); }
+    .accordion-panel .copy { margin-top:0; }
+
+    /* 4 — Outline + detail */
+    .outline-detail { display:grid; grid-template-columns:minmax(230px,310px) minmax(0,1fr); min-height:580px; border:1px solid var(--seam); }
+    .outline-tree { padding:16px; border-right:1px solid var(--seam); background:var(--ledger); }
+    .outline-tree h3,.detail-sheet h3 { margin:0 0 14px; font:600 20px/1.2 "Literata",Georgia,serif; }
+    .outline-branch { margin-bottom:8px; }
+    .outline-lessons { display:grid; gap:3px; margin:5px 0 10px 18px; padding-left:10px; border-left:1px solid var(--seam-strong); }
+    .outline-lessons button { min-height:44px; border:0; background:transparent; color:var(--secondary); font-size:12px; text-align:left; cursor:pointer; overflow-wrap:anywhere; }
+    .outline-lessons button:hover,.outline-lessons button[aria-current="true"] { color:var(--cypress); text-decoration:underline; text-underline-offset:4px; }
+    .detail-sheet { min-width:0; padding:clamp(20px,4vw,42px); }
+    .detail-sheet .section-title { max-width:25ch; font-size:clamp(27px,3.4vw,45px); }
+    .detail-facts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin-top:25px; border-top:1px solid var(--seam); border-bottom:1px solid var(--seam); }
+    .detail-facts div { padding:13px; border-right:1px solid var(--seam); }
+    .detail-facts div:last-child { border-right:0; }
+
+    /* 5 — Command stack */
+    .command-stack { display:grid; gap:12px; }
+    .command-band { display:grid; grid-template-columns:minmax(150px,.3fr) minmax(0,1fr); border:1px solid var(--seam); }
+    .command-band > header { padding:18px; border-right:1px solid var(--seam); background:var(--ledger); }
+    .command-band > header h3 { margin:0 0 5px; font:600 20px/1.15 "Literata",Georgia,serif; }
+    .command-body { min-width:0; padding:18px; }
+    .command-band.now { border-color:var(--moss); }
+    .command-band.now > header { background:var(--lichen); }
+    .future-strip { display:grid; grid-template-columns:repeat(6,minmax(150px,1fr)); gap:1px; overflow-x:auto; background:var(--seam); }
+    .future-strip button { min-width:150px; min-height:106px; padding:13px; border:0; background:var(--canvas); text-align:left; cursor:pointer; }
+    .future-strip button:hover { background:var(--ledger); }
+
+    /* 6 — Milestone timeline */
+    .timeline-axis { display:grid; grid-template-columns:repeat(7,minmax(130px,1fr)); overflow-x:auto; border:1px solid var(--seam); background:var(--seam); }
+    .timeline-axis.owner-axis { grid-template-columns:repeat(3,minmax(190px,1fr)); }
+    .milestone { min-width:130px; padding:16px 13px; border:0; background:var(--canvas); text-align:left; cursor:pointer; }
+    .milestone + .milestone { border-left:1px solid var(--seam); }
+    .milestone[aria-current="true"] { background:var(--lichen); }
+    .milestone strong { display:block; margin:8px 0 5px; font:600 16px/1.2 "Literata",Georgia,serif; }
+    .milestone-detail { display:grid; grid-template-columns:minmax(0,1fr) minmax(250px,.45fr); margin-top:16px; border:1px solid var(--seam); }
+    .milestone-main,.milestone-side { padding:clamp(18px,3vw,30px); }
+    .milestone-side { border-left:1px solid var(--seam); background:var(--ledger); }
+    .checkpoint-list { display:grid; gap:0; margin-top:18px; border-top:1px solid var(--seam); }
+    .checkpoint { display:grid; grid-template-columns:36px minmax(0,1fr) auto; gap:12px; align-items:center; min-height:54px; border-bottom:1px solid var(--seam); }
+
+    /* 7 — Thread dossier */
+    .dossier { display:grid; grid-template-columns:minmax(150px,220px) minmax(0,1fr); gap:clamp(24px,5vw,72px); max-width:1120px; margin:auto; }
+    .dossier-index { align-self:start; padding:13px 0; border-top:1px solid var(--ink); border-bottom:1px solid var(--ink); }
+    .dossier-index button { display:block; width:100%; min-height:44px; padding:7px 0; border:0; border-bottom:1px solid var(--seam); background:transparent; color:var(--secondary); text-align:left; cursor:pointer; }
+    .dossier-index button:last-child { border-bottom:0; }
+    .dossier-index button[aria-current="true"] { color:var(--cypress); font-weight:700; }
+    .dossier-page { max-width:78ch; }
+    .dossier-page h3 { margin:0 0 18px; font:600 clamp(31px,4vw,55px)/1.02 "Literata",Georgia,serif; letter-spacing:-.038em; text-wrap:balance; }
+    .dossier-lede { margin:0 0 28px; color:var(--secondary); font:400 17px/1.72 "Literata",Georgia,serif; }
+    .folio-rule { display:flex; justify-content:space-between; gap:18px; margin:28px 0 12px; padding-top:9px; border-top:1px solid var(--ink); font:650 11px "IBM Plex Mono",ui-monospace,monospace; text-transform:uppercase; }
+    .folio-entry { display:grid; grid-template-columns:48px minmax(0,1fr) auto; gap:14px; padding:13px 0; border-bottom:1px solid var(--seam); }
+
+    /* 8 — Focus tunnel */
+    .focus-tunnel { width:min(760px,100%); margin:auto; }
+    .focus-position { display:flex; justify-content:space-between; gap:14px; margin-bottom:12px; color:var(--muted); font:600 11px "IBM Plex Mono",ui-monospace,monospace; }
+    .focus-card { padding:clamp(25px,5vw,54px); border:1px solid var(--seam-strong); background:var(--canvas); }
+    .focus-card h3 { max-width:19ch; margin:0 0 14px; font:600 clamp(33px,5vw,62px)/1 "Literata",Georgia,serif; letter-spacing:-.04em; text-wrap:balance; overflow-wrap:anywhere; }
+    .focus-card .copy { font-size:15px; }
+    .focus-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:24px; }
+    .position-map { display:grid; grid-template-columns:repeat(7,minmax(36px,1fr)); gap:5px; margin-top:18px; }
+    .position-map button { min-height:44px; border:1px solid var(--seam); border-radius:3px; background:var(--ledger); color:var(--secondary); font:650 11px "IBM Plex Mono",ui-monospace,monospace; cursor:pointer; }
+    .position-map button[aria-current="true"] { border-color:var(--cypress); background:var(--cypress); color:white; }
+    .focus-queue { margin-top:18px; border-top:1px solid var(--seam); }
+
+    /* 9 — Compact ledger */
+    .ledger-layout { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(260px,.65fr); min-height:570px; border:1px solid var(--seam); }
+    .ledger-table-wrap { min-width:0; overflow:auto; }
+    .ledger-table { width:100%; min-width:680px; border-collapse:collapse; }
+    .ledger-table caption { padding:12px 14px; color:var(--secondary); text-align:left; }
+    .ledger-table th { position:sticky; z-index:1; top:0; padding:10px 12px; border-bottom:1px solid var(--seam-strong); background:var(--ledger); color:var(--secondary); font:650 10px "IBM Plex Mono",ui-monospace,monospace; text-align:left; text-transform:uppercase; }
+    .ledger-table td { padding:11px 12px; border-bottom:1px solid var(--seam); font-size:12px; vertical-align:middle; }
+    .ledger-table tbody tr:hover,.ledger-table tbody tr.selected { background:var(--lichen); }
+    .ledger-link { display:flex; min-height:44px; align-items:center; padding:4px 0; border:0; background:transparent; color:var(--ink); font-weight:680; text-align:left; cursor:pointer; overflow-wrap:anywhere; }
+    .ledger-link:hover { color:var(--cypress); text-decoration:underline; text-underline-offset:4px; }
+    .ledger-inspector { padding:20px; border-left:1px solid var(--seam); background:var(--ledger); }
+    .ledger-inspector h3 { margin:0 0 9px; font:600 24px/1.15 "Literata",Georgia,serif; overflow-wrap:anywhere; }
+
+    /* 10 — Overview map + detail sheet */
+    .thread-map { display:grid; grid-template-columns:repeat(4,minmax(150px,1fr)); gap:1px; border:1px solid var(--seam); background:var(--seam); }
+    .map-node { position:relative; min-height:128px; padding:16px; border:0; background:var(--canvas); text-align:left; cursor:pointer; }
+    .map-node[aria-current="true"] { background:var(--lichen); }
+    .map-node:hover { background:var(--ledger); }
+    .map-node strong { display:block; margin:8px 0 5px; font:600 18px/1.2 "Literata",Georgia,serif; overflow-wrap:anywhere; }
+    .map-node.final { grid-column:span 2; background:var(--ochre-soft); }
+    .map-detail { display:grid; grid-template-columns:minmax(0,1fr) minmax(210px,.4fr); margin-top:16px; border-top:1px solid var(--ink); border-bottom:1px solid var(--ink); }
+    .map-detail-main { padding:24px 22px 24px 0; }
+    .map-detail-side { padding:24px 0 24px 22px; border-left:1px solid var(--seam); }
+
+    .demo-status { position:fixed; z-index:60; right:18px; bottom:18px; max-width:min(420px,calc(100vw - 36px)); padding:11px 14px; border:1px solid var(--cypress); border-radius:4px; background:var(--cypress-deep); color:white; box-shadow:0 14px 34px rgba(20,59,43,.24); font-size:12px; transform:translateY(140%); transition:transform 260ms var(--ease); }
+    .demo-status.show { transform:none; }
+
+    @container prototype (max-width:980px) {
+      .thread-spine { grid-template-columns:1fr; }
+      .workbench { grid-template-columns:190px minmax(0,1fr); }
+      .workbench-inspector { grid-column:1/-1; border-top:1px solid var(--seam); border-left:0; }
+      .ledger-layout { grid-template-columns:1fr; }
+      .ledger-inspector { border-top:1px solid var(--seam); border-left:0; }
+      .thread-map { grid-template-columns:repeat(3,minmax(140px,1fr)); }
+    }
+    @container prototype (max-width:760px) {
+      .vertical-focus,.milestone-detail,.map-detail { grid-template-columns:1fr; }
+      .milestone-side,.map-detail-side { border-top:1px solid var(--seam); border-left:0; }
+      .map-detail-main,.map-detail-side { padding:20px 0; }
+      .outline-detail { grid-template-columns:1fr; }
+      .outline-tree { border-right:0; border-bottom:1px solid var(--seam); }
+      .outline-lessons { display:none; }
+      .dossier { grid-template-columns:1fr; }
+      .dossier-index { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); padding:0; border:1px solid var(--seam); }
+      .dossier-index button { border-right:1px solid var(--seam); border-bottom:0; text-align:center; }
+      .command-band { grid-template-columns:1fr; }
+      .command-band > header { border-right:0; border-bottom:1px solid var(--seam); }
+      .workbench { grid-template-columns:1fr; }
+      .workbench-nav { border-right:0; border-bottom:1px solid var(--seam); }
+      .workbench-nav .level-list { display:grid; grid-template-columns:repeat(7,minmax(110px,1fr)); gap:5px; overflow-x:auto; }
+      .workbench-inspector { grid-column:auto; }
+    }
+    @media (max-width:820px) {
+      .lab-header { position:static; }
+      .lab-copy,.direction-brief,.view-head { align-items:start; grid-template-columns:1fr; flex-direction:column; }
+      .lab-copy { display:grid; }
+      .lab-main { padding:22px 12px 110px; }
+      .brief-tradeoff { padding:12px 0 0; border-top:1px solid var(--seam); border-left:0; }
+      .compass-shell { display:flex; min-height:780px; flex-direction:column; overflow:visible; }
+      .root-rail { display:none; }
+      .mobile-dock { position:sticky; z-index:25; bottom:0; order:2; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); padding:0; border-top:1px solid #779082; background:var(--cypress-deep); }
+      .mobile-dock a { display:grid; place-items:center; min-height:58px; padding:5px 2px; border-right:1px solid rgba(255,255,255,.16); color:#d7e1da; font-size:10px; font-weight:650; text-align:center; text-decoration:none; }
+      .mobile-dock a:last-child { border-right:0; }
+      .mobile-dock a[aria-current="page"] { background:#285e46; color:white; }
+      .workspace { order:1; }
+      .workspace-topline { padding:8px 14px; }
+      .branch-pill { display:none; }
+      .thread-spine { padding:24px 16px 18px; }
+      .thread-title { font-size:clamp(28px,9vw,42px); }
+      .thread-sections { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .thread-sections button:nth-child(-n+2) { border-bottom:1px solid var(--seam); }
+      .thread-sections button:nth-child(2) { border-right:0; }
+      .thread-sections button:nth-child(3) { border-right:1px solid var(--seam); }
+      .view-area { padding:22px 14px 30px; }
+      .level-summary,.accordion-trigger { grid-template-columns:44px minmax(0,1fr); }
+      .level-actions,.accordion-trigger .state { grid-column:2; justify-self:start; }
+      .accordion-panel { padding:0 8px 12px; }
+      .lesson-row { grid-template-columns:34px minmax(0,1fr); }
+      .lesson-source { grid-column:2; }
+      .project-row,.material-row { grid-template-columns:1fr; }
+      .detail-facts { grid-template-columns:1fr; }
+      .detail-facts div { border-right:0; border-bottom:1px solid var(--seam); }
+      .detail-facts div:last-child { border-bottom:0; }
+      .folio-entry { grid-template-columns:38px minmax(0,1fr); }
+      .folio-entry .state { grid-column:2; justify-self:start; }
+      .thread-map { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .map-node.final { grid-column:span 2; }
+      .demo-status { right:12px; bottom:72px; }
+    }
+    @media (max-width:480px) {
+      .lab-header { padding:15px 12px 10px; }
+      .lab-copy h1 { font-size:26px; }
+      .direction-tabs button { padding-inline:11px; }
+      .workspace-topline { align-items:flex-start; }
+      .breadcrumbs { white-space:normal; flex-wrap:wrap; }
+      .spine-action { align-items:flex-start; flex-direction:column; }
+      .vertical-focus > * { padding:18px 14px; }
+      .journey { padding-left:29px; }
+      .journey::before { left:11px; }
+      .journey-level::before { left:-22px; }
+      .dossier-index { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .dossier-index button { border-bottom:1px solid var(--seam); }
+      .position-map { grid-template-columns:repeat(4,minmax(36px,1fr)); }
+      .thread-map { grid-template-columns:1fr; }
+      .map-node.final { grid-column:auto; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#thread-prototype">Skip to Thread prototype</a>
+  <header class="lab-header">
+    <div class="lab-copy">
+      <h1>Whole Thread structure lab</h1>
+      <p>Ten complete information architectures for the production Systems Thinking Thread. Switch a direction, then inspect its Overview, Curriculum, Practice, and Materials. The data and visual language stay constant; only the structure changes.</p>
+    </div>
+    <div class="direction-tabs" role="tablist" aria-label="Whole Thread structure directions">
+      <button type="button" role="tab" aria-controls="thread-prototype" aria-selected="true" data-choose-variant="1">1 Vertical journey</button>
+      <button type="button" role="tab" aria-controls="thread-prototype" aria-selected="false" data-choose-variant="2">2 Split workbench</button>
+      <button type="button" role="tab" aria-controls="thread-prototype" aria-selected="false" data-choose-variant="3">3 Level accordion</button>
+      <button type="button" role="tab" aria-controls="thread-prototype" aria-selected="false" data-choose-variant="4">4 Outline + detail</button>
+      <button type="button" role="tab" aria-controls="thread-prototype" aria-selected="false" data-choose-variant="5">5 Command stack</button>
+      <button type="button" role="tab" aria-controls="thread-prototype" aria-selected="false" data-choose-variant="6">6 Milestone timeline</button>
+      <button type="button" role="tab" aria-controls="thread-prototype" aria-selected="false" data-choose-variant="7">7 Thread dossier</button>
+      <button type="button" role="tab" aria-controls="thread-prototype" aria-selected="false" data-choose-variant="8">8 Focus tunnel</button>
+      <button type="button" role="tab" aria-controls="thread-prototype" aria-selected="false" data-choose-variant="9">9 Compact ledger</button>
+      <button type="button" role="tab" aria-controls="thread-prototype" aria-selected="false" data-choose-variant="10">10 Overview map</button>
+    </div>
+  </header>
+  <main class="lab-main">
+    <section class="direction-brief" id="directionBrief" aria-live="polite"></section>
+    <div id="thread-prototype" role="tabpanel" tabindex="0" aria-label="Selected whole Thread structure prototype"></div>
+  </main>
+  <div class="demo-status" id="demoStatus" role="status" aria-live="polite"></div>
+  <script>
+    const THREAD = {"thread":{"id":"thread_1786576304649_69e7c056","title":"Systems Thinking — From Orientation to Advanced Practice","type":"understand","status":"active","question":"How can I understand systems thinking deeply enough to model, intervene in, and improve real personal, business, organizational, and social systems?"},"levels":[{"n":0,"title":"Orientation","status":"in_progress","objective":"Establish the map of systems thinking without mistaking an introduction for the full theory.","project":{"title":"Level project — Level 0 — Orientation","status":"in_progress","description":"Explain what systems thinking is, and recognize bottlenecks, feedback loops, leverage points, and second-order effects from memory.","suggested_context":"Use Learning Compass as the recurring example when it helps make the method concrete."},"lessons":[{"title":"What systems thinking is","status":"in_progress","description":"Stage topic to understand and explain.","why_learn":"Traditional reductionism breaks systems into isolated components and fails when problems arise from interactions, non-linearities, and feedback. Systems thinking provides the foundational lens to see wholes, causal interconnections, and structural drivers rather than isolated events.","sources":6},{"title":"Bottlenecks","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Throughput in any multi-stage system is governed exclusively by its narrowest constraint (Goldratt's Theory of Constraints). Optimizing non-bottlenecks creates local excess inventory, exhausts resources, and generates zero systemic throughput gains.","sources":5},{"title":"Feedback loops","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Cause and effect in real systems do not operate in one-way open chains; outputs feed back as future inputs. Feedback loops explain runaway exponential momentum (reinforcing) and persistent equilibrium or resistance to change (balancing).","sources":5},{"title":"Leverage points","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"In complex systems, intuitive interventions usually produce low leverage or pushback, while high-leverage intervention points are counterintuitive and often fiercely resisted.","sources":5},{"title":"Second-order effects","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Most policy and organizational failures occur because decision-makers optimize for immediate, visible first-order payoffs while remaining blind to the delayed second- and third-order systemic repercussions that often reverse the original gains.","sources":5},{"title":"Modeling exercise","status":"not_started","description":"Draw a boundary map of one recurring personal or business problem, label elements/relationships/purpose, identify one bottleneck and one plausible feedback loop.","why_learn":"Systems thinking is a craft internalized through active diagramming and boundary selection, not passive conceptual reading.","sources":5},{"title":"One real-world application","status":"not_started","description":"Use the map to propose one small intervention and predict one second-order consequence before acting.","why_learn":"The ultimate test of systems thinking is whether it uncovers a misdiagnosed root cause or hidden constraint in your actual work or life.","sources":5}]},{"n":1,"title":"Foundations","status":"locked","objective":"Learn the basic objects, relationships, boundaries, and causal distinctions needed to analyze a system.","project":{"title":"Level project — Level 1 — Foundations","status":"not_started","description":"Explain systems thinking from memory and analyze a simple personal or business system.","suggested_context":"Use Learning Compass as the recurring example when it helps make the method concrete."},"lessons":[{"title":"What counts as a system","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Not every collection of parts is a system. Confusing a mere heap/collection (e.g., sand pile, list of tasks) with an integrated system (e.g., digestive tract, software pipeline) leads to flawed analytical methods.","sources":0},{"title":"Elements, relationships, and purpose","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Changing system elements has the least impact; changing relationships has moderate impact; changing the purpose/function completely alters system behavior.","sources":0},{"title":"System boundaries","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Boundaries are mental constructs, not physical truths. Drawing boundaries too narrowly creates blind spots and externalized costs; drawing them too broadly makes analysis intractable.","sources":0},{"title":"Structure versus events","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Event-level thinking leads to reactive firefighting and blaming individuals; structural thinking uncovers the underlying rules, delays, and loops that generate those events.","sources":0},{"title":"Stocks and flows","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Stocks (accumulations) are the state and memory of a system; flows (rates) are the activities that change stocks over time. Confusing stocks with flows is the #1 source of dynamic intuition failure (the Bathtub Fallacy).","sources":0},{"title":"Patterns over time","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Static snapshots hide trajectory, momentum, and inflection points. Graphing behavior over time reveals the signature archetypes of dynamic behavior.","sources":0},{"title":"Mental models","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"All decisions are based on mental models, which are simplified internal representations of how the world works. Flawed mental models produce systemic blind spots.","sources":0},{"title":"Linear versus systemic causality","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Linear causality assumes A causes B in isolation. Systemic causality recognizes that B also feeds back to influence A, often through delays and non-linear paths.","sources":0},{"title":"Modeling exercise","status":"not_started","description":"Analyze one simple system with a behavior-over-time sketch and a causal map; explicitly justify what is inside and outside the boundary.","why_learn":"Translates foundational concepts into a precise structural diagram combining boundaries, multiple stocks, flows, and closed feedback loops.","sources":0},{"title":"One real-world application","status":"not_started","description":"Apply the event/pattern/structure distinction to a recurring Learning Compass, business, or personal problem and identify a structural cause.","why_learn":"Validates structural analysis against live empirical observations, demonstrating how structural misdiagnoses caused previous interventions to fail.","sources":0}]},{"n":2,"title":"System Dynamics","status":"locked","objective":"Understand how feedback, delay, nonlinearity, and limits generate behavior over time.","project":{"title":"Level project — Level 2 — System Dynamics","status":"not_started","description":"Draw causal-loop diagrams and explain why a system behaves differently over time.","suggested_context":"Use Learning Compass as the recurring example when it helps make the method concrete."},"lessons":[{"title":"Positive and negative feedback","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Reinforcing (positive) feedback drives explosive growth or destructive collapse; balancing (negative) feedback resists change, seeks equilibrium, and stabilizes systems.","sources":0},{"title":"Reinforcing and balancing loops","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Real systems are networks where reinforcing loops generate momentum and balancing loops impose constraints, creating complex multi-loop interactions.","sources":0},{"title":"Delays","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Delays in material flow, perception, or decision-making cause systems to over-correct, overshoot targets, and oscillate violently.","sources":0},{"title":"Nonlinear relationships","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"In nonlinear systems, cause and effect are not proportional. A small change can cause a sudden catastrophic shift (tipping point), while a massive change may produce negligible results.","sources":0},{"title":"Exponential growth","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Exponential growth starts deceptively slowly and accelerates explosively, consistently fooling human linear intuition until resources are overwhelmed.","sources":0},{"title":"Limits to growth","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"No physical system can grow exponentially forever. When growth encounters carrying capacity, balancing loops inevitably take over, creating S-shaped growth or overshoot.","sources":0},{"title":"Oscillation","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Oscillation (boom-bust cycles, inventory bullwhip, price cycles) is the classic signature of negative feedback with significant delays in perception or action.","sources":0},{"title":"Overshoot and collapse","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"When an accelerating system exceeds its carrying capacity and permanently degrades the underlying resource base, growth turns into sudden, irreversible collapse.","sources":0},{"title":"Policy resistance","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Well-intentioned policies frequently fail or backfire because actors within the system adapt their behavior to preserve their own local goals, defeating the central policy.","sources":0},{"title":"Modeling exercise","status":"not_started","description":"Create a causal-loop plus stock-flow model of a system with at least one delay and one limit; mentally simulate behavior over time and state assumptions.","why_learn":"Builds a complete dynamic hypothesis explaining a growing, oscillating, or plateauing behavior mode over time.","sources":0},{"title":"One real-world application","status":"not_started","description":"Use the model to compare two policies and predict timing, unintended effects, and conditions under which each fails.","why_learn":"Tests your ability to diagnose a live, complex dynamic pathology (e.g., inventory bullwhip, hiring boom-bust, product adoption plateau) in the wild.","sources":0}]},{"n":3,"title":"Modeling","status":"locked","objective":"Construct, inspect, and improve explanatory models rather than only describing systems verbally.","project":{"title":"Level project — Level 3 — Modeling","status":"not_started","description":"Build and explain three models: a personal system, a business system, and a social or organizational system.","suggested_context":"Use Learning Compass as the recurring example when it helps make the method concrete."},"lessons":[{"title":"Behavior-over-time graphs","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"BOTGs serve as the empirical reference mode for formal modeling, anchoring model development to observed historical data patterns.","sources":0},{"title":"Causal-loop diagrams","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"CLDs provide an intuitive qualitative map of feedback structures, capturing hypotheses about loop dominance and causal interactions.","sources":0},{"title":"Stock-and-flow diagrams","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"CLDs cannot be simulated directly because they blur the distinction between accumulations and rates. Stock-and-flow diagrams provide the mathematical rigor needed for computational simulation.","sources":0},{"title":"Basic simulation","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Human mental simulation fails completely on multi-loop nonlinear systems with delays. Numerical computational simulation reveals actual system behavior over time.","sources":0},{"title":"Model assumptions","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Every model is wrong, but some are useful. Being explicit about structural assumptions, exogenous inputs, and simplifications determines model credibility.","sources":0},{"title":"Calibration and validation","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Fitting parameters to historical data (curve fitting) does not prove structural validity. System Dynamics models require rigorous tests of structural and behavioral validity.","sources":0},{"title":"Boundary criticism","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Model boundaries reflect values and power dynamics. Werner Ulrich's Critical Systems Heuristics (CSH) interrogates who benefits, who is harmed, and what is excluded.","sources":0},{"title":"Sensitivity analysis","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Real-world parameters are always uncertain. Sensitivity analysis reveals whether policy recommendations hold across parameter ranges or collapse under slight variations.","sources":0},{"title":"Modeling exercise","status":"not_started","description":"Build and document three small models—personal, business, and organizational/social—with equations or explicit rules, assumptions, reference behavior, and at least one sensitivity test.","why_learn":"Solidifies formal modeling by building, simulating, and stress-testing a complete stock-and-flow model from scratch.","sources":0},{"title":"One real-world application","status":"not_started","description":"Use one model to support a real decision; compare its prediction with a plausible alternative model and explain what evidence would discriminate between them.","why_learn":"Validates simulation modeling against real historical datasets and decision dilemmas in a professional or operational context.","sources":0}]},{"n":4,"title":"Leverage and Intervention","status":"locked","objective":"Diagnose intervention opportunities and anticipate why intuitive solutions can fail.","project":{"title":"Level project — Level 4 — Leverage and Intervention","status":"not_started","description":"For a real problem, identify the symptom, underlying structure, feedback loops, highest-leverage intervention, and likely side effects.","suggested_context":"Use Learning Compass as the recurring example when it helps make the method concrete."},"lessons":[{"title":"Where intervention actually works","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Most interventions target parameters (subsidies, tax rates, headcounts), which represent the lowest leverage points in a system and produce minimal enduring change.","sources":0},{"title":"Why obvious solutions often fail","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Obvious, intuitive solutions usually address surface symptoms, triggering compensating balancing loops that restore the problem or shift the burden to another part of the system.","sources":0},{"title":"Delayed consequences","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Interventions that produce immediate benefits often carry long-delayed structural penalties, creating a dynamic trap known as 'Better-Before-Worse'.","sources":0},{"title":"Unintended side effects","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"There is no such thing as an isolated side effect—there are only systemic effects that cross arbitrary departmental or temporal boundaries.","sources":0},{"title":"Incentive redesign","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"People respond to the incentives created by the system's structural rules, not to managerial exhortations. Perverse incentives (Kerr's Folly, Cobra Effect) guarantee counterproductive behavior.","sources":0},{"title":"Rules and information flows","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Adding new information links (e.g., real-time feedback, public transparency) and changing operational rules is high leverage and remarkably inexpensive compared to physical capital investment.","sources":0},{"title":"Changing goals and paradigms","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"The purpose/goal of a system dictates all lower-level rules, feedback loops, and stocks. Shifting the overarching goal or transcending the dominant paradigm produces massive transformation.","sources":0},{"title":"Policy resistance","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Even high-leverage interventions trigger political, psychological, and organizational immune responses if stakeholders feel threatened by the reallocation of power or resources.","sources":0},{"title":"Modeling exercise","status":"not_started","description":"For one real problem, map symptom, structure, loops, information flows, incentives, goals, candidate intervention points, and likely side effects in an intervention matrix.","why_learn":"Integrates symptoms, structure, incentives, rules, goals, and candidate leverage points into a comprehensive intervention matrix.","sources":0},{"title":"One real-world application","status":"not_started","description":"Choose one intervention, define a measurable leading indicator and a guardrail, run or design a bounded test, and record resistance or adaptation.","why_learn":"Proves your ability to design and execute a bounded, low-risk pilot intervention on a real system with clear leading indicators.","sources":0},{"title":"Modeling exercise","status":"not_started","description":"For one real problem, map symptom, structure, loops, information flows, incentives, goals, candidate intervention points, and likely side effects in an intervention matrix.","why_learn":"Advanced intervention modeling comparing competing policy packages across different stakeholder coalitions and time horizons.","sources":0},{"title":"One real-world application","status":"not_started","description":"Choose one intervention, define a measurable leading indicator and a guardrail, run or design a bounded test, and record resistance or adaptation.","why_learn":"Demonstrates long-term tracking of systemic change, observing how adaptive resistance emerges over time and adjusting rules accordingly.","sources":0}]},{"n":5,"title":"Applied Systems Thinking","status":"locked","objective":"Transfer systems thinking into domains and decisions that matter in daily and professional life.","project":{"title":"Level project — Level 5 — Applied Systems Thinking","status":"not_started","description":"Use systems thinking to improve one real decision or project.","suggested_context":"Use Learning Compass as the recurring example when it helps make the method concrete."},"lessons":[{"title":"Business and cash flow","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Financial bankruptcy is an operational stock-flow collapse where cash outflows exceed inflows despite accounting profitability. Business systems thinking links operational delays directly to working capital dynamics.","sources":0},{"title":"Learning Compass","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Knowledge acquisition, retention, and application form an interconnected cognitive system governed by decay stocks, retrieval flows, and focus allocation constraints.","sources":0},{"title":"Personal productivity","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Personal productivity is constrained by energy stocks, cognitive switching costs, and backlog accumulation. Treating productivity as linear task execution causes burnout.","sources":0},{"title":"Organizations and power","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Formal org charts describe hierarchy, but informal political networks, information asymmetries, and resource control dictate actual organizational behavior.","sources":0},{"title":"Relationships and small groups","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Interpersonal conflicts and family dynamics are reciprocal feedback loops, not one-sided moral failings (Bowen Family Systems Theory).","sources":0},{"title":"Markets","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Financial and product markets are complex adaptive systems characterized by reflexivity (Soros), endogenous bubbles, and network effects, not static equilibrium.","sources":0},{"title":"Technology systems","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Software architectures and technology platforms are sociotechnical systems where technical debt accumulates as a hidden stock, slowing feature velocity and compounding fragility.","sources":0},{"title":"Public policy","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Public policy operates in high-complexity, multi-actor environments where regulatory interventions produce sprawling unintended social and economic consequences.","sources":0},{"title":"Modeling exercise","status":"not_started","description":"Produce one integrated case model in a domain that matters to you, including stakeholders, flows, feedback, delays, incentives, decision points, and an implementation plan.","why_learn":"Deepens domain mastery by constructing an integrated multi-sector case model in your specific field of expertise.","sources":0},{"title":"One real-world application","status":"not_started","description":"Improve one real decision or project using the model; record baseline, intervention, outcome, unintended effects, and next iteration.","why_learn":"Directly improves an active real-world operational decision using the domain model, recording empirical baseline, intervention, and results.","sources":0}]},{"n":6,"title":"Advanced Direction","status":"locked","objective":"Choose advanced directions only after the foundational model-building and application evidence is strong.","project":{"title":"Level project — Level 6 — Advanced Direction","status":"not_started","description":"Select a justified advanced direction and explain how it extends the foundation.","suggested_context":"Use Learning Compass as the recurring example when it helps make the method concrete."},"lessons":[{"title":"Formal system dynamics","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Advanced professional practice requires rigorous continuous differential equation formulation, eigenvalue stability analysis, and formal sensitivity testing.","sources":0},{"title":"Complex adaptive systems","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"CAS consists of diverse, decentralized agents that learn, adapt, and co-evolve, creating macroscopic emergent phenomena that cannot be modeled by aggregate differential equations alone.","sources":0},{"title":"Viable systems","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Stafford Beer's Viable System Model (VSM) provides an invariant cybernetic architecture for autonomous, self-organizing systems that survive in volatile environments.","sources":0},{"title":"Cybernetics","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"First-order cybernetics studies observed systems (control and feedback); second-order cybernetics studies observing systems (the role of the observer, self-reference, and epistemological reflexivity).","sources":0},{"title":"Network science","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"System structure is topological. Network science reveals how degree distributions (scale-free networks, power laws), clustering, and centrality determine systemic vulnerability to targeted attacks vs random failures.","sources":0},{"title":"Agent-based modeling","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"ABM simulates individual autonomous agents following local behavioral rules, allowing macro-level social structures (segregation, market crashes, flocking) to emerge computationally from the bottom up.","sources":0},{"title":"Resilience and systemic risk","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Optimizing for maximum efficiency strips out systemic buffers and redundancies, making tightly coupled systems hyper-fragile to catastrophic systemic contagion (Haldane & May).","sources":0},{"title":"Organizational learning","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Single-loop learning corrects errors within existing rules; double-loop learning questions and rewrites the underlying governing variables and assumptions. Most organizations are trapped in defensive single-loop routines.","sources":0},{"title":"Systems intervention ethics","status":"not_started","description":"Stage topic to understand and explain.","why_learn":"Intervening in complex human systems involves power, coercion, value conflicts, and unintended harms. Technocratic optimization without ethical boundaries is dangerous and illegitimate.","sources":0},{"title":"Modeling exercise","status":"not_started","description":"Choose one advanced direction, justify the choice, and build a comparative model or annotated research brief showing what the approach adds, assumes, and cannot explain.","why_learn":"Evaluates and compares different modeling paradigms (System Dynamics vs Agent-Based Modeling vs Network Analysis) on a single complex challenge to identify their respective strengths and blind spots.","sources":0},{"title":"One real-world application","status":"not_started","description":"Use the advanced lens on a real system to generate one testable insight or design implication, while stating uncertainty and ethical risks.","why_learn":"Deploys advanced multi-paradigm systems practice to generate a testable, high-leverage strategic insight on an active complex problem while explicitly stating uncertainties and ethical risks.","sources":0}]}],"materials":{"notes":["System Dynamics for a Complex World","The Paths to Power","Negotiation and Nonviolent Action"],"cards":["يعني إيه BATNA؟"],"drafts":["ليه بناء النموذج عملية تكرارية؟","مبدأ «البنية تولّد السلوك» بيرفض إيه؟","إيه اللي بيضيفه إغلاق الحلقة في التفكير النظمي؟","إزاي يكمل الفعل والتفاوض بعضهما؟","إيه التعريف العملي للقوة؟","ليه الجوهر والظهور مطلوبان معًا في بناء السمعة؟","إزاي القوة بتتراكم وتضاعف نفسها؟"],"files":0}};
+    const FILES = [
+      { title:'bottlenecks-systems-thinking.pdf', type:'File · PDF', owner:'Level 0 — Orientation', ownerKind:'Level' },
+      { title:'bottlenecks-systems-thinking.html', type:'File · HTML', owner:'Level 0 — Orientation', ownerKind:'Level' },
+      { title:'companion.html', type:'File · HTML', owner:'What systems thinking is', ownerKind:'Lesson' }
+    ];
+    const RECALL_DRAFTS = [
+      { title:'ليه بناء النموذج عملية تكرارية؟', status:'draft', source:'System Dynamics for a Complex World' },
+      { title:'مبدأ «البنية تولّد السلوك» بيرفض إيه؟', status:'draft', source:'System Dynamics for a Complex World' },
+      { title:'إيه اللي بيضيفه إغلاق الحلقة في التفكير النظمي؟', status:'draft', source:'System Dynamics for a Complex World' },
+      { title:'يعني إيه BATNA؟', status:'approved', source:'Negotiation and Nonviolent Action' },
+      { title:'إزاي يكمل الفعل والتفاوض بعضهما؟', status:'draft', source:'Negotiation and Nonviolent Action' },
+      { title:'إيه اللي ممكن يغيّر موازين القوة غير الموارد المادية؟', status:'rejected', source:'Negotiation and Nonviolent Action' },
+      { title:'إيه التعريف العملي للقوة؟', status:'draft', source:'The Paths to Power' },
+      { title:'ليه الجوهر والظهور مطلوبان معًا في بناء السمعة؟', status:'draft', source:'The Paths to Power' },
+      { title:'إزاي القوة بتتراكم وتضاعف نفسها؟', status:'draft', source:'The Paths to Power' }
+    ];
+    const DIRECTIONS = [
+      { title:'Vertical journey', thesis:'A continuous Level spine makes sequence visible while expanding only the place you can act now.', tradeoff:'Best journey comprehension; requires more vertical movement than a dense index.' },
+      { title:'Split workbench', thesis:'Persistent Level navigation, a working canvas, and a contextual inspector keep place and detail visible together.', tradeoff:'Best for desktop operation; the three panes must collapse carefully on narrow canvases.' },
+      { title:'Level accordion', thesis:'Seven Level summaries form the whole curriculum; one disclosure at a time controls the 71-lesson scale.', tradeoff:'Fast overview with bounded density; cross-Level comparison takes an extra click.' },
+      { title:'Outline + detail', thesis:'A compact curriculum tree owns navigation while one spacious detail sheet owns attention.', tradeoff:'Strong hierarchy recovery; the outline can feel utilitarian when browsing only one item.' },
+      { title:'Command stack', thesis:'Now, This Level, and Later form a decisive action hierarchy without pretending optional work advances progression.', tradeoff:'Excellent daily operation; less neutral for curriculum auditing.' },
+      { title:'Milestone timeline', thesis:'Each Level is a milestone with a selected checkpoint dossier rather than a wall of equal lesson cards.', tradeoff:'Makes the arc memorable; long Level titles need more horizontal room.' },
+      { title:'Thread dossier', thesis:'The Thread reads like one editorial record with a section index, folio rules, and evidence-led entries.', tradeoff:'Calmest reading experience; slower for high-frequency maintenance.' },
+      { title:'Focus tunnel', thesis:'One decision fills the canvas, followed by a quiet position map and a bounded queue of what comes next.', tradeoff:'Maximum focus; deliberately hides most comparison until requested.' },
+      { title:'Compact ledger', thesis:'A dense operational table supports scanning all 71 lessons while a persistent inspector restores meaning.', tradeoff:'Highest information density; least narrative of the ten.' },
+      { title:'Overview map', thesis:'A small Level map or ownership map establishes the whole, then a detail sheet explains the selected node.', tradeoff:'Best whole-to-part orientation; map cells need disciplined labels to avoid dashboard noise.' }
+    ];
+    const SECTIONS = ['overview','curriculum','practice','materials'];
+    const state = { variant:1, section:'overview', level:0, lesson:0, materialType:'all', materialOwner:'all', query:'', lessonQuery:'', materialIndex:0 };
+
+    function h(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#039;');
+    }
+    function levelLabel(level) { return 'Level ' + level.n + ' — ' + level.title; }
+    function levelSources(level) { return level.lessons.reduce(function(sum,lesson){ return sum + Number(lesson.sources || 0); },0); }
+    function lessonCount() { return THREAD.levels.reduce(function(sum,level){ return sum + level.lessons.length; },0); }
+    function selectedLevel() { return THREAD.levels[state.level] || THREAD.levels[0]; }
+    function selectedLesson() {
+      var level = selectedLevel();
+      return level.lessons[state.lesson] || level.lessons[0];
+    }
+    function readiness(level,lesson) {
+      if (level.n > 0) return { text:'Needs material', cls:'needs' };
+      if (lesson.status === 'in_progress') return { text:'Continue', cls:'current' };
+      return { text:'Ready', cls:'ready' };
+    }
+    function allLessons() {
+      var rows = [];
+      THREAD.levels.forEach(function(level){
+        level.lessons.forEach(function(lesson,index){
+          rows.push({ level:level, lesson:lesson, index:index });
+        });
+      });
+      return rows;
+    }
+    function curriculumSearch() {
+      return '<label class="search-field curriculum-search"><span>Search all 71 lesson titles and objectives</span><input type="search" data-lesson-search value="' + h(state.lessonQuery) + '" placeholder="Search curriculum"></label>';
+    }
+    function curriculumSearchResults() {
+      var query = state.lessonQuery.trim().toLowerCase();
+      if (!query) return '';
+      var matches = allLessons().filter(function(row){
+        return (row.lesson.title + ' ' + row.lesson.description + ' ' + row.lesson.why_learn + ' ' + row.level.title + ' ' + row.level.objective).toLowerCase().indexOf(query) !== -1;
+      });
+      if (!matches.length) return '<div class="surface"><div class="empty"><strong>No lessons match “' + h(state.lessonQuery) + '”.</strong><br>Try a broader concept or clear the search.</div></div>';
+      return '<div class="surface"><div class="lesson-list">' + matches.map(function(row){
+        var ready = readiness(row.level,row.lesson);
+        return '<div class="lesson-row"><span class="lesson-index">' + h((row.level.n + 1) + '.' + (row.index + 1)) + '</span><button type="button" data-level="' + row.level.n + '" data-lesson="' + row.index + '">' + h(row.lesson.title) + '<br><span class="meta">' + h(levelLabel(row.level)) + '</span></button>' + statePill(ready.text,ready.cls) + '</div>';
+      }).join('') + '</div>';
+    }
+    function projects() {
+      var rows = THREAD.levels.map(function(level){
+        return { level:level, title:level.project.title, description:level.project.description, status:level.project.status, final:false };
+      });
+      rows.push({
+        level:null,
+        title:'Final mastery project',
+        description:'Analyze and improve one real system using the methods learned throughout this course.',
+        status:'deferred',
+        final:true
+      });
+      return rows;
+    }
+    function materials() {
+      var rows = [];
+      THREAD.materials.notes.forEach(function(title){ rows.push({ title:title, type:'Note', owner:'Thread', ownerKind:'Thread', status:'active', rtl:false }); });
+      FILES.forEach(function(file){ rows.push({ title:file.title, type:file.type, owner:file.owner, ownerKind:file.ownerKind, status:'stored', rtl:false }); });
+      rows.push({ title:'يعني إيه BATNA؟', type:'Recall card', owner:'Thread', ownerKind:'Thread', status:'due 25 Aug', rtl:true });
+      RECALL_DRAFTS.forEach(function(draft){ rows.push({ title:draft.title, type:'Recall draft', owner:'Thread', ownerKind:'Thread', status:draft.status, source:draft.source, rtl:true }); });
+      return rows;
+    }
+    function filteredMaterials() {
+      var query = state.query.trim().toLowerCase();
+      return materials().filter(function(item){
+        var typeMatch = state.materialType === 'all' || item.type.toLowerCase().indexOf(state.materialType) !== -1;
+        var ownerMatch = state.materialOwner === 'all' || item.ownerKind.toLowerCase() === state.materialOwner;
+        var queryMatch = !query || (item.title + ' ' + item.type + ' ' + item.owner + ' ' + (item.source || '')).toLowerCase().indexOf(query) !== -1;
+        return typeMatch && ownerMatch && queryMatch;
+      });
+    }
+    function statePill(text,cls) {
+      return '<span class="state ' + h(cls || '') + '">' + h(text) + '</span>';
+    }
+    function action(label,primary,message) {
+      return '<button type="button" class="action' + (primary ? ' primary' : '') + '" data-demo-action="' + h(message || label) + '">' + h(label) + '</button>';
+    }
+    function viewHead(title,description,count) {
+      return '<header class="view-head"><div><h2>' + h(title) + '</h2><p>' + h(description) + '</p></div><span class="count-line">' + h(count) + '</span></header>';
+    }
+    function levelButton(level,compact) {
+      return '<button type="button" class="level-select' + (compact ? ' compact' : '') + '" data-level="' + level.n + '" aria-current="' + String(state.level === level.n) + '"><span class="level-line"><strong>' + h(compact ? ('L' + level.n + ' ' + level.title) : levelLabel(level)) + '</strong><span class="mono">' + level.lessons.length + '</span></span></button>';
+    }
+    function lessonRows(level,limit) {
+      var lessons = typeof limit === 'number' ? level.lessons.slice(0,limit) : level.lessons;
+      if (!lessons.length) return '<div class="empty">No lessons match this view.</div>';
+      return '<div class="lesson-list">' + lessons.map(function(lesson,index){
+        var ready = readiness(level,lesson);
+        var current = state.level === level.n && state.lesson === index;
+        return '<div class="lesson-row' + (lesson.status === 'in_progress' ? ' current' : '') + '"><span class="lesson-index">' + h((level.n + 1) + '.' + (index + 1)) + '</span><button type="button" data-level="' + level.n + '" data-lesson="' + index + '" aria-current="' + String(current) + '">' + h(lesson.title) + '</button><span class="lesson-source">' + h(lesson.sources ? (lesson.sources + ' sources') : ready.text) + '</span></div>';
+      }).join('') + '</div>';
+    }
+    function materialRows(rows) {
+      if (!rows.length) return '<div class="empty"><strong>No matching materials.</strong><br>Change the type, owner, or search query.</div>';
+      return '<div class="material-list">' + rows.map(function(item){
+        var statusClass = item.status === 'approved' ? 'approved' : (item.status === 'rejected' ? 'rejected' : '');
+        return '<article class="material-row"><div><h3' + (item.rtl ? ' dir="rtl" lang="ar"' : '') + '>' + h(item.title) + '</h3><p>' + h(item.source ? ('Source: ' + item.source) : item.type) + '</p><div class="material-owner"><span class="owner-pill">' + h(item.ownerKind) + '</span><span class="owner-pill">' + h(item.owner) + '</span></div></div>' + statePill(item.status,statusClass) + '</article>';
+      }).join('') + '</div>';
+    }
+    function projectRows(rows,compact) {
+      return '<div class="project-list">' + rows.map(function(item){
+        var label = item.final ? 'Terminal workspace' : (item.level.n === 0 ? 'Current Level' : 'Future preview');
+        return '<article class="project-row"><div><h3>' + h(item.title) + '</h3><p>' + h(item.description) + '</p></div><div class="level-actions">' + statePill(label,item.level && item.level.n === 0 ? 'current' : 'needs') + (compact ? '' : action(item.level && item.level.n === 0 ? 'Open project' : 'Preview',false,item.title)) + '</div></article>';
+      }).join('') + '</div>';
+    }
+    function materialFilters() {
+      var types = [['all','All 16'],['note','Notes 3'],['file','Files 3'],['recall','Recall 10']];
+      var owners = [['all','All owners'],['thread','Thread 13'],['level','Level 2'],['lesson','Lesson 1']];
+      return '<div class="control-row material-controls"><label class="search-field"><span>Search title, type, source, or owner</span><input type="search" data-material-search value="' + h(state.query) + '" placeholder="Search materials"></label><div><div class="meta">Type</div><div class="filters">' + types.map(function(item){ return '<button type="button" class="filter" data-material-type="' + item[0] + '" aria-pressed="' + String(state.materialType === item[0]) + '">' + item[1] + '</button>'; }).join('') + '</div></div><div><div class="meta">Owner</div><div class="filters">' + owners.map(function(item){ return '<button type="button" class="filter" data-material-owner="' + item[0] + '" aria-pressed="' + String(state.materialOwner === item[0]) + '">' + item[1] + '</button>'; }).join('') + '</div></div></div>';
+    }
+    function statsLine() {
+      return '<div class="stats-line"><div class="stat-cell"><strong>71</strong><span>lessons · 0 complete</span></div><div class="stat-cell"><strong>36</strong><span>attached sources</span></div><div class="stat-cell"><strong>3</strong><span>notes</span></div><div class="stat-cell"><strong>3</strong><span>stored files, all scopes</span></div><div class="stat-cell"><strong>10</strong><span>recall items</span></div></div>';
+    }
+    function renderRail() {
+      return '<nav class="root-rail" aria-label="Learning Compass"><a class="root-brand" href="#" data-demo-action="Learning Compass home"><strong>Learning<br>Compass</strong><small>Evidence ledger</small></a><div class="root-nav"><a href="#" data-demo-action="Library">Library</a><a href="#" aria-current="page" data-demo-action="Learn">Learn</a><a href="#" data-demo-action="Review">Review</a><a href="#" data-demo-action="Map">Map</a><a href="#" data-demo-action="Search">Search</a></div><div class="rail-context">Single-user learning operating system</div></nav>';
+    }
+    function renderMobileDock() {
+      return '<nav class="mobile-dock" aria-label="Learning Compass mobile"><a href="#" data-demo-action="Library">Library</a><a href="#" aria-current="page" data-demo-action="Learn">Learn</a><a href="#" data-demo-action="Review">Review</a><a href="#" data-demo-action="Map">Map</a><a href="#" data-demo-action="Search">Search</a></nav>';
+    }
+    function renderSpine() {
+      return '<div class="workspace-topline"><div class="breadcrumbs"><a href="#" data-demo-action="Threads index">Learn</a><span>/</span><a href="#" data-demo-action="Threads index">Threads</a><span>/</span><span>' + h(THREAD.thread.title) + '</span></div><span class="branch-pill">Systems Thinking · Round 1</span></div><header class="thread-spine"><div><h1 class="thread-title">' + h(THREAD.thread.title) + '</h1><p class="guiding-question">' + h(THREAD.thread.question) + '</p></div><div class="spine-progress"><div class="spine-position"><strong>0 / 71</strong><span>lessons complete</span></div><div class="progress-track" aria-label="1 lesson in progress out of 71"><i></i></div><div class="current-level"><strong>Level 0 — Orientation</strong><span>Lesson 1 of 7 is in progress · 36 sources ready</span></div><button type="button" class="spine-action" data-demo-action="Continue What systems thinking is"><span><small>Continue exact next lesson</small><strong>What systems thinking is</strong></span><b>Open</b></button><p class="spine-rule">Only direct lesson completion advances Levels. Projects and materials remain optional evidence.</p></div></header>';
+    }
+    function renderSectionNav() {
+      var labels = { overview:'Overview', curriculum:'Curriculum', practice:'Practice', materials:'Materials' };
+      return '<nav class="thread-sections" aria-label="Thread sections">' + SECTIONS.map(function(section){ return '<button type="button" data-section="' + section + '" aria-current="' + (state.section === section ? 'page' : 'false') + '">' + labels[section] + '</button>'; }).join('') + '</nav>';
+    }
+
+    function renderVerticalJourney() {
+      var level = selectedLevel();
+      if (state.section === 'overview') {
+        var journey = THREAD.levels.map(function(item){
+          return '<div class="journey-level' + (item.n === 0 ? ' current' : '') + '"><div class="journey-head"><button type="button" data-level="' + item.n + '">' + h(levelLabel(item)) + '</button>' + statePill(item.n === 0 ? 'In progress' : 'Preview',item.n === 0 ? 'current' : 'needs') + '</div><div class="meta">' + h(item.objective) + ' · ' + item.lessons.length + ' lessons</div></div>';
+        }).join('');
+        return viewHead('Overview','One exact next action, followed by a compact journey rather than a second full curriculum.','7 Levels · 71 lessons') +
+          '<div class="surface vertical-focus"><section><h3>What systems thinking is</h3><p class="copy">' + h(THREAD.levels[0].lessons[0].why_learn) + '</p><div class="control-row">' + action('Continue lesson',true,'Continue What systems thinking is') + statePill('6 sources ready','ready') + '</div></section><aside><h3 class="section-title">Current position</h3><p class="copy">Level 0 — Orientation<br>Lesson 1 of 7 in progress</p>' + statsLine() + '</aside></div><div class="journey" aria-label="Seven Level journey">' + journey + '</div>';
+      }
+      if (state.section === 'curriculum') {
+        if (state.lessonQuery.trim()) return viewHead('Curriculum','Search results flatten the hierarchy and remove empty Level shells.',allLessons().length + ' indexed') + curriculumSearch() + curriculumSearchResults();
+        var levels = THREAD.levels.map(function(item){
+          var expanded = item.n === state.level;
+          return '<section class="journey-level' + (item.n === 0 ? ' current' : '') + '"><div class="journey-head"><button type="button" data-level="' + item.n + '" aria-expanded="' + String(expanded) + '">' + h(levelLabel(item)) + '</button>' + statePill(item.n === 0 ? 'Ready now' : 'Needs material',item.n === 0 ? 'ready' : 'needs') + '</div><div class="meta">' + h(item.objective) + ' · ' + item.lessons.length + ' lessons · ' + levelSources(item) + ' sources</div>' + (expanded ? '<div class="journey-body">' + lessonRows(item) + '<div class="journey-project"><strong>Level project:</strong> ' + h(item.project.description) + '</div></div>' : '') + '</section>';
+        }).join('');
+        return viewHead('Curriculum','Level summaries first. Only one Level expands, so 64 locked lessons never become equal “Start” cards.','0 / 71 complete') + curriculumSearch() + '<div class="journey">' + levels + '</div>';
+      }
+      if (state.section === 'practice') {
+        var projectJourney = THREAD.levels.map(function(item){
+          var expanded = item.n === state.level;
+          return '<section class="journey-level' + (item.n === 0 ? ' current' : '') + '"><div class="journey-head"><button type="button" data-level="' + item.n + '" aria-expanded="' + String(expanded) + '">' + h(levelLabel(item)) + '</button>' + statePill(item.n === 0 ? 'In progress' : 'Future preview',item.n === 0 ? 'current' : 'needs') + '</div>' + (expanded ? '<div class="journey-body">' + projectRows([{ level:item,title:item.project.title,description:item.project.description,status:item.project.status,final:false }],false) + '</div>' : '<div class="meta">' + h(item.project.description) + '</div>') + '</section>';
+        }).join('');
+        return viewHead('Practice','Current Level evidence leads. Future projects remain previews; the capstone closes the journey.','8 projects') + '<p class="non-gating">Practice is optional evidence. It never unlocks a Level or changes progression.</p><div class="journey">' + projectJourney + '<section class="journey-level"><div class="journey-head"><button type="button" data-demo-action="Preview Final mastery project">Final mastery project</button>' + statePill('Terminal workspace','needs') + '</div><div class="meta">Analyze and improve one real system using the methods learned throughout this course.</div></section></div>';
+      }
+      var rows = filteredMaterials();
+      var ownerGroups = [
+        { key:'Thread', title:'Thread-owned material', count:13 },
+        { key:'Level', title:'Level 0 — Orientation', count:2 },
+        { key:'Lesson', title:'What systems thinking is', count:1 }
+      ];
+      var ownerJourney = ownerGroups.map(function(group){
+        var items = rows.filter(function(item){ return item.ownerKind === group.key; });
+        return '<section class="journey-level' + (group.key === 'Thread' ? ' current' : '') + '"><div class="journey-head"><strong>' + h(group.title) + '</strong><span class="state">' + group.count + ' total</span></div>' + (items.length ? '<div class="journey-body">' + materialRows(items) + '</div>' : '<div class="meta">No matches in this owner scope.</div>') + '</section>';
+      }).join('');
+      return viewHead('Materials','One faceted inventory follows ownership from Thread to Level to Lesson. Counts include every scope.','16 items · 3 owners') + materialFilters() + statsLine() + '<div class="journey">' + ownerJourney + '</div>';
+    }
+
+    function renderSplitWorkbench() {
+      var level = selectedLevel();
+      var nav = '<div class="level-list">' + THREAD.levels.map(function(item){ return levelButton(item,true); }).join('') + '</div>';
+      var canvas = '';
+      var inspector = '';
+      if (state.section === 'overview') {
+        canvas = '<h3 class="section-title">What systems thinking is</h3><p class="copy">' + h(THREAD.levels[0].lessons[0].why_learn) + '</p><div class="control-row">' + action('Continue lesson',true,'Continue What systems thinking is') + statePill('6 sources ready','ready') + '</div><div class="surface space-top-md">' + lessonRows(THREAD.levels[0],3) + '</div>';
+        inspector = '<div class="inspector-block"><strong>Exact position</strong><span class="meta">Level 0 · Lesson 1 of 7</span></div><div class="inspector-block"><strong>Thread progress</strong><span class="meta">0 of 71 complete</span></div><div class="inspector-block"><strong>Advancement rule</strong><span class="meta">Direct lesson completion only</span></div>';
+      } else if (state.section === 'curriculum') {
+        if (state.lessonQuery.trim()) return viewHead('Curriculum workbench','Search becomes one flattened result canvas with no empty Level groups.','71 indexed') + curriculumSearch() + curriculumSearchResults();
+        canvas = '<h3 class="section-title">' + h(levelLabel(level)) + '</h3><p class="copy">' + h(level.objective) + '</p><div class="surface">' + lessonRows(level) + '</div>';
+        inspector = '<div class="inspector-block"><strong>Readiness</strong>' + statePill(level.n === 0 ? 'Ready now' : 'Needs material',level.n === 0 ? 'ready' : 'needs') + '</div><div class="inspector-block"><strong>Level inventory</strong><span class="meta">' + level.lessons.length + ' lessons · ' + levelSources(level) + ' sources</span></div><div class="inspector-block"><strong>Project objective</strong><span class="meta">' + h(level.project.description) + '</span></div>';
+      } else if (state.section === 'practice') {
+        canvas = '<h3 class="section-title">' + h(level.project.title) + '</h3><p class="copy">' + h(level.project.description) + '</p><p class="copy"><strong>Suggested context:</strong> ' + h(level.project.suggested_context) + '</p><div class="control-row">' + action(level.n === 0 ? 'Open current project' : 'Preview project',level.n === 0,level.project.title) + '</div>';
+        inspector = '<div class="inspector-block"><strong>Status</strong>' + statePill(level.n === 0 ? 'In progress' : 'Future preview',level.n === 0 ? 'current' : 'needs') + '</div><div class="inspector-block"><strong>Progression</strong><span class="meta">Project evidence never gates lessons or Levels.</span></div><div class="inspector-block"><strong>Terminal workspace</strong><span class="meta">Final mastery project follows Level 6.</span></div>';
+      } else {
+        var filtered = filteredMaterials();
+        nav = '<div class="meta space-bottom-xs">Owner scopes</div><div class="level-list"><button type="button" class="level-select" data-material-owner="all" aria-current="' + String(state.materialOwner === 'all') + '">All owners <span class="mono">16</span></button><button type="button" class="level-select" data-material-owner="thread" aria-current="' + String(state.materialOwner === 'thread') + '">Thread <span class="mono">13</span></button><button type="button" class="level-select" data-material-owner="level" aria-current="' + String(state.materialOwner === 'level') + '">Level <span class="mono">2</span></button><button type="button" class="level-select" data-material-owner="lesson" aria-current="' + String(state.materialOwner === 'lesson') + '">Lesson <span class="mono">1</span></button></div>';
+        canvas = materialFilters() + '<div class="surface">' + materialRows(filtered) + '</div>';
+        inspector = '<div class="inspector-block"><strong>Truthful all-scope count</strong><span class="meta">3 notes · 3 files · 1 card · 9 drafts</span></div><div class="inspector-block"><strong>Current result</strong><span class="meta">' + filtered.length + ' matching items</span></div><div class="inspector-block"><strong>Create</strong>' + action('Add in selected context',false,'Open contextual material creation') + '</div>';
+      }
+      return viewHead(state.section === 'overview' ? 'Overview workbench' : (state.section.charAt(0).toUpperCase() + state.section.slice(1) + ' workbench'),'Navigation, active work, and context stay visible as separate responsibilities.',state.section === 'materials' ? '16 items' : 'Level ' + state.level) + (state.section === 'curriculum' ? curriculumSearch() : '') + (state.section === 'practice' ? '<p class="non-gating">Practice is optional evidence. Direct lesson completion remains the only progression signal.</p>' : '') + '<div class="workbench"><aside class="workbench-nav"><h3>' + (state.section === 'materials' ? 'Ownership' : 'Levels') + '</h3>' + nav + '</aside><section class="workbench-canvas">' + canvas + '</section><aside class="workbench-inspector"><h3>Inspector</h3>' + inspector + '</aside></div>';
+    }
+
+    function renderLevelAccordion() {
+      var level = selectedLevel();
+      if (state.section === 'materials') {
+        var filtered = filteredMaterials();
+        var groups = [
+          { key:'thread', label:'Thread-owned', count:13, kind:'Thread' },
+          { key:'level', label:'Level-owned', count:2, kind:'Level' },
+          { key:'lesson', label:'Lesson-owned', count:1, kind:'Lesson' }
+        ];
+        var accordions = groups.map(function(group){
+          var expanded = state.materialOwner === 'all' || state.materialOwner === group.key;
+          var items = filtered.filter(function(item){ return item.ownerKind === group.kind; });
+          return '<section class="accordion-item"><button type="button" class="accordion-trigger" data-material-owner="' + group.key + '" aria-expanded="' + String(expanded) + '"><span class="level-number">' + group.count + '</span><strong>' + group.label + '</strong>' + statePill(group.count + ' items','') + '</button>' + (expanded ? '<div class="accordion-panel"><div class="surface">' + materialRows(items) + '</div></div>' : '') + '</section>';
+        }).join('');
+        return viewHead('Materials by owner','Three ownership disclosures replace a disconnected Thread/Level/Lesson appendix.','16 items') + materialFilters() + '<div class="accordion">' + accordions + '</div>';
+      }
+      if (state.section === 'curriculum' && state.lessonQuery.trim()) return viewHead('Curriculum accordion','Search flattens matching lessons instead of leaving seven empty accordions.','71 indexed') + curriculumSearch() + curriculumSearchResults();
+      var items = THREAD.levels.map(function(item){
+        var expanded = item.n === state.level;
+        var panel = '';
+        if (state.section === 'overview') {
+          panel = '<p class="copy">' + h(item.objective) + '</p><div class="stats-line"><div class="stat-cell"><strong>' + item.lessons.length + '</strong><span>lessons</span></div><div class="stat-cell"><strong>' + levelSources(item) + '</strong><span>sources</span></div></div>';
+        } else if (state.section === 'curriculum') {
+          panel = '<p class="copy">' + h(item.objective) + '</p><div class="surface">' + lessonRows(item) + '</div>';
+        } else {
+          panel = projectRows([{ level:item,title:item.project.title,description:item.project.description,status:item.project.status,final:false }],false);
+        }
+        return '<section class="accordion-item"><button type="button" class="accordion-trigger" data-level="' + item.n + '" aria-expanded="' + String(expanded) + '"><span class="level-number">L' + item.n + '</span><strong>' + h(item.title) + '</strong>' + statePill(item.n === 0 ? 'Current' : 'Preview',item.n === 0 ? 'current' : 'needs') + '</button>' + (expanded ? '<div class="accordion-panel">' + panel + '</div>' : '') + '</section>';
+      }).join('');
+      var lead = '';
+      if (state.section === 'overview') lead = '<div class="surface vertical-focus"><section><h3>What systems thinking is</h3><p class="copy">The exact next lesson stays above the Level index.</p>' + action('Continue lesson',true,'Continue What systems thinking is') + '</section><aside>' + statsLine() + '</aside></div>';
+      if (state.section === 'practice') lead = '<p class="non-gating">Projects document application. They do not gate or advance the seven-Level curriculum.</p>';
+      var title = state.section === 'overview' ? 'Overview by Level' : (state.section === 'curriculum' ? 'Curriculum accordion' : 'Practice by Level');
+      var description = state.section === 'overview' ? 'One next action plus seven bounded Level summaries.' : (state.section === 'curriculum' ? 'One Level disclosure at a time keeps 71 lessons usable.' : 'The current project expands first; future evidence stays collapsed.');
+      return viewHead(title,description,state.section === 'practice' ? '8 projects' : '7 Levels') + (state.section === 'curriculum' ? curriculumSearch() : '') + lead + '<div class="accordion">' + items + (state.section === 'practice' ? '<section class="accordion-item"><button type="button" class="accordion-trigger" data-demo-action="Preview Final mastery project" aria-expanded="false"><span class="level-number">F</span><strong>Final mastery project</strong>' + statePill('Terminal','needs') + '</button></section>' : '') + '</div>';
+    }
+
+    function renderOutlineDetail() {
+      var level = selectedLevel();
+      var tree = '';
+      var detail = '';
+      if (state.section === 'overview') {
+        tree = '<h3>Thread outline</h3>' + THREAD.levels.map(function(item){ return '<div class="outline-branch">' + levelButton(item,true) + '</div>'; }).join('');
+        detail = '<h3 class="section-title">What systems thinking is</h3><p class="dossier-lede">' + h(THREAD.levels[0].lessons[0].why_learn) + '</p>' + action('Continue lesson',true,'Continue What systems thinking is') + '<div class="space-top-lg">' + statsLine() + '</div>';
+      } else if (state.section === 'curriculum') {
+        if (state.lessonQuery.trim()) return viewHead('Curriculum outline','Search becomes a direct flat index; selecting a result restores its Level and detail.','71 indexed') + curriculumSearch() + curriculumSearchResults();
+        tree = '<h3>Curriculum tree</h3>' + THREAD.levels.map(function(item){
+          return '<div class="outline-branch">' + levelButton(item,true) + (item.n === state.level ? '<div class="outline-lessons">' + item.lessons.map(function(lesson,index){ return '<button type="button" data-level="' + item.n + '" data-lesson="' + index + '" aria-current="' + String(state.lesson === index) + '">' + h(lesson.title) + '</button>'; }).join('') + '</div>' : '') + '</div>';
+        }).join('');
+        var lesson = selectedLesson();
+        var ready = readiness(level,lesson);
+        detail = '<h3 class="section-title">' + h(lesson.title) + '</h3><p class="dossier-lede">' + h(lesson.why_learn) + '</p><p class="copy">' + h(lesson.description) + '</p><div class="detail-facts"><div><strong>' + h(levelLabel(level)) + '</strong><br><span class="meta">Canonical owner</span></div><div><strong>' + lesson.sources + '</strong><br><span class="meta">sources attached</span></div><div>' + statePill(ready.text,ready.cls) + '<br><span class="meta">readiness</span></div></div><div class="focus-actions">' + action(ready.text,level.n === 0,ready.text + ' ' + lesson.title) + '</div>';
+      } else if (state.section === 'practice') {
+        tree = '<h3>Project outline</h3>' + THREAD.levels.map(function(item){ return '<div class="outline-branch">' + levelButton(item,true) + '</div>'; }).join('') + '<button type="button" class="level-select" data-demo-action="Preview Final mastery project"><span class="level-line"><strong>Final mastery</strong><span>1</span></span></button>';
+        detail = '<h3 class="section-title">' + h(level.project.title) + '</h3><p class="dossier-lede">' + h(level.project.description) + '</p><p class="copy"><strong>Suggested context:</strong> ' + h(level.project.suggested_context) + '</p><p class="non-gating">Optional evidence only. It cannot unlock or advance this Level.</p><div class="focus-actions">' + action(level.n === 0 ? 'Open current project' : 'Preview project',level.n === 0,level.project.title) + '</div>';
+      } else {
+        var rows = filteredMaterials();
+        tree = '<h3>Material index</h3><button type="button" class="level-select" data-material-owner="all" aria-current="' + String(state.materialOwner === 'all') + '">All owners · 16</button><button type="button" class="level-select" data-material-owner="thread" aria-current="' + String(state.materialOwner === 'thread') + '">Thread · 13</button><button type="button" class="level-select" data-material-owner="level" aria-current="' + String(state.materialOwner === 'level') + '">Level · 2</button><button type="button" class="level-select" data-material-owner="lesson" aria-current="' + String(state.materialOwner === 'lesson') + '">Lesson · 1</button>';
+        detail = materialFilters() + '<div class="surface">' + materialRows(rows) + '</div>';
+      }
+      var title = state.section === 'overview' ? 'Overview outline' : (state.section === 'curriculum' ? 'Curriculum outline' : (state.section === 'practice' ? 'Practice outline' : 'Materials outline'));
+      return viewHead(title,'The tree answers “where am I?” while one detail sheet answers “what matters here?”',state.section === 'materials' ? '3 ownership scopes' : '7 Levels') + (state.section === 'curriculum' ? curriculumSearch() : '') + (state.section === 'practice' ? '<p class="non-gating">Practice remains outside the advancement path.</p>' : '') + '<div class="outline-detail"><aside class="outline-tree">' + tree + '</aside><article class="detail-sheet">' + detail + '</article></div>';
+    }
+
+    function renderCommandStack() {
+      var level = selectedLevel();
+      var future = THREAD.levels.slice(1).map(function(item){
+        return '<button type="button" data-level="' + item.n + '"><span class="mono">L' + item.n + '</span><strong>' + h(item.title) + '</strong><br><span class="meta">' + item.lessons.length + ' lessons · Needs material</span></button>';
+      }).join('');
+      if (state.section === 'overview') {
+        return viewHead('Thread command stack','The daily answer is ordered as Now, This Level, then Later.','1 lesson in progress') +
+          '<div class="command-stack"><section class="command-band now"><header><h3>Now</h3><span class="meta">Exact next action</span></header><div class="command-body"><h3 class="section-title">What systems thinking is</h3><p class="copy">' + h(THREAD.levels[0].lessons[0].why_learn) + '</p>' + action('Continue lesson',true,'Continue What systems thinking is') + '</div></section><section class="command-band"><header><h3>This Level</h3><span class="meta">Orientation · 0 of 7</span></header><div class="command-body">' + lessonRows(THREAD.levels[0],4) + '</div></section><section class="command-band"><header><h3>Later</h3><span class="meta">Six previews</span></header><div class="command-body"><div class="future-strip">' + future + '</div></div></section></div>';
+      }
+      if (state.section === 'curriculum') {
+        if (state.lessonQuery.trim()) return viewHead('Curriculum command stack','Search removes command bands and returns one direct result list.','71 indexed') + curriculumSearch() + curriculumSearchResults();
+        return viewHead('Curriculum command stack','Current work leads; the selected Level follows; later Levels stay compressed.','0 / 71 complete') + curriculumSearch() +
+          '<div class="command-stack"><section class="command-band now"><header><h3>Now</h3><span class="meta">Direct progression</span></header><div class="command-body">' + lessonRows(THREAD.levels[0],1) + '</div></section><section class="command-band"><header><h3>' + h(level.n === 0 ? 'This Level' : 'Selected preview') + '</h3><span class="meta">' + h(levelLabel(level)) + '</span></header><div class="command-body"><p class="copy">' + h(level.objective) + '</p><div class="surface">' + lessonRows(level) + '</div></div></section><section class="command-band"><header><h3>Later</h3><span class="meta">Needs material</span></header><div class="command-body"><div class="future-strip">' + future + '</div></div></section></div>';
+      }
+      if (state.section === 'practice') {
+        var futureProjects = THREAD.levels.slice(1).map(function(item){ return '<button type="button" data-level="' + item.n + '"><span class="mono">L' + item.n + '</span><strong>' + h(item.title) + '</strong><br><span class="meta">Project preview</span></button>'; }).join('');
+        return viewHead('Practice command stack','Current application leads; future projects and final synthesis stay explicitly optional.','8 projects') + '<p class="non-gating">No project can unlock a lesson or Level.</p><div class="command-stack"><section class="command-band now"><header><h3>Now</h3><span class="meta">Current Level project</span></header><div class="command-body"><h3 class="section-title">' + h(THREAD.levels[0].project.title) + '</h3><p class="copy">' + h(THREAD.levels[0].project.description) + '</p>' + action('Open current project',true,THREAD.levels[0].project.title) + '</div></section>' + (level.n > 0 ? '<section class="command-band"><header><h3>Selected preview</h3><span class="meta">' + h(levelLabel(level)) + '</span></header><div class="command-body"><p class="copy">' + h(level.project.description) + '</p>' + action('Preview project',false,level.project.title) + '</div></section>' : '') + '<section class="command-band"><header><h3>Later</h3><span class="meta">Future evidence</span></header><div class="command-body"><div class="future-strip">' + futureProjects + '</div></div></section><section class="command-band"><header><h3>Finish</h3><span class="meta">Terminal workspace</span></header><div class="command-body"><h3 class="section-title">Final mastery project</h3><p class="copy">Analyze and improve one real system using the methods learned throughout this course.</p></div></section></div>';
+      }
+      return viewHead('Materials command stack','Browsing and creation are separate actions, with ownership and type facets kept in the browse band.','16 items') + '<div class="command-stack"><section class="command-band now"><header><h3>Browse</h3><span class="meta">All-scope inventory</span></header><div class="command-body">' + materialFilters() + '<div class="surface">' + materialRows(filteredMaterials()) + '</div></div></section><section class="command-band"><header><h3>Create</h3><span class="meta">Choose context first</span></header><div class="command-body"><p class="copy">New material inherits the selected Thread, Level, or Lesson owner. Creation never changes progression.</p><div class="control-row">' + action('Add Thread note',false,'Create Thread note') + action('Add to current Level',false,'Create Level material') + action('Add to current lesson',false,'Create Lesson material') + '</div></div></section></div>';
+    }
+
+    function timelineAxis() {
+      return '<div class="timeline-axis" aria-label="Seven curriculum milestones">' + THREAD.levels.map(function(item){
+        return '<button type="button" class="milestone" data-level="' + item.n + '" aria-current="' + String(state.level === item.n) + '"><span class="mono">Level ' + item.n + '</span><strong>' + h(item.title) + '</strong><span class="meta">' + item.lessons.length + ' lessons · ' + (item.n === 0 ? 'In progress' : 'Needs material') + '</span></button>';
+      }).join('') + '</div>';
+    }
+    function positionMap() {
+      return '<div class="position-map" aria-label="Level position map">' + THREAD.levels.map(function(item){ return '<button type="button" data-level="' + item.n + '" aria-current="' + String(state.level === item.n) + '" aria-label="' + h(levelLabel(item)) + '">L' + item.n + '</button>'; }).join('') + '</div>';
+    }
+    function renderMilestoneTimeline() {
+      var level = selectedLevel();
+      if (state.section === 'curriculum' && state.lessonQuery.trim()) return viewHead('Curriculum timeline','Search converts milestones into one flattened result list.','71 indexed') + curriculumSearch() + curriculumSearchResults();
+      if (state.section === 'materials') {
+        var rows = filteredMaterials();
+        var owners = [
+          { key:'thread', title:'Thread', count:13, note:'3 notes · 1 card · 9 drafts' },
+          { key:'level', title:'Level 0', count:2, note:'PDF and HTML companion' },
+          { key:'lesson', title:'Lesson 1', count:1, note:'HTML companion' }
+        ];
+        var ownerAxis = '<div class="timeline-axis owner-axis">' + owners.map(function(owner){ return '<button type="button" class="milestone" data-material-owner="' + owner.key + '" aria-current="' + String(state.materialOwner === owner.key || state.materialOwner === 'all' && owner.key === 'thread') + '"><span class="mono">' + owner.count + ' items</span><strong>' + owner.title + '</strong><span class="meta">' + owner.note + '</span></button>'; }).join('') + '</div>';
+        return viewHead('Material ownership timeline','Material follows the Thread → Level → Lesson ownership path without hiding direct Thread evidence.','16 items') + materialFilters() + ownerAxis + '<div class="milestone-detail"><section class="milestone-main"><h3 class="section-title">Indexed material</h3><div class="surface">' + materialRows(rows) + '</div></section><aside class="milestone-side"><h3 class="section-title">All-scope truth</h3><p class="copy">Direct Thread files: 0<br>Level files: 2<br>Lesson files: 1</p><p class="meta">The total remains 3, even though the old Overview reported only the direct Thread count.</p></aside></div>';
+      }
+      var main = '';
+      var side = '';
+      if (state.section === 'overview') {
+        var overviewLesson = level.n === 0 ? level.lessons[0] : level.lessons[0];
+        main = '<h3 class="section-title">' + h(levelLabel(level)) + '</h3><p class="copy">' + h(level.objective) + '</p>' + (level.n === 0 ? '<div class="checkpoint-list"><div class="checkpoint"><span class="lesson-index">1.1</span><strong>What systems thinking is</strong>' + statePill('Continue','current') + '</div></div><div class="focus-actions">' + action('Continue lesson',true,'Continue What systems thinking is') + '</div>' : '<p class="non-gating">Preview only. This Level has no attached lesson material yet.</p>');
+        side = '<h3 class="section-title">Milestone record</h3><p class="copy">' + level.lessons.length + ' lessons<br>' + levelSources(level) + ' attached sources<br>' + (level.n === 0 ? 'Current' : 'Locked preview') + '</p>';
+      } else if (state.section === 'curriculum') {
+        main = '<h3 class="section-title">' + h(levelLabel(level)) + '</h3><p class="copy">' + h(level.objective) + '</p><div class="checkpoint-list">' + level.lessons.map(function(lesson,index){ var ready = readiness(level,lesson); return '<div class="checkpoint"><span class="lesson-index">' + h((level.n + 1) + '.' + (index + 1)) + '</span><button type="button" class="quiet-action bare-action" data-level="' + level.n + '" data-lesson="' + index + '">' + h(lesson.title) + '</button>' + statePill(ready.text,ready.cls) + '</div>'; }).join('') + '</div>';
+        side = '<h3 class="section-title">Level project</h3><p class="copy">' + h(level.project.description) + '</p><p class="meta">Project work remains optional and non-gating.</p>';
+      } else {
+        main = '<h3 class="section-title">' + h(level.project.title) + '</h3><p class="copy">' + h(level.project.description) + '</p><div class="focus-actions">' + action(level.n === 0 ? 'Open project' : 'Preview project',level.n === 0,level.project.title) + '</div>';
+        side = '<h3 class="section-title">Evidence status</h3>' + statePill(level.n === 0 ? 'In progress' : 'Future preview',level.n === 0 ? 'current' : 'needs') + '<p class="meta">Final mastery is a terminal workspace after Level 6, not a progression gate.</p>';
+      }
+      return viewHead(state.section === 'overview' ? 'Milestone overview' : (state.section === 'curriculum' ? 'Curriculum timeline' : 'Practice timeline'),'The seven-Level arc stays visible while one milestone owns the detail.','Level ' + level.n + ' selected') + (state.section === 'curriculum' ? curriculumSearch() : '') + (state.section === 'practice' ? '<p class="non-gating">Projects capture evidence; only direct lesson completion advances progression.</p>' : '') + timelineAxis() + '<div class="milestone-detail"><section class="milestone-main">' + main + '</section><aside class="milestone-side">' + side + '</aside></div>';
+    }
+
+    function dossierIndex() {
+      if (state.section === 'materials') {
+        return '<button type="button" data-material-owner="all" aria-current="' + String(state.materialOwner === 'all') + '">All material · 16</button><button type="button" data-material-owner="thread" aria-current="' + String(state.materialOwner === 'thread') + '">Thread · 13</button><button type="button" data-material-owner="level" aria-current="' + String(state.materialOwner === 'level') + '">Level · 2</button><button type="button" data-material-owner="lesson" aria-current="' + String(state.materialOwner === 'lesson') + '">Lesson · 1</button>';
+      }
+      return THREAD.levels.map(function(item){ return '<button type="button" data-level="' + item.n + '" aria-current="' + String(state.level === item.n) + '">' + h(levelLabel(item)) + '</button>'; }).join('') + (state.section === 'practice' ? '<button type="button" data-demo-action="Preview Final mastery project">Final mastery</button>' : '');
+    }
+    function renderThreadDossier() {
+      var level = selectedLevel();
+      var page = '';
+      if (state.section === 'overview') {
+        page = '<h3>What systems thinking is</h3><p class="dossier-lede">' + h(THREAD.levels[0].lessons[0].why_learn) + '</p><div class="focus-actions">' + action('Continue lesson',true,'Continue What systems thinking is') + statePill('6 sources ready','ready') + '</div><div class="folio-rule"><span>Curriculum record</span><span>0 / 71 complete</span></div>' + THREAD.levels.map(function(item){ return '<article class="folio-entry"><span class="lesson-index">L' + item.n + '</span><div><strong>' + h(item.title) + '</strong><div class="meta">' + h(item.objective) + '</div></div>' + statePill(item.n === 0 ? 'Current' : 'Preview',item.n === 0 ? 'current' : 'needs') + '</article>'; }).join('');
+      } else if (state.section === 'curriculum') {
+        if (state.lessonQuery.trim()) return viewHead('Curriculum dossier','Search becomes a direct folio of matching entries.','71 indexed') + curriculumSearch() + curriculumSearchResults();
+        page = '<h3>' + h(levelLabel(level)) + '</h3><p class="dossier-lede">' + h(level.objective) + '</p><div class="folio-rule"><span>Lesson register</span><span>' + level.lessons.length + ' lessons · ' + levelSources(level) + ' sources</span></div>' + level.lessons.map(function(lesson,index){ var ready = readiness(level,lesson); return '<article class="folio-entry"><span class="lesson-index">' + h((level.n + 1) + '.' + (index + 1)) + '</span><button type="button" class="quiet-action bare-action" data-level="' + level.n + '" data-lesson="' + index + '">' + h(lesson.title) + '</button>' + statePill(ready.text,ready.cls) + '</article>'; }).join('') + '<div class="folio-rule"><span>Level project</span><span>Optional evidence</span></div><p class="copy">' + h(level.project.description) + '</p>';
+      } else if (state.section === 'practice') {
+        page = '<h3>' + h(level.project.title) + '</h3><p class="dossier-lede">' + h(level.project.description) + '</p><p class="copy"><strong>Context:</strong> ' + h(level.project.suggested_context) + '</p><p class="non-gating">This dossier records application. It cannot advance the curriculum.</p><div class="folio-rule"><span>Project register</span><span>8 total</span></div>' + projects().map(function(item,index){ return '<article class="folio-entry"><span class="lesson-index">' + (item.final ? 'F' : 'L' + item.level.n) + '</span><div><strong>' + h(item.title) + '</strong><div class="meta">' + h(item.description) + '</div></div>' + statePill(index === 0 ? 'Current' : (item.final ? 'Terminal' : 'Preview'),index === 0 ? 'current' : 'needs') + '</article>'; }).join('');
+      } else {
+        page = '<h3>Material register</h3><p class="dossier-lede">A single owner-aware record of notes, stored files, a live recall card, and recall drafts.</p>' + materialFilters() + '<div class="folio-rule"><span>Current result</span><span>' + filteredMaterials().length + ' / 16</span></div>' + materialRows(filteredMaterials());
+      }
+      return viewHead(state.section === 'overview' ? 'Thread dossier' : (state.section.charAt(0).toUpperCase() + state.section.slice(1) + ' dossier'),'An editorial record replaces dashboard composition without losing operational actions.',state.section === 'materials' ? '16 evidence items' : 'Folio view') + (state.section === 'curriculum' ? curriculumSearch() : '') + (state.section === 'practice' ? '<p class="non-gating">Practice remains an additive record, never a gate.</p>' : '') + '<div class="dossier"><nav class="dossier-index" aria-label="Dossier index">' + dossierIndex() + '</nav><article class="dossier-page">' + page + '</article></div>';
+    }
+
+    function renderFocusTunnel() {
+      var level = selectedLevel();
+      var focus = '';
+      if (state.section === 'overview') {
+        focus = '<div class="focus-position"><span>Level 0 · Lesson 1 of 7</span><span>0 / 71 complete</span></div><article class="focus-card"><h3>What systems thinking is</h3><p class="copy">' + h(THREAD.levels[0].lessons[0].why_learn) + '</p><div class="focus-actions">' + action('Continue lesson',true,'Continue What systems thinking is') + statePill('6 sources ready','ready') + '</div></article>' + positionMap() + '<div class="focus-queue"><div class="folio-rule"><span>Next in Orientation</span><span>2 previews</span></div>' + lessonRows(THREAD.levels[0].lessons ? THREAD.levels[0] : level,3) + '</div>';
+      } else if (state.section === 'curriculum') {
+        if (state.lessonQuery.trim()) return viewHead('Curriculum focus','Search temporarily replaces the tunnel with direct matching results.','71 indexed') + curriculumSearch() + curriculumSearchResults();
+        var lesson = selectedLesson();
+        var ready = readiness(level,lesson);
+        focus = '<div class="focus-position"><span>' + h(levelLabel(level)) + '</span><span>Lesson ' + (state.lesson + 1) + ' of ' + level.lessons.length + '</span></div><article class="focus-card"><h3>' + h(lesson.title) + '</h3><p class="copy">' + h(lesson.why_learn) + '</p><p class="copy">' + h(lesson.description) + '</p><div class="focus-actions">' + action(ready.text,level.n === 0,ready.text + ' ' + lesson.title) + statePill(lesson.sources ? lesson.sources + ' sources' : 'No material yet',lesson.sources ? 'ready' : 'needs') + '</div></article>' + positionMap() + '<div class="focus-queue"><div class="folio-rule"><span>' + h(level.title) + ' lesson index</span><span>' + level.lessons.length + ' titles</span></div>' + lessonRows(level) + '</div>';
+      } else if (state.section === 'practice') {
+        focus = '<div class="focus-position"><span>' + h(levelLabel(level)) + '</span><span>Project ' + (level.n + 1) + ' of 8</span></div><article class="focus-card"><h3>' + h(level.project.title) + '</h3><p class="copy">' + h(level.project.description) + '</p><p class="non-gating">Optional evidence. Direct lesson completion is the only advancement event.</p><div class="focus-actions">' + action(level.n === 0 ? 'Open project' : 'Preview project',level.n === 0,level.project.title) + '</div></article>' + positionMap() + '<div class="focus-queue"><div class="folio-rule"><span>Terminal workspace</span><span>After Level 6</span></div><article class="project-row"><div><h3>Final mastery project</h3><p>Analyze and improve one real system using the methods learned throughout this course.</p></div>' + statePill('Deferred','needs') + '</article></div>';
+      } else {
+        var rows = filteredMaterials();
+        var item = rows[state.materialIndex] || rows[0];
+        if (!item) {
+          focus = materialFilters() + '<div class="empty"><strong>No matching materials.</strong><br>Change the filters to restore the focus queue.</div>';
+        } else {
+          focus = materialFilters() + '<div class="focus-position space-top-md"><span>' + h(item.ownerKind + ' · ' + item.owner) + '</span><span>' + (state.materialIndex + 1) + ' of ' + rows.length + '</span></div><article class="focus-card"><h3' + (item.rtl ? ' dir="rtl" lang="ar"' : '') + '>' + h(item.title) + '</h3><p class="copy">' + h(item.source ? ('Source: ' + item.source) : item.type) + '</p><div class="focus-actions">' + statePill(item.status,item.status === 'approved' ? 'approved' : item.status === 'rejected' ? 'rejected' : '') + action('Open material',false,item.title) + '</div></article><div class="focus-queue"><div class="folio-rule"><span>Matching index</span><span>' + rows.length + ' items</span></div>' + rows.map(function(row,index){ return '<button type="button" class="lesson-select" data-material-index="' + index + '" aria-current="' + String(index === state.materialIndex) + '"><span class="level-line"><strong' + (row.rtl ? ' dir="rtl" lang="ar"' : '') + '>' + h(row.title) + '</strong><span class="meta">' + h(row.ownerKind) + '</span></span></button>'; }).join('') + '</div>';
+        }
+      }
+      return viewHead(state.section === 'overview' ? 'Overview focus' : (state.section === 'curriculum' ? 'Curriculum focus' : (state.section === 'practice' ? 'Practice focus' : 'Material focus')),'One decision dominates; maps and queues stay quiet until position recovery is needed.',state.section === 'materials' ? filteredMaterials().length + ' matching' : 'Focus mode') + (state.section === 'curriculum' ? curriculumSearch() : '') + (state.section === 'practice' ? '<p class="non-gating">Practice never changes the Level state.</p>' : '') + '<div class="focus-tunnel">' + focus + '</div>';
+    }
+
+    function renderCompactLedger() {
+      var level = selectedLevel();
+      var lesson = selectedLesson();
+      var table = '';
+      var inspector = '';
+      if (state.section === 'overview') {
+        table = '<table class="ledger-table"><caption>Seven-Level progress ledger</caption><thead><tr><th>Level</th><th>Lessons</th><th>Sources</th><th>State</th></tr></thead><tbody>' + THREAD.levels.map(function(item){ return '<tr class="' + (state.level === item.n ? 'selected' : '') + '"><td><button type="button" class="ledger-link" data-level="' + item.n + '">' + h(levelLabel(item)) + '</button></td><td>' + item.lessons.length + '</td><td>' + levelSources(item) + '</td><td>' + (item.n === 0 ? 'In progress' : 'Needs material') + '</td></tr>'; }).join('') + '</tbody></table>';
+        inspector = '<h3>What systems thinking is</h3><p class="copy">' + h(THREAD.levels[0].lessons[0].why_learn) + '</p>' + statePill('Continue','current') + '<div class="focus-actions">' + action('Continue lesson',true,'Continue What systems thinking is') + '</div>';
+      } else if (state.section === 'curriculum') {
+        var rows = allLessons();
+        if (state.lessonQuery.trim()) {
+          var q = state.lessonQuery.trim().toLowerCase();
+          rows = rows.filter(function(row){ return (row.lesson.title + ' ' + row.level.title + ' ' + row.lesson.why_learn).toLowerCase().indexOf(q) !== -1; });
+        }
+        table = '<table class="ledger-table"><caption>' + rows.length + ' of 71 lesson rows</caption><thead><tr><th>Position</th><th>Lesson</th><th>Level</th><th>Sources</th><th>Readiness</th></tr></thead><tbody>' + rows.map(function(row){ var ready = readiness(row.level,row.lesson); var selected = state.level === row.level.n && state.lesson === row.index; return '<tr class="' + (selected ? 'selected' : '') + '"><td class="mono">' + (row.level.n + 1) + '.' + (row.index + 1) + '</td><td><button type="button" class="ledger-link" data-level="' + row.level.n + '" data-lesson="' + row.index + '">' + h(row.lesson.title) + '</button></td><td>' + h(row.level.title) + '</td><td>' + row.lesson.sources + '</td><td>' + h(ready.text) + '</td></tr>'; }).join('') + '</tbody></table>';
+        var ready = readiness(level,lesson);
+        inspector = '<h3>' + h(lesson.title) + '</h3><p class="copy">' + h(lesson.why_learn) + '</p><p class="meta">' + h(levelLabel(level)) + ' · ' + lesson.sources + ' sources</p>' + statePill(ready.text,ready.cls);
+      } else if (state.section === 'practice') {
+        table = '<table class="ledger-table"><caption>Eight optional projects</caption><thead><tr><th>Owner</th><th>Project</th><th>Status</th></tr></thead><tbody>' + projects().map(function(item,index){ return '<tr class="' + (!item.final && state.level === item.level.n ? 'selected' : '') + '"><td>' + (item.final ? 'Thread' : 'Level ' + item.level.n) + '</td><td><button type="button" class="ledger-link"' + (item.final ? ' data-demo-action="Preview Final mastery project"' : ' data-level="' + item.level.n + '"') + '>' + h(item.title) + '</button></td><td>' + (index === 0 ? 'In progress' : item.final ? 'Deferred' : 'Preview') + '</td></tr>'; }).join('') + '</tbody></table>';
+        inspector = '<h3>' + h(level.project.title) + '</h3><p class="copy">' + h(level.project.description) + '</p><p class="non-gating">Optional evidence; no progression effect.</p>' + action(level.n === 0 ? 'Open project' : 'Preview project',level.n === 0,level.project.title);
+      } else {
+        var material = filteredMaterials();
+        var selected = material[state.materialIndex] || material[0];
+        table = '<table class="ledger-table"><caption>' + material.length + ' of 16 material rows</caption><thead><tr><th>Title</th><th>Type</th><th>Owner</th><th>Status</th></tr></thead><tbody>' + material.map(function(item,index){ return '<tr class="' + (index === state.materialIndex ? 'selected' : '') + '"><td><button type="button" class="ledger-link" data-material-index="' + index + '"' + (item.rtl ? ' dir="rtl" lang="ar"' : '') + '>' + h(item.title) + '</button></td><td>' + h(item.type) + '</td><td>' + h(item.ownerKind) + '</td><td>' + h(item.status) + '</td></tr>'; }).join('') + '</tbody></table>';
+        inspector = selected ? '<h3' + (selected.rtl ? ' dir="rtl" lang="ar"' : '') + '>' + h(selected.title) + '</h3><p class="copy">' + h(selected.type) + '</p><p class="meta">' + h(selected.ownerKind + ' · ' + selected.owner) + '</p>' + statePill(selected.status,selected.status === 'approved' ? 'approved' : selected.status === 'rejected' ? 'rejected' : '') : '<div class="empty">No matching material.</div>';
+      }
+      return viewHead(state.section === 'overview' ? 'Progress ledger' : (state.section === 'curriculum' ? 'Curriculum ledger' : (state.section === 'practice' ? 'Practice ledger' : 'Material ledger')),'Dense rows handle the full inventory; the inspector keeps the selected row intelligible.',state.section === 'curriculum' ? '71 lesson rows' : state.section === 'materials' ? '16 material rows' : 'Operational view') + (state.section === 'curriculum' ? curriculumSearch() : '') + (state.section === 'materials' ? materialFilters() : '') + (state.section === 'practice' ? '<p class="non-gating">The ledger reports project state but cannot change Level progression.</p>' : '') + '<div class="ledger-layout"><div class="ledger-table-wrap">' + table + '</div><aside class="ledger-inspector">' + inspector + '</aside></div>';
+    }
+
+    function levelMapNodes() {
+      return THREAD.levels.map(function(item){ return '<button type="button" class="map-node" data-level="' + item.n + '" aria-current="' + String(state.level === item.n) + '"><span class="mono">Level ' + item.n + '</span><strong>' + h(item.title) + '</strong><span class="meta">' + item.lessons.length + ' lessons · ' + (item.n === 0 ? 'Current' : 'Needs material') + '</span></button>'; }).join('');
+    }
+    function renderOverviewMap() {
+      var level = selectedLevel();
+      if (state.section === 'curriculum' && state.lessonQuery.trim()) return viewHead('Curriculum map','Search resolves the map into one flat set of matching destinations.','71 indexed') + curriculumSearch() + curriculumSearchResults();
+      if (state.section === 'overview') {
+        return viewHead('Thread overview map','Seven Level nodes establish the whole; the selected detail sheet keeps one action dominant.','7 Levels · 71 lessons') + '<div class="thread-map">' + levelMapNodes() + '<button type="button" class="map-node final" data-demo-action="Preview Final mastery project"><span class="mono">Terminal workspace</span><strong>Final mastery project</strong><span class="meta">Optional synthesis after Level 6</span></button></div><div class="map-detail"><section class="map-detail-main"><h3 class="section-title">' + h(level.n === 0 ? 'What systems thinking is' : levelLabel(level)) + '</h3><p class="copy">' + h(level.n === 0 ? THREAD.levels[0].lessons[0].why_learn : level.objective) + '</p>' + (level.n === 0 ? action('Continue lesson',true,'Continue What systems thinking is') : statePill('Preview · Needs material','needs')) + '</section><aside class="map-detail-side">' + statsLine() + '</aside></div>';
+      }
+      if (state.section === 'curriculum') {
+        return viewHead('Curriculum map','Level nodes show the whole curriculum; only the selected node opens its lesson sheet.','0 / 71 complete') + curriculumSearch() + '<div class="thread-map">' + levelMapNodes() + '</div><div class="map-detail"><section class="map-detail-main"><h3 class="section-title">' + h(levelLabel(level)) + '</h3><p class="copy">' + h(level.objective) + '</p><div class="surface">' + lessonRows(level) + '</div></section><aside class="map-detail-side"><h3 class="section-title">Node facts</h3><p class="copy">' + level.lessons.length + ' lessons<br>' + levelSources(level) + ' sources<br>' + (level.n === 0 ? 'Ready now' : 'Needs material') + '</p><p class="meta">Future lesson actions remain Preview, never Start.</p></aside></div>';
+      }
+      if (state.section === 'practice') {
+        var nodes = projects().map(function(item,index){ return '<button type="button" class="map-node' + (item.final ? ' final' : '') + '"' + (item.final ? ' data-demo-action="Preview Final mastery project"' : ' data-level="' + item.level.n + '"') + ' aria-current="' + String(!item.final && state.level === item.level.n) + '"><span class="mono">' + (item.final ? 'Terminal' : 'Level ' + item.level.n) + '</span><strong>' + h(item.final ? 'Final mastery' : item.level.title) + '</strong><span class="meta">' + (index === 0 ? 'In progress' : item.final ? 'Deferred' : 'Future preview') + '</span></button>'; }).join('');
+        return viewHead('Practice map','Every Level project is visible as optional evidence; one selected objective owns the detail sheet.','8 projects') + '<p class="non-gating">Map position does not equal progression. Only completed lessons advance Levels.</p><div class="thread-map">' + nodes + '</div><div class="map-detail"><section class="map-detail-main"><h3 class="section-title">' + h(level.project.title) + '</h3><p class="copy">' + h(level.project.description) + '</p>' + action(level.n === 0 ? 'Open current project' : 'Preview project',level.n === 0,level.project.title) + '</section><aside class="map-detail-side">' + statePill(level.n === 0 ? 'In progress' : 'Preview',level.n === 0 ? 'current' : 'needs') + '<p class="meta">Suggested context:<br>' + h(level.project.suggested_context) + '</p></aside></div>';
+      }
+      var rows = filteredMaterials();
+      var ownerNodes = [
+        { key:'thread', title:'Thread', count:13, detail:'3 notes · 1 card · 9 drafts' },
+        { key:'level', title:'Level 0', count:2, detail:'2 stored companion files' },
+        { key:'lesson', title:'Lesson 1', count:1, detail:'1 stored companion file' }
+      ].map(function(owner){ return '<button type="button" class="map-node" data-material-owner="' + owner.key + '" aria-current="' + String(state.materialOwner === owner.key) + '"><span class="mono">' + owner.count + ' items</span><strong>' + owner.title + '</strong><span class="meta">' + owner.detail + '</span></button>'; }).join('');
+      return viewHead('Material ownership map','Three owner nodes expose where evidence lives; filters refine the selected detail sheet.','16 items') + materialFilters() + '<div class="thread-map">' + ownerNodes + '<button type="button" class="map-node final" data-material-owner="all" aria-current="' + String(state.materialOwner === 'all') + '"><span class="mono">All scopes</span><strong>Complete index</strong><span class="meta">3 notes · 3 files · 10 recall items</span></button></div><div class="map-detail"><section class="map-detail-main"><div class="surface">' + materialRows(rows) + '</div></section><aside class="map-detail-side"><h3 class="section-title">Selected result</h3><p class="copy">' + rows.length + ' matching items</p><p class="meta">Creation inherits the active owner context and never changes progression.</p>' + action('Add in context',false,'Open contextual material creation') + '</aside></div>';
+    }
+
+    function renderDirectionContent() {
+      var renderers = [
+        renderVerticalJourney,
+        renderSplitWorkbench,
+        renderLevelAccordion,
+        renderOutlineDetail,
+        renderCommandStack,
+        renderMilestoneTimeline,
+        renderThreadDossier,
+        renderFocusTunnel,
+        renderCompactLedger,
+        renderOverviewMap
+      ];
+      return renderers[state.variant - 1]();
+    }
+    function renderBrief() {
+      var direction = DIRECTIONS[state.variant - 1];
+      document.getElementById('directionBrief').innerHTML = '<div><h2>' + state.variant + '. ' + h(direction.title) + '</h2><p>' + h(direction.thesis) + '</p></div><div class="brief-tradeoff"><strong>Structural tradeoff</strong><span>' + h(direction.tradeoff) + '</span></div>';
+    }
+    function renderPrototype() {
+      document.querySelectorAll('[data-choose-variant]').forEach(function(button){
+        var selected = Number(button.getAttribute('data-choose-variant')) === state.variant;
+        button.setAttribute('aria-selected',String(selected));
+        button.tabIndex = selected ? 0 : -1;
+      });
+      renderBrief();
+      var prototype = document.getElementById('thread-prototype');
+      prototype.setAttribute('aria-label',DIRECTIONS[state.variant - 1].title + ' whole Thread prototype');
+      prototype.innerHTML = '<div class="compass-shell direction-' + state.variant + '">' + renderRail() + '<div class="workspace">' + renderSpine() + renderSectionNav() + '<section class="view-area" aria-label="' + h(DIRECTIONS[state.variant - 1].title + ' ' + state.section) + '">' + renderDirectionContent() + '</section></div>' + renderMobileDock() + '</div>';
+      var hash = 'v=' + state.variant + '&section=' + state.section + '&level=' + state.level + '&lesson=' + state.lesson;
+      history.replaceState(null,'','#' + hash);
+    }
+    var statusTimer = 0;
+    function showStatus(message) {
+      var status = document.getElementById('demoStatus');
+      status.textContent = 'Prototype action: ' + message;
+      status.classList.add('show');
+      window.clearTimeout(statusTimer);
+      statusTimer = window.setTimeout(function(){ status.classList.remove('show'); },2600);
+    }
+    function chooseLevel(levelNumber,lessonNumber) {
+      state.level = Math.max(0,Math.min(THREAD.levels.length - 1,Number(levelNumber)));
+      state.lesson = typeof lessonNumber === 'number' ? Math.max(0,Math.min(THREAD.levels[state.level].lessons.length - 1,lessonNumber)) : 0;
+      renderPrototype();
+    }
+    document.addEventListener('click',function(event){
+      var variantButton = event.target.closest('[data-choose-variant]');
+      if (variantButton) {
+        state.variant = Number(variantButton.getAttribute('data-choose-variant'));
+        renderPrototype();
+        return;
+      }
+      var sectionButton = event.target.closest('[data-section]');
+      if (sectionButton) {
+        state.section = sectionButton.getAttribute('data-section');
+        state.materialIndex = 0;
+        renderPrototype();
+        return;
+      }
+      var lessonButton = event.target.closest('[data-lesson]');
+      if (lessonButton) {
+        chooseLevel(Number(lessonButton.getAttribute('data-level')),Number(lessonButton.getAttribute('data-lesson')));
+        return;
+      }
+      var levelButtonTarget = event.target.closest('[data-level]');
+      if (levelButtonTarget) {
+        chooseLevel(Number(levelButtonTarget.getAttribute('data-level')));
+        return;
+      }
+      var typeButton = event.target.closest('[data-material-type]');
+      if (typeButton) {
+        state.materialType = typeButton.getAttribute('data-material-type');
+        state.materialIndex = 0;
+        renderPrototype();
+        return;
+      }
+      var ownerButton = event.target.closest('[data-material-owner]');
+      if (ownerButton) {
+        var owner = ownerButton.getAttribute('data-material-owner');
+        state.materialOwner = owner;
+        state.materialIndex = 0;
+        renderPrototype();
+        return;
+      }
+      var materialButton = event.target.closest('[data-material-index]');
+      if (materialButton) {
+        state.materialIndex = Number(materialButton.getAttribute('data-material-index'));
+        renderPrototype();
+        return;
+      }
+      var demoAction = event.target.closest('[data-demo-action]');
+      if (demoAction) {
+        event.preventDefault();
+        showStatus(demoAction.getAttribute('data-demo-action'));
+      }
+    });
+    document.addEventListener('change',function(event){
+      if (event.target.matches('[data-material-search]')) {
+        state.query = event.target.value;
+        state.materialIndex = 0;
+        renderPrototype();
+      }
+      if (event.target.matches('[data-lesson-search]')) {
+        state.lessonQuery = event.target.value;
+        renderPrototype();
+      }
+    });
+    document.querySelector('.direction-tabs').addEventListener('keydown',function(event){
+      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft' && event.key !== 'Home' && event.key !== 'End') return;
+      event.preventDefault();
+      if (event.key === 'Home') state.variant = 1;
+      else if (event.key === 'End') state.variant = 10;
+      else state.variant = ((state.variant - 1 + (event.key === 'ArrowRight' ? 1 : -1) + 10) % 10) + 1;
+      renderPrototype();
+      document.querySelector('[data-choose-variant="' + state.variant + '"]').focus();
+    });
+    function loadInitialState() {
+      var params = new URLSearchParams(location.hash.replace(/^#/,''));
+      var variant = Number(params.get('v'));
+      var level = Number(params.get('level'));
+      var lesson = Number(params.get('lesson'));
+      var section = params.get('section');
+      if (variant >= 1 && variant <= 10) state.variant = variant;
+      if (SECTIONS.indexOf(section) !== -1) state.section = section;
+      if (level >= 0 && level < THREAD.levels.length) state.level = level;
+      if (lesson >= 0 && lesson < THREAD.levels[state.level].lessons.length) state.lesson = lesson;
+    }
+    loadInitialState();
+    renderPrototype();
+
+  </script>
+</body>
+</html>

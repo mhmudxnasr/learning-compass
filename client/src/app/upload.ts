@@ -1,3 +1,5 @@
+import { authFetch } from '../auth'
+
 export type UploadArtifactResult = {
   ok?: boolean
   id: string
@@ -32,7 +34,7 @@ export async function uploadArtifact(file: File, metadata?: Record<string, unkno
 
   let response: Response
   try {
-    response = await fetch('/artifacts', { method: 'POST', body: form })
+    response = await authFetch('/artifacts', { method: 'POST', body: form })
   } catch (error) {
     throw error instanceof Error ? error : new Error('The file upload could not start.')
   }

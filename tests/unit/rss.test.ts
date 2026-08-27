@@ -49,5 +49,22 @@ test('rejects local and private feed URLs', () => {
 
 test('RSS import explicitly requests captured state rather than Queue state', () => {
   const source = readFileSync(new URL('../../src/services/rss.ts', import.meta.url), 'utf8')
-  assert.match(source, /createCapture\(DB, \{ source: entry\.url, title: entry\.title, initialLearningState: 'captured' \}\)/)
+  const captureApi = readFileSync(new URL('../../src/api/capture.ts', import.meta.url), 'utf8')
+  assert.match(source, /initialLearningState: 'captured'/)
+  assert.match(source, /id: feed\.branch_id/)
+  assert.match(source, /source: `rss_feed:\$\{feed\.id\}`/)
+  assert.match(source, /branch_conflicts: branchConflicts/)
+  assert.match(source, /Feed subscription default branch is no longer valid/)
+  assert.match(source, /INSERT INTO feed_sources \(id,feed_url,title,site_url,etag,last_modified,branch_id/)
+  assert.match(captureApi, /branch_conflicts: results\.reduce/)
+})
+
+test('RSS schema backfills current feeds and enforces a reviewed branch default', () => {
+  const migration = readFileSync(new URL('../../migrations/0063_data_trust_and_feed_branches.sql', import.meta.url), 'utf8')
+  assert.match(migration, /ALTER TABLE feed_sources ADD COLUMN branch_id/)
+  assert.match(migration, /ON DELETE RESTRICT/)
+  assert.match(migration, /rss_feed_migration_0063/)
+  assert.match(migration, /feed_sources_branch_required_insert/)
+  assert.match(migration, /p\.type = 'category'/)
+  assert.match(migration, /feed source requires a verified non-pruned branch/)
 })

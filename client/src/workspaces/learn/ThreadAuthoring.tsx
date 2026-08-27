@@ -109,7 +109,7 @@ export function ThreadAuthoring({
               />
             </label>
             <button
-              class="button primary folio-primary"
+              class="button secondary"
               type="submit"
               disabled={working === 'stage' || !stageTitle.trim()}
             >

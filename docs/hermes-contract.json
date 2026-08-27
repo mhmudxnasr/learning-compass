@@ -1,14 +1,22 @@
 {
-  "version": 6,
+  "version": 8,
   "name": "learning-compass-hermes",
   "router": "learning-compass-operating-system",
   "self_evolution_owner": "learning-compass-self-evolution",
   "agent_control": {
-    "contract_version": "2026-08-24",
+    "contract_version": "2026-08-26",
     "protocol": "learning-compass-agent-http/2",
     "context": "canonical Queue, completed Threads, profile and branch state, plus explicit component health; recommendation gaps come from /compass/context",
     "tools": ["list_capabilities", "site_request"],
-    "mutations": "dry-run plus required idempotency, high-risk confirmation/precondition, canonical readback, and receipt"
+    "mutations": "dry-run plus required idempotency, high-risk confirmation/precondition, canonical readback, and receipt",
+    "turn_ledger": {
+      "owner": "learning-compass-site-operator/scripts/site_request.py",
+      "identity_env": "HERMES_TURN_ID",
+      "safe_get_attempts": 2,
+      "mutation_retry_default": 0,
+      "scope": "hashed 76-character coordination identity exposed only to fresh foreground commands with owner-only bounded local state",
+      "security_boundary": "coordination metadata only; never authentication or exactly-once proof"
+    }
   },
   "skill_graph": {
     "active": [
@@ -36,11 +44,10 @@
       {"name": "learning-compass-feedback-corrections", "path": "workflow/learning-compass-feedback-corrections", "role": "feedback_state_repair"},
       {"name": "learning-compass-foundation-curation", "path": "workflow/learning-compass-foundation-curation", "role": "foundation_branch_curation"},
       {"name": "learning-compass-job-backlog-operations", "path": "workflow/learning-compass-job-backlog-operations", "role": "job_backlog_operations"}
-      ,{"name": "learning-compass-bridge", "path": "workflow/learning-compass-bridge", "role": "mcp_interoperability"}
       ,{"name": "hermes-learning-compass", "path": "workflow/hermes-learning-compass", "role": "reference_index"}
       ,{"name": "epub-repair", "path": "workflow/epub-repair", "role": "epub_repair"}
     ],
-    "retired": ["taste-enhancer", "compass-queue-fill", "learning-compass-curator-policy", "master-editorial-synthesis", "learning-thread-curation"]
+    "retired": ["taste-enhancer", "compass-queue-fill", "learning-compass-curator-policy", "master-editorial-synthesis", "learning-thread-curation", "learning-compass-bridge"]
   },
   "canonical_sources": {
     "structured_state": "D1",
@@ -52,6 +59,46 @@
     "private_urls": "deny_by_default",
     "trusted_public_worker": "https://recommendations-worker.mhmudnasr30.workers.dev",
     "local_services": "require_explicit_operator_override"
+  },
+  "authentication": {
+    "learning_compass_api_token_required": false,
+    "browser_session_exchange": false,
+    "access": "open Worker reads and writes",
+    "dedicated_boundaries": ["telegram_webhook", "external_provider_secrets"],
+    "local_write_bypass": "explicit ALLOW_UNAUTHENTICATED_LOCAL_WRITES=true bypasses only the in-process write-rate limiter on exact loopback unsafe requests; forbidden in production"
+  },
+  "runtime_budgets": {
+    "prompt_contracts": {
+      "default_telegram": "docs/hermes-prompt-budget.json",
+      "compass_telegram": "docs/hermes-compass-prompt-budget.json"
+    },
+    "default_telegram": {
+      "max_system_prompt_bytes": 25602,
+      "max_tool_schema_bytes": 24098,
+      "max_fixed_payload_bytes": 49700,
+      "max_skills_index_bytes": 2698,
+      "exact_tools": 13
+    },
+    "compass_telegram": {
+      "max_system_prompt_bytes": 25831,
+      "max_tool_schema_bytes": 24115,
+      "max_fixed_payload_bytes": 49946,
+      "max_skills_index_bytes": 2698,
+      "exact_tools": 13
+    },
+    "memory_chars": {
+      "MEMORY.md": 2200,
+      "USER.md": 1375
+    },
+    "loaded_skill_bytes": {
+      "learning-compass-operating-system": 8093,
+      "learning-compass-site-operator": 13095,
+      "ordinary_router_plus_operator": 21087
+    },
+    "read_slo_ms": {
+      "filtered_capabilities_p95": 1000,
+      "briefing_p95": 1000
+    }
   },
   "policies": {
     "workflow": "conversation-driven",
@@ -73,7 +120,7 @@
       "deployment": "automatic_after_release_verification_with_observed_live_smoke",
       "never": ["unverified rules", "silent policy weakening", "destructive deletion", "external publication", "scheduled self-improvement", "background self-improvement"]
     },
-    "feedback": "preserve the exact reflection plus completion_state, reason_tags, expected, actual, effort, length_minutes, rating, and separate disposition; in_progress/not_now is neutral, stopped requires a reason, Compass exposure retains branch/round/lane/target context, every write returns a receipt, proposals or evidence-backed no_change follow profile_v2 policy, and feedback never recommends",
+    "feedback": "preserve the exact reflection plus completion_state, reason_tags, expected, actual, effort, length_minutes, rating, and separate disposition; in_progress/not_now is neutral, stopped requires a reason, Compass exposure retains branch/domain/lane/target context, every write returns a receipt, proposals or evidence-backed no_change follow profile_v2 policy, and feedback never recommends",
     "recommendation_objective": "learning_value_v2: available rating 25%, explicit disposition 25%, strongest downstream evidence 50%; administrative exclusion and not_now are non-utility",
     "profile_automation": "automatic at confidence >= 0.8 with direct user statement or two evidence items; explicit assertion supersession requires direct contradiction or confidence >= 0.95 with three evidence items; all changes reversible",
     "notebooklm": "explicit feedback grounding or explicit Studio request only",
@@ -81,12 +128,13 @@
     "visual_batches": "Visual Lite only: one canonical Arabic semantic HTML article plus A4 PDF printed from it; source acquisition is gated by a complete lite-visual-source-extraction/v1 receipt from extract_source.py; hash-verified cache, Readability/Playwright, YouTube captions/yt-dlp/Whisper, PyMuPDF/Tesseract, EPUB spine, Pandoc, and direct text are the owned adapters; Intent and Frontend Design reasoning; gapless checksum-bound source scopes; semantic HTML, source-specific CSS, native structures, and rare inline SVG only; no Visual Mind delegation, templates, presets, mind maps, raster/generated images, image agents, scripts, widgets, or mandatory pauses; exact checkpoint evidence, deterministic hash-bound validation, and atomic pair publication",
     "recommendations": "explicit request only; feedback never creates a recommendation",
     "capture": "every new source is a captured Library record with its validated branch persisted atomically; Queue is separate and explicit",
+    "personal_library": "typed books and media use canonical branch-verified records with editable personal state and append-only lineage; personal status never enters Queue or advances learning",
     "learning_progression": "Levels and Threads advance only through learner-confirmed direct lesson completion; projects, sources, notes, ratings, dispositions, recall, resurfacing, frontier states, and provider receipts never gate or advance progression",
     "resurfacing": "Daily resurfacing is a passive source-review loop with explicit star, reviewed, snooze, and dismiss controls; frequency decay and seven-day suppression never alter taste, mastery, Queue, or lesson state",
     "semantic_relationships": "Meaningful backlinks, cross-branch bridges, and contradiction review derive from anchored typed Learning Unit relations with canonical branch ownership; keyword overlap never creates a relationship",
     "note_distillation": "Progressive distillation is explicit and additive: checksum-bound claim highlights, append-only user synthesis revisions, and anchored Unit promotion never rewrite canonical note text",
     "contextual_delivery": "Device, time, energy, language, context, depth, and perspective signals are explicit or source-grounded advisory inputs; unknown is neutral and Queue order remains canonical",
-    "branch_round": "every captured, recommended, or queued item requires a verified non-pruned branch plus round and a visible branch pill on every rendering surface",
+    "branch_domain": "every captured, recommended, or queued item requires a verified non-pruned branch plus persisted super_category/domain and a visible branch pill on every rendering surface; synthetic rounds are retired",
     "ai_routing": {
       "basic_intro": "capture_only",
       "corporate_pr": "reject_or_capture_on_explicit_request",
@@ -147,6 +195,7 @@
     "GET /learning/core/contradictions": {"owner": "learning-compass-site-operator", "permission": "read"},
     "PATCH /learning/core/contradictions/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_reversible_contradiction_review"},
     "GET /notes/:id": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "DELETE /notes/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_irreversible_exact_note_deletion"},
     "POST /notes/:id/distillation/highlights": {"owner": "learning-compass-site-operator", "permission": "explicit_user_claim_highlight"},
     "POST /notes/:id/distillation/syntheses": {"owner": "learning-compass-site-operator", "permission": "explicit_user_synthesis_revision"},
     "POST /notes/:id/distillation/highlights/:highlightId/promote": {"owner": "learning-compass-site-operator", "permission": "explicit_anchored_unit_promotion"},
@@ -166,6 +215,14 @@
     "POST /brain/resurfacing/presentations": {"owner": "learning-compass-site-operator", "permission": "exact_rendered_source_observation"},
     "POST /brain/resurfacing/:eventId/action": {"owner": "learning-compass-site-operator", "permission": "explicit_resurfacing_action"},
     "GET /capture/queue": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "GET /capture/personal": {"owner": "learning-compass-site-operator", "permission": "read_personal_library"},
+    "GET /capture/personal/:id": {"owner": "learning-compass-site-operator", "permission": "read_exact_personal_record"},
+    "POST /capture/personal": {"owner": "learning-compass-site-operator", "permission": "explicit_branch_verified_personal_create"},
+    "PATCH /capture/personal/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_personal_edit_with_readback"},
+    "POST /assistant/interpret": {"owner": "learning-compass-site-operator", "permission": "explicit_personal_assistant_interpretation_no_write"},
+    "GET /hardcover": {"owner": "learning-compass-site-operator", "permission": "read_hardcover_mirror"},
+    "POST /hardcover/sync": {"owner": "learning-compass-site-operator", "permission": "explicit_hardcover_sync"},
+    "POST /hardcover/import": {"owner": "learning-compass-site-operator", "permission": "explicit_branch_verified_hardcover_import"},
     "GET /capture/:id/record": {"owner": "learning-compass-site-operator", "permission": "read"},
     "GET /annotations": {"owner": "learning-compass-site-operator", "permission": "read"},
     "POST /annotations": {"owner": "learning-compass-site-operator", "permission": "explicit_source_annotation"},
@@ -182,6 +239,7 @@
     "PUT /brain/profile/assertions/:key": {"owner": "learning-compass-site-operator", "permission": "explicit_profile_edit"},
     "POST /brain/profile/revisions/:id/revert": {"owner": "learning-compass-site-operator", "permission": "explicit_profile_undo"},
     "GET /compass/pick": {"owner": "taste-rec", "permission": "explicit_recommendation"},
+    "GET /compass/pick/:id": {"owner": "taste-rec", "permission": "exact_recommendation_decision_readback"},
     "POST /compass/picks": {"owner": "taste-rec", "permission": "explicit_recommendation"},
     "POST /compass/pick/:id/candidates": {"owner": "taste-rec", "permission": "post_abstention_candidate_expansion"},
     "POST /compass/evaluate": {"owner": "taste-rec", "permission": "shadow_dry_run"},
@@ -204,6 +262,7 @@
     "GET /agent/jobs/active": {"owner": "learning-compass-site-operator", "permission": "read"},
     "GET /agent/jobs/health": {"owner": "learning-compass-site-operator", "permission": "read"},
     "GET /agent/jobs/:id": {"owner": "learning-compass-site-operator", "permission": "read"},
+    "POST /agent/jobs/reconcile": {"owner": "recommendations-worker-ops", "permission": "explicit_conservative_job_reconciliation"},
     "POST /agent/jobs/:id/claim": {"owner": "focused_specialist", "permission": "exact_job_only"},
     "POST /agent/jobs/:id/heartbeat": {"owner": "focused_specialist", "permission": "claimed_live_lease_only"},
     "POST /agent/jobs/:id/checkpoint": {"owner": "focused_specialist", "permission": "claimed_linear_job_only"},

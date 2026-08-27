@@ -1,11 +1,13 @@
 import { Hono } from 'hono'
-import { Bindings, Recommendation, VALID_STATUS, VALID_RATINGS, isValidUrl, isNonEmptyStr, safeError, normalizeRating, deriveDedupKey, normalizeUrlForDedup } from '../lib'
+import { Bindings, Recommendation, VALID_STATUS, VALID_RATINGS, isValidUrl, isNonEmptyStr, safeError, safeErrorMessage, normalizeRating, deriveDedupKey, normalizeUrlForDedup } from '../lib'
 import { activateWaitingRun } from './discovery'
 import { normalizeQualityAssurance } from '../artifact-metadata'
 import { classifyRecommendationFeedback } from '../intelligence-v2'
 import { recordRecommendationSignal, syncRecommendationFeedbackSignals } from '../services/intelligence-v2'
 import { chapterMetadataFromArtifact, projectBook } from '../services/book-projection'
 import { scheduleResurfacing } from '../services/resurfacing'
+import { enrichRecommendationRows } from '../services/recommendation-enrichment'
+import { personalStateFromBookState } from '../services/personal-library'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -89,12 +91,7 @@ app.get('/list', async (c) => {
       DB.prepare(`SELECT recommendations.*,
         COALESCE(n.label, recommendations.branch) branch_label,
         COALESCE(n.status, 'love') branch_status,
-        (SELECT ns.id FROM notes ns WHERE ns.recommendation_id = recommendations.id ORDER BY ns.updated_at DESC LIMIT 1) note_id,
-        (SELECT ns.title FROM notes ns WHERE ns.recommendation_id = recommendations.id ORDER BY ns.updated_at DESC LIMIT 1) note_title,
-        (SELECT COUNT(*) FROM srs_cards sc WHERE sc.recommendation_id = recommendations.id) recall_count,
-        (SELECT COUNT(*) FROM srs_cards sc WHERE sc.recommendation_id = recommendations.id AND sc.due_at IS NOT NULL AND sc.due_at<=date('now')) due_count,
-        (SELECT a.id FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id') = recommendations.id AND COALESCE(json_extract(a.metadata_json,'$.scope'),'') != 'book' AND (a.media_type LIKE '%html%' OR a.filename LIKE '%.html') ORDER BY a.created_at DESC LIMIT 1) html_artifact_id,
-        (SELECT a.id FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id') = recommendations.id AND COALESCE(json_extract(a.metadata_json,'$.scope'),'') != 'book' AND (a.media_type LIKE '%pdf%' OR a.filename LIKE '%.pdf') ORDER BY a.created_at DESC LIMIT 1) pdf_artifact_id
+        n.super_category branch_domain
         FROM recommendations
         LEFT JOIN recommendation_meta m ON m.recommendation_id = recommendations.id
         LEFT JOIN tree_nodes n ON n.id = m.branch_id${whereClause} ORDER BY recommendations.created_at DESC LIMIT ? OFFSET ?`)
@@ -103,7 +100,8 @@ app.get('/list', async (c) => {
         .bind(...bindings).first<{ c: number }>()
     ])
     c.header('Content-Range', `items ${offset}-${offset + (rows.results?.length || 0)}/${countRow?.c || 0}`)
-    const items = (rows.results || []).map((row: any) => {
+    const enriched = await enrichRecommendationRows(DB, rows.results || [], true)
+    const items = enriched.map((row: any) => {
       const branchLabel = row.branch_label || row.branch
       const { round: _legacyRound, round_label: _legacyRoundLabel, ...item } = row
       return {
@@ -113,11 +111,12 @@ app.get('/list', async (c) => {
           id: row.branch_id || branchLabel,
           label: branchLabel,
           status: row.branch_status || 'love',
+          super_category: row.branch_domain || null,
         } : null,
         note: row.note_id ? { id: row.note_id, title: row.note_title || 'Field note' } : null,
         recall: { count: Number(row.recall_count || 0), due: Number(row.due_count || 0) },
         companions: { html: row.html_artifact_id ? { id: row.html_artifact_id } : null, pdf: row.pdf_artifact_id ? { id: row.pdf_artifact_id } : null },
-        note_id: undefined, note_title: undefined, recall_count: undefined, due_count: undefined, html_artifact_id: undefined, pdf_artifact_id: undefined,
+        note_id: undefined, note_title: undefined, recall_count: undefined, due_count: undefined, html_count: undefined, pdf_count: undefined, html_artifact_id: undefined, pdf_artifact_id: undefined,
       }
     })
     return c.json({ recommendations: items, total: countRow?.c || 0, limit, offset })
@@ -131,7 +130,7 @@ app.get('/books', async (c) => {
   const allowed = new Set(['active', 'consumed', 'rejected'])
   if (status && !allowed.has(status)) return c.json({ error: 'invalid status' }, 400)
   const query = `SELECT r.*,m.learning_state,m.priority_rank,m.branch_id,m.source_metadata_json,
-    n.id verified_branch_id,n.label verified_branch_label,n.status verified_branch_status,
+    n.id verified_branch_id,n.label verified_branch_label,n.status verified_branch_status,n.super_category verified_branch_domain,
     (SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND t.status NOT IN ('verified','abandoned') ORDER BY CASE t.status WHEN 'active' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 1) thread_id
     FROM recommendations r
     LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
@@ -249,6 +248,7 @@ app.get('/books', async (c) => {
         id: branchId,
         label: branchLabel,
         status: verified ? book.verified_branch_status : null,
+        super_category: verified ? book.verified_branch_domain || null : null,
         verified,
         linkable: verified,
       } : null
@@ -259,6 +259,7 @@ app.get('/books', async (c) => {
         verified_branch_id: undefined,
         verified_branch_label: undefined,
         verified_branch_status: undefined,
+        verified_branch_domain: undefined,
         ...projection,
         is_primary: String(book.id) === String(primaryBookId || ''),
         branch: branchInfo,
@@ -277,6 +278,7 @@ app.post('/books/:id/reading-state', async (c) => {
   const body = await c.req.json<{ state?: string; primary?: boolean }>().catch(() => ({} as { state?: string; primary?: boolean }))
   const readingState = String(body.state || '').trim().toLowerCase()
   if (!['saved', 'reading', 'finished'].includes(readingState)) return c.json({ error: 'state must be saved, reading, or finished' }, 400)
+  const personalState = personalStateFromBookState(readingState)
   if (body.primary === true && readingState !== 'reading') return c.json({ error: 'the primary book must be in reading state' }, 400)
   const book = await c.env.DB.prepare(`SELECT r.id,m.learning_state FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=? AND r.content_type='book' AND ${bookVisibilityPredicate('r')} AND lower(COALESCE(n.status,''))!='pruned'`).bind(recommendationId).first<any>()
   if (!book) return c.json({ error: 'book not found' }, 404)
@@ -286,19 +288,38 @@ app.post('/books/:id/reading-state', async (c) => {
     ON CONFLICT(recommendation_id) DO UPDATE SET
       source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json),
       updated_at=datetime('now')`)
+  const syncPersonalState = () => c.env.DB.prepare(`INSERT INTO personal_library_items
+    (recommendation_id,item_type,state,started_at,completed_at,created_at,updated_at)
+    VALUES (?,'book',?,CASE WHEN ?='in_progress' THEN datetime('now') ELSE NULL END,CASE WHEN ?='completed' THEN datetime('now') ELSE NULL END,datetime('now'),datetime('now'))
+    ON CONFLICT(recommendation_id) DO UPDATE SET
+      state=excluded.state,
+      started_at=CASE WHEN excluded.state='in_progress' THEN COALESCE(personal_library_items.started_at,excluded.started_at) ELSE personal_library_items.started_at END,
+      completed_at=CASE WHEN excluded.state='completed' THEN COALESCE(personal_library_items.completed_at,excluded.completed_at) ELSE NULL END,
+      updated_at=datetime('now')`).bind(recommendationId, personalState, personalState, personalState)
+  const personalEventId = `personal-library-reading-state:${recommendationId}:${crypto.randomUUID()}`
+  const syncPersonalEvent = () => c.env.DB.prepare(`INSERT INTO learning_events
+    (id,idempotency_key,event_type,actor_type,evidence_weight,recommendation_id,occurred_at,payload_json)
+    VALUES (?,?,'personal_library_updated','user',0,?,datetime('now'),?)`)
+    .bind(personalEventId, personalEventId, recommendationId, JSON.stringify({ state: personalState, book_reading_state: readingState, source: 'books_reading_state' }))
 
   if (body.primary === true) {
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE recommendation_meta SET source_metadata_json=json_patch(COALESCE(source_metadata_json,'{}'),json_object('book_primary',0)),updated_at=datetime('now')
         WHERE recommendation_id IN (SELECT id FROM recommendations WHERE content_type='book')`),
       writeTarget(true).bind(recommendationId, book.learning_state || null, readingState, 1),
+      syncPersonalState(),
+      syncPersonalEvent(),
     ])
   } else {
     const clearPrimary = readingState !== 'reading' || body.primary === false
     const statement = writeTarget(clearPrimary)
-    await (clearPrimary
-      ? statement.bind(recommendationId, book.learning_state || null, readingState, 0)
-      : statement.bind(recommendationId, book.learning_state || null, readingState)).run()
+    await c.env.DB.batch([
+      clearPrimary
+        ? statement.bind(recommendationId, book.learning_state || null, readingState, 0)
+        : statement.bind(recommendationId, book.learning_state || null, readingState),
+      syncPersonalState(),
+      syncPersonalEvent(),
+    ])
   }
   return c.json({ ok: true, recommendation_id: recommendationId, reading_state: readingState, is_primary: body.primary === true, queue_state: book.learning_state || 'captured' })
 })
@@ -332,7 +353,15 @@ app.post('/books/:id/chapters/:chapterKey/complete', async (c) => {
   }
   const body: { completed?: boolean } = await c.req.json<{ completed?: boolean }>().catch(() => ({} as { completed?: boolean }))
   const completed = body.completed !== false
-  await c.env.DB.prepare(`UPDATE book_visual_chapters SET completed_at=?,updated_at=datetime('now') WHERE recommendation_id=? AND chapter_key=?`).bind(completed ? new Date().toISOString() : null, recommendationId, chapterKey).run()
+  const personalEventId = `personal-library-chapter:${recommendationId}:${chapterKey}:${crypto.randomUUID()}`
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE book_visual_chapters SET completed_at=?,updated_at=datetime('now') WHERE recommendation_id=? AND chapter_key=?`).bind(completed ? new Date().toISOString() : null, recommendationId, chapterKey),
+    c.env.DB.prepare(`UPDATE personal_library_items SET updated_at=datetime('now') WHERE recommendation_id=?`).bind(recommendationId),
+    c.env.DB.prepare(`INSERT INTO learning_events
+      (id,idempotency_key,event_type,actor_type,evidence_weight,recommendation_id,occurred_at,payload_json)
+      VALUES (?,?,'personal_library_updated','user',0,?,datetime('now'),?)`)
+      .bind(personalEventId, personalEventId, recommendationId, JSON.stringify({ chapter_key: chapterKey, completed, source: 'books_chapter_progress' })),
+  ])
   return c.json({ ok: true, completed })
 })
 
@@ -402,6 +431,14 @@ app.post('/books', async (c) => {
         (recommendation_id,learning_state,branch_id,source_metadata_json,updated_at) VALUES (?,'captured',?,?,datetime('now'))
         ON CONFLICT(recommendation_id) DO UPDATE SET branch_id=excluded.branch_id,source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json),updated_at=datetime('now')`)
         .bind(recommendationId, branch.id, JSON.stringify({ isbn: isbn || null, source: 'bookshelf', ...(existing ? {} : { book_reading_state: 'saved' }) })),
+      c.env.DB.prepare(`INSERT INTO personal_library_items
+        (recommendation_id,item_type,state,personal_note,created_at,updated_at) VALUES (?,'book','planned',?,datetime('now'),datetime('now'))
+        ON CONFLICT(recommendation_id) DO UPDATE SET updated_at=personal_library_items.updated_at`)
+        .bind(recommendationId, body.why_this?.trim() || null),
+      c.env.DB.prepare(`INSERT OR IGNORE INTO learning_events
+        (id,idempotency_key,event_type,actor_type,evidence_weight,recommendation_id,occurred_at,payload_json)
+        VALUES (?,?,?,'user',0,?,datetime('now'),?)`)
+        .bind(`personal-library-book:${recommendationId}`, `personal-library-book:${recommendationId}`, existing ? 'personal_library_linked' : 'personal_library_created', recommendationId, JSON.stringify({ item_type: 'book', state: 'planned', branch_id: branch.id, source: 'bookshelf' })),
     ])
     const saved = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,n.label branch_label,n.status branch_status FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(recommendationId).first<any>()
     const { round: _legacyRound, ...book } = saved || {}
@@ -486,16 +523,16 @@ app.post('/push', async (c) => {
       if (row) await DB.prepare(`INSERT OR IGNORE INTO recommendation_meta (recommendation_id,learning_state,source_metadata_json,updated_at) VALUES (?,'captured',?,datetime('now'))`).bind(row.id, JSON.stringify({ imported: true })).run()
     }
 
-    // Incremental FTS5: index pushed recommendations immediately
+    // Update the portable search projection immediately.
     for (const item of items) {
       if (!item.video_title || !item.video_url) continue
-      const ftsDedup = deriveDedupKey({ video_url: normalizeUrlForDedup(item.video_url), video_title: item.video_title, content_type: item.content_type })
-      const ftsRow = await DB.prepare(`SELECT id,video_title,creator,why_this FROM recommendations WHERE dedup_key=?`).bind(ftsDedup).first<any>()
-      if (ftsRow) {
+      const searchDedup = deriveDedupKey({ video_url: normalizeUrlForDedup(item.video_url), video_title: item.video_title, content_type: item.content_type })
+      const searchRow = await DB.prepare(`SELECT id,video_title,creator,why_this FROM recommendations WHERE dedup_key=?`).bind(searchDedup).first<any>()
+      if (searchRow) {
         try {
-          const ftsText = [ftsRow.video_title, ftsRow.creator, ftsRow.why_this].filter(Boolean).join(' ')
-          await DB.prepare("INSERT OR REPLACE INTO search_idx(source, ref_id, text) VALUES ('rec', ?, ?)").bind(ftsRow.id, ftsText).run()
-        } catch { /* FTS best-effort */ }
+          const searchText = [searchRow.video_title, searchRow.creator, searchRow.why_this].filter(Boolean).join(' ')
+          await DB.prepare("INSERT OR REPLACE INTO search_idx(source, ref_id, text) VALUES ('rec', ?, ?)").bind(searchRow.id, searchText).run()
+        } catch { /* Search projection is best-effort; maintenance will rebuild it. */ }
       }
     }
   } catch (err) {
@@ -597,13 +634,13 @@ app.post('/action', async (c) => {
     // MEMORY: on consume, schedule spaced resurfaces + detect contradictions
     if (body.status === 'consumed') {
       for (const id of ids) {
-        try { await scheduleResurfacing(DB, id) } catch (e) { console.warn('resurface sched failed', e) }
-        try { await detectContradiction(DB, id) } catch (e) { console.warn('contradiction detect failed', e) }
+        try { await scheduleResurfacing(DB, id) } catch (e) { console.warn('resurface sched failed', safeErrorMessage(e)) }
+        try { await detectContradiction(DB, id) } catch (e) { console.warn('contradiction detect failed', safeErrorMessage(e)) }
         try {
           const item = await DB.prepare(`SELECT r.creator,r.content_type,m.branch_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=?`).bind(id).first<any>()
           await DB.prepare(`INSERT INTO recommendation_outcomes (id,recommendation_id,creator,format,branch_id,actual_score,outcome_status,consumed_at,evaluated_at) VALUES (?,?,?,?,?,?, 'consumed', ?, datetime('now')) ON CONFLICT(recommendation_id) DO UPDATE SET actual_score=COALESCE(excluded.actual_score,recommendation_outcomes.actual_score),outcome_status='consumed',consumed_at=excluded.consumed_at,evaluated_at=datetime('now')`)
             .bind(`outcome_${id}`, id, item?.creator || null, item?.content_type || null, item?.branch_id || null, norm.score, consumedDate).run()
-        } catch (e) { console.warn('quality ledger failed', e) }
+        } catch (e) { console.warn('quality ledger failed', safeErrorMessage(e)) }
         await syncRecommendationFeedbackSignals(DB, {
           recommendationId: id,
           sourceKey: `recommendation-action:${id}:${consumedDate}`,
@@ -779,6 +816,7 @@ app.delete('/:id/permanent', async (c) => {
       DB.prepare('DELETE FROM feedback_proposals WHERE recommendation_id=?').bind(recommendationId),
       DB.prepare('DELETE FROM agent_jobs WHERE recommendation_id=?').bind(recommendationId),
       DB.prepare("DELETE FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id')=?").bind(recommendationId),
+      DB.prepare('DELETE FROM personal_library_items WHERE recommendation_id=?').bind(recommendationId),
       DB.prepare('DELETE FROM recommendation_meta WHERE recommendation_id=?').bind(recommendationId),
     ]
     if (unitPlaceholders) {
@@ -876,13 +914,51 @@ app.get('/export', async (c) => {
   const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '500'), 1), 5000)
   const offset = Math.max(parseInt(c.req.query('offset') || '0'), 0)
   try {
-    const result = await DB.prepare('SELECT * FROM recommendations ORDER BY created_at DESC LIMIT ? OFFSET ?').bind(limit, offset).all<Recommendation>()
-    const items = (result.results || []).map((row: any) => { const { round: _legacyRound, ...item } = row; return item })
+    const result = await DB.prepare(`SELECT r.*,m.branch_id,m.tags_json,n.label branch_label,
+      p.item_type personal_item_type,p.state personal_state,p.release_year personal_release_year,
+      p.duration_minutes personal_duration_minutes,p.progress_current personal_progress_current,
+      p.progress_total personal_progress_total,p.progress_unit personal_progress_unit,
+      p.tags_json personal_tags_json,p.personal_note,p.started_at personal_started_at,
+      p.completed_at personal_completed_at,p.updated_at personal_updated_at
+      FROM recommendations r
+      LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
+      LEFT JOIN tree_nodes n ON n.id=m.branch_id
+      LEFT JOIN personal_library_items p ON p.recommendation_id=r.id
+      ORDER BY r.created_at DESC LIMIT ? OFFSET ?`).bind(limit, offset).all<any>()
+    const items = (result.results || []).map((row: any) => {
+      const {
+        round: _legacyRound,
+        personal_item_type, personal_state, personal_release_year, personal_duration_minutes,
+        personal_progress_current, personal_progress_total, personal_progress_unit,
+        personal_tags_json, personal_note, personal_started_at, personal_completed_at, personal_updated_at,
+        ...item
+      } = row
+      let tags: string[] = []
+      try { tags = JSON.parse(personal_tags_json || row.tags_json || '[]') } catch {}
+      return {
+        ...item,
+        personal_library: personal_item_type ? {
+          item_type: personal_item_type,
+          state: personal_state,
+          release_year: personal_release_year,
+          duration_minutes: personal_duration_minutes,
+          progress_current: personal_progress_current,
+          progress_total: personal_progress_total,
+          progress_unit: personal_progress_unit,
+          tags,
+          personal_note: personal_note || '',
+          started_at: personal_started_at,
+          completed_at: personal_completed_at,
+          updated_at: personal_updated_at,
+        } : null,
+      }
+    })
 
     if (format === 'md') {
-      const header = '| Title | Creator | URL | Why | Status | Rating | Review | Tags |\n| --- | --- | --- | --- | --- | --- | --- | --- |'
-      const rows = items.map(i =>
-        `| ${i.video_title} | ${i.creator || ''} | ${i.video_url} | ${i.why_this || ''} | ${i.status} | ${i.user_rating || ''} | ${i.user_review || ''} | ${i.synergy_bundle_id || ''} |`
+      const cell = (value: unknown) => String(value ?? '').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ')
+      const header = '| Title | Creator | Type | Personal state | Progress | Rating | Branch | URL | Personal note |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+      const rows = items.map((i: any) =>
+        `| ${cell(i.video_title)} | ${cell(i.creator)} | ${cell(i.personal_library?.item_type || i.content_type)} | ${cell(i.personal_library?.state)} | ${cell(i.personal_library?.progress_current == null ? '' : `${i.personal_library.progress_current}${i.personal_library.progress_total == null ? '' : ` / ${i.personal_library.progress_total}`} ${i.personal_library.progress_unit || ''}`)} | ${cell(i.user_score ?? i.user_rating)} | ${cell(i.branch_label || i.branch_id)} | ${cell(/^https?:\/\//i.test(i.video_url || '') ? i.video_url : '')} | ${cell(i.personal_library?.personal_note || i.user_review)} |`
       ).join('\n')
       return new Response(header + '\n' + rows, {
         headers: { 'Content-Type': 'text/markdown; charset=utf-8', 'Content-Disposition': 'attachment; filename="learning-compass-export.md"' }

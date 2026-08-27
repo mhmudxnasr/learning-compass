@@ -19,11 +19,11 @@ try {
   }
   await run(['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--file', 'schema.sql'])
   await run(['d1', 'migrations', 'apply', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir])
-  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8789'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true })
+  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8789', '--var', 'REQUIRE_API_AUTH:false', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true })
   server.stdout.on('data', () => {})
   server.stderr.on('data', () => {})
   for (let attempt = 0; attempt < 60; attempt++) {
-    try { if ((await fetch('http://127.0.0.1:8789/health')).ok) break } catch {}
+    try { if ((await fetch('http://127.0.0.1:8789/health/live')).ok) break } catch {}
     if (attempt === 59) throw new Error('Worker did not start')
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
@@ -42,7 +42,7 @@ try {
     return json
   }
 
-  const captureOptions = { method: 'POST', headers: { 'content-type': 'application/json', 'x-client-mutation-id': 'integration-capture-1' }, body: JSON.stringify({ source: 'https://example.com/integration-source', title: 'Integration source' }) }
+  const captureOptions = { method: 'POST', headers: { 'content-type': 'application/json', 'x-client-mutation-id': 'integration-capture-1' }, body: JSON.stringify({ source: 'https://example.com/integration-source', title: 'Integration source', branch_id: 'systems-thinking' }) }
   const captured = await req('/capture', captureOptions)
   assert.equal(captured.status, 201)
   const replayedCapture = await req('/capture', captureOptions)

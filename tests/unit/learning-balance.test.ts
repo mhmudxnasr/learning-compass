@@ -61,6 +61,7 @@ test('learning balance projects lifetime frontier evidence, exact lessons, lates
   const branch = balance.branches.find((node) => node.id === 'branch')!
   const category = balance.branches.find((node) => node.id === 'cat')!
 
+  assert.equal('round' in branch, false)
   assert.equal(branch.consumed_count, 1)
   assert.equal(branch.lifetime_consumed_count, 2)
   assert.equal(branch.accepted_units_count, 2)

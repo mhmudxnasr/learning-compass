@@ -13,7 +13,7 @@ Load learning-compass-operating-system. I am still working through [TITLE]. Save
 ```
 
 ```text
-Load learning-compass-operating-system. Capture [URL] titled [TITLE] into Library → All sources, map it to [BRANCH_ID], verify branch and round, and do not triage, recommend, extract notes, or create a job unless I explicitly request it.
+Load learning-compass-operating-system. Capture [URL] titled [TITLE] into the source ledger, map it to [BRANCH_ID], verify the branch and persisted domain, and do not triage, recommend, extract notes, or create a job unless I explicitly request it.
 ```
 
 Set context once:
@@ -39,7 +39,7 @@ Search the site for items related to [TOPIC]. Show matching IDs, titles, status,
 ## Create and edit
 
 ```text
-Capture this source into Library → All sources, preserving the real URL and using this title: [TITLE]. Map and verify [BRANCH_ID] plus round. Do not promote it to Queue.
+Capture this source into the source ledger, preserving the real URL and using this title: [TITLE]. Map and verify [BRANCH_ID] plus its domain. Do not promote it to Queue.
 Source: [URL]
 ```
 
@@ -62,7 +62,7 @@ Enhance recommendation [RECOMMENDATION_ID]. Improve its rationale using Mahmood�
 ## Workflow actions
 
 ```text
-Triage captured item [CAPTURE_ID] into Queue after verifying its non-pruned branch and round. If the five-item limit blocks it, report the conflict and ask for explicit override instead of bypassing the limit.
+Triage captured item [CAPTURE_ID] into Queue after verifying its non-pruned branch and persisted domain. If the five-item limit blocks it, report the conflict and ask for explicit override instead of bypassing the limit.
 ```
 
 ```text

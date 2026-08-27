@@ -8,6 +8,26 @@ export function normalizeDisposition(value: unknown): LearningDisposition {
   return 'undecided'
 }
 
+export const completedLearningStatus = (status: unknown) => ['verified', 'waived', 'completed'].includes(String(status || ''))
+
+export function deriveLevelStatus(input: {
+  priorComplete: boolean
+  totalLessons: number
+  completedLessons: number
+  currentStatus: string
+}) {
+  if (!input.priorComplete) return 'locked'
+  if (input.totalLessons > 0 && input.completedLessons === input.totalLessons) return 'verified'
+  if (input.completedLessons > 0 || input.currentStatus === 'in_progress' || completedLearningStatus(input.currentStatus)) return 'in_progress'
+  return 'available'
+}
+
+export function deriveThreadStatus(currentStatus: string, complete: boolean) {
+  if (currentStatus === 'abandoned') return currentStatus
+  if (complete) return 'verified'
+  return completedLearningStatus(currentStatus) || currentStatus === 'ready_to_verify' ? 'active' : currentStatus
+}
+
 type LearningEventInput = {
   eventType: string
   actorType: 'user' | 'system' | 'agent'

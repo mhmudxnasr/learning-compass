@@ -11,7 +11,6 @@ export interface DeckBranch {
   id: string
   label: string
   type: string
-  round_label: string
   super_category: string
   category_label?: string
   parent_id?: string

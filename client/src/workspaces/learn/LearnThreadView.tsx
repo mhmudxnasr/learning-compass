@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { uploadArtifact } from '../../app/upload'
+import { routeHref } from '../../app/router'
 import { Empty, ErrorState, Loading } from '../../components/States'
 import { Icon } from '../../components/Icon'
 import { useData } from '../../app/useData'
@@ -15,11 +16,13 @@ export function LearnThreadView({
   levelId: routeLevelId,
   lessonId: routeLessonId,
   tab,
+  focusLevelId,
 }: {
   threadId: string
   levelId?: string
   lessonId?: string
   tab?: string
+  focusLevelId?: string
 }) {
   const path = useData<PathResponse>(`/learning/core/threads/${encodeURIComponent(threadId)}/path`)
   const [selectedStageId, setSelectedStageId] = useState<string | null>(routeLevelId || null)
@@ -35,7 +38,7 @@ export function LearnThreadView({
       <Empty
         title="This Learning Thread is unavailable"
         body="The Thread may have been archived, moved, or the link may be incomplete."
-        action={<a class="button secondary" href="#/learn">Return to Threads</a>}
+        action={<a class="button secondary" href={routeHref('learn', 'paths')}>Return to Threads</a>}
       />
     )
   }
@@ -46,7 +49,7 @@ export function LearnThreadView({
   const activeLesson = activeStage?.lessons.find((lesson) => lesson.id === lessonId)
 
   if (!routeLevelId && !routeLessonId) {
-    return <ThreadCommandCenter path={path.data} tab={tab} onChanged={path.reload} />
+    return <ThreadCommandCenter path={path.data} tab={tab} focusLevelId={focusLevelId} onChanged={path.reload} />
   }
 
   return (
@@ -89,13 +92,103 @@ const threadTabs = [
 ] as const
 type ThreadTabKey = (typeof threadTabs)[number]['key']
 
+function levelTitle(stage: PathStage) {
+  return stage.title.replace(/^Level \d+\s*[—-]\s*/, '')
+}
+
+function threadTabHref(threadId: string, tab: ThreadTabKey, levelId?: string) {
+  const query = new URLSearchParams({ tab })
+  if (levelId) query.set('level', levelId)
+  return `#/learn/thread/${encodeURIComponent(threadId)}?${query.toString()}`
+}
+
+function persistThreadLevelFocus(threadId: string, tab: ThreadTabKey, levelId: string) {
+  const href = threadTabHref(threadId, tab, levelId)
+  if (window.location.hash !== href) window.history.replaceState(window.history.state, '', href)
+}
+
+function domId(prefix: string, value: string) {
+  return `${prefix}-${value.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+}
+
+function materialExcerpt(value: string | null | undefined, fallback: string) {
+  const plain = String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!plain) return fallback
+  return plain.length > 220 ? `${plain.slice(0, 217).trimEnd()}…` : plain
+}
+
+function completedLessonCount(stage: PathStage) {
+  return Number(stage.progress?.study_completed ?? stage.lessons.filter((lesson) => lesson.status === 'completed').length)
+}
+
+function threadNextLesson(path: PathResponse) {
+  const lessons = path.stages.flatMap((stage) => stage.lessons.map((lesson) => ({ stage, lesson })))
+  return (
+    lessons.find(({ lesson }) => lesson.status === 'in_progress') ||
+    lessons.find(
+      ({ stage, lesson }) =>
+        ['available', 'in_progress'].includes(stage.status) &&
+        lesson.status !== 'completed' &&
+        lessonReadiness(lesson) !== 'needs_material',
+    ) ||
+    lessons.find(({ lesson }) => lesson.status !== 'completed')
+  )
+}
+
+function threadMaterialTotals(path: PathResponse) {
+  return path.stages.reduce(
+    (totals, stage) => {
+      totals.notes += stage.notes.length
+      totals.files += stage.files.length
+      totals.cards += stage.cards.length
+      totals.drafts += stage.recall_drafts.length
+      for (const lesson of stage.lessons) {
+        totals.notes += lesson.notes?.length || 0
+        totals.files += lesson.files?.length || 0
+        totals.cards += lesson.cards?.length || 0
+        totals.drafts += lesson.recall_drafts?.length || 0
+      }
+      return totals
+    },
+    {
+      notes: path.notes.length,
+      files: path.files.length,
+      cards: path.cards.length,
+      drafts: path.recall_drafts.length,
+    },
+  )
+}
+
+function threadSourceCount(path: PathResponse) {
+  return path.stages.reduce(
+    (total, stage) =>
+      total +
+      stage.sources.length +
+      stage.lessons.reduce((lessonTotal, lesson) => lessonTotal + (lesson.sources?.length || 0), 0),
+    0,
+  )
+}
+
+function lessonActionLabel(lesson: ThreadLesson) {
+  const readiness = lessonReadiness(lesson)
+  if (readiness === 'completed') return 'Review'
+  if (readiness === 'in_progress') return 'Continue'
+  if (readiness === 'needs_material') return 'Review gap'
+  return 'Open lesson'
+}
+
 function ThreadCommandCenter({
   path,
   tab,
+  focusLevelId,
   onChanged,
 }: {
   path: PathResponse
   tab?: string
+  focusLevelId?: string
   onChanged: () => void
 }) {
   const activeTab: ThreadTabKey = threadTabs.some((t) => t.key === tab) ? (tab as ThreadTabKey) : 'overview'
@@ -113,7 +206,34 @@ function ThreadCommandCenter({
     0
   )
   const completedLevels = path.stages.filter((stage) => stage.status === 'completed').length
-  const currentStage = path.stages.find((stage) => ['available', 'in_progress'].includes(stage.status)) || path.stages[0]
+  const next = threadNextLesson(path)
+  const hasLessons = totalLessons > 0
+  const currentStage =
+    next?.stage ||
+    path.current_stage ||
+    path.stages.find((stage) => ['available', 'in_progress'].includes(stage.status)) ||
+    path.stages[0]
+  const nextReadiness = next ? lessonReadiness(next.lesson) : null
+  const lessonProgress = percent(completedLessons, totalLessons)
+  const currentLessonPosition = next ? next.stage.lessons.findIndex((lesson) => lesson.id === next.lesson.id) + 1 : 0
+  const nextHref = !hasLessons
+    ? threadTabHref(thread.id, 'curriculum')
+    : next
+    ? nextReadiness === 'needs_material'
+      ? levelHref(thread.id, next.stage.id)
+      : lessonHref(thread.id, next.lesson.id)
+    : threadTabHref(thread.id, 'curriculum')
+  const nextLabel = !hasLessons
+    ? 'Author first lesson'
+    : next
+    ? next.stage.status === 'locked'
+      ? 'Review locked preview'
+      : nextReadiness === 'in_progress'
+      ? 'Continue lesson'
+      : nextReadiness === 'needs_material'
+      ? 'Review material gap'
+      : 'Open next lesson'
+    : 'Inspect completed path'
 
   const mutate = async (label: string, url: string, body?: unknown) => {
     setWorking(label)
@@ -133,33 +253,94 @@ function ThreadCommandCenter({
   }
 
   return (
-    <section class="learn-workspace folio-learn thread-command-center">
-      {/* Thread Command Header */}
-      <header class="thread-command-head">
+    <section class="learn-workspace folio-learn thread-command-center vertical-thread">
+      <header class="vertical-thread-spine">
         <nav class="course-stage-context" aria-label="Breadcrumb">
-          <a href="#/learn">Threads</a>
+          <a href={routeHref('learn', 'paths')}>Threads</a>
           <span aria-hidden="true">/</span>
           <span>{thread.title}</span>
         </nav>
 
-        <div class="thread-command-title">
-          <div class="thread-title-block">
-            <div class="thread-badge-strip">
+        <div class="vertical-thread-spine-grid">
+          <div class="vertical-thread-identity">
+            <div class="vertical-thread-status-line">
               <span class={`folio-status-tag status-${thread.status}`}>
                 <i class="folio-tag-dot" aria-hidden="true" />
                 {statusLabel(thread.status)}
               </span>
               <span class="folio-type-tag">{thread.thread_type || 'understand'}</span>
-              <span class="thread-stat-pill">{completedLessons}/{totalLessons} lessons completed</span>
             </div>
             <h1>{thread.title}</h1>
             {thread.guiding_question && <p class="thread-guiding-lede">{thread.guiding_question}</p>}
           </div>
 
-          <div class="thread-command-actions">
+          <aside class="vertical-thread-position" aria-label="Current Thread position">
+            <div class="vertical-thread-progress-copy">
+              <strong>{completedLessons} / {totalLessons}</strong>
+              <span>lessons complete</span>
+            </div>
+            {hasLessons ? (
+              <div
+                class="vertical-thread-progress-track"
+                role="progressbar"
+                aria-label="Thread lesson progress"
+                aria-valuemin={0}
+                aria-valuemax={totalLessons}
+                aria-valuenow={completedLessons}
+              >
+                <span style={{ width: `${lessonProgress}%` }} />
+              </div>
+            ) : (
+              <div class="vertical-thread-progress-track is-empty" aria-hidden="true"><span /></div>
+            )}
+            <div class="vertical-thread-current">
+              <strong>
+                {currentStage ? `Level ${currentStage.position} — ${levelTitle(currentStage)}` : 'No Level available'}
+              </strong>
+              <span>
+                {next
+                  ? next.stage.status === 'locked'
+                    ? `Locked preview · Lesson ${currentLessonPosition} of ${next.stage.lessons.length}`
+                    : `Lesson ${currentLessonPosition} of ${next.stage.lessons.length} · ${statusLabel(nextReadiness)}`
+                  : hasLessons
+                  ? 'Every authored lesson is complete'
+                  : 'No lessons are authored yet'}
+              </span>
+            </div>
+            <a
+              class={`vertical-thread-next-link button ${
+                next && next.stage.status !== 'locked' && nextReadiness !== 'needs_material' ? 'primary folio-primary' : 'secondary'
+              }`}
+              href={nextHref}
+            >
+              <span>
+                <small>{nextLabel}</small>
+                <strong>{next?.lesson.title || (hasLessons ? 'Curriculum complete' : 'Build the first lesson')}</strong>
+              </span>
+              <Icon name="chevron" size={14} />
+            </a>
+            <p>Only direct lesson completion advances Levels. Projects and materials remain optional context.</p>
+          </aside>
+        </div>
+
+        <div class="vertical-thread-spine-footer">
+          <nav class="thread-tabs vertical-thread-tabs" aria-label="Thread sections">
+            {threadTabs.map((item) => (
+              <a
+              href={threadTabHref(thread.id, item.key)}
+                class={`thread-tab-link ${item.key === activeTab ? 'is-active' : ''}`}
+                aria-current={item.key === activeTab ? 'page' : undefined}
+                key={item.key}
+              >
+                <span>{item.label}</span>
+              </a>
+            ))}
+          </nav>
+
+          <div class="vertical-thread-management">
             {thread.status === 'paused' || thread.status === 'draft' ? (
               <button
-                class="button primary folio-primary"
+                class="button secondary"
                 disabled={Boolean(working)}
                 onClick={() =>
                   mutate('Activate Thread', `/learning/core/threads/${encodeURIComponent(thread.id)}/status`, {
@@ -182,24 +363,8 @@ function ThreadCommandCenter({
                 Pause Thread
               </button>
             ) : null}
-
           </div>
         </div>
-
-        {/* Enhanced Tabs Navigation */}
-        <nav class="thread-tabs" aria-label="Thread sections">
-          {threadTabs.map((item) => (
-            <a
-              href={`#/learn/thread/${encodeURIComponent(thread.id)}?tab=${item.key}`}
-              class={`thread-tab-link ${item.key === activeTab ? 'is-active' : ''}`}
-              aria-current={item.key === activeTab ? 'page' : undefined}
-              key={item.key}
-            >
-              <Icon name={item.icon as any} size={15} />
-              <span>{item.label}</span>
-            </a>
-          ))}
-        </nav>
 
         {message && (
           <p class="folio-status" role="status">
@@ -208,7 +373,6 @@ function ThreadCommandCenter({
         )}
       </header>
 
-      {/* Tab Panels */}
       {activeTab === 'overview' && (
         <ThreadOverview
           path={path}
@@ -218,9 +382,9 @@ function ThreadCommandCenter({
         />
       )}
 
-      {activeTab === 'curriculum' && <ThreadCurriculum path={path} onChanged={onChanged} />}
+      {activeTab === 'curriculum' && <ThreadCurriculum path={path} focusLevelId={focusLevelId} onChanged={onChanged} />}
 
-      {activeTab === 'practice' && <ThreadProjects path={path} onChanged={onChanged} />}
+      {activeTab === 'practice' && <ThreadProjects path={path} focusLevelId={focusLevelId} onChanged={onChanged} />}
 
       {activeTab === 'materials' && <ThreadMaterialLedger path={path} onChanged={onChanged} open />}
     </section>
@@ -238,141 +402,84 @@ function ThreadOverview({
   study: number[]
   levels: number[]
 }) {
-  const activeStages = path.stages.filter((s) => ['in_progress', 'available'].includes(s.status))
-  const displayStages = activeStages.length > 0 ? activeStages : currentStage ? [currentStage] : (path.stages[0] ? [path.stages[0]] : [])
-  const nextLesson = currentStage?.lessons?.find((l) => l.status !== 'completed') || currentStage?.lessons?.[0]
-  const totalNotes = path.notes.length + path.stages.reduce((s, st) => s + st.notes.length, 0)
-  const totalCards = path.cards.length + path.stages.reduce((s, st) => s + st.cards.length, 0)
-
+  const next = threadNextLesson(path)
+  const hasLessons = study[1] > 0
+  const readiness = next ? lessonReadiness(next.lesson) : null
+  const materialTotals = threadMaterialTotals(path)
+  const sources = threadSourceCount(path)
+  const nextLessonPosition = next ? next.stage.lessons.findIndex((lesson) => lesson.id === next.lesson.id) + 1 : 0
   return (
-    <div class="thread-overview-grid">
-      <main class="thread-overview-main">
-        {/* Active Lessons Section */}
-        <section class="thread-active-section" aria-labelledby="thread-active-lessons-title">
-          <div class="thread-active-header">
-            <div>
-              <p class="folio-object-kicker">Current Curriculum Focus</p>
-              <h2 id="thread-active-lessons-title">Active Lessons</h2>
-            </div>
-            {currentStage && (
-              <a class="button secondary thread-open-level-btn" href={levelHref(path.thread.id, currentStage.id)}>
-                <span>Level {currentStage.position} Hub</span>
-                <Icon name="chevron" size={14} />
-              </a>
+    <section class="vertical-thread-overview">
+      <header class="vertical-view-head">
+        <div>
+          <h2>Current move</h2>
+          <p>Continue one exact lesson, then recover the whole Level path without repeating the full curriculum.</p>
+        </div>
+        <span>{study[0]} of {study[1]} lessons complete</span>
+      </header>
+
+      <section class="vertical-overview-next" aria-labelledby="vertical-overview-next-title">
+        <div class="vertical-overview-next-copy">
+          <div class="vertical-overview-next-context">
+            <span>
+              {next ? `Level ${next.stage.position} — ${levelTitle(next.stage)}` : hasLessons ? 'Thread complete' : 'Thread setup'}
+            </span>
+            {readiness ? (
+              <span class={`lesson-readiness-pill state-${readiness}`}>{statusLabel(readiness)}</span>
+            ) : (
+              <span class={`folio-status-tag status-${hasLessons ? 'completed' : 'draft'}`}>
+                {hasLessons ? 'Completed' : 'Setup'}
+              </span>
             )}
           </div>
+          <h3 id="vertical-overview-next-title">
+            {next?.lesson.title || (hasLessons ? 'Every authored lesson is complete' : 'No lessons are authored yet')}
+          </h3>
+          <p>
+            {next?.lesson.why_learn ||
+              next?.lesson.description ||
+              (next
+                ? 'This lesson needs material before focused study can continue.'
+                : hasLessons
+                ? 'Use the curriculum as a reference or add another authored Level when the Thread needs to grow.'
+                 : 'Author the first Level and lesson before beginning focused study.')}
+          </p>
+          <div class="vertical-overview-next-meta">
+            {next?.lesson.estimated_minutes ? <span>{next.lesson.estimated_minutes} min</span> : null}
+            {next?.lesson.sources?.length ? (
+              <span>{next.lesson.sources.length} {next.lesson.sources.length === 1 ? 'source' : 'sources'} ready</span>
+            ) : next ? (
+              <span>No study material attached</span>
+            ) : null}
+          </div>
+        </div>
 
-          {displayStages.map((stage) => {
-            const completedCount = stage.lessons.filter((l) => l.status === 'completed').length
-            const totalCount = stage.lessons.length
-            return (
-              <div class="thread-active-stage-group" key={stage.id}>
-                <div class="thread-active-stage-bar">
-                  <div class="thread-active-stage-title">
-                    <span class="thread-level-badge">{String(stage.position).padStart(2, '0')}</span>
-                    <div>
-                      <strong>{stage.title.replace(/^Level \d+\s*[—-]\s*/, '')}</strong>
-                      {stage.objective && <p class="thread-active-stage-obj">{stage.objective}</p>}
-                    </div>
-                  </div>
-                  <div class="thread-active-stage-meta">
-                    <span class={`folio-status-tag status-${stage.status}`}>{statusLabel(stage.status)}</span>
-                    <span class="thread-level-progress-tag">
-                      {completedCount}/{totalCount} completed
-                    </span>
-                  </div>
-                </div>
+        <aside class="vertical-overview-position" aria-label="Exact learning position">
+          <strong>{next ? `Lesson ${nextLessonPosition} of ${next.stage.lessons.length}` : 'Path complete'}</strong>
+          <span>{next ? `Level ${next.stage.position} · ${path.stages.length} authored Levels` : `${levels[0]} of ${levels[1]} Levels complete`}</span>
+        </aside>
+      </section>
 
-                <div class="thread-active-lessons-list">
-                  {stage.lessons.map((lesson, idx) => {
-                    const readiness = lessonReadiness(lesson)
-                    const isDone = lesson.status === 'completed'
-                    const isInProgress = lesson.status === 'in_progress'
-                    const isNext = lesson.id === nextLesson?.id
-                    const noteCount = lesson.notes?.length || 0
-                    const cardCount = lesson.cards?.length || 0
-                    const fileCount = lesson.files?.length || 0
+      <div class="vertical-thread-ledger" aria-label="Thread inventory across every owner scope">
+        <div>
+          <strong>{sources}</strong>
+          <span>attached sources</span>
+        </div>
+        <div>
+          <strong>{materialTotals.notes}</strong>
+          <span>notes</span>
+        </div>
+        <div>
+          <strong>{materialTotals.files}</strong>
+          <span>stored files</span>
+        </div>
+        <div>
+          <strong>{materialTotals.cards + materialTotals.drafts}</strong>
+          <span>recall items</span>
+        </div>
+      </div>
 
-                    return (
-                      <div
-                        class={`thread-active-lesson-card ${isInProgress ? 'is-in-progress' : ''} ${isDone ? 'is-completed' : ''} ${isNext ? 'is-next' : ''}`}
-                        key={lesson.id}
-                      >
-                        <div class="thread-active-lesson-left">
-                          <span class="thread-active-lesson-index">
-                            {isDone ? <Icon name="check" size={14} /> : String(idx + 1).padStart(2, '0')}
-                          </span>
-                          <div class="thread-active-lesson-body">
-                            <div class="thread-active-lesson-head">
-                              <strong class="thread-active-lesson-name">{lesson.title}</strong>
-                              <span class={`lesson-readiness-pill state-${readiness}`}>
-                                {statusLabel(readiness)}
-                              </span>
-                            </div>
-                            {(lesson.description || lesson.why_learn) && (
-                              <p class="thread-active-lesson-desc">{lesson.description || lesson.why_learn}</p>
-                            )}
-                            <div class="thread-active-lesson-meta">
-                              {lesson.estimated_minutes ? (
-                                <span class="thread-active-lesson-duration">
-                                  <Icon name="clock" size={12} />
-                                  {lesson.estimated_minutes} min
-                                </span>
-                              ) : null}
-                              {noteCount > 0 && (
-                                <span class="thread-active-lesson-pill">
-                                  <Icon name="edit" size={12} />
-                                  {noteCount} {noteCount === 1 ? 'note' : 'notes'}
-                                </span>
-                              )}
-                              {cardCount > 0 && (
-                                <span class="thread-active-lesson-pill">
-                                  <Icon name="spark" size={12} />
-                                  {cardCount} {cardCount === 1 ? 'card' : 'cards'}
-                                </span>
-                              )}
-                              {fileCount > 0 && (
-                                <span class="thread-active-lesson-pill">
-                                  <Icon name="file" size={12} />
-                                  {fileCount} {fileCount === 1 ? 'material' : 'materials'}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div class="thread-active-lesson-action">
-                          <a
-                            class={`button ${isInProgress || isNext ? 'primary folio-primary' : 'secondary'}`}
-                            href={lessonHref(path.thread.id, lesson.id)}
-                          >
-                            {isInProgress
-                              ? 'Continue'
-                              : isDone
-                              ? 'Review'
-                              : isNext
-                              ? 'Start'
-                              : 'Open'}
-                            <Icon name="chevron" size={13} />
-                          </a>
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {!stage.lessons.length && (
-                    <p class="folio-empty-line">No lessons have been defined for Level {stage.position} yet.</p>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </section>
-
-      </main>
-
-      {/* Progress Ledger Sidebar */}
-      <aside class="thread-progress-ledger" aria-label="Thread progress">
-        <h2>Progress Breakdown</h2>
+      <div class="vertical-overview-progress">
         <ProgressTrack
           label="Study"
           completed={study[0]}
@@ -387,382 +494,336 @@ function ThreadOverview({
           unit="levels"
           value={percent(levels[0], levels[1])}
         />
-        <div class="thread-materials-count-card">
-          <span class="folio-object-kicker">Knowledge Artifacts</span>
-          <div class="thread-materials-stats">
-            <div>
-              <strong>{totalNotes}</strong>
-              <small>Study Notes</small>
-            </div>
-            <div>
-              <strong>{totalCards}</strong>
-              <small>Recall Cards</small>
-            </div>
-            <div>
-              <strong>{path.files.length}</strong>
-              <small>Stored Files</small>
-            </div>
+      </div>
+
+      <section class="vertical-overview-roadmap" aria-labelledby="vertical-overview-roadmap-title">
+        <header>
+          <div>
+            <h2 id="vertical-overview-roadmap-title">Level journey</h2>
+            <p>Current work is expanded elsewhere; this is the compact map of the complete Thread.</p>
           </div>
-        </div>
-      </aside>
-    </div>
+        </header>
+
+        <ol class="vertical-journey-list">
+          {path.stages.map((stage) => {
+            const completed = completedLessonCount(stage)
+            const isCurrent = stage.id === currentStage?.id
+            const label =
+              stage.status === 'completed'
+                ? 'Completed'
+                : isCurrent
+                ? 'Current'
+                : stage.status === 'locked'
+                ? 'Preview'
+                : statusLabel(stage.status)
+            return (
+              <li class={isCurrent ? 'is-current' : ''} key={stage.id}>
+                <span class="vertical-journey-marker" aria-hidden="true">{stage.position}</span>
+                <div class="vertical-journey-copy">
+                  <a href={levelHref(path.thread.id, stage.id)}>
+                    <strong>Level {stage.position} — {levelTitle(stage)}</strong>
+                  </a>
+                  {(stage.objective || stage.description) && <p>{stage.objective || stage.description}</p>}
+                </div>
+                <div class="vertical-journey-meta">
+                  <span class={`folio-status-tag status-${stage.status}`}>{label}</span>
+                  <small>{completed} / {stage.lessons.length} lessons</small>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+      </section>
+    </section>
   )
 }
 
-function ThreadCurriculum({ path, onChanged }: { path: PathResponse; onChanged: () => void }) {
+function ThreadCurriculum({
+  path,
+  focusLevelId,
+  onChanged,
+}: {
+  path: PathResponse
+  focusLevelId?: string
+  onChanged: () => void
+}) {
+  const defaultStage =
+    path.stages.find((stage) => stage.id === focusLevelId) ||
+    threadNextLesson(path)?.stage ||
+    path.current_stage ||
+    path.stages[0]
+  const [expandedStageId, setExpandedStageId] = useState(defaultStage?.id || '')
   const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState('all')
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
+  const [filter, setFilter] = useState<'all' | 'in_progress' | 'needs_material' | 'completed'>('all')
+  const [visibleResultCount, setVisibleResultCount] = useState(24)
 
-  const totalLessons = path.stages.reduce((sum, stage) => sum + stage.lessons.length, 0)
-  const completedLessons = path.stages.reduce(
-    (sum, stage) => sum + stage.lessons.filter((lesson) => lesson.status === 'completed').length,
-    0,
+  useEffect(() => {
+    setExpandedStageId((current) =>
+      path.stages.some((stage) => stage.id === current) ? current : defaultStage?.id || path.stages[0]?.id || '',
+    )
+  }, [path.thread.id, path.stages.length, defaultStage?.id])
+
+  useEffect(() => setVisibleResultCount(24), [path.thread.id, query, filter])
+
+  const lessons = path.stages.flatMap((stage) =>
+    stage.lessons.map((lesson, index) => ({ stage, lesson, index })),
   )
-  const inProgressLessons = path.stages.reduce(
-    (sum, stage) => sum + stage.lessons.filter((lesson) => lesson.status === 'in_progress').length,
-    0,
-  )
-  const needsMaterialLessons = path.stages.reduce(
-    (sum, stage) => sum + stage.lessons.filter((lesson) => lessonReadiness(lesson) === 'needs_material').length,
-    0,
-  )
-  const nextStage = path.stages.find((stage) => stage.lessons.some((lesson) => lesson.status !== 'completed')) || path.stages[0]
-  const nextLesson = nextStage?.lessons.find((lesson) => lesson.status !== 'completed')
-  const progress = totalLessons ? Math.round((completedLessons / totalLessons) * 100) : 0
-  const completedStages = path.stages.filter(
-    (stage) => stage.status === 'completed' || (stage.lessons.length > 0 && stage.lessons.every((l) => l.status === 'completed')),
+  const completedLessons = lessons.filter(({ lesson }) => lesson.status === 'completed').length
+  const inProgressLessons = lessons.filter(({ lesson }) => lesson.status === 'in_progress').length
+  const needsMaterialLessons = lessons.filter(
+    ({ lesson }) => lessonReadiness(lesson) === 'needs_material',
   ).length
-
-  const matches = (lesson: ThreadLesson, stage: PathStage) =>
-    (!query || `${lesson.title} ${lesson.description || ''} ${lesson.why_learn || ''} ${lesson.why_now || ''} ${lesson.takeaway || ''} ${stage.title}`.toLowerCase().includes(query.toLowerCase())) &&
-    (filter === 'all' ||
-      filter === lesson.status ||
-      (filter === 'needs_material' && lessonReadiness(lesson) === 'needs_material'))
+  const normalizedQuery = query.trim().toLowerCase()
+  const filteredLessons = lessons.filter(({ stage, lesson }) => {
+    const queryMatch =
+      !normalizedQuery ||
+      `${lesson.title} ${lesson.description || ''} ${lesson.why_learn || ''} ${lesson.why_now || ''} ${
+        lesson.takeaway || ''
+      } ${stage.title} ${stage.objective || ''}`
+        .toLowerCase()
+        .includes(normalizedQuery)
+    const filterMatch =
+      filter === 'all' ||
+      lesson.status === filter ||
+      (filter === 'needs_material' && lessonReadiness(lesson) === 'needs_material')
+    return queryMatch && filterMatch
+  })
+  const searchActive = Boolean(normalizedQuery || filter !== 'all')
+  const visibleFilteredLessons = filteredLessons.slice(0, visibleResultCount)
 
   return (
-    <section class="thread-curriculum">
-      {/* 1. Header & Roadmap Progress Hero */}
-      <header class="curriculum-roadmap-hero">
-        <div class="curriculum-hero-intro">
-          <p class="folio-object-kicker">Curriculum Architecture</p>
-          <h2 class="curriculum-hero-title">Pathway & Lesson Roadmap</h2>
-          <p class="curriculum-hero-subtitle">
-            Progress systematically through each level. Every lesson delivers distinct foundational concepts, primary source study, and applied mastery.
-          </p>
+    <section class="vertical-curriculum">
+      <header class="vertical-view-head">
+        <div>
+          <h2>Curriculum journey</h2>
+          <p>Every Level summary stays visible. One Level opens at a time, and search becomes one direct lesson index.</p>
         </div>
-
-        <div class="curriculum-hero-stats">
-          <div class="curriculum-hero-stat-main">
-            <span class="curriculum-hero-pct">{progress}%</span>
-            <div class="curriculum-hero-stat-copy">
-              <strong>Progress Completed</strong>
-              <span>{completedLessons} of {totalLessons} lessons finished</span>
-            </div>
-          </div>
-
-          <div class="curriculum-hero-track" aria-hidden="true">
-            <div class="curriculum-hero-track-bar" style={{ width: `${progress}%` }} />
-          </div>
-
-          <div class="curriculum-hero-badges">
-            <span class="curriculum-hero-pill">
-              <Icon name="learn" size={13} /> {completedStages} of {path.stages.length} levels finished
-            </span>
-            <span class="curriculum-hero-pill">
-              <Icon name="spark" size={13} /> {inProgressLessons} active now
-            </span>
-          </div>
-        </div>
+        <span>{completedLessons} of {lessons.length} lessons complete</span>
       </header>
 
-      {/* 2. Spotlight "Up Next" Card */}
-      {nextLesson && nextStage && (
-        <div class="curriculum-spotlight-card">
-          <div class="curriculum-spotlight-left">
-            <div class="curriculum-spotlight-kicker">
-              <span class="curriculum-spotlight-badge">UP NEXT</span>
-              <span class="curriculum-spotlight-level">Level {nextStage.position} · {nextStage.title.replace(/^Level \d+\s*[—-]\s*/, '')}</span>
-            </div>
-            <h3 class="curriculum-spotlight-title">{nextLesson.title}</h3>
-            <p class="curriculum-spotlight-desc">
-              {nextLesson.why_learn || nextLesson.description || nextLesson.takeaway || 'Continue your next lesson on the curriculum pathway.'}
-            </p>
-            <div class="curriculum-spotlight-meta">
-              {nextLesson.estimated_minutes ? (
-                <span class="curriculum-meta-chip">
-                  <Icon name="clock" size={12} /> {nextLesson.estimated_minutes} min
-                </span>
-              ) : null}
-              {nextLesson.sources?.length ? (
-                <span class="curriculum-meta-chip">
-                  <Icon name="source" size={12} /> {nextLesson.sources.length} {nextLesson.sources.length === 1 ? 'material' : 'materials'}
-                </span>
-              ) : null}
-              <span class={`lesson-readiness-pill state-${lessonReadiness(nextLesson)}`}>
-                {statusLabel(lessonReadiness(nextLesson))}
-              </span>
-            </div>
-          </div>
-          <div class="curriculum-spotlight-action">
-            <a
-              class="button primary folio-primary curriculum-spotlight-btn"
-              href={lessonHref(path.thread.id, nextLesson.id)}
-            >
-              {nextLesson.status === 'in_progress' ? 'Continue Lesson' : 'Start Lesson'}
-              <Icon name="chevron" size={14} />
-            </a>
-          </div>
-        </div>
-      )}
+      <div class="vertical-curriculum-controls">
+        <label class="vertical-curriculum-search">
+          <span>Search all {lessons.length} lessons</span>
+          <span class="vertical-curriculum-search-field">
+            <Icon name="search" size={15} />
+            <input
+              type="search"
+              value={query}
+              onInput={(event) => setQuery((event.target as HTMLInputElement).value)}
+              placeholder="Search titles, concepts, or outcomes"
+            />
+            {query ? (
+              <button type="button" onClick={() => setQuery('')} aria-label="Clear curriculum search">
+                <Icon name="close" size={13} />
+              </button>
+            ) : null}
+          </span>
+        </label>
 
-      {/* 3. Controls & Filter Bar */}
-      <div class="curriculum-controls-bar">
-        <div class="curriculum-search-box">
-          <Icon name="search" size={15} />
-          <input
-            type="search"
-            value={query}
-            onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-            placeholder="Search lessons, topics, or outcomes…"
-            aria-label="Search lessons"
-          />
-          {query && (
-            <button class="curriculum-search-clear" onClick={() => setQuery('')} aria-label="Clear search" type="button">
-              <Icon name="close" size={12} />
-            </button>
-          )}
-        </div>
-
-        <div class="curriculum-filter-pills">
+        <div class="vertical-curriculum-filters" role="group" aria-label="Filter curriculum">
           {[
-            { key: 'all', label: `All (${totalLessons})` },
-            { key: 'in_progress', label: `In progress (${inProgressLessons})` },
-            { key: 'needs_material', label: `Needs material (${needsMaterialLessons})` },
-            { key: 'completed', label: `Completed (${completedLessons})` },
-          ].map((tab) => (
+            { key: 'all', label: `All ${lessons.length}` },
+            { key: 'in_progress', label: `In progress ${inProgressLessons}` },
+            { key: 'needs_material', label: `Needs material ${needsMaterialLessons}` },
+            { key: 'completed', label: `Completed ${completedLessons}` },
+          ].map((item) => (
             <button
-              key={tab.key}
-              class={`curriculum-filter-chip ${filter === tab.key ? 'is-active' : ''}`}
-              onClick={() => setFilter(tab.key)}
               type="button"
-              aria-pressed={filter === tab.key}
+              class={filter === item.key ? 'is-active' : ''}
+              aria-pressed={filter === item.key}
+              onClick={() => setFilter(item.key as typeof filter)}
+              key={item.key}
             >
-              {tab.label}
+              {item.label}
             </button>
           ))}
         </div>
-
-        <div class="thread-view-switcher curriculum-view-switcher" role="group" aria-label="Curriculum view mode">
-          <button
-            class={`thread-view-btn ${viewMode === 'cards' ? 'is-active' : ''}`}
-            onClick={() => setViewMode('cards')}
-            type="button"
-            aria-pressed={viewMode === 'cards'}
-          >
-            Cards
-          </button>
-          <button
-            class={`thread-view-btn ${viewMode === 'list' ? 'is-active' : ''}`}
-            onClick={() => setViewMode('list')}
-            type="button"
-            aria-pressed={viewMode === 'list'}
-          >
-            List
-          </button>
-        </div>
       </div>
 
-      {/* 4. Level Modules */}
-      <div class="curriculum-modules-list">
-        {path.stages.map((stage) => {
-          const lessons = stage.lessons.filter((lesson) => matches(lesson, stage))
-          const stageCompleted = stage.lessons.filter((l) => l.status === 'completed').length
-          const stageProgress = stage.lessons.length ? Math.round((stageCompleted / stage.lessons.length) * 100) : 0
-          const isLocked = stage.status === 'locked'
-
-          return (
-            <section class={`curriculum-stage-module status-${stage.status}`} key={stage.id}>
-              <header class="curriculum-stage-header">
-                <div class="curriculum-stage-header-left">
-                  <div class="curriculum-stage-kicker-row">
-                    <span class="curriculum-stage-badge">LEVEL {stage.position}</span>
-                    <span class={`folio-status-tag status-${stage.status}`}>{statusLabel(stage.status)}</span>
-                  </div>
-                  <h3 class="curriculum-stage-title">
-                    {stage.title.replace(/^Level \d+\s*[—-]\s*/, '')}
-                  </h3>
-                  {(stage.objective || stage.description) && (
-                    <p class="curriculum-stage-objective">{stage.objective || stage.description}</p>
-                  )}
-                </div>
-
-                <div class="curriculum-stage-header-right">
-                  <div class="curriculum-stage-progress-info">
-                    <strong>{stageCompleted} of {stage.lessons.length}</strong>
-                    <span>lessons complete ({stageProgress}%)</span>
-                  </div>
+      {searchActive ? (
+        <section class="vertical-curriculum-results">
+          <header>
+            <h3>Matching lessons</h3>
+            <span aria-live="polite">
+              {Math.min(visibleResultCount, filteredLessons.length)} of {filteredLessons.length} results shown
+            </span>
+          </header>
+          {filteredLessons.length ? (
+            <div>
+              {visibleFilteredLessons.map(({ stage, lesson, index }) => {
+                const readiness = lessonReadiness(lesson)
+                return (
                   <a
-                    class="button secondary curriculum-open-level-btn"
-                    href={levelHref(path.thread.id, stage.id)}
+                    class="vertical-curriculum-result"
+                    href={lessonHref(path.thread.id, lesson.id)}
+                    key={lesson.id}
                   >
-                    {isLocked ? 'Preview Level' : 'Open Level Hub'}
-                    <Icon name="chevron" size={13} />
+                    <span class="vertical-curriculum-step">
+                      {stage.position}.{index + 1}
+                    </span>
+                    <span>
+                      <strong>{lesson.title}</strong>
+                      <small>Level {stage.position} — {levelTitle(stage)}</small>
+                    </span>
+                    <span class={`lesson-readiness-pill state-${readiness}`}>{statusLabel(readiness)}</span>
                   </a>
-                </div>
-              </header>
-
-              <div class="curriculum-stage-meter" aria-hidden="true">
-                <div class="curriculum-stage-meter-fill" style={{ width: `${stageProgress}%` }} />
-              </div>
-
-              {isLocked ? (
-                <div class="curriculum-stage-locked-notice">
-                  <Icon name="lock" size={15} />
-                  <span>Level locked. Complete the preceding levels to unlock active study.</span>
-                </div>
+                )
+              })}
+              {visibleResultCount < filteredLessons.length ? (
+                <button
+                  class="vertical-journey-more"
+                  type="button"
+                  onClick={() => setVisibleResultCount((count) => count + 24)}
+                >
+                  Show 24 more lessons
+                </button>
               ) : null}
+            </div>
+          ) : (
+            <p class="vertical-thread-empty">
+              No lessons match this search and filter. Clear one control to recover the curriculum.
+            </p>
+          )}
+        </section>
+      ) : (
+        <ol class="vertical-curriculum-journey">
+          {path.stages.map((stage) => {
+            const expanded = stage.id === expandedStageId
+            const panelId = domId('curriculum-level-panel', stage.id)
+            const completed = completedLessonCount(stage)
+            const stageProgress = percent(completed, stage.lessons.length)
+            const sourceCount =
+              stage.sources.length +
+              stage.lessons.reduce((total, lesson) => total + (lesson.sources?.length || 0), 0)
+            const isLocked = stage.status === 'locked'
+            const stageState =
+              stage.status === 'completed'
+                ? 'Completed'
+                : isLocked
+                ? sourceCount > 0 ? 'Preview · Prerequisite' : 'Preview · Needs material'
+                : statusLabel(stage.status)
 
-              {/* Lessons container */}
-              {viewMode === 'cards' ? (
-                <div class="curriculum-lessons-grid">
-                  {lessons.map((lesson, idx) => {
-                    const readiness = lessonReadiness(lesson)
-                    const isDone = lesson.status === 'completed'
-                    const isInProgress = lesson.status === 'in_progress'
-                    const isNext = lesson.id === nextLesson?.id
+            return (
+              <li class={`${expanded ? 'is-expanded' : ''} ${isLocked ? 'is-preview' : ''}`} key={stage.id}>
+                <span class="vertical-journey-marker" aria-hidden="true">{stage.position}</span>
+                <section class="vertical-curriculum-level" aria-label={`Level ${stage.position}: ${levelTitle(stage)}`}>
+                  <button
+                    class="vertical-curriculum-level-trigger"
+                    type="button"
+                    aria-expanded={expanded}
+                    aria-controls={panelId}
+                    onClick={() => {
+                      setExpandedStageId(stage.id)
+                      persistThreadLevelFocus(path.thread.id, 'curriculum', stage.id)
+                    }}
+                  >
+                    <span class="vertical-curriculum-level-copy">
+                      <strong>Level {stage.position} — {levelTitle(stage)}</strong>
+                      <small>{stage.lessons.length} lessons · {sourceCount} sources</small>
+                    </span>
+                    <span class="vertical-curriculum-level-state">
+                      <span class={`folio-status-tag status-${stage.status}`}>{stageState}</span>
+                      <small>{completed} / {stage.lessons.length}</small>
+                    </span>
+                    <Icon name="chevron" size={14} />
+                  </button>
 
-                    return (
+                  {expanded ? (
+                    <div class="vertical-curriculum-level-panel" id={panelId}>
+                      {(stage.objective || stage.description) && <p>{stage.objective || stage.description}</p>}
                       <div
-                        class={`curriculum-lesson-card ${isDone ? 'is-completed' : ''} ${isInProgress ? 'is-in-progress' : ''} ${isNext ? 'is-next' : ''} ${isLocked ? 'is-locked' : ''}`}
-                        key={lesson.id}
+                        class="vertical-curriculum-level-progress"
+                        role="progressbar"
+                        aria-label={`Level ${stage.position} lesson progress`}
+                        aria-valuemin={0}
+                        aria-valuemax={stage.lessons.length || 1}
+                        aria-valuenow={completed}
                       >
-                        <div class="curriculum-card-top">
-                          <div class="curriculum-card-index-title">
-                            <span class="curriculum-card-step-badge">
-                              {isDone ? <Icon name="check" size={13} /> : String(idx + 1).padStart(2, '0')}
-                            </span>
-                            <h4 class="curriculum-card-title">{lesson.title}</h4>
-                          </div>
-                          <span class={`lesson-readiness-pill state-${readiness}`}>
-                            {statusLabel(readiness)}
-                          </span>
-                        </div>
-
-                        <p class="curriculum-card-summary">
-                          {lesson.why_learn || lesson.description || lesson.takeaway || 'Structured lesson unit.'}
-                        </p>
-
-                        <div class="curriculum-card-footer">
-                          <div class="curriculum-card-tags">
-                            {lesson.estimated_minutes ? (
-                              <span class="curriculum-tag-pill">
-                                <Icon name="clock" size={11} /> {lesson.estimated_minutes}m
-                              </span>
-                            ) : null}
-                            {lesson.sources?.length ? (
-                              <span class="curriculum-tag-pill">
-                                <Icon name="source" size={11} /> {lesson.sources.length} {lesson.sources.length === 1 ? 'source' : 'sources'}
-                              </span>
-                            ) : null}
-                          </div>
-
-                          <a
-                            class={`curriculum-card-cta-btn ${isInProgress || isNext ? 'is-highlight' : ''}`}
-                            href={lessonHref(path.thread.id, lesson.id)}
-                          >
-                            {isDone ? 'Review' : isInProgress ? 'Continue' : 'Start'}
-                            <Icon name="chevron" size={12} />
-                          </a>
-                        </div>
+                        <span style={{ width: `${stageProgress}%` }} />
                       </div>
-                    )
-                  })}
-                  {!lessons.length && (
-                    <p class="curriculum-empty-filter-note">No lessons match your active search/filter in Level {stage.position}.</p>
-                  )}
-                </div>
-              ) : (
-                <div class="curriculum-lessons-list-view">
-                  {lessons.map((lesson, idx) => {
-                    const readiness = lessonReadiness(lesson)
-                    const isDone = lesson.status === 'completed'
-                    const isInProgress = lesson.status === 'in_progress'
+                      {isLocked ? (
+                        <p class="vertical-curriculum-preview-note">
+                          {sourceCount > 0
+                            ? 'Preview only. Complete the preceding Levels before these lessons become active work.'
+                            : 'Preview only. Complete the preceding Levels and attach study material before these lessons become active work.'}
+                        </p>
+                      ) : null}
 
-                    return (
-                      <a
-                        class={`curriculum-list-row ${isDone ? 'is-completed' : ''} ${isInProgress ? 'is-in-progress' : ''}`}
-                        href={lessonHref(path.thread.id, lesson.id)}
-                        key={lesson.id}
-                      >
-                        <span class="curriculum-list-step">
-                          {isDone ? <Icon name="check" size={13} /> : String(idx + 1).padStart(2, '0')}
-                        </span>
-                        <div class="curriculum-list-body">
-                          <div class="curriculum-list-head">
-                            <strong class="curriculum-list-title">{lesson.title}</strong>
-                            <span class={`lesson-readiness-pill state-${readiness}`}>
-                              {statusLabel(readiness)}
-                            </span>
-                          </div>
-                          {(lesson.why_learn || lesson.description) && (
-                            <p class="curriculum-list-desc">{lesson.why_learn || lesson.description}</p>
-                          )}
-                        </div>
-                        <div class="curriculum-list-meta">
-                          {lesson.estimated_minutes ? (
-                            <span class="curriculum-tag-pill"><Icon name="clock" size={11} /> {lesson.estimated_minutes}m</span>
-                          ) : null}
-                          {lesson.sources?.length ? (
-                            <span class="curriculum-tag-pill"><Icon name="source" size={11} /> {lesson.sources.length}</span>
-                          ) : null}
-                          <span class="curriculum-list-cta">
-                            {isDone ? 'Review' : isInProgress ? 'Continue' : 'Start'}
-                            <Icon name="chevron" size={13} />
-                          </span>
-                        </div>
-                      </a>
-                    )
-                  })}
-                  {!lessons.length && (
-                    <p class="curriculum-empty-filter-note">No lessons match your active search/filter in Level {stage.position}.</p>
-                  )}
-                </div>
-              )}
+                      <div class="vertical-curriculum-lessons">
+                        {stage.lessons.map((lesson, index) => {
+                          const readiness = lessonReadiness(lesson)
+                          return (
+                            <a
+                              class={`vertical-curriculum-lesson state-${readiness}`}
+                              href={lessonHref(path.thread.id, lesson.id)}
+                              key={lesson.id}
+                            >
+                              <span class="vertical-curriculum-step">
+                                {stage.position}.{index + 1}
+                              </span>
+                              <span class="vertical-curriculum-lesson-copy">
+                                <strong>{lesson.title}</strong>
+                                {(lesson.why_learn || lesson.description) && (
+                                  <small>{lesson.why_learn || lesson.description}</small>
+                                )}
+                              </span>
+                              <span class="vertical-curriculum-lesson-meta">
+                                <span class={`lesson-readiness-pill state-${readiness}`}>
+                                  {statusLabel(readiness)}
+                                </span>
+                                <small>
+                                  {lesson.sources?.length
+                                    ? `${lesson.sources.length} ${lesson.sources.length === 1 ? 'source' : 'sources'}`
+                                    : lessonActionLabel(lesson)}
+                                </small>
+                              </span>
+                              <span class="vertical-curriculum-lesson-action">{lessonActionLabel(lesson)}</span>
+                            </a>
+                          )
+                        })}
+                        {!stage.lessons.length ? (
+                          <p class="vertical-thread-empty">No lessons have been authored for this Level.</p>
+                        ) : null}
+                      </div>
 
-              {/* Stage Project Link Banner if present */}
-              {stage.projects && stage.projects.length > 0 ? (
-                <div class="curriculum-stage-project-banner">
-                  <div class="curriculum-stage-project-info">
-                    <span class="curriculum-stage-project-icon"><Icon name="edit" size={14} /></span>
-                    <div>
-                      <small>Level {stage.position} Applied Project</small>
-                      <strong>{stage.projects[0].title}</strong>
                     </div>
-                  </div>
-                  <a
-                    class="button secondary curriculum-stage-project-link"
-                    href={`#/learn/thread/${encodeURIComponent(path.thread.id)}?tab=practice`}
-                  >
-                    View Project <Icon name="chevron" size={12} />
-                  </a>
-                </div>
-              ) : null}
-            </section>
-          )
-        })}
-      </div>
+                  ) : null}
+                </section>
+              </li>
+            )
+          })}
+        </ol>
+      )}
 
-      {/* Curriculum Authoring Tool */}
       <ThreadAuthoring threadId={path.thread.id} stageCount={path.stages.length} onChanged={onChanged} />
     </section>
   )
 }
 
-function ThreadProjects({ path, onChanged }: { path: PathResponse; onChanged: () => void }) {
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
+function ThreadProjects({
+  path,
+  focusLevelId,
+  onChanged,
+}: {
+  path: PathResponse
+  focusLevelId?: string
+  onChanged: () => void
+}) {
+  const defaultStage =
+    path.stages.find((stage) => stage.id === focusLevelId) ||
+    threadNextLesson(path)?.stage ||
+    path.current_stage ||
+    path.stages.find((stage) => ['available', 'in_progress'].includes(stage.status)) ||
+    path.stages[0]
+  const [expandedStageId, setExpandedStageId] = useState(defaultStage?.id || '')
   const [saving, setSaving] = useState('')
   const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    setExpandedStageId((current) =>
+      path.stages.some((stage) => stage.id === current) ? current : defaultStage?.id || path.stages[0]?.id || '',
+    )
+  }, [path.thread.id, path.stages.length, defaultStage?.id])
 
   const updateProject = async (id: string, status: string) => {
     setSaving(id)
@@ -772,6 +833,7 @@ function ThreadProjects({ path, onChanged }: { path: PathResponse; onChanged: ()
         method: 'PATCH',
         body: JSON.stringify({ status }),
       })
+      setMessage('Project status saved.')
       onChanged()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Project update failed.')
@@ -784,6 +846,7 @@ function ThreadProjects({ path, onChanged }: { path: PathResponse; onChanged: ()
     event.preventDefault()
     const value = String(new FormData(event.currentTarget as HTMLFormElement).get('synthesis') || '')
     setSaving('synthesis')
+    setMessage('')
     try {
       await api(`/learning/core/threads/${encodeURIComponent(path.thread.id)}`, {
         method: 'PATCH',
@@ -798,164 +861,153 @@ function ThreadProjects({ path, onChanged }: { path: PathResponse; onChanged: ()
     }
   }
 
+  const finalProjects = path.projects.filter((project) => project.type === 'final')
+
   return (
-    <section class="thread-evidence-ledger thread-projects-section">
-      <header class="thread-projects-header">
+    <section class="vertical-practice">
+      <header class="vertical-view-head">
         <div>
-          <p class="folio-object-kicker">Applied Practice & Synthesis</p>
-          <h2>Practical Projects & Durable Takeaways</h2>
-          <p>Real-world projects and personal synthesis solidify understanding into durable capability.</p>
+          <h2>Practice journey</h2>
+          <p>Current Level application leads. Future projects remain previews, and synthesis closes the Thread as a terminal workspace.</p>
         </div>
-        <div class="thread-view-switcher" role="group" aria-label="Projects view mode">
-          <button
-            type="button"
-            class={`thread-view-btn ${viewMode === 'cards' ? 'is-active' : ''}`}
-            onClick={() => setViewMode('cards')}
-            aria-pressed={viewMode === 'cards'}
-          >
-            <Icon name="palette" size={14} />
-            <span>Cards</span>
-          </button>
-          <button
-            type="button"
-            class={`thread-view-btn ${viewMode === 'list' ? 'is-active' : ''}`}
-            onClick={() => setViewMode('list')}
-            aria-pressed={viewMode === 'list'}
-          >
-            <Icon name="menu" size={14} />
-            <span>List</span>
-          </button>
-        </div>
+        <span>{path.stages.reduce((total, stage) => total + stage.projects.length, 0) + finalProjects.length} projects</span>
       </header>
 
-      {/* Level Projects Grid */}
-      <div class="thread-levels-projects-grid">
+      <p class="vertical-thread-advisory">
+        Projects are optional practice. They never unlock a lesson, advance a Level, or complete the Thread.
+      </p>
+
+      <ol class="vertical-practice-journey">
         {path.stages.map((stage) => {
-          if (!stage.projects || stage.projects.length === 0) return null
+          const expanded = stage.id === expandedStageId
+          const panelId = domId('practice-level-panel', stage.id)
+          const isCurrent = stage.id === defaultStage?.id
+          const stateLabel =
+            stage.status === 'completed'
+              ? 'Completed Level'
+              : isCurrent
+              ? 'Current Level'
+              : 'Future preview'
+
           return (
-            <section class="thread-project-level" key={stage.id}>
-              <div class="thread-project-level-head">
-                <div class="thread-project-level-meta">
-                  <span class="thread-level-badge">{String(stage.position).padStart(2, '0')}</span>
-                  <div>
-                    <p class="folio-object-kicker">Level {stage.position}</p>
-                    <h3>{stage.title.replace(/^Level \d+\s*[—-]\s*/, '')}</h3>
+            <li class={`${expanded ? 'is-expanded' : ''} ${isCurrent ? 'is-current' : ''}`} key={stage.id}>
+              <span class="vertical-journey-marker" aria-hidden="true">{stage.position}</span>
+              <section class="vertical-practice-level" aria-label={`Level ${stage.position}: ${levelTitle(stage)}`}>
+                <button
+                  class="vertical-practice-level-trigger"
+                  type="button"
+                  aria-expanded={expanded}
+                  aria-controls={panelId}
+                  onClick={() => {
+                    setExpandedStageId(stage.id)
+                    persistThreadLevelFocus(path.thread.id, 'practice', stage.id)
+                  }}
+                >
+                  <span>
+                    <strong>Level {stage.position} — {levelTitle(stage)}</strong>
+                    <small>{stage.projects.length || 0} {stage.projects.length === 1 ? 'project' : 'projects'}</small>
+                  </span>
+                  <span class={`folio-status-tag status-${stage.status}`}>{stateLabel}</span>
+                  <Icon name="chevron" size={14} />
+                </button>
+
+                {expanded ? (
+                  <div class="vertical-practice-level-panel" id={panelId}>
+                    {(stage.objective || stage.description) && <p>{stage.objective || stage.description}</p>}
+                    {stage.projects.length ? (
+                      <div class="vertical-practice-projects">
+                        {stage.projects.map((project) => (
+                          <VerticalProjectEntry
+                            project={project}
+                            saving={saving === project.id}
+                            onUpdate={updateProject}
+                            key={project.id}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p class="vertical-thread-empty">No optional project has been defined for this Level.</p>
+                    )}
                   </div>
-                </div>
-                <span class={`folio-status-tag status-${stage.status}`}>{statusLabel(stage.status)}</span>
-              </div>
-              {viewMode === 'cards' ? (
-                <div class="thread-project-grid">
-                  {stage.projects.map((project) => (
-                    <ProjectCard
-                      project={project}
-                      levelLabel={`Level ${stage.position}`}
-                      saving={saving === project.id}
-                      onUpdate={updateProject}
-                      key={project.id}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div class="thread-project-list">
-                  {stage.projects.map((project) => (
-                    <ProjectRow
-                      project={project}
-                      saving={saving === project.id}
-                      onUpdate={updateProject}
-                      key={project.id}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
+                ) : null}
+              </section>
+            </li>
           )
         })}
-      </div>
+      </ol>
 
-      {/* Final Mastery Project */}
-      {path.projects
-        .filter((project) => project.type === 'final')
-        .map((project) => (
-          <section class="thread-final-project" key={project.id}>
-            <p class="folio-object-kicker">Capstone Mastery Project</p>
-            {viewMode === 'cards' ? (
-              <ProjectCard
+      <section class="vertical-practice-terminal" aria-labelledby="vertical-practice-terminal-title">
+        <header>
+          <div>
+            <h3 id="vertical-practice-terminal-title">Final mastery and synthesis</h3>
+            <p>A terminal workspace after the Level journey, never a progression gate.</p>
+          </div>
+          <span class="folio-status-tag status-deferred">Terminal workspace</span>
+        </header>
+
+        {finalProjects.length ? (
+          <div class="vertical-practice-projects">
+            {finalProjects.map((project) => (
+              <VerticalProjectEntry
                 project={project}
-                levelLabel="Capstone"
                 saving={saving === project.id}
                 onUpdate={updateProject}
+                key={project.id}
               />
-            ) : (
-              <ProjectRow project={project} saving={saving === project.id} onUpdate={updateProject} />
-            )}
-          </section>
-        ))}
+            ))}
+          </div>
+        ) : null}
 
-      {/* Thread Final Synthesis */}
-      <form class="thread-synthesis" onSubmit={saveSynthesis}>
-        <label>
-          <span class="folio-object-kicker">Thread Final Synthesis</span>
-          <strong>What can you now explain, decide, build, or do?</strong>
-          <textarea
-            name="synthesis"
-            rows={7}
-            defaultValue={path.thread.final_synthesis || ''}
-            placeholder="Document your durable takeaways, conceptual frameworks, and practical conclusions from this Thread…"
-          />
-        </label>
-        <button class="button primary folio-primary" disabled={Boolean(saving)}>
-          {saving === 'synthesis' ? 'Saving…' : 'Save Thread Synthesis'}
-        </button>
-      </form>
+        <form class="vertical-practice-synthesis" onSubmit={saveSynthesis}>
+          <label>
+            <strong>What can you now explain, decide, build, or do?</strong>
+            <span>Save a durable synthesis without changing lesson or Level progress.</span>
+            <textarea
+              name="synthesis"
+              rows={7}
+              defaultValue={path.thread.final_synthesis || ''}
+              placeholder="Document the models, decisions, and practical conclusions that should remain after this Thread."
+            />
+          </label>
+          <button class="button secondary" disabled={Boolean(saving)}>
+            {saving === 'synthesis' ? 'Saving…' : 'Save final synthesis'}
+          </button>
+        </form>
+      </section>
 
-      {message && (
-        <p class="folio-status" role="status">
-          {message}
-        </p>
-      )}
+      {message && <p class="folio-status" role="status">{message}</p>}
     </section>
   )
 }
 
-function ProjectCard({
+function VerticalProjectEntry({
   project,
-  levelLabel,
   saving,
   onUpdate,
 }: {
   project: ThreadProject
-  levelLabel?: string
   saving: boolean
   onUpdate: (id: string, status: string) => void
 }) {
   return (
-    <article class={`thread-project-card status-${project.status}`}>
-      <div class="thread-project-card-head">
-        <span class="thread-project-kicker">{levelLabel || 'Project'}</span>
-        <span class={`folio-status-tag status-${project.status}`}>
-          <i class="folio-tag-dot" aria-hidden="true" />
-          {statusLabel(project.status)}
-        </span>
-      </div>
-
-      <div class="thread-project-card-body">
-        <h4 class="thread-project-card-title">{project.title}</h4>
-        {project.description && <p class="thread-project-card-desc">{project.description}</p>}
-        {project.instructions && (
-          <div class="thread-project-instructions">{project.instructions}</div>
-        )}
+    <article class={`vertical-practice-project status-${project.status}`}>
+      <div>
+        <h4>{project.title}</h4>
+        {project.objective && <p><strong>Objective:</strong> {project.objective}</p>}
+        {project.description && <p>{project.description}</p>}
         {project.suggested_context && (
-          <p class="thread-project-card-context">
-            <strong>Context:</strong> {project.suggested_context}
-          </p>
+          <p class="vertical-practice-context"><strong>Suggested context:</strong> {project.suggested_context}</p>
+        )}
+        {project.instructions && (
+          <details>
+            <summary>Project instructions</summary>
+            <p>{project.instructions}</p>
+          </details>
         )}
       </div>
-
-      <div class="thread-project-card-footer">
-        <span class="thread-project-status-label">Status</span>
+      <label>
+        <span>Status</span>
         <select
-          class="thread-project-status-select"
           value={project.status}
           disabled={saving}
           onChange={(event) => onUpdate(project.id, (event.target as HTMLSelectElement).value)}
@@ -966,39 +1018,8 @@ function ProjectCard({
           <option value="completed">Completed</option>
           <option value="deferred">Deferred</option>
         </select>
-      </div>
+      </label>
     </article>
-  )
-}
-
-function ProjectRow({
-  project,
-  saving,
-  onUpdate,
-}: {
-  project: ThreadProject
-  saving: boolean
-  onUpdate: (id: string, status: string) => void
-}) {
-  return (
-    <div class="thread-project-row">
-      <div class="thread-project-info">
-        <strong>{project.title}</strong>
-        {project.description && <p>{project.description}</p>}
-        {project.instructions && <div class="thread-project-instructions">{project.instructions}</div>}
-      </div>
-      <select
-        value={project.status}
-        disabled={saving}
-        onChange={(event) => onUpdate(project.id, (event.target as HTMLSelectElement).value)}
-        aria-label={`Status for ${project.title}`}
-      >
-        <option value="not_started">Not started</option>
-        <option value="in_progress">In progress</option>
-        <option value="completed">Completed</option>
-        <option value="deferred">Deferred</option>
-      </select>
-    </div>
   )
 }
 
@@ -1050,9 +1071,9 @@ function StageView({
     <>
       <header class="course-stage-header">
         <nav class="course-stage-context" aria-label="Breadcrumb">
-          <a href="#/learn">Threads</a>
+          <a href={routeHref('learn', 'paths')}>Threads</a>
           <span aria-hidden="true">/</span>
-          <span>{threadTitle}</span>
+          <a href={threadTabHref(threadId, 'overview')}>{threadTitle}</a>
         </nav>
         <div class="course-stage-heading-line">
           <p class="folio-object-kicker">Level {stage.position}</p>
@@ -1221,7 +1242,7 @@ function LevelMaterials({ stage, onChanged, lessonTools = false }: { stage: Path
 
 function LevelList({ threadId, stages, activeStage }: { threadId: string; stages: PathStage[]; activeStage?: PathStage }) {
   return (
-    <details class="course-level-list" open>
+    <details class="course-level-list">
       <summary class="course-level-list-heading">
         <span class="folio-object-kicker">Curriculum Spine</span>
         <span>{stages.length} levels</span>
@@ -1269,6 +1290,8 @@ function ThreadMaterialLedger({
   onChanged: () => void
   open?: boolean
 }) {
+  if (open) return <ThreadMaterialsJourney path={path} onChanged={onChanged} />
+
   const levelMaterials = path.stages.filter(
     (stage) => stage.notes.length || stage.files.length || stage.cards.length || stage.recall_drafts.length
   )
@@ -1348,6 +1371,362 @@ function ThreadMaterialLedger({
         )}
       </div>
     </details>
+  )
+}
+
+type ThreadMaterialKind = 'note' | 'file' | 'recall'
+
+interface ThreadMaterialOwner {
+  key: string
+  marker: string
+  scope: MaterialScope
+  subtitle: string
+  notes: NoteRecord[]
+  files: PathArtifact[]
+  cards: RecallCard[]
+  drafts: RecallDraft[]
+}
+
+interface ThreadMaterialIndexItem {
+  id: string
+  kind: ThreadMaterialKind
+  title: string
+  detail: string
+  status: string
+  href?: string
+  rtl?: boolean
+  owner: ThreadMaterialOwner
+}
+
+function ThreadMaterialsJourney({ path, onChanged }: { path: PathResponse; onChanged: () => void }) {
+  const [query, setQuery] = useState('')
+  const [typeFilter, setTypeFilter] = useState<'all' | ThreadMaterialKind>('all')
+  const [ownerFilter, setOwnerFilter] = useState<'all' | MaterialScope['kind']>('all')
+  const [expandedOwnerKey, setExpandedOwnerKey] = useState('')
+  const [visibleOwnerCount, setVisibleOwnerCount] = useState(24)
+  const [ownerItemLimit, setOwnerItemLimit] = useState(24)
+
+  const owners: ThreadMaterialOwner[] = [
+    {
+      key: `thread:${path.thread.id}`,
+      marker: 'T',
+      scope: { kind: 'thread', id: path.thread.id, title: path.thread.title },
+      subtitle: 'Direct Thread material',
+      notes: path.notes,
+      files: path.files,
+      cards: path.cards,
+      drafts: path.recall_drafts,
+    },
+    ...path.stages
+      .filter((stage) => stage.notes.length + stage.files.length + stage.cards.length + stage.recall_drafts.length > 0)
+      .map((stage) => ({
+        key: `level:${stage.id}`,
+        marker: String(stage.position),
+        scope: { kind: 'level' as const, id: stage.id, title: stage.title },
+        subtitle: `Level ${stage.position} owner`,
+        notes: stage.notes,
+        files: stage.files,
+        cards: stage.cards,
+        drafts: stage.recall_drafts,
+      })),
+    ...path.stages.flatMap((stage) =>
+      stage.lessons
+        .filter(
+          (lesson) =>
+            (lesson.notes?.length || 0) +
+              (lesson.files?.length || 0) +
+              (lesson.cards?.length || 0) +
+              (lesson.recall_drafts?.length || 0) >
+            0,
+        )
+        .map((lesson, lessonIndex) => ({
+          key: `lesson:${lesson.id}`,
+          marker: `${stage.position}.${lessonIndex + 1}`,
+          scope: { kind: 'lesson' as const, id: lesson.id, title: lesson.title },
+          subtitle: `Level ${stage.position} · Lesson owner`,
+          notes: lesson.notes || [],
+          files: lesson.files || [],
+          cards: lesson.cards || [],
+          drafts: lesson.recall_drafts || [],
+        })),
+    ),
+  ]
+
+  const items: ThreadMaterialIndexItem[] = owners.flatMap((owner) => [
+    ...owner.notes.map((note) => ({
+      id: note.id,
+      kind: 'note' as const,
+      title: note.title,
+      detail: materialExcerpt(note.abstract || note.sections?.[0]?.content, 'Study note'),
+      status: note.status || 'active',
+      href: noteHref(note.id),
+      owner,
+    })),
+    ...owner.files.map((file) => ({
+      id: file.id,
+      kind: 'file' as const,
+      title: file.filename,
+      detail: file.media_type || 'Stored file',
+      status: 'stored',
+      href: artifactHref(file.id),
+      owner,
+    })),
+    ...owner.cards.map((card) => ({
+      id: card.id,
+      kind: 'recall' as const,
+      title: card.question,
+      detail: `Approved card · due ${card.due_at || 'now'}`,
+      status: 'approved',
+      href: cardHref(card.id),
+      rtl: true,
+      owner,
+    })),
+    ...owner.drafts.map((draft) => ({
+      id: draft.id,
+      kind: 'recall' as const,
+      title: draft.question,
+      detail: `${draft.status === 'rejected' ? 'Rejected' : draft.status === 'approved' ? 'Approved' : 'Draft'} recall item${
+        draft.source_title ? ` · ${draft.source_title}` : ''
+      }`,
+      status: draft.status,
+      rtl: true,
+      owner,
+    })),
+  ])
+  const normalizedQuery = query.trim().toLowerCase()
+  const filteredItems = items.filter((item) => {
+    const queryMatch =
+      !normalizedQuery ||
+      `${item.title} ${item.detail} ${item.owner.scope.title} ${item.owner.subtitle}`
+        .toLowerCase()
+        .includes(normalizedQuery)
+    const typeMatch = typeFilter === 'all' || item.kind === typeFilter
+    const ownerMatch = ownerFilter === 'all' || item.owner.scope.kind === ownerFilter
+    return queryMatch && typeMatch && ownerMatch
+  })
+  const filteredOwners = owners
+    .map((owner) => ({
+      owner,
+      items: filteredItems.filter((item) => item.owner.key === owner.key),
+    }))
+    .filter((group) => group.items.length > 0)
+  const filteredOwnerKeys = filteredOwners.map(({ owner }) => owner.key).join('|')
+
+  useEffect(() => {
+    setExpandedOwnerKey((current) =>
+      filteredOwners.some(({ owner }) => owner.key === current) ? current : filteredOwners[0]?.owner.key || '',
+    )
+  }, [path.thread.id, filteredOwnerKeys])
+
+  useEffect(() => {
+    setVisibleOwnerCount(24)
+    setOwnerItemLimit(24)
+  }, [path.thread.id, query, typeFilter, ownerFilter])
+
+  const totals = threadMaterialTotals(path)
+  const totalRecall = totals.cards + totals.drafts
+  const materialOwnerCount = new Set(items.map((item) => item.owner.key)).size
+  const visibleFilteredOwners = filteredOwners.slice(0, visibleOwnerCount)
+
+  return (
+    <section class="vertical-materials">
+      <header class="vertical-view-head">
+        <div>
+          <h2>Materials journey</h2>
+          <p>One owner-aware index follows saved material from the Thread to exact Levels and Lessons.</p>
+        </div>
+        <span>{items.length} items across {materialOwnerCount} owners</span>
+      </header>
+
+      <div class="vertical-materials-summary" aria-label="Material counts across every owner scope">
+        <div><strong>{totals.notes}</strong><span>Notes</span></div>
+        <div><strong>{totals.files}</strong><span>Files</span></div>
+        <div><strong>{totals.cards}</strong><span>Approved cards</span></div>
+        <div><strong>{totals.drafts}</strong><span>Recall drafts</span></div>
+      </div>
+
+      <div class="vertical-materials-controls">
+        <label>
+          <span>Search title, source, or owner</span>
+          <span class="vertical-materials-search-field">
+            <Icon name="search" size={15} />
+            <input
+              type="search"
+              value={query}
+              onInput={(event) => setQuery((event.target as HTMLInputElement).value)}
+              placeholder="Search all material"
+            />
+            {query ? (
+              <button type="button" onClick={() => setQuery('')} aria-label="Clear material search">
+                <Icon name="close" size={13} />
+              </button>
+            ) : null}
+          </span>
+        </label>
+
+        <div>
+          <span>Type</span>
+          <div class="vertical-materials-filters" role="group" aria-label="Material type">
+            {[
+              { key: 'all', label: `All ${items.length}` },
+              { key: 'note', label: `Notes ${totals.notes}` },
+              { key: 'file', label: `Files ${totals.files}` },
+              { key: 'recall', label: `Recall ${totalRecall}` },
+            ].map((item) => (
+              <button
+                type="button"
+                class={typeFilter === item.key ? 'is-active' : ''}
+                aria-pressed={typeFilter === item.key}
+                onClick={() => setTypeFilter(item.key as typeof typeFilter)}
+                key={item.key}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <span>Owner</span>
+          <div class="vertical-materials-filters" role="group" aria-label="Material owner">
+            {[
+              { key: 'all', label: 'All owners' },
+              { key: 'thread', label: 'Thread' },
+              { key: 'level', label: 'Level' },
+              { key: 'lesson', label: 'Lesson' },
+            ].map((item) => (
+              <button
+                type="button"
+                class={ownerFilter === item.key ? 'is-active' : ''}
+                aria-pressed={ownerFilter === item.key}
+                onClick={() => setOwnerFilter(item.key as typeof ownerFilter)}
+                key={item.key}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <p class="visually-hidden" aria-live="polite">
+        {filteredItems.length} matching items across {filteredOwners.length} owners.
+      </p>
+
+      {filteredOwners.length ? (
+        <>
+          <ol class="vertical-material-owner-journey">
+            {visibleFilteredOwners.map(({ owner, items: ownerItems }) => {
+              const expanded = owner.key === expandedOwnerKey
+              const panelId = domId('material-owner-panel', owner.key)
+              return (
+                <li class={expanded ? 'is-expanded' : ''} key={owner.key}>
+                  <span class="vertical-material-owner-marker" aria-hidden="true">
+                    {owner.marker}
+                  </span>
+                  <section class="vertical-material-owner" aria-label={`${owner.scope.kind}: ${owner.scope.title}`}>
+                    <button
+                      class="vertical-material-owner-trigger"
+                      type="button"
+                      aria-expanded={expanded}
+                      aria-controls={panelId}
+                      onClick={() => {
+                        setExpandedOwnerKey(owner.key)
+                        setOwnerItemLimit(24)
+                      }}
+                    >
+                      <span>
+                        <strong>{owner.scope.title}</strong>
+                        <small>{owner.subtitle}</small>
+                      </span>
+                      <span class="learning-owner-pill">{ownerItems.length} owned by {owner.scope.kind}</span>
+                      <Icon name="chevron" size={14} />
+                    </button>
+                    {expanded ? (
+                      <div class="vertical-material-owner-panel" id={panelId}>
+                        <div class="vertical-material-owner-items">
+                          {ownerItems.slice(0, ownerItemLimit).map((item) => {
+                            const content = (
+                              <>
+                                <Icon
+                                  name={item.kind === 'note' ? 'note' : item.kind === 'file' ? 'file' : 'spark'}
+                                  size={14}
+                                />
+                                <span>
+                                  <strong lang={item.rtl ? 'ar' : undefined} dir={item.rtl ? 'rtl' : undefined}>
+                                    {item.title}
+                                  </strong>
+                                  <small>{item.detail}</small>
+                                </span>
+                                <span class={`folio-status-tag status-${item.status}`}>{statusLabel(item.status)}</span>
+                              </>
+                            )
+                            return item.href ? (
+                              <a
+                                class="vertical-material-item"
+                                href={item.href}
+                                target={item.kind === 'file' ? '_blank' : undefined}
+                                rel={item.kind === 'file' ? 'noreferrer' : undefined}
+                                key={item.id}
+                              >
+                                {content}
+                              </a>
+                            ) : (
+                              <div class="vertical-material-item is-draft" key={item.id}>{content}</div>
+                            )
+                          })}
+                        </div>
+                        {ownerItemLimit < ownerItems.length ? (
+                          <button
+                            class="vertical-journey-more"
+                            type="button"
+                            onClick={() => setOwnerItemLimit((count) => count + 24)}
+                          >
+                            Show 24 more items
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </section>
+                </li>
+              )
+            })}
+          </ol>
+          {visibleOwnerCount < filteredOwners.length ? (
+            <button
+              class="vertical-journey-more"
+              type="button"
+              onClick={() => setVisibleOwnerCount((count) => count + 24)}
+            >
+              Show 24 more owners
+            </button>
+          ) : null}
+        </>
+      ) : (
+        <p class="vertical-thread-empty">
+          No materials match this search, type, and owner combination. Clear one filter to recover the index.
+        </p>
+      )}
+
+      <details class="vertical-materials-create">
+        <summary>
+          <span>
+            <strong>Manage direct Thread material</strong>
+            <small>Browse existing Thread-owned items and add an explicit note, file, or learner-authored card.</small>
+          </span>
+          <Icon name="chevron" size={14} />
+        </summary>
+        <ScopedMaterials
+          compact
+          scope={{ kind: 'thread', id: path.thread.id, title: path.thread.title }}
+          notes={path.notes}
+          files={path.files}
+          cards={path.cards}
+          drafts={path.recall_drafts}
+          onChanged={onChanged}
+        />
+      </details>
+    </section>
   )
 }
 
@@ -1635,11 +2014,11 @@ function LessonView({
 
       <header class="course-lesson-header">
         <nav class="course-stage-context" aria-label="Breadcrumb">
-          <a href="#/learn">Threads</a>
+          <a href={routeHref('learn', 'paths')}>Threads</a>
           <span aria-hidden="true">/</span>
-          <span>{threadTitle}</span>
+          <a href={threadTabHref(threadId, 'overview')}>{threadTitle}</a>
           <span aria-hidden="true">/</span>
-          <span>Level {stage.position}</span>
+          <a href={levelHref(threadId, stage.id)}>Level {stage.position}</a>
         </nav>
         <div class="course-lesson-meta-bar">
           <p class="folio-object-kicker">Lesson {String(lesson.position + 1).padStart(2, '0')}</p>

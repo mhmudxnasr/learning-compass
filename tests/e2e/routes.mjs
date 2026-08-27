@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -12,7 +12,7 @@ const publicLearningUpdatePath = '/updates/learning-materials'
 const rootRoutes = [
   { root: 'home', href: '#/home', expected: '.folio-home-workspace' },
   { root: 'library', href: '#/library', expected: '.folio-books-view' },
-  { root: 'learn', href: '#/learn', expected: '.folio-paths' },
+  { root: 'learn', href: '#/learn', expected: '.folio-notes' },
   { root: 'map', href: '#/map', expected: '.atlas-empty-state, .atlas-canvas-view' },
   { root: 'settings', href: '#/settings', expected: '.profile-settings-page' },
 ]
@@ -27,7 +27,8 @@ const modeRoutes = [
   { root: 'library', href: '#/library?mode=triage&focus=feeds', mode: 'triage', focus: 'feeds', expected: '.folio-feeds-view' },
   { root: 'library', href: '#/library?mode=catalog&focus=archive', mode: 'catalog', focus: 'archive', expected: '.folio-archive-view' },
   { root: 'library', href: '#/library?mode=assets&focus=files', mode: 'assets', focus: 'files', expected: '.folio-files-view' },
-  { root: 'learn', href: '#/learn', mode: 'paths', expected: '.folio-paths' },
+  { root: 'learn', href: '#/learn', mode: 'practice', expected: '.folio-notes' },
+  { root: 'learn', href: '#/learn?mode=paths', mode: 'paths', expected: '.folio-paths' },
   { root: 'learn', href: '#/learn?mode=practice&focus=notes', mode: 'practice', focus: 'notes', expected: '.folio-notes' },
   { root: 'learn', href: '#/learn?mode=practice&focus=recall', mode: 'practice', focus: 'recall', expected: '.folio-recall' },
   { root: 'map', href: '#/map', mode: 'atlas', expected: '.atlas-empty-state, .atlas-canvas-view' },
@@ -67,13 +68,15 @@ try {
     if (status !== 0) throw new Error(`D1 setup failed:\n${output}`)
   }
 
-  server = spawn(wrangler, ['dev', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', String(port)], {
+  server = spawn(wrangler, ['dev', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', String(port), '--var', 'REQUIRE_API_AUTH:false', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   })
   let serverLog = ''
+  let serverExit = null
   server.stdout.on('data', (chunk) => { serverLog = (serverLog + chunk).slice(-4000) })
   server.stderr.on('data', (chunk) => { serverLog = (serverLog + chunk).slice(-4000) })
+  server.on('exit', (code, signal) => { serverExit = { code, signal } })
 
   for (let attempt = 0; attempt < 60; attempt++) {
     try {
@@ -82,6 +85,39 @@ try {
     } catch {}
     if (attempt === 59) throw new Error(`Worker did not start:\n${serverLog}`)
     await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+
+  // Exercise the installed first-party client through the real Worker and D1.
+  // The idempotency key belongs only to the inner canonical target; putting it
+  // on the outer /agent/request would reserve the wrong endpoint and make the
+  // forwarded write self-conflict.
+  const siteRequestScript = process.env.SITE_REQUEST_SCRIPT || join(process.env.HOME || '/home/mahmud', '.hermes', 'skills', 'workflow', 'learning-compass-site-operator', 'scripts', 'site_request.py')
+  if (existsSync(siteRequestScript)) {
+    const guardedMutationFile = join(persistDir, 'guarded-mutation.json')
+    writeFileSync(guardedMutationFile, JSON.stringify({
+      method: 'PUT',
+      path: '/settings/appearance',
+      body: { density: 'balanced' },
+      idempotency_key: 'e2e-inner-target-only',
+      verify: { path: '/settings', field: 'settings.appearance.density', equals: 'balanced' },
+    }))
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const client = spawn('python3', [siteRequestScript, 'mutate', `@${guardedMutationFile}`, '--raw'], {
+        env: { ...process.env, TASTE_MAP_URL: baseUrl, TASTE_MAP_ALLOW_LOCAL: '1', TASTE_MAP_API_TOKEN: '', TASTE_MAP_AGENT_NAME: 'learning-compass-e2e' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      let clientOutput = ''
+      client.stdout.on('data', (chunk) => { clientOutput += chunk })
+      client.stderr.on('data', (chunk) => { clientOutput += chunk })
+      const clientStatus = await new Promise((resolve) => client.on('close', resolve))
+      if (clientStatus !== 0 || /mutation_id_reused_for_different_operation/.test(clientOutput)) {
+        throw new Error(`guarded client mutation self-conflicted (attempt ${attempt + 1}, exit ${clientStatus}):\n${clientOutput}`)
+      }
+      const clientReceipt = JSON.parse(clientOutput)
+      if (!clientReceipt.ok || !clientReceipt.verified || clientReceipt.receipt?.mutation_or_job?.mutation_committed !== true) {
+        throw new Error(`guarded client mutation lacked a verified receipt: ${clientOutput}`)
+      }
+    }
   }
 
   const requestJson = async (path, options = {}, retry = true) => {
@@ -113,9 +149,9 @@ try {
     },
     priorities: [[1, 'systems', 'Systems thinking', 'Build durable models.']],
     tree_nodes: [
-      { id: 'fixture-branch-id', type: 'branch', label: 'Readable fixture branch', super_category: 'cat-mind', parent_id: 'root', status: 'love', round_label: null },
-      { id: 'pruned-fixture-branch', type: 'branch', label: 'Pruned fixture branch', super_category: 'cat-mind', parent_id: 'root', status: 'pruned', round_label: null },
-      { id: 'legacy-book-branch', type: 'branch', label: 'Legacy visible branch', super_category: 'cat-mind', parent_id: 'root', status: 'love', round_label: null },
+      { id: 'fixture-branch-id', type: 'branch', label: 'Readable fixture branch', super_category: 'cat-mind', parent_id: 'root', status: 'love' },
+      { id: 'pruned-fixture-branch', type: 'branch', label: 'Pruned fixture branch', super_category: 'cat-mind', parent_id: 'root', status: 'pruned' },
+      { id: 'legacy-book-branch', type: 'branch', label: 'Legacy visible branch', super_category: 'cat-mind', parent_id: 'root', status: 'love' },
     ],
   }) })
   await requestJson('/brain/profile/sync-swipes', { method: 'POST', body: JSON.stringify({}) })
@@ -190,6 +226,36 @@ try {
     await requestJson('/recommendations/books', { method: 'POST', headers: bookHeaders, body: JSON.stringify({ title: `E2E Ledger Book ${String(index).padStart(2, '0')}`, author: 'E2E Ledger Author', branch_id: 'fixture-branch-id' }) })
   }
 
+  const missingPersonalBranch = await fetch(`${baseUrl}/capture/personal`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Branchless movie', item_type: 'movie', state: 'planned' }) })
+  if (missingPersonalBranch.status !== 400) throw new Error(`personal intake accepted a missing branch (${missingPersonalBranch.status})`)
+  const personalMovie = await requestJson('/capture/personal', { method: 'POST', body: JSON.stringify({
+    title: 'E2E Personal Movie', creator: 'E2E Director', item_type: 'movie', state: 'in_progress', branch_id: 'fixture-branch-id',
+    url: 'https://example.com/e2e-personal-movie', release_year: 2024, duration_minutes: 142,
+    progress_current: 42, progress_total: 142, progress_unit: 'minutes', rating: 8.5,
+    tags: ['documentary', 'systems'], personal_note: 'Keep the causal model visible.',
+  }) })
+  if (personalMovie.item?.item_type !== 'movie' || personalMovie.item?.state !== 'in_progress' || personalMovie.item?.branch_id !== 'fixture-branch-id' || personalMovie.item?.rating !== 8.5) throw new Error(`personal movie did not persist its typed fields: ${JSON.stringify(personalMovie)}`)
+  const duplicatePersonalMovie = await fetch(`${baseUrl}/capture/personal`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+    title: 'Duplicate title is irrelevant', item_type: 'movie', state: 'planned', branch_id: 'fixture-branch-id', url: 'https://example.com/e2e-personal-movie',
+  }) })
+  if (duplicatePersonalMovie.status !== 409 || (await duplicatePersonalMovie.json()).recommendation_id !== personalMovie.item.id) throw new Error('personal intake did not preserve canonical URL identity')
+  const editedPersonalMovie = await requestJson(`/capture/personal/${encodeURIComponent(personalMovie.item.id)}`, { method: 'PATCH', body: JSON.stringify({
+    title: 'E2E Personal Movie — Edited', state: 'completed', release_year: null, duration_minutes: null,
+    progress_current: null, progress_total: null, rating: null, tags: [], personal_note: '',
+  }) })
+  if (editedPersonalMovie.item?.state !== 'completed' || editedPersonalMovie.item?.release_year !== null || editedPersonalMovie.item?.duration_minutes !== null || editedPersonalMovie.item?.progress_current !== null || editedPersonalMovie.item?.rating !== null || editedPersonalMovie.item?.tags?.length || editedPersonalMovie.item?.personal_note !== '') throw new Error(`personal edit could not clear optional fields: ${JSON.stringify(editedPersonalMovie)}`)
+  const personalSeries = await requestJson('/capture/personal', { method: 'POST', body: JSON.stringify({
+    title: 'E2E Personal Series', creator: 'E2E Network', item_type: 'series', state: 'in_progress', branch_id: 'fixture-branch-id',
+    release_year: 2025, progress_current: 3, progress_total: 8, progress_unit: 'episodes', tags: ['workplace'],
+  }) })
+  const filteredPersonal = await requestJson('/capture/personal?item_type=movie&state=completed&q=Edited')
+  if (filteredPersonal.total !== 1 || filteredPersonal.items[0]?.id !== personalMovie.item.id || !filteredPersonal.summary?.by_type?.some((item) => item.key === 'series')) throw new Error(`personal filtering or exact summary contract drifted: ${JSON.stringify(filteredPersonal)}`)
+  const personalQueue = await requestJson('/capture/queue')
+  if (personalQueue.items.some((item) => item.id === personalMovie.item.id || item.id === personalSeries.item.id)) throw new Error('personal media bypassed deliberate triage and entered Queue')
+  const personalExport = await requestJson('/recommendations/export?format=json&limit=5000')
+  const exportedSeries = personalExport.recommendations.find((item) => item.id === personalSeries.item.id)
+  if (exportedSeries?.personal_library?.state !== 'in_progress' || exportedSeries?.personal_library?.progress_current !== 3 || exportedSeries?.branch_id !== 'fixture-branch-id') throw new Error('portable export omitted typed personal-library data')
+
   const canonHeaders = { 'content-type': 'application/json', 'x-real-ip': 'e2e-canon' }
   const requestCanonJson = (path, options = {}) => requestJson(path, { ...options, headers: { ...canonHeaders, ...(options.headers || {}) } })
   const canonFamily = await requestCanonJson('/learning/core/canon/domains', { method: 'POST', body: JSON.stringify({ title: 'Mind & Society', kind: 'family', branch_id: 'fixture-branch-id', boundary: 'Fields for understanding minds, groups, and institutions.', sort_order: 1 }) })
@@ -226,6 +292,7 @@ try {
 
   browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+page.setDefaultNavigationTimeout(20_000)
 await page.route(`${baseUrl}/**`, (route) => {
   route.continue({ headers: { ...route.request().headers(), 'x-real-ip': 'e2e-browser' } })
 })
@@ -239,13 +306,14 @@ if (rootHrefs.length !== roots.length || roots.some((root) => !rootHrefs.include
 if (await page.locator('.root-rail nav[aria-label="Five workspaces"] a').count() !== roots.length) throw new Error('root rail must contain exactly five global destinations')
 if (await page.locator('.root-rail + .context-pane, .context-pane').count()) throw new Error('desktop shell rendered a permanent context pane')
 const desktopRail = page.locator('.root-rail')
-if (await desktopRail.getByRole('button', { name: 'Search', exact: true }).count() !== 1 || await desktopRail.getByRole('button', { name: 'Save source', exact: true }).count() !== 1) throw new Error('desktop rail is missing global Search or Save source')
+if (await desktopRail.getByRole('button', { name: 'Search', exact: true }).count() !== 1 || await desktopRail.getByRole('button', { name: 'Add anything', exact: true }).count() !== 1) throw new Error('desktop rail is missing global Search or Add anything')
 await desktopRail.getByRole('button', { name: 'Search', exact: true }).click()
 await page.locator('.search-dialog').waitFor({ state: 'visible' })
 await page.keyboard.press('Escape')
-await desktopRail.getByRole('button', { name: 'Save source', exact: true }).click()
+await desktopRail.getByRole('button', { name: 'Add anything', exact: true }).click()
 await page.locator('.capture-dialog').waitFor({ state: 'visible' })
-if (!(await page.locator('.capture-dialog').innerText()).includes('source records')) throw new Error('global Save source does not explain the source-ledger contract')
+const globalCaptureText = await page.locator('.capture-dialog').innerText()
+if (!globalCaptureText.includes('Book') || !globalCaptureText.includes('Movie') || !globalCaptureText.includes('Series') || !globalCaptureText.includes('refine every field later')) throw new Error('global Add anything does not expose typed, editable capture')
 await page.getByRole('button', { name: 'Close capture dialog' }).click()
 
 for (const route of rootRoutes) {
@@ -272,7 +340,7 @@ for (const route of modeRoutes) {
     return { path, query: Object.fromEntries(new URLSearchParams(query).entries()) }
   })
   if (routeState.path !== `/${route.root}`) throw new Error(`${route.href}: mode escaped its root path (${routeState.path})`)
-  const defaultModes = { home: 'today', library: 'books', learn: 'paths', map: 'atlas', settings: 'personal' }
+  const defaultModes = { home: 'today', library: 'books', learn: 'practice', map: 'atlas', settings: 'personal' }
   if (route.mode && route.mode !== defaultModes[route.root] && routeState.query.mode !== route.mode) throw new Error(`${route.href}: mode query was not preserved (${JSON.stringify(routeState.query)})`)
   if (route.focus && routeState.query.focus !== route.focus) throw new Error(`${route.href}: focus query was not preserved (${JSON.stringify(routeState.query)})`)
   if (route.root !== 'home' && await page.locator('.workspace-mode-switcher').count() !== 1) throw new Error(`${route.href}: missing the active root's internal mode switcher`)
@@ -484,7 +552,7 @@ for (const route of modeRoutes) {
   const bookFeedback = bookOverview.locator('details.book-dossier-reflection')
   if (await bookAnchors.getAttribute('open') !== null || await bookFeedback.getAttribute('open') !== null) throw new Error('book hub did not keep source anchors and feedback closed by default')
   await bookAnchors.locator(':scope > summary').click()
-  if (!(await bookOverview.getByText('An exact anchored passage for the book dossier.', { exact: true }).isVisible())) throw new Error('book hub did not reveal source anchors')
+  await bookOverview.getByText('An exact anchored passage for the book dossier.', { exact: true }).waitFor({ state: 'visible', timeout: 5000 }).catch(() => { throw new Error('book hub did not reveal source anchors') })
   await bookFeedback.locator(':scope > summary').click()
   if (!(await bookFeedback.getByRole('heading', { name: 'Feedback & outcome', exact: true }).isVisible()) || !(await bookFeedback.getByRole('button', { name: 'Save feedback' }).isVisible())) throw new Error('book hub did not reveal feedback controls')
   await bookNotes.locator('summary').click()
@@ -757,25 +825,39 @@ if (!hubPathLoaded.notes.some((note) => note.id === hubNote.id) || !hubPathLoade
 if (hubPathLoaded.notes.some((note) => note.id === hubStageNote.id) || hubPathLoaded.cards.some((card) => card.id === hubStageCard.card_id)) throw new Error('Thread direct material leaked a Level-owned record')
 if (!hubPathLoaded.stages[0].notes.some((note) => note.id === hubStageNote.id) || !hubPathLoaded.stages[0].files.some((file) => file.id === hubStageUploadBody.id) || !hubPathLoaded.stages[0].cards.some((card) => card.id === hubStageCard.card_id)) throw new Error('path read model omitted Level-owned notes, files, or cards')
 if (hubPathLoaded.stages[0].notes.some((note) => note.id === hubNote.id) || hubPathLoaded.stages[0].cards.some((card) => card.id === hubThreadCard.card_id)) throw new Error('Level material leaked a Thread-owned record')
-await page.goto(`${baseUrl}/#/learn`, { waitUntil: 'networkidle' })
+await page.goto(`${baseUrl}/#/learn?mode=paths`, { waitUntil: 'networkidle' })
 await page.locator('.folio-paths').waitFor({ state: 'visible' })
 await page.getByRole('button', { name: /All Threads/ }).click()
 if (!(await page.getByRole('link', { name: 'Open learning Thread Systems Thinking' }).count())) throw new Error('Learn Paths did not render the authored path')
 await page.goto(`${baseUrl}/#/learn/thread/${hubThread.id}`, { waitUntil: 'networkidle' })
 await page.locator('.thread-command-center').waitFor({ state: 'visible' })
+await page.locator('.vertical-thread-spine').waitFor({ state: 'visible' })
 if (!(await page.getByRole('heading', { level: 1, name: 'Systems Thinking' }).count())) throw new Error('typed Thread route is missing its Thread h1')
-if ((await page.locator('.course-stage-context').getByRole('link', { name: 'Threads' }).getAttribute('href')) !== '#/learn') throw new Error('Thread breadcrumb does not return to the Threads index')
-if (!(await page.getByLabel('Study progress').count()) || !(await page.getByLabel('Levels progress').count())) throw new Error('Thread overview does not show direct lesson and Level completion')
+if ((await page.locator('.course-stage-context').getByRole('link', { name: 'Threads' }).getAttribute('href')) !== '#/learn?mode=paths') throw new Error('Thread breadcrumb does not return to the Threads index')
+if (!(await page.getByLabel('Thread lesson progress').count()) || !(await page.getByLabel('Study progress').count()) || !(await page.getByLabel('Levels progress').count())) throw new Error('Vertical Journey does not show direct lesson and Level completion')
+if ((await page.locator('.vertical-overview-next').count()) !== 1 || (await page.locator('.vertical-journey-list > li').count()) !== 1) throw new Error('Thread Overview did not render one exact move and the compact Level journey')
 for (const tab of ['Overview', 'Curriculum', 'Practice', 'Materials']) if (!(await page.getByRole('link', { name: tab, exact: true }).count())) throw new Error(`Thread command center omitted ${tab}`)
 if (await page.getByRole('link', { name: 'Evidence', exact: true }).count()) throw new Error('Thread command center exposed the retired Evidence tab')
+await page.getByRole('link', { name: 'Curriculum', exact: true }).click()
+await page.locator('.vertical-curriculum').waitFor({ state: 'visible' })
+if ((await page.locator('.vertical-curriculum-journey > li.is-expanded').count()) !== 1) throw new Error('Curriculum did not keep exactly one Level expanded')
+await page.getByRole('button', { name: /Level 0 — Orientation/ }).click()
+if (!page.url().includes(`tab=curriculum&level=${hubStage.id}`)) throw new Error('Curriculum disclosure did not preserve the exact Level in the URL')
+await page.getByRole('link', { name: 'Practice', exact: true }).click()
+await page.locator('.vertical-practice').waitFor({ state: 'visible' })
+if ((await page.locator('.vertical-practice-journey > li.is-expanded').count()) !== 1 || !(await page.getByText('Projects are optional practice.').count())) throw new Error('Practice did not render the one-Level non-gating journey')
 await page.getByRole('link', { name: 'Materials', exact: true }).click()
-await page.locator('.learning-material-ledger').waitFor({ state: 'visible' })
+await page.locator('.vertical-materials').waitFor({ state: 'visible' })
 if (!(await page.getByText('Direct Thread material').count()) || !(await page.getByRole('link', { name: 'Path-level reflection' }).count()) || !(await page.getByRole('link', { name: 'إيه سؤال مسار التعلم؟' }).count())) throw new Error(`Learn Thread did not render direct Thread material: ${await page.locator('.thread-command-center').innerText()}`)
-if (!(await page.getByText('Thread material index').count()) || !(await page.getByText('1 notes · 1 files · 1 cards · 0 drafts').count())) throw new Error('Learn Thread did not aggregate its Level material index')
+const levelMaterialOwner = page.getByRole('button', { name: /Level 0 — Orientation/ })
+if (!(await levelMaterialOwner.count())) throw new Error('Learn Thread did not aggregate its Level material owner')
+await levelMaterialOwner.click()
+if (!(await page.getByRole('link', { name: 'Stage-level checkpoint' }).count()) || !(await page.getByRole('link', { name: 'hub-level.txt' }).count()) || !(await page.getByRole('link', { name: 'إيه اللي يسبق النظرية؟' }).count())) throw new Error('Learn Thread did not reveal the exact Level-owned materials')
 if (!page.url().includes(`#/learn/thread/${hubThread.id}`)) throw new Error('typed Thread route did not preserve identity')
 if (await page.locator('.orbit-bar, .page-head, .subnav, .main-focus').count()) throw new Error('focused Learning Thread rendered retired shell selectors')
 await page.goto(`${baseUrl}/#/learn/t/${hubThread.id}/v/${hubStage.id}`, { waitUntil: 'networkidle' })
 await page.locator('.course-level-materials > summary').getByText('Level workspace').waitFor({ state: 'visible', timeout: 15000 })
+if (await page.locator('.course-level-list').evaluate((node) => node.hasAttribute('open'))) throw new Error('typed Level route reopened the unbounded full-Thread Level wall')
 if (await page.locator('.course-level-materials').evaluate((node) => node.hasAttribute('open'))) throw new Error('Level materials should use progressive disclosure')
 await page.locator('.course-level-materials > summary').click()
 if (!(await page.getByRole('link', { name: 'Stage-level checkpoint' }).count()) || !(await page.getByRole('link', { name: 'hub-level.txt' }).count()) || !(await page.getByRole('link', { name: 'إيه اللي يسبق النظرية؟' }).count())) throw new Error(`Level route did not render its owned materials: ${await page.locator('.folio-thread').innerText()}`)
@@ -861,12 +943,37 @@ const [capabilities, systemInventory] = await Promise.all([
 if (!capabilities.capabilities?.some((operation) => operation.method === 'GET' && operation.path === '/agent/system')) throw new Error('agent capabilities omitted the System inventory route')
 if (!Array.isArray(systemInventory.schedule) || systemInventory.schedule.length !== 1 || systemInventory.schedule[0].cron !== '0 */6 * * *') throw new Error('System inventory omitted the configured maintenance schedule')
 if (!Array.isArray(systemInventory.on_demand_only) || !systemInventory.storage?.length || !systemInventory.safety?.length) throw new Error('System inventory contract is incomplete')
+if (systemInventory.data_quality?.scope !== 'active_sources' || systemInventory.data_quality?.checks?.length !== 5) throw new Error(`System inventory omitted the explicit data-quality contracts: ${JSON.stringify(systemInventory.data_quality)}`)
+if (!systemInventory.data_quality.checks.every((check) => Number.isFinite(check.affected) && Number.isFinite(check.coverage_percent))) throw new Error('Data-quality contracts omitted exact affected counts or coverage')
+if (systemInventory.counts?.sources !== systemInventory.data_quality.counts?.stored_sources) throw new Error('System source inventory changed from stored-source semantics')
 await page.goto(`${baseUrl}/#/settings?mode=system`, { waitUntil: 'networkidle' })
 await page.locator('.system-console').waitFor({ state: 'visible', timeout: 15000 })
 if (await page.locator('.api-operation-list article').count() !== capabilities.capabilities.length) throw new Error('System page does not expose every allow-listed API operation')
 await page.getByLabel('Search path or capability').fill('schedule')
 if (await page.locator('.api-operation-list article').count() < 1) throw new Error('System API search did not return matching operations')
 await page.getByLabel('Search path or capability').fill('')
+await page.goto(`${baseUrl}/#/settings?mode=data`, { waitUntil: 'networkidle' })
+await page.locator('.personal-data-studio').waitFor({ state: 'visible', timeout: 15000 })
+if (await page.locator('.personal-data-visual').count() !== 4) throw new Error('Data Studio omitted a real type, status, activity, or branch visualization')
+await page.getByLabel('Search records').fill('E2E Personal Series')
+const personalSeriesRow = page.locator('.personal-data-row', { hasText: 'E2E Personal Series' })
+await personalSeriesRow.waitFor({ state: 'visible', timeout: 15000 })
+await personalSeriesRow.getByRole('button', { name: 'Edit' }).click()
+await personalSeriesRow.getByLabel('Rating (0–10)').fill('9')
+await personalSeriesRow.getByLabel('Personal note').fill('Edited from the visual data ledger.')
+const personalEditResponse = page.waitForResponse((response) => response.url().includes(`/capture/personal/${personalSeries.item.id}`) && response.request().method() === 'PATCH')
+await personalSeriesRow.getByRole('button', { name: 'Save changes' }).click()
+if (!(await personalEditResponse).ok()) throw new Error('Data Studio inline edit did not reach the canonical personal API')
+await page.getByText('The edit is recorded in the data lineage.', { exact: false }).waitFor({ state: 'visible', timeout: 15000 })
+const editedSeriesReadback = await requestJson(`/capture/personal/${personalSeries.item.id}`)
+if (editedSeriesReadback.item?.rating !== 9 || editedSeriesReadback.item?.personal_note !== 'Edited from the visual data ledger.') throw new Error('Data Studio inline edit did not survive canonical readback')
+await page.setViewportSize({ width: 390, height: 844 })
+if (await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth) > 2) throw new Error('Data Studio introduced mobile horizontal overflow')
+await page.setViewportSize({ width: 1440, height: 900 })
+await page.locator('.data-trust-panel').waitFor({ state: 'visible', timeout: 15000 })
+if (await page.locator('.data-trust-check').count() !== 5) throw new Error('Data & recovery did not render all five named trust contracts')
+const dataTrustText = await page.locator('.data-trust-panel').innerText()
+for (const label of ['Source identity', 'Branch coverage', 'Canonical source uniqueness', 'Learning-event lineage', 'Feed branch defaults']) if (!dataTrustText.includes(label)) throw new Error(`Data & recovery omitted ${label}`)
 await page.goto(`${baseUrl}/#/settings`, { waitUntil: 'networkidle' })
 await page.locator('.profile-settings-page').waitFor({ state: 'visible' })
 const profileBody = await page.locator('.workspace-canvas').innerText()
@@ -908,7 +1015,13 @@ if (!offlineCompanionResponse.ok) throw new Error(`offline HTML companion upload
 const offlineCompanionPath = `/artifacts/${offlineCompanion.id}`
 await page.goto(`${baseUrl}${offlineCompanionPath}`, { waitUntil: 'domcontentloaded' })
 await page.getByRole('heading', { name: 'Offline companion fixture' }).waitFor({ state: 'visible' })
-await page.waitForFunction(async (path) => Boolean(await (await caches.open('learning-compass-html-artifacts-v1')).match(path)), offlineCompanionPath)
+const artifactServiceWorker = page.context().serviceWorkers().find((worker) => new URL(worker.url()).pathname === '/sw.js')
+if (!artifactServiceWorker) throw new Error('artifact cache verification could not find the registered service worker')
+const offlineCompanionCached = await artifactServiceWorker.evaluate(
+  async ({ cacheName, path }) => Boolean(await (await caches.open(cacheName)).match(path)),
+  { cacheName: 'learning-compass-html-artifacts-v2', path: offlineCompanionPath },
+)
+if (!offlineCompanionCached) throw new Error('opened HTML companion was not stored in the isolated artifact cache')
 await page.context().setOffline(true)
 await page.reload({ waitUntil: 'domcontentloaded' })
 await page.getByRole('heading', { name: 'Offline companion fixture' }).waitFor({ state: 'visible' })
@@ -919,11 +1032,19 @@ const offlineCompanionDelete = await fetch(`${baseUrl}${offlineCompanionPath}`, 
 if (!offlineCompanionDelete.ok) throw new Error('offline HTML companion fixture cleanup failed')
 await page.goto(`${baseUrl}/#/home?action=capture`, { waitUntil: 'networkidle' })
 await page.locator('.capture-dialog').waitFor({ state: 'visible' })
+if (await page.locator('#capture-branch-input').count() !== 1) throw new Error('Capture dialog omitted the required branch selector')
+await page.locator('#capture-source-input').fill('https://example.com/capture-branch-contract')
+const captureSubmit = page.locator('.capture-dialog').getByRole('button', { name: 'Save source' })
+if (await captureSubmit.isEnabled()) throw new Error('Capture dialog enabled save before a branch was selected')
+await page.locator('#capture-branch-input').selectOption('fixture-branch-id')
+if (!(await captureSubmit.isEnabled())) throw new Error('Capture dialog did not accept a verified branch selection')
 await page.getByRole('button', { name: 'Close capture dialog' }).click()
 await page.locator('.capture-dialog').waitFor({ state: 'detached' })
 if (!page.url().includes('#/home') || page.url().includes('action=capture')) throw new Error('Android Capture shortcut did not return Home')
 if (!Array.isArray(artifacts.artifacts)) throw new Error('artifact library contract is invalid')
 if (!Array.isArray(feeds.feeds)) throw new Error('feed subscriptions contract is invalid')
+const missingFeedBranch = await fetch(`${baseUrl}/capture/feeds`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: 'https://example.com/feed.xml', limit: 5 }) })
+if (missingFeedBranch.status !== 400) throw new Error(`feed subscription accepted a missing default branch (${missingFeedBranch.status})`)
 if (!Array.isArray(manualArchive.recommendations)) throw new Error('manual archive contract is invalid')
 if (!Array.isArray(balance.branches) || balance.window_days !== 90 || !balance.portfolio) throw new Error('learning balance contract is invalid')
 if (!Array.isArray(proposals.proposals)) throw new Error('feedback proposal contract is invalid')
@@ -954,14 +1075,15 @@ if (artifacts.artifacts.length === 0) {
   if (await page.locator('.folio-file-record').count() < 1) throw new Error('Files view did not render the artifact groups')
 }
 
-const captured = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hermes-e2e', title: 'Hermes automation test' }) })
+const missingCaptureBranch = await fetch(`${baseUrl}/capture`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source: 'https://example.com/missing-branch', title: 'Missing branch test' }) })
+if (missingCaptureBranch.status !== 400) throw new Error(`capture accepted a missing branch (${missingCaptureBranch.status})`)
+const captured = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hermes-e2e', title: 'Hermes automation test', branch_id: 'fixture-branch-id' }) })
 const [capturedSources, queueBeforeTriage] = await Promise.all([requestJson('/capture'), requestJson('/capture/queue')])
 if (!capturedSources.items.some((item) => item.id === captured.id)) throw new Error('new capture did not enter durable source storage')
 if (queueBeforeTriage.items.some((item) => item.id === captured.id)) throw new Error('new capture bypassed deliberate triage and entered Queue')
 const preRecord = await requestJson(`/capture/${captured.id}/record`)
-if (!preRecord.item) throw new Error('source record API did not return the captured source')
+if (!preRecord.item || preRecord.item.branch_id !== 'fixture-branch-id') throw new Error('source record API did not return the atomically captured branch')
 const thread = await requestJson('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Test a decision with evidence', thread_type: 'decide', guiding_question: 'Should this mechanism be used?', definition_of_done: 'Record a source-backed decision and synthesis.', activate: true }) })
-await requestJson(`/capture/${captured.id}/branch-map`, { method: 'POST', body: JSON.stringify({ branch_id: 'fixture-branch-id', confidence: 'high', reason: 'E2E fixture mapping before Queue placement' }) })
 await requestJson(`/capture/${captured.id}/triage`, { method: 'POST', body: JSON.stringify({ action: 'queue', thread_id: thread.id }) })
 await requestJson(`/learning/core/threads/${thread.id}/sources`, { method: 'POST', body: JSON.stringify({ recommendation_id: captured.id, role: 'primary', expected_contribution: 'Supply the mechanism and its limits.' }) })
 await page.goto(`${baseUrl}/#/library/source/${encodeURIComponent(captured.id)}`, { waitUntil: 'networkidle' })
@@ -989,7 +1111,9 @@ if (pendingProposal?.status !== 'pending' || pendingProposal?.decision_source !=
 await requestJson(`/feedback/proposals/${proposalId}/approve`, { method: 'POST' })
 const appliedProposal = (await requestJson('/feedback/proposals')).proposals.find((proposal) => proposal.id === proposalId)
 if (appliedProposal?.status !== 'applied' || appliedProposal?.decision_source !== 'user') throw new Error('approved proposal did not apply through the profile policy')
-const agentContextAfterApply = await requestJson('/agent/context')
+const agentContextAfterApplyResponse = await fetch(`${baseUrl}/agent/context`)
+const agentContextAfterApply = await agentContextAfterApplyResponse.json()
+if (agentContextAfterApplyResponse.status !== 503 || agentContextAfterApply.health?.sections?.learning_gaps?.status !== 'degraded' || agentContextAfterApply.learning_gaps !== null) throw new Error('agent context disguised the non-canonical learning-gap projection as healthy')
 if (!agentContextAfterApply.profile?.assertions?.some((assertion) => assertion.assertion_key === appliedProposal.validation?.assertion_key)) throw new Error('agent context omitted the typed adaptive profile')
 const feedbackContextAfterApply = await requestJson('/feedback/context')
 if (!feedbackContextAfterApply.profile_assertions?.some((assertion) => assertion.assertion_key === appliedProposal.validation?.assertion_key)) throw new Error('Taste Mapper context omitted the typed adaptive profile')
@@ -1031,12 +1155,12 @@ await page.getByRole('heading', { name: 'Foundation' }).waitFor({ state: 'visibl
 if (await page.locator('.folio-note-meta a').count() !== 1) throw new Error('typed note route is missing its source context link')
 if (await page.locator('.folio-note-meta a').getAttribute('href') !== 'https://example.com/hermes-e2e') throw new Error('note source context did not preserve the canonical external source URL')
 if ((await requestJson('/srs/drafts')).drafts.some((draft) => draft.recommendation_id === captured.id)) throw new Error('explicit apply automatically created a flash-card draft')
-const lower = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/lower-rating', title: 'Lower rating test' }) })
+const lower = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/lower-rating', title: 'Lower rating test', branch_id: 'fixture-branch-id' }) })
 const lowerSession = await requestJson('/sessions/start', { method: 'POST', body: JSON.stringify({ recommendation_id: lower.id }) })
 await requestJson(`/sessions/${lowerSession.session_id}/return`, { method: 'POST', body: JSON.stringify({ reflection: 'Useful context but not worth extracting.', rating: 5, disposition: 'reference', complete: true }) })
 const lowerJobs = (await requestJson('/agent/jobs?status=pending')).jobs.filter((job) => job.payload.recommendation_id === lower.id)
 if (lowerJobs.filter((job) => job.job_type === 'process_feedback').length !== 1 || lowerJobs.some((job) => job.job_type === 'extract_notes')) throw new Error('lower rating feedback/extraction gate is incorrect')
-const progress = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/in-progress-feedback', title: 'In-progress feedback test' }) })
+const progress = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/in-progress-feedback', title: 'In-progress feedback test', branch_id: 'fixture-branch-id' }) })
 const progressSession = await requestJson('/sessions/start', { method: 'POST', body: JSON.stringify({ recommendation_id: progress.id }) })
 const progressReturn = await requestJson(`/sessions/${progressSession.session_id}/return`, { method: 'POST', body: JSON.stringify({ reflection: 'I am still reading, but this point matters.', complete: false }) })
 if (progressReturn.status !== 'returned') throw new Error('in-progress feedback incorrectly completed the source')
@@ -1180,6 +1304,7 @@ const androidPage = await browser.newPage({
   userAgent: 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36',
   extraHTTPHeaders: { 'x-real-ip': 'e2e-android-browser' },
 })
+androidPage.setDefaultNavigationTimeout(20_000)
 await androidPage.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
 await androidPage.evaluate(() => {
   const event = new Event('beforeinstallprompt')
@@ -1193,7 +1318,11 @@ await androidPage.locator('.android-install-banner').waitFor({ state: 'visible' 
 if (await androidPage.getByRole('button', { name: 'Install app' }).count() !== 1 || await androidPage.getByRole('button', { name: 'Not now' }).count() !== 1) throw new Error('Android install card is missing its explicit install and dismissal actions')
 await androidPage.getByRole('button', { name: 'Not now' }).click()
 await androidPage.locator('.android-install-banner').waitFor({ state: 'detached' })
-await androidPage.evaluate(() => navigator.serviceWorker.ready)
+if (serverExit) throw new Error(`Worker exited before the Android offline check (${JSON.stringify(serverExit)}):\n${serverLog}`)
+await Promise.race([
+  androidPage.evaluate(() => navigator.serviceWorker.ready.then(() => true)),
+  new Promise((_, reject) => setTimeout(() => reject(new Error(`service worker readiness timed out; Worker exit=${JSON.stringify(serverExit)}:\n${serverLog}`)), 15_000)),
+])
 await androidPage.context().setOffline(true)
 await androidPage.reload({ waitUntil: 'domcontentloaded' })
 await androidPage.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout: 15000 })

@@ -43,10 +43,13 @@ app.post('/push', async (c) => {
     for (const n of body.tree_nodes) {
       if (!n.id) continue
       stmts.push(DB.prepare(
-        `INSERT OR REPLACE INTO tree_nodes (id, type, label, super_category, parent_id, status, round_label, meta_json, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+        `INSERT INTO tree_nodes (id, type, label, super_category, parent_id, status, meta_json, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET
+           type=excluded.type,label=excluded.label,super_category=excluded.super_category,
+           parent_id=excluded.parent_id,status=excluded.status,meta_json=excluded.meta_json,updated_at=datetime('now')`
       ).bind(n.id, n.type || 'leaf', n.label || n.id, n.super_category || null,
-        n.parent_id || null, n.status || null, n.round_label || null,
+        n.parent_id || null, n.status || null,
         n.meta_json ? (typeof n.meta_json === 'string' ? n.meta_json : JSON.stringify(n.meta_json)) : null))
       count++
     }
@@ -129,8 +132,8 @@ app.get('/pull', async (c) => {
     return c.json({
       since,
       pulled_at: new Date().toISOString(),
-      recommendations: recs.results || [],
-      tree_nodes: nodes.results || [],
+      recommendations: (recs.results || []).map(({ round: _legacyRound, ...row }: any) => row),
+      tree_nodes: (nodes.results || []).map(({ round_label: _legacyRoundLabel, ...row }: any) => row),
       patterns: patterns.results || [],
       blacklist: blacklist.results || [],
       profile: profile || null,

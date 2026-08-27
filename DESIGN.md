@@ -176,6 +176,29 @@ Surfaces rest flat at rest using subtle tonal layering between Canvas, Ledger, a
 - **Recovery:** Search restores the selected node with its ancestry, conflicting filters are cleared explicitly, and an empty filtered canvas always offers a direct reset.
 - **Overlays:** Controls, the node drawer, breadcrumbs, minimap, and viewport tools remain independently operable and never cover the control that opened them.
 
+### Learning Thread — Vertical Journey
+
+- **Persistent spine:** Every Thread command-center tab begins at the working canvas's left edge and spans its available width with the same Thread identity, direct lesson progress, exact current Level and lesson, and the command center's only primary next-action link. Pause/activate remains secondary management.
+- **Overview:** One cypress current-move plane leads without duplicating the spine action. All-scope source/material totals and two direct progress tracks support it; the complete Level path stays a compact linked vertical index rather than repeating every lesson or adding an Open Curriculum control.
+- **Curriculum:** Every Level summary remains on one continuous hairline axis, but exactly one Level is expanded. Search returns one bounded lesson index with incremental disclosure. A selected Level is encoded in the URL so refresh, sharing, and the Practice handoff preserve exact context.
+- **Practice:** The same one-open-Level axis leads with current application and leaves future projects as previews. Projects and final synthesis are optional practice and never progression gates.
+- **Materials:** Thread, Level, and Lesson owners share one faceted vertical index. Exactly one owner opens at a time, long note bodies become bounded excerpts, and large owner/item sets reveal incrementally. Navigable item titles carry navigation without duplicate owner-workspace actions; direct material creation remains explicit progressive disclosure.
+- **Adaptation:** The component responds to its available canvas width, including inspector-narrowed desktop layouts. The four tabs become a visible 2×2 control on narrow containers; controls wrap, long titles break safely, and coarse-pointer targets remain at least 44px.
+
+### Add Anything
+
+- **Type first:** The global action opens one dialog with Source, Book, Movie, Series, Podcast, Course, Game, Album, and Other choices. Each choice has a short task-oriented hint; the selected choice uses Cypress and remains visible without opening another surface.
+- **Fast core:** Personal entry asks first for title, contextual creator/author, status, and knowledge branch. Link, release year, duration, progress, rating, tags, and note sit under one native More details disclosure. Source entry preserves link/text/file capture and the same required branch selector.
+- **State honesty:** Saving a personal record confirms that it entered the Data Studio, not Queue. Errors preserve input; successful saves refresh the active workspace and reset the next dialog to Source.
+- **Responsive overlay:** Desktop uses a wide but bounded editorial sheet with a sticky action footer. Type choices and fields collapse to one column on narrow screens without horizontal scrolling, and every choice/control remains keyboard reachable.
+
+### Personal Data Studio
+
+- **Summary before rows:** Four exact counts lead: tracked, in progress, finished, and rated. Type and state use clickable proportional bars, six-month activity uses a compact column plot, and branch context uses ranked counts. These visuals use canonical API counts and never invent a composite score.
+- **Editable ledger:** Search covers title, creator, tags, and note; type/state bars and selectors share the same filters. Rows expose identity, explicit status, real progress, direct rating, branch, and update time. One expanded row reveals every mutable field while media type and canonical record identity remain fixed.
+- **Lineage and portability:** A successful edit names the record and states that lineage was saved. JSON and Markdown exports retain personal type/state/progress/rating/tags/note plus source history; full-system recovery remains a separate D1+R2 contract.
+- **Responsive table:** Desktop keeps aligned ledger columns. Narrow screens hide the visual header, stack labeled cells, preserve 44px actions, and never require sideways scrolling; accessible cell labels retain the removed visual context.
+
 ### Buttons
 - **Shape:** Rounded rectangle (6px radius).
 - **Primary:** Cypress background (#244f3b), Canvas ink (#fffdf8), 8px 16px padding.

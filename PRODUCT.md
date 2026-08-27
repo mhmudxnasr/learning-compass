@@ -29,8 +29,11 @@ A zero-noise, purpose-first personal knowledge ledger. Unlike generic read-it-la
 
 ## Capabilities and Constraints
 
-- **Five Root Destinations**: `#/home` (Today), `#/library` (Books, Queue, RSS Feeds, Archive, Files), `#/learn` (Threads, Notes, Recall), `#/map` (Atlas, unified Branch Review), `#/settings` (Learning profile, Preferences, Data & recovery, System).
+- **Five Root Destinations**: `#/home` (Today), `#/library` (Books, Queue, RSS Feeds, Archive, Files), `#/learn` (Practice → Notes by default, plus Threads and Recall), `#/map` (Atlas, unified Branch Review), `#/settings` (Learning profile, Preferences, Data & recovery, System).
+- **Add Anything**: One global capture surface logs sources or typed books, movies, series, podcasts, courses, games, albums, and other media. Personal items require only title, status, and branch (plus author for books); optional detail stays progressively disclosed.
+- **Personal Data Studio**: Settings → Data & recovery visualizes real type, status, recent-edit, and branch distributions; searches and filters the complete ledger; and exposes every mutable personal field inline. It reports counts, never an opaque engagement or “AI quality” score.
 - **Queue Limits**: Maximum 5 active queued/in-progress commitments.
+- **Personal State Is Not Commitment**: Planned, in-progress, finished, paused, and stopped media stay outside Queue unless a separate explicit source-triage action commits learning work.
 - **Direct Lesson Progression**: Completing lessons is the sole progression signal for Levels and Threads.
 - **Passive Access**: Opening sources, books, or companions is passive. Only Queue or Compass starts a tracked session.
 - **Reading Companions**: Lite Visual generates bilingual/Arabic-first HTML+PDF pairs with verified depth gates.
@@ -55,6 +58,7 @@ A zero-noise, purpose-first personal knowledge ledger. Unlike generic read-it-la
 3. **Passive Discovery**: Reading and exploring does not pollute active commitments or trigger unwanted sessions.
 4. **Pedagogical Depth**: Real source grounding over generic summaries.
 5. **Calm Density**: High informational density organized by clean typography and hairline seams.
+6. **Correctable History**: Personal data remains searchable, portable, and editable without breaking canonical identity or erasing its mutation lineage.
 
 ## Accessibility & Inclusion
 

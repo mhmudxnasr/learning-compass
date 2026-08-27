@@ -25,7 +25,7 @@ try {
   }
 
   console.log('Step 2: Launching local worker server...')
-  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8789'], {
+  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8789', '--var', 'REQUIRE_API_AUTH:false', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   })
@@ -35,7 +35,7 @@ try {
 
   for (let attempt = 0; attempt < 60; attempt++) {
     try {
-      const response = await fetch('http://127.0.0.1:8789/health')
+      const response = await fetch('http://127.0.0.1:8789/health/live')
       if (response.ok) break
     } catch {}
     if (attempt === 59) throw new Error(`Worker did not start:\n${serverLog}`)
@@ -53,13 +53,15 @@ try {
 
   console.log('\nStep 3: Checking /agent/context and /discovery/context for Taste Rec readiness...')
   const agentCtx = await req('/agent/context')
-  assert.equal(agentCtx.status, 200)
+  assert.equal(agentCtx.status, 503)
   assert.equal(agentCtx.body.curator, 'Mahmood')
+  assert.equal(agentCtx.body.learning_gaps, null)
+  assert.equal(agentCtx.body.health.sections.learning_gaps.status, 'degraded')
 
   const discCtx = await req('/discovery/context')
   assert.equal(discCtx.status, 200)
   assert.equal(discCtx.body.engine_weights.frontier_potential.baseline, 0.3)
-  console.log('✓ D1 Context loaded cleanly. Engine weights baseline verified.')
+  console.log('✓ Canonical discovery context loaded; placeholder agent gaps remained explicitly unavailable.')
 
   console.log('\nStep 4: Executing Taste Rec intent -> Creating Discovery Run (Wave 1)...')
   const runRes = await req('/discovery/runs', {

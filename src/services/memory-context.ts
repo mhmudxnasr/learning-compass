@@ -3,8 +3,12 @@ type DB = Pick<D1Database, 'prepare' | 'batch'>
 export type MemoryTaskKind = 'recommendation' | 'feedback' | 'learning' | 'self_evolution'
 const taskKinds: MemoryTaskKind[] = ['recommendation', 'feedback', 'learning', 'self_evolution']
 const parseJson = (value: unknown, fallback: any = null) => { try { return value ? JSON.parse(String(value)) : fallback } catch { return fallback } }
-const normalize = (value: unknown) => String(value || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
-const tokens = (value: unknown) => new Set(normalize(value).split(' ').filter((word) => word.length > 2))
+const normalize = (value: unknown) => String(value || '')
+  .normalize('NFKD')
+  .toLocaleLowerCase('und')
+  .replace(/\p{M}+/gu, '')
+  .match(/[\p{L}\p{N}]+/gu)?.join(' ') || ''
+export const memoryContextTokens = (value: unknown) => new Set(normalize(value).split(' ').filter((word) => word.length > 1))
 const overlap = (left: Set<string>, right: Set<string>) => left.size ? [...left].filter((word) => right.has(word)).length / left.size : 0
 
 export function isMemoryOwnershipAllowed(memoryKey: string) {
@@ -14,7 +18,7 @@ export function isMemoryOwnershipAllowed(memoryKey: string) {
 
 export function isMemoryTaskKind(value: string): value is MemoryTaskKind { return taskKinds.includes(value as MemoryTaskKind) }
 
-export async function writeMemoryEvidence(db: DB, memoryId: string, evidence: any[]) {
+export function buildMemoryEvidenceStatements(db: DB, memoryId: string, evidence: any[]) {
   const statements: D1PreparedStatement[] = [db.prepare('DELETE FROM memory_evidence WHERE memory_id=?').bind(memoryId)]
   for (const item of evidence.slice(0, 20)) {
     statements.push(db.prepare(`INSERT INTO memory_evidence(id,memory_id,evidence_type,recommendation_id,thread_id,unit_id,learning_event_id,source_ref,quote,reason,confidence)
@@ -25,7 +29,11 @@ export async function writeMemoryEvidence(db: DB, memoryId: string, evidence: an
       item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))),
     ))
   }
-  await db.batch(statements)
+  return statements
+}
+
+export async function writeMemoryEvidence(db: DB, memoryId: string, evidence: any[]) {
+  await db.batch(buildMemoryEvidenceStatements(db, memoryId, evidence))
 }
 
 export async function compileMemoryContext(db: DB, input: {
@@ -45,26 +53,46 @@ export async function compileMemoryContext(db: DB, input: {
   ])
   const evidenceByMemory = new Map<string, any[]>()
   for (const item of evidenceResult.results || []) evidenceByMemory.set(item.memory_id, [...(evidenceByMemory.get(item.memory_id) || []), item])
-  const queryTokens = tokens(input.query)
+  const queryTokens = memoryContextTokens(input.query)
+  const hasQueryTerms = queryTokens.size > 0
   const considered: string[] = []; const exclusions: any[] = []
-  const ranked = (memoriesResult.results || []).map((row: any) => {
+  const memoryCandidates = (memoriesResult.results || []).map((row: any) => {
     considered.push(row.id)
     const evidence = evidenceByMemory.get(row.id) || parseJson(row.evidence_json, [])
     const text = `${row.memory_key} ${row.source} ${JSON.stringify(parseJson(row.value_json, ''))} ${evidence.map((item: any) => `${item.quote || ''} ${item.reason || ''}`).join(' ')}`
-    const relevance = overlap(queryTokens, tokens(text))
+    const relevance = overlap(queryTokens, memoryContextTokens(text))
     const explicitLink = evidence.some((item: any) => (input.recommendationId && item.recommendation_id === input.recommendationId) || (input.threadId && item.thread_id === input.threadId)) ? 1 : 0
     const kindScore = input.taskKind === 'self_evolution' ? (row.memory_key.startsWith('skill_procedure:') ? 1 : .45) : row.memory_kind === 'durable' ? 1 : row.memory_kind === 'episodic' ? .7 : .45
     const recency = Math.max(0, 1 - Math.min(365, (Date.now() - Date.parse(`${row.updated_at || ''}Z`)) / 86400000) / 365)
     const score = Number(row.confidence || 0) * .35 + relevance * .30 + explicitLink * .20 + kindScore * .10 + recency * .05
     return { ...row, value: parseJson(row.value_json), evidence, retrieval_score: Math.round(score * 1000) / 1000, relevance, explicitLink }
   }).filter((row: any) => {
-    if (row.retrieval_score <= .12) { exclusions.push({ memory_id: row.id, reason: 'low_relevance' }); return false }
+    if (hasQueryTerms && row.relevance === 0 && row.explicitLink === 0) {
+      exclusions.push({ item_type: 'memory', memory_id: row.id, reason: 'no_query_match' })
+      return false
+    }
+    if (row.retrieval_score <= .12) { exclusions.push({ item_type: 'memory', memory_id: row.id, reason: 'low_relevance' }); return false }
     return true
-  }).sort((a: any, b: any) => b.retrieval_score - a.retrieval_score).slice(0, limit)
-  const assertions = (assertionsResult.results || []).filter((row: any) => {
-    const relevant = !queryTokens.size || overlap(queryTokens, tokens(`${row.assertion_key} ${row.value_json}`)) > 0
-    return input.taskKind !== 'self_evolution' && relevant
-  }).slice(0, 12).map((row: any) => ({ ...row, value: parseJson(row.value_json), value_json: undefined }))
+  }).sort((a: any, b: any) => b.retrieval_score - a.retrieval_score)
+  const ranked = memoryCandidates.slice(0, limit)
+  for (const row of memoryCandidates.slice(limit)) exclusions.push({ item_type: 'memory', memory_id: row.id, reason: 'limit_truncated' })
+
+  const assertionCandidates: any[] = []
+  for (const row of assertionsResult.results || []) {
+    if (input.taskKind === 'self_evolution') {
+      exclusions.push({ item_type: 'profile_assertion', assertion_key: row.assertion_key, reason: 'task_kind_excluded' })
+      continue
+    }
+    const relevant = !hasQueryTerms || overlap(queryTokens, memoryContextTokens(`${row.assertion_key} ${row.value_json}`)) > 0
+    if (!relevant) {
+      exclusions.push({ item_type: 'profile_assertion', assertion_key: row.assertion_key, reason: 'no_query_match' })
+      continue
+    }
+    assertionCandidates.push(row)
+  }
+  const selectedAssertionRows = assertionCandidates.slice(0, 12)
+  for (const row of assertionCandidates.slice(12)) exclusions.push({ item_type: 'profile_assertion', assertion_key: row.assertion_key, reason: 'limit_truncated' })
+  const assertions = selectedAssertionRows.map((row: any) => ({ ...row, value: parseJson(row.value_json), value_json: undefined }))
   const packet = {
     task_kind: input.taskKind,
     scope: { recommendation_id: input.recommendationId || null, thread_id: input.threadId || null },
@@ -76,5 +104,11 @@ export async function compileMemoryContext(db: DB, input: {
   const receiptId = `mem_ctx_${crypto.randomUUID()}`
   await db.prepare(`INSERT INTO memory_retrieval_receipts(id,request_id,conversation_id,task_kind,query_text,selected_memory_ids_json,considered_memory_ids_json,exclusions_json,packet_json)
     VALUES (?,?,?,?,?,?,?,?,?)`).bind(receiptId, input.requestId || null, input.conversationId || null, input.taskKind, String(input.query || '').slice(0, 500) || null, JSON.stringify(ranked.map((row: any) => row.id)), JSON.stringify(considered), JSON.stringify(exclusions), JSON.stringify(packet)).run()
-  return { receipt_id: receiptId, ...packet, considered_count: considered.length, excluded: exclusions }
+  return {
+    receipt_id: receiptId,
+    ...packet,
+    considered_count: considered.length,
+    profile_assertions_considered_count: (assertionsResult.results || []).length,
+    excluded: exclusions,
+  }
 }

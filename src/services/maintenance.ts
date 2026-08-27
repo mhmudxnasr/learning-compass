@@ -68,9 +68,8 @@ async function rebuildSearch(DB: D1Database) {
     DB.prepare("INSERT INTO search_idx(source,ref_id,text) SELECT 'annotation',id,TRIM(COALESCE(quote,'') || ' ' || COALESCE(context_before,'') || ' ' || COALESCE(context_after,'') || ' ' || COALESCE(language,'')) FROM source_annotations WHERE status='active'"),
     DB.prepare("INSERT OR REPLACE INTO kv_store(key,value) VALUES ('fts_last_sync',?)").bind(indexedAt),
   ])
-  await DB.prepare("INSERT INTO search_idx(search_idx) VALUES('optimize')").run()
   const count = await DB.prepare('SELECT COUNT(*) count FROM search_idx').first<{ count: number }>()
-  return { indexed_at: indexedAt, rows: Number(count?.count || 0) }
+  return { indexed_at: indexedAt, rows: Number(count?.count || 0), strategy: 'portable_substring_projection' }
 }
 
 async function surfaceNeglectedBranches(DB: D1Database) {

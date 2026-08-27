@@ -461,23 +461,44 @@ async function activeQueueCount(DB: D1Database) {
   return Number(row?.c || 0)
 }
 
+async function compassPickReadModel(DB: D1Database, pick: any) {
+  // Keep the read compatible with databases that have the original Compass
+  // candidate table while additive migrations are being rolled out.
+  const candidates = await DB.prepare(`SELECT id,title,creator,format,source_class,lane,branch_id,format_key,creator_key,expected_learning_value,decision_score,score,uncertainty,evidence_status,contextual_alignment,candidate_set_diversity,is_verified,is_winner,features_json,evidence_json FROM compass_candidates WHERE pick_id=? ORDER BY decision_score DESC,score DESC`).bind(pick.id).all<any>().catch(() =>
+    DB.prepare(`SELECT id,title,creator,format,source_class,is_verified,is_winner,score,uncertainty FROM compass_candidates WHERE pick_id=? ORDER BY score DESC`).bind(pick.id).all<any>()
+  )
+  const shadow = parseJsonObject(pick.shadow_json)
+  const candidateRows = (candidates.results || []).map((candidate: any) => {
+    const features = parseJsonObject(candidate.features_json)
+    const stored = parseJsonObject(candidate.evidence_json)
+    const metadata = stored.candidate_context || {}
+    return { ...candidate, features_json: undefined, evidence_json: undefined, candidate_metadata: { effort: metadata.effort, language: metadata.language, delivery_modes: metadata.delivery_modes, depth_tier: metadata.depth_tier, source_proximity: metadata.source_proximity }, perspective: features._perspective || { status: 'neutral', viewpoint: null, school: null, evidence_indexes: [] }, delivery_match: features._delivery_match || null, repetition_advisory: features._repetition_advisory || null }
+  })
+  return { ...pick, rationale: parseJsonObject(pick.rationale_json), shadow, engine_mode: shadow.mode || pick.engine_mode || null, candidates: candidateRows }
+}
+
 app.get('/pick', async (c) => {
   try {
     const pick = await currentPick(c.env.DB)
     if (!pick) return c.json({ pick: null })
-    // Keep the read compatible with databases that have the original Compass
-    // candidate table while additive migrations are being rolled out.
-    const candidates = await c.env.DB.prepare(`SELECT id,title,creator,format,source_class,lane,branch_id,format_key,creator_key,expected_learning_value,decision_score,score,uncertainty,evidence_status,contextual_alignment,candidate_set_diversity,is_verified,is_winner,features_json,evidence_json FROM compass_candidates WHERE pick_id=? ORDER BY decision_score DESC,score DESC`).bind(pick.id).all<any>().catch(() =>
-      c.env.DB.prepare(`SELECT id,title,creator,format,source_class,is_verified,is_winner,score,uncertainty FROM compass_candidates WHERE pick_id=? ORDER BY score DESC`).bind(pick.id).all<any>()
-    )
-    const shadow = parseJsonObject(pick.shadow_json)
-    const candidateRows = (candidates.results || []).map((candidate: any) => {
-      const features = parseJsonObject(candidate.features_json)
-      const stored = parseJsonObject(candidate.evidence_json)
-      const metadata = stored.candidate_context || {}
-      return { ...candidate, features_json: undefined, evidence_json: undefined, candidate_metadata: { effort: metadata.effort, language: metadata.language, delivery_modes: metadata.delivery_modes, depth_tier: metadata.depth_tier, source_proximity: metadata.source_proximity }, perspective: features._perspective || { status: 'neutral', viewpoint: null, school: null, evidence_indexes: [] }, delivery_match: features._delivery_match || null, repetition_advisory: features._repetition_advisory || null }
-    })
-    return c.json({ pick: { ...pick, rationale: parseJsonObject(pick.rationale_json), shadow, engine_mode: shadow.mode || pick.engine_mode || null, candidates: candidateRows } })
+    return c.json({ pick: await compassPickReadModel(c.env.DB, pick) })
+  } catch (err) { return c.json(safeError('Failed to read Compass Pick')(err), 500) }
+})
+
+app.get('/pick/:id', async (c) => {
+  try {
+    const pick = await c.env.DB.prepare(`
+      SELECT p.*, COALESCE(r.video_title,w.title) AS video_title, COALESCE(r.creator,w.creator) AS creator,
+        COALESCE(r.content_type,w.format,w.source_class) AS content_type, COALESCE(r.video_url,w.canonical_url) AS video_url,
+        COALESCE(r.why_this,CASE WHEN json_valid(p.rationale_json) THEN json_extract(p.rationale_json,'$.why_this') END) AS why_this,
+        COALESCE(r.context_brief,CASE WHEN json_valid(p.rationale_json) THEN json_extract(p.rationale_json,'$.context_brief') END) AS context_brief
+      FROM compass_picks p
+      LEFT JOIN recommendations r ON r.id=p.recommendation_id
+      LEFT JOIN compass_candidates w ON w.pick_id=p.id AND w.is_winner=1
+      WHERE p.id=? LIMIT 1
+    `).bind(c.req.param('id')).first<any>()
+    if (!pick) return c.json({ error: 'Compass Pick not found' }, 404)
+    return c.json({ pick: await compassPickReadModel(c.env.DB, pick) })
   } catch (err) { return c.json(safeError('Failed to read Compass Pick')(err), 500) }
 })
 

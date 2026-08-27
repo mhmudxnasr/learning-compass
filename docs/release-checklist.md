@@ -1,23 +1,42 @@
 # Release checklist
 
 - `npm run test`
-- `npm run verify:hermes`
-- `npm run test:e2e`
 - `npm run build`
+- `npm run test:e2e`
+- `npm run verify:hermes`
+- `npm run verify:migrations`
+- `npm run verify:agent-contract`
+- `git diff --check`
+- In `/home/mahmud/.hermes/hermes-agent`, run `scripts/run_tests.sh tests/evals/test_manager_routing_harness.py -q`; require the isolated fixture to load and hash the real production `/home/mahmud/AGENTS.md`. This deterministic harness is the mandatory release gate. Real-model slates are diagnostic only: preserve their sampled results and use focused reruns to repair observed routing defects, but do not block Worker deployment on nondeterministic sampling.
+- Confirm `verify:hermes` passes both checked Telegram prompt contracts: exact tools/schema hashes, fixed-payload ceilings, memory readability/budgets/tail loading, duplicate detection, active-skill ownership, and canonical/profile parity. Follow [`hermes-production.md`](./hermes-production.md) for matched latency benchmarks, gateway reload, mutation recovery, and rollback evidence.
 - Rehearse `schema.sql` and every numbered migration discovered in `migrations/` on a clean D1 database.
+- Verify `sqlite_schema` contains no virtual table after migration `0067`, broad `/search` uses the bounded ordinary projection, the immediately previous Worker can issue its legacy search `optimize` command as a no-op, and one complete `npm run backup:production` export/R2 copy/disposable restore rehearsal records a verified backup before treating recovery as healthy.
+- Verify the `0067` lineage repair preserves every learning event and clears only `thread_id` values whose referenced Thread is absent; the live data-quality `event_lineage` check must return zero afterward.
+- Immediately before remote migration, record the D1 Time Travel recovery point. Apply pending migrations `0066` then `0067` remotely in rollback-compatible order; verify remote migration parity, the ordinary search projection, preserved event count, repaired lineage, unique live memory keys, and branch/domain invariants. Then create and restore-test the newly possible D1 export and create a separately verified R2 copy before any Worker deployment.
+- Verify memory migration cleanup leaves at most one active/approved `hermes_memory` row per `memory_key`, and exercise Arabic retrieval plus mismatch/limit exclusions in the persisted receipt.
 - Verify loop-ordered navigation, direct lesson completion, Queue Thread backfill, universal target-aware sessions, source dispositions, consolidation closure, anchored Units, source-centric Notes, FSRS recall, Atlas, and captured-source/RSS refresh.
 - Verify Insights → Hermes clean cohorts, profile health, improvement receipts, shadow gates, guarded memory, automatic profile application/undo, snapshot repair dry-run, and the 20-global/8-lane recalibration gates.
-- Verify `learning-compass-self-evolution` is the sole improvement owner, every active skill exposes an evolution handoff, retired skills are absent, and improvement receipts can close as applied/deployed, failed/resumable, or evidence-backed no-change.
+- Verify `learning-compass-self-evolution` is the sole improvement owner, every active skill exposes an evolution handoff, retired skills are absent from the active index and disabled in both profiles, and improvement receipts can close as applied/deployed, failed/resumable, or evidence-backed no-change.
 - Verify Compass requires an open Thread, stores fit/bridge/challenge lanes and v1/v2 shadow receipts, treats `not_now` as neutral, and records bad-fit reasons separately from rating/disposition/evidence.
 - Check desktop, tablet, phone, light, and dark screenshots.
 - Confirm `/manifest.json` is linked from the shell and exposes standalone launch, 192px/512px PNG icons, a maskable icon, Capture/Queue/Recall shortcuts, and the share-to-Library target.
 - Confirm the service worker reaches `ready`, the fingerprinted shell reloads offline, an HTML companion opened online reloads at the same URL offline without replacing the cached shell, installed-mode safe areas do not collide with Android system bars, and no stale cache remains after the cache-version bump.
 - On Android, verify the install card appears only when `beforeinstallprompt` is available, Not now suppresses it for 30 days, standalone launch reuses the existing app window, and a shared URL becomes a captured Library record.
+- Confirm the browser opens without a token prompt and representative unauthenticated reads and writes succeed. Never deploy `ALLOW_UNAUTHENTICATED_LOCAL_WRITES`; it is only a local rate-limit bypass.
+- Run both installed site-client suites (50/50 each), compile both clients, and require exact canonical/Compass script and test byte parity. Verify the hashed foreground-only turn identity, cross-process GET cache/two-attempt budget, one top-level timeout/5xx retry, zero generic 4xx/mutation retries, and single-attempt guarded readback.
+- Scan the repository diff, Hermes logs, and every always-injected home/project context file for credentials without printing values. Rotate any credential that entered prompt/tool context even when no persisted copy is found.
+- Before deployment, require current production `/health/live` and `/health/ready`, verified backup/restore evidence, clean jobs/data quality, auth-secret inventory, the passing deterministic manager harness, and focused regressions for any observed real-model defect; any readiness 503 or unresolved deterministic blocker stops release.
 - Deploy with `npx wrangler deploy --config wrangler.toml`.
-- Smoke-test `/health`, `/dashboard/briefing`, `/capture`, `/capture/feeds`, `/notes`, `/learning/srs/due`, `/learning/core/integrity/health`, `/learning/core/threads`, `/learning/core/consolidation/open`, `/agent/jobs`, `/agent/briefing`, `/agent/activity`, `/agent/capabilities`, `/agent/system`, and `/search/evidence`.
+- Require the new version's `/health/live` and `/health/ready` again; a live-but-not-ready Worker must roll back. Then smoke-test `/dashboard/briefing`, `/capture`, `/capture/feeds`, `/notes`, `/learning/srs/due`, `/learning/core/integrity/health`, `/learning/core/threads`, `/learning/core/consolidation/open`, `/agent/jobs`, `/agent/briefing`, `/agent/activity`, `/agent/capabilities`, `/agent/system`, and `/search/evidence`.
 - Confirm `/updates/learning-materials` returns the public release folio with its restrictive content policy, one `Open Learn` action path, and no horizontal overflow at desktop or phone widths.
-- If `REQUIRE_API_AUTH=true`, verify an unauthenticated read is rejected and the authorized `x-api-token` path succeeds. If Telegram is enabled, verify the secret header, allowed chat restriction, and duplicate `update_id` behavior before accepting captures.
+- Verify a representative unauthenticated read and write succeed and `POST /auth/session` is absent.
+- Confirm service-worker activation deletes the pre-auth private data-cache namespace and that a newly authenticated cached projection remains available through the intended network-first offline fallback.
+- Confirm the shell, learning-material update, health routes, and Telegram webhook remain outside API auth. If Telegram is enabled, verify its secret header, allowed chat restriction, and duplicate `update_id` behavior before accepting captures.
+- Verify credentials in a `?token=` query are not accepted, a browser-push subscription rejects private/local, IPv4-mapped, non-vendor, non-default-port, or plain-HTTP endpoints, and push delivery does not follow redirects.
+- Verify Gemini calls carry `x-goog-api-key` without a credential query parameter, and redaction removes secrets from authorization headers, quoted JSON fields, assignments, and query strings.
+- Verify generic artifact uploads reject standalone/disguised SVG, XML/XHTML, executable HTML, MIME/extension mismatches, and invalid PDF/audio/video signatures before R2 storage, and delete the staged R2 object when the D1 insert fails. Confirm an Arabic HTML companion remains readable with `sandbox` and `script-src 'none'`, while active XML and unknown legacy media return `application/octet-stream`, `attachment`, and `X-Content-Type-Options: nosniff`. Confirm the artifact-cache version changed in the same release so previously cached permissive HTML responses are evicted on service-worker activation.
 - Verify Settings → System renders every allow-listed operation, the exact configured schedule, on-demand-only workflows, storage ownership, service health, and safety boundaries without horizontal overflow.
 - Confirm no learning-core timer, scheduled monitor, or host poller was introduced; Hermes processes exact jobs only during active explicit workflows.
+- Restart Hermes only with no leased/running job, then verify the default and Compass `.env` files do not override disabled webhook YAML, no process listens on `:8644`, the API server listens only on loopback, and no retired Learning Compass or NotebookLM MCP child remains.
 - Smoke-test `/analytics/hermes`, `/analytics/hermes/engine`, `/analytics/hermes/repair` (dry-run), `/brain/profile/intelligence`, and `/agent/memory` after migration. Do not activate v2 unless every returned gate passes.
 - Set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` as Worker secrets, then enable a real browser subscription and confirm `/notifications/test` records `delivered` while the app is closed.

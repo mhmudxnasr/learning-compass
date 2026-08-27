@@ -7,6 +7,7 @@ import { profileTasteLabel } from '../services/profile-labels'
 import { loadCompassContext } from './compass'
 import { freeAi } from '../services/ai'
 import { loadCrossBranchBridges } from '../services/cross-branch-bridges'
+import { enrichRecommendationRows } from '../services/recommendation-enrichment'
 import { actOnResurfacing, createResurfacingPresentation, getDailyResurfacing, setResurfacingPreference } from '../services/resurfacing'
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -184,13 +185,7 @@ app.get('/branches/:id/items', async (c) => {
         SELECT id,label,type,parent_id FROM tree_nodes WHERE id=?
         UNION ALL SELECT t.id,t.label,t.type,t.parent_id FROM tree_nodes t JOIN chain ch ON t.id=ch.parent_id)
         SELECT * FROM chain`).bind(id).all<any>(),
-      DB.prepare(`SELECT r.id,r.video_title,r.creator,r.content_type,r.status,r.user_score,r.user_rating,r.user_review,r.consumed_date,r.created_at,m.learning_state,m.priority_rank,
-        (SELECT COUNT(*) FROM srs_cards sc WHERE sc.recommendation_id=r.id) recall_count,
-        (SELECT COUNT(*) FROM srs_cards sc WHERE sc.recommendation_id=r.id AND sc.due_at IS NOT NULL AND sc.due_at<=date('now')) due_count,
-        (SELECT COUNT(*) FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=r.id AND (a.media_type LIKE '%html%' OR a.filename LIKE '%.html')) html_count,
-        (SELECT COUNT(*) FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=r.id AND (a.media_type LIKE '%pdf%' OR a.filename LIKE '%.pdf')) pdf_count,
-        (SELECT n.id FROM notes n WHERE n.recommendation_id=r.id ORDER BY n.updated_at DESC LIMIT 1) note_id,
-        (SELECT n.title FROM notes n WHERE n.recommendation_id=r.id ORDER BY n.updated_at DESC LIMIT 1) note_title
+      DB.prepare(`SELECT r.id,r.video_title,r.creator,r.content_type,r.status,r.user_score,r.user_rating,r.user_review,r.consumed_date,r.created_at,m.learning_state,m.priority_rank
         FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
         WHERE m.branch_id=? AND r.deleted_at IS NULL AND (r.status IS NULL OR r.status!='deleted')
         ORDER BY CASE WHEN r.status='consumed' THEN 0 ELSE 1 END, COALESCE(r.consumed_date,r.created_at) DESC`).bind(id).all<any>(),
@@ -214,12 +209,13 @@ app.get('/branches/:id/items', async (c) => {
     ])
     const balanceNode = (balance?.branches || []).find((b: any) => String(b.id) === id) || null
     const priority = await DB.prepare('SELECT rank,label,rationale FROM priorities WHERE branch_id=?').bind(id).first<any>()
-    const recs = (recommendations.results || []).map((row: any) => ({
+    const enrichedRecommendations = await enrichRecommendationRows(DB, recommendations.results || [])
+    const recs = enrichedRecommendations.map((row: any) => ({
       ...row,
       recall: { count: Number(row.recall_count || 0), due: Number(row.due_count || 0) },
       companions: { html: Number(row.html_count || 0) > 0, pdf: Number(row.pdf_count || 0) > 0 },
       note: row.note_id ? { id: row.note_id, title: row.note_title || 'Field note' } : null,
-      recall_count: undefined, due_count: undefined, html_count: undefined, pdf_count: undefined, note_id: undefined, note_title: undefined,
+      recall_count: undefined, due_count: undefined, html_count: undefined, pdf_count: undefined, html_artifact_id: undefined, pdf_artifact_id: undefined, note_id: undefined, note_title: undefined,
     }))
     return c.json({
       branch: {

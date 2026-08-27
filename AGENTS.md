@@ -54,6 +54,7 @@ When behavior changes, update its contract in the same task:
 
 Active Hermes files:
 
+- `docs/hermes-production.md`, `docs/hermes-contract.json`, and both `docs/hermes*-prompt-budget.json` files for the production lifecycle, ownership, recovery, SLO, and fixed-prompt gates.
 - `~/.hermes/SOUL.md` and its checked-in source `docs/learning-compass-hermes-soul.md` for global identity and voice only. Project routing and source-of-truth rules belong in `.hermes.md`, `AGENTS.md`, and focused skills.
 - `~/.hermes/skills/workflow/learning-compass-operating-system/SKILL.md`
 - `~/.hermes/skills/workflow/learning-compass-self-evolution/SKILL.md`
@@ -97,7 +98,7 @@ Learning Compass Hermes permanently holds and enforces these project rules:
 - **Dark Patterns**: EXCLUDE Harry Brignull framing; follow Mathur/ProPublica deceptive patterns framing.
 - **AI/AGI Curation Rules**: LOVES practical applied AI tools, agent workflows, local LLM pipelines, deterministic tool calling, and workflow integrations (e.g. using Obsidian with Claude Code, NotebookLM, Hermes agent workflows, t3dotgg-style pragmatic dev tools/frameworks). LOVES major AI hardware announcements & model releases from top labs (OpenAI, Anthropic, Google). HARD REJECT theoretical/academic AI papers on low-level model training math/internals (GRPO math, RL training details). Route basic intro guides for tools already used (e.g. OpenCode) to RSS feed only.
 - **Feedback Policy**: NEVER auto-chain feedback processing into a new recommendation. Recommendations happen ONLY on explicit user request.
-- **Mandatory Branch Connection**: Every recommended, captured, or queued item MUST have a valid, verified knowledge branch connected to it (persisted `branch` and `round`). Branch pill badges must render across all views.
+- **Mandatory Branch Connection**: Every recommended, captured, or queued item MUST have a valid, verified knowledge branch connected to it with persisted `branch` and `super_category`/domain. Synthetic rounds are retired. Branch pill badges must render across all views.
 
 ## External Agent Restriction
 

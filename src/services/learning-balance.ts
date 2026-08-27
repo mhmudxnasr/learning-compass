@@ -50,17 +50,12 @@ const safeAll = async (statement: D1PreparedStatement) => {
 
 const dateOnly = (date: Date) => date.toISOString().slice(0, 10)
 
-function roundFor(node: any, depth: number) {
-  const explicit = String(node.round_label || '').toUpperCase().match(/^R\d+$/)?.[0]
-  return explicit || `R${Math.min(Math.max(depth, 1), 9)}`
-}
-
 export async function buildLearningBalance(DB: Db, windowDays = 90) {
   const days = [30, 90, 365].includes(windowDays) ? windowDays : 90
   const since = dateOnly(new Date(Date.now() - days * 86400000))
 
   const [allRawNodes, priorities, recommendations, notes, cards, reviews, acceptedUnits, completedLessons, explorations] = await Promise.all([
-    safeAll(DB.prepare("SELECT id,type,label,parent_id,round_label,super_category,status FROM tree_nodes WHERE type IN ('root','category','branch','leaf') ORDER BY label")),
+    safeAll(DB.prepare("SELECT id,type,label,parent_id,super_category,status FROM tree_nodes WHERE type IN ('root','category','branch','leaf') ORDER BY label")),
     safeAll(DB.prepare('SELECT rank,branch_id FROM priorities ORDER BY rank ASC')),
     safeAll(DB.prepare(`SELECT r.id,r.status,r.user_rating,r.user_score,r.consumed_date,r.dedup_key,m.branch_id
       FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id`)),
@@ -92,21 +87,7 @@ export async function buildLearningBalance(DB: Db, windowDays = 90) {
   }
   const rawNodes = allRawNodes.filter((node: any) => !isPruned(node))
   const byId = new Map<string, any>(rawNodes.map((node: any) => [String(node.id), node]))
-  const depthCache = new Map<string, number>()
   const pathCache = new Map<string, string[]>()
-  const depthOf = (id: string): number => {
-    if (depthCache.has(id)) return depthCache.get(id)!
-    let depth = 1
-    let current = byId.get(id)
-    const seen = new Set<string>()
-    while (current?.parent_id && !seen.has(String(current.parent_id))) {
-      seen.add(String(current.parent_id))
-      depth += 1
-      current = byId.get(String(current.parent_id))
-    }
-    depthCache.set(id, depth)
-    return depth
-  }
   const pathOf = (id: string) => {
     if (pathCache.has(id)) return pathCache.get(id)!
     const path: string[] = []
@@ -223,7 +204,7 @@ export async function buildLearningBalance(DB: Db, windowDays = 90) {
       const frontier = knowledgeFrontier({ consumed: branchStats.lifetimeConsumed, units: branchStats.units, lessons: branchStats.lessons, latestRecall })
       return {
         id, label: node.label || id, type: node.type, parent_id: node.parent_id || null,
-        round: roundFor(node, depthOf(id)), super_category: node.super_category || null,
+        super_category: node.super_category || null,
         priority_rank: priorityRank, priority_share: priorityShare,
         consumed_count: branchStats.consumed, attention_share: Math.round(attentionShare * 1000) / 10,
         last_consumed_at: branchStats.last, notes_count: branchStats.notes, srs_total: branchStats.srs, srs_due: branchStats.due,

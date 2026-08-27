@@ -19,7 +19,6 @@ type CanonDomain = {
   branch_id: string
   branch_label?: string | null
   branch_status?: string | null
-  branch_round?: string | null
   family_title?: string | null
   family_slug?: string | null
   entry_count?: number
@@ -374,7 +373,6 @@ function CanonRoomFieldCard({ domain }: { domain: CanonDomain }) {
         <div class="canon-branch-pill canon-field-map-branch">
           <Icon name="branch" size={12} />
           <span>{domain.branch_label}</span>
-          {domain.branch_round && <small>· {domain.branch_round}</small>}
         </div>
       )}
 
@@ -461,7 +459,7 @@ function CanonFieldCard({ domain, integrated }: { domain: CanonDomain; integrate
     const content = <>
       <div class="canon-minimal-field-copy">
         <h4>{domain.title}</h4>
-        <span>{domain.branch_label || domain.family_title || 'Unmapped'}{domain.branch_round ? ` · ${domain.branch_round}` : ''}</span>
+        <span>{domain.branch_label || domain.family_title || 'Unmapped'}</span>
       </div>
       <span class="canon-minimal-field-count">{ready ? '3 books' : status.label}</span>
       {ready && <Icon name="chevron" size={14}/>}
@@ -485,7 +483,6 @@ function CanonFieldCard({ domain, integrated }: { domain: CanonDomain; integrate
           <div class="canon-branch-pill">
             <Icon name="branch" size={12} />
             <span>{domain.branch_label}</span>
-            {domain.branch_round && <small>· {domain.branch_round}</small>}
           </div>
         )}
       </div>
@@ -621,7 +618,6 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
               <span class="canon-branch-pill">
                 <Icon name="branch" size={12} />
                 {domain.branch_label}
-                {domain.branch_round ? ` · ${domain.branch_round}` : ''}
               </span>
             )}
             <span class={`canon-pill ${stateBadge(domain.curation_status).class}`}>

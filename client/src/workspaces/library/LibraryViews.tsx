@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks'
 import { api, formatDate, labelize } from '../../api'
 import { Empty } from '../../components/States'
 import { Icon } from '../../components/Icon'
+import { useData } from '../../app/useData'
 import { BookChapterRows, BooksView, ChapterManagerDialog, computeBookProgress, ReadingFormatLinks } from './BooksView'
 import { bookChapters, bookNextChapter, bookReadingState } from './bookModel'
 import { noteHref } from '../learn/helpers'
@@ -132,6 +133,7 @@ export function QueueView({ data, handlers }: { data: LibraryRecord; handlers: L
 
 export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
   const [feedUrl, setFeedUrl] = useState('')
+  const [feedBranchId, setFeedBranchId] = useState('')
   const [selectedFeedId, setSelectedFeedId] = useState<string>('all')
   const [feedEntries, setFeedEntries] = useState<LibraryRecord[]>([])
   const [entriesTotal, setEntriesTotal] = useState(0)
@@ -139,6 +141,8 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [confirmClearId, setConfirmClearId] = useState<string | null>(null)
   const [showManageFeeds, setShowManageFeeds] = useState(false)
+  const branchDeck = useData<{ existing?: LibraryRecord[] }>(showManageFeeds ? '/brain/branch-deck' : undefined)
+  const branchOptions = useMemo(() => (branchDeck.data?.existing || []).filter((branch) => String(branch.status || '').toLowerCase() !== 'pruned'), [branchDeck.data?.existing])
 
   const feeds = Array.isArray(data.feeds) ? data.feeds : []
   const totalEntries = useMemo(() => feeds.reduce((sum: number, f: LibraryRecord) => sum + Number(f.entry_count || 0), 0), [feeds])
@@ -167,9 +171,10 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
 
   const submitSubscribe = (event: Event) => {
     event.preventDefault()
-    if (feedUrl.trim() && handlers.onAddFeed) {
-      handlers.onAddFeed(feedUrl.trim())
+    if (feedUrl.trim() && feedBranchId && handlers.onAddFeed) {
+      handlers.onAddFeed(feedUrl.trim(), feedBranchId)
       setFeedUrl('')
+      setFeedBranchId('')
     }
   }
 
@@ -236,14 +241,26 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                 required
                 aria-label="Feed URL"
               />
+              <select
+                value={feedBranchId}
+                onChange={(event) => setFeedBranchId((event.currentTarget as HTMLSelectElement).value)}
+                aria-label="Default knowledge branch for imported feed articles"
+                required
+                disabled={branchDeck.loading || !branchOptions.length}
+              >
+                <option value="">{branchDeck.loading ? 'Loading branches…' : branchOptions.length ? 'Choose default branch' : 'No active branches available'}</option>
+                {branchOptions.map((branch) => <option key={String(branch.id)} value={String(branch.id)}>{branch.label}{branch.category_label ? ` · ${branch.category_label}` : ''}</option>)}
+              </select>
               <button
                 type="submit"
                 class="folio-button folio-button-primary"
-                disabled={handlers.busyId === 'add-feed' || !feedUrl.trim()}
+                disabled={handlers.busyId === 'add-feed' || !feedUrl.trim() || !feedBranchId || branchDeck.loading}
               >
                 {handlers.busyId === 'add-feed' ? 'Subscribing…' : 'Subscribe'}
               </button>
             </div>
+            <p class="folio-feed-branch-help">New source records inherit this reviewed branch. If an article already exists under another reviewed branch, its canonical mapping is preserved.</p>
+            {branchDeck.error && <p class="folio-inline-warning" role="alert">Branches could not be loaded. Retry before subscribing.</p>}
           </form>
 
           {feeds.length ? (
@@ -288,6 +305,7 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                           )}
                         </div>
                         <p class="folio-record-note">{feed.feed_url}</p>
+                        {feed.branch_label && <a class="folio-badge folio-badge-branch folio-feed-branch-pill" href={`#/map/branch/${encodeURIComponent(String(feed.branch_id))}`}><span class="badge-format">Default branch</span><span>{feed.branch_label}</span></a>}
 
                         <div class="folio-row-actions">
                           <button
@@ -458,6 +476,7 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                   </>
                 )}
               </div>
+              {!isAllFeeds && selectedFeed.branch_label && <a class="folio-badge folio-badge-branch folio-feed-branch-pill" href={`#/map/branch/${encodeURIComponent(String(selectedFeed.branch_id))}`}><span class="badge-format">Default branch</span><span>{selectedFeed.branch_label}</span></a>}
             </div>
 
             <div class="folio-feed-banner-actions">
@@ -559,6 +578,7 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                       </RecordMeta>
                       <RowTitle item={item} onInspect={handlers.onInspect}/>
                       <p class="folio-record-reason">{formatReason(item)}</p>
+                      {item.branch_label && <a class="folio-badge folio-badge-branch folio-feed-branch-pill" href={`#/map/branch/${encodeURIComponent(String(item.branch_id))}`}><span class="badge-format">Branch</span><span>{item.branch_label}</span></a>}
 
                       <div class="folio-row-actions">
                         {isInbox && (
@@ -908,7 +928,7 @@ function SourceObject({ item, record, handlers }: { item: LibraryRecord; record:
   const companions = record.companions || {}
   const recall = record.srs?.recall_summary || { count: 0, due: 0 }
   const drafts = (record.srs?.drafts || []).filter((draft: LibraryRecord) => draft.status !== 'approved')
-  const branch = item.branch || (item.branch_id ? { id: item.branch_id, label: item.branch_label || item.branch_id, round: item.round, status: item.branch_status } : null)
+  const branch = item.branch || (item.branch_id ? { id: item.branch_id, label: item.branch_label || item.branch_id, status: item.branch_status } : null)
   const notebookUrl = item.notebook_url
     || item.metadata?.notebook_url
     || artifacts.find((f: LibraryRecord) => f.notebook_url || f.metadata?.notebook_url)?.notebook_url
@@ -1107,7 +1127,7 @@ function BookObject({ item, record, handlers, onBack }: { item: LibraryRecord; r
   const progress = computeBookProgress(book)
   const nextChapter = bookNextChapter(book)
   const readingState = bookReadingState(book)
-  const branch = item.branch || (item.branch_id ? { id: item.branch_id, label: item.branch_label || item.branch_id, round: item.round, status: item.branch_status } : null)
+  const branch = item.branch || (item.branch_id ? { id: item.branch_id, label: item.branch_label || item.branch_id, status: item.branch_status } : null)
   const memberships = Array.isArray(book.canon_memberships) ? book.canon_memberships : []
   const threads = Array.isArray(book.threads) ? book.threads : []
   const isPrimary = Boolean(book.is_primary)
@@ -1172,7 +1192,6 @@ function BookObject({ item, record, handlers, onBack }: { item: LibraryRecord; r
             <div><dt>Added</dt><dd>{formatDate(item.created_at)}</dd></div>
             <div><dt>Updated</dt><dd>{formatDate(item.updated_at)}</dd></div>
             <div><dt>Reading status</dt><dd>{formatStatus(readingState)}</dd></div>
-            <div><dt>Branch round</dt><dd>{branch?.round || item.round || 'Not recorded'}</dd></div>
           </dl>
           {item.why_this && <blockquote class="book-dossier-rationale">{item.why_this}</blockquote>}
           {memberships.length > 0 && <div class="book-canon-placements"><h3>Canon placement</h3>{memberships.map((membership: LibraryRecord) => <article key={membership.entry_id || `${membership.domain_id}-${membership.role}`}><div><span>{formatStatus(membership.role)}</span><strong>{membership.domain_title}</strong></div>{membership.domain_boundary && <p>{membership.domain_boundary}</p>}<a href={`#/learn/canon/${encodeURIComponent(String(membership.domain_slug || membership.domain_id))}`}>Open field guide</a></article>)}</div>}
@@ -1218,7 +1237,7 @@ function BookObject({ item, record, handlers, onBack }: { item: LibraryRecord; r
 
         <section id="book-connections" class="book-dossier-side-section">
           <div class="book-dossier-section-head"><h2>Connections</h2><span>{(branch ? 1 : 0) + memberships.length + threads.length + units.length}</span></div>
-          {branch && (branch.linkable !== false && branch.verified !== false ? <a class="folio-linked-object" href={`#/map/branch/${encodeURIComponent(String(branch.id))}`}><strong>{branch.label}</strong><span>{branch.round || 'Current round'} · {formatStatus(branch.status)}</span></a> : <div class="folio-linked-object"><strong>{branch.label}</strong><span>Branch match not verified</span></div>)}
+          {branch && (branch.linkable !== false && branch.verified !== false ? <a class="folio-linked-object" href={`#/map/branch/${encodeURIComponent(String(branch.id))}`}><strong>{branch.label}</strong><span>{formatStatus(branch.status)}</span></a> : <div class="folio-linked-object"><strong>{branch.label}</strong><span>Branch match not verified</span></div>)}
           {memberships.map((membership: LibraryRecord) => <a class="folio-linked-object" href={`#/learn/canon/${encodeURIComponent(String(membership.domain_slug || membership.domain_id))}`} key={membership.entry_id || `${membership.domain_id}-${membership.role}`}><strong>{membership.domain_title}</strong><span>Canon · {formatStatus(membership.role)}</span></a>)}
           {threads.map((thread: LibraryRecord) => <a class="folio-linked-object" href={`#/learn/thread/${encodeURIComponent(String(thread.id))}`} key={thread.id}><strong>{thread.title}</strong><span>{thread.role || 'Attached book'} · {formatStatus(thread.status)}</span></a>)}
           {units.map((unit: LibraryRecord) => <a class="folio-linked-object" href={`#/learn/unit/${encodeURIComponent(String(unit.id))}`} key={unit.id}><strong>{unit.statement || unit.title || 'Learning unit'}</strong><span>{formatStatus(unit.unit_type || 'concept')}</span></a>)}

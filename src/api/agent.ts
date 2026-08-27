@@ -1,15 +1,82 @@
 import { Hono } from 'hono'
-import { Bindings, safeError } from '../lib'
+import { Bindings, redactSensitiveText, safeError } from '../lib'
 import { buildLearningBalance } from '../services/learning-balance'
-import { compileMemoryContext, isMemoryOwnershipAllowed, isMemoryTaskKind, writeMemoryEvidence } from '../services/memory-context'
+import { buildMemoryEvidenceStatements, compileMemoryContext, isMemoryOwnershipAllowed, isMemoryTaskKind } from '../services/memory-context'
 import { loadCaptureQueue } from '../services/capture-queue'
 import { loadHermesBrief } from '../services/agent-briefing'
-import { AGENT_CONTRACT_VERSION, AGENT_PROTOCOL, type AgentMethod, buildAgentOpenApi, buildCapabilityCatalog, resolveCapabilityReadbacks } from '../services/agent-capabilities'
+import { AGENT_CONTRACT_VERSION, AGENT_PROTOCOL, type AgentMethod, agentCapabilityPathPattern, agentReadbackPathPattern, buildAgentOpenApi, buildCapabilityCatalog, resolveCapabilityReadbacks } from '../services/agent-capabilities'
 import { MAINTENANCE_CRON, runMaintenance } from '../services/maintenance'
 import { loadOperationalHealth } from '../services/operational-health'
+import { loadDataQuality } from '../services/data-quality'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const sqliteTime = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString().slice(0, 19).replace('T', ' ')
+const MAX_AGENT_VALUE_BYTES = 32 * 1024
+const SENSITIVE_AGENT_FIELD = /^(?:authorization|cookie|set_cookie|password|secret|token|api_key|private_key|auth|p256dh|chat_id|endpoint)$|^(?:access|refresh|client|bearer|session|id|auth|api|private|signing|encryption|webhook)_(?:token|secret|key|endpoint)$/
+const jsonBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value) || 'null').byteLength
+
+const isSensitiveAgentField = (key: string) => SENSITIVE_AGENT_FIELD.test(
+  key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/[-\s]+/g, '_').toLowerCase(),
+)
+
+const redactAgentValue = (value: any, key = '', depth = 0): any => {
+  if (isSensitiveAgentField(key)) return '[redacted]'
+  if (value === undefined) return null
+  if (value == null || typeof value === 'number' || typeof value === 'boolean') return value
+  if (typeof value === 'string') return redactSensitiveText(value, 8000)
+  if (depth >= 8) return '[depth-limited]'
+  if (Array.isArray(value)) {
+    const items = value.slice(0, 50).map((item) => redactAgentValue(item, '', depth + 1))
+    return value.length > items.length ? { truncated: true, item_count: value.length, items } : items
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value)
+    const projected = Object.fromEntries(entries.slice(0, 100).map(([field, item]) => [field, redactAgentValue(item, field, depth + 1)]))
+    if (entries.length > 100) projected.__agent_projection = { truncated: true, omitted_fields: entries.length - 100 }
+    return projected
+  }
+  return String(value)
+}
+
+const boundAgentValue = (value: any, maxBytes = MAX_AGENT_VALUE_BYTES): any => {
+  const safe = redactAgentValue(value)
+  const originalBytes = jsonBytes(safe)
+  if (originalBytes <= maxBytes) return safe
+  if (Array.isArray(safe)) {
+    return { truncated: true, original_bytes: originalBytes, item_count: safe.length, sample: safe.slice(0, 3).map((item) => boundAgentValue(item, 2000)) }
+  }
+  if (safe && typeof safe === 'object') {
+    const fields = Object.fromEntries(Object.entries(safe).slice(0, 50).map(([field, item]) => {
+      if (Array.isArray(item)) return [field, { type: 'array', count: item.length }]
+      if (item && typeof item === 'object') return [field, { type: 'object', keys: Object.keys(item).slice(0, 12) }]
+      return [field, typeof item === 'string' && item.length > 500 ? `${item.slice(0, 500)}…[truncated]` : item]
+    }))
+    return { truncated: true, original_bytes: originalBytes, fields }
+  }
+  return safe
+}
+
+const projectAgentSnapshots = (snapshots: any) => {
+  const project = (snapshot: any) => snapshot && typeof snapshot === 'object'
+    ? { ...snapshot, data: boundAgentValue(snapshot.data, 12 * 1024) }
+    : boundAgentValue(snapshot, 12 * 1024)
+  if (!Array.isArray(snapshots)) return snapshots == null ? snapshots : project(snapshots)
+  const items = snapshots.slice(0, 10).map(project)
+  return snapshots.length > items.length ? { items, omitted: snapshots.length - items.length } : items
+}
+
+const projectAgentReceipt = (receipt: any) => {
+  const safe = redactAgentValue(receipt)
+  const projected = {
+    ...safe,
+    before: projectAgentSnapshots(safe?.before),
+    mutation_or_job: safe?.mutation_or_job ? { ...safe.mutation_or_job, data: boundAgentValue(safe.mutation_or_job.data, 12 * 1024) } : safe?.mutation_or_job,
+    after: projectAgentSnapshots(safe?.after),
+    evidence: Array.isArray(safe?.evidence) ? safe.evidence.slice(0, 50).map((item: any) => boundAgentValue(item, 2000)) : safe?.evidence || [],
+    blocker: boundAgentValue(safe?.blocker, 4000),
+  }
+  return boundAgentValue(projected, 28 * 1024)
+}
 
 /**
  * The agent API is an intentionally boring adapter over the public product API.
@@ -21,17 +88,25 @@ const CAPABILITIES = [
   ['GET', '/agent/context', 'Read the compact taste and learning context.'],
   ['GET', '/agent/briefing', 'Read the deterministic next-action brief shared with the Home workspace.'],
   ['GET', '/agent/activity', 'Read recent Hermes receipts, audit events, and operational status.'],
-  ['GET', '/agent/system', 'Read the user-visible runtime, storage, schedule, recovery, and service inventory.'],
+  ['GET', '/agent/system', 'Read the user-visible runtime, storage, data-quality contracts, schedule, recovery, and service inventory.'],
   ['GET', '/health/ready', 'Read canonical production readiness across storage, integrity, jobs, maintenance, and recovery.'],
   ['POST', '/agent/maintenance/run', 'Run the configured maintenance workflow on demand and persist a task-level receipt.'],
   ['GET', '/dashboard/briefing', 'Read Momentum, active Queue files, weekly progress, and current insight.'],
   ['GET', '/capture', 'Read captured source records.'],
   ['POST', '/capture', 'Save a URL, text, or artifact as a source record.'],
+  ['GET', '/capture/personal', 'Read the searchable personal library with typed media state, progress, ratings, branches, and exact visual-summary counts.'],
+  ['GET', '/capture/personal/:id', 'Read one exact personal library record.'],
+  ['POST', '/capture/personal', 'Create one branch-verified book, movie, series, podcast, course, game, album, or other personal record without changing Queue commitment.'],
+  ['PATCH', '/capture/personal/:id', 'Edit personal library metadata, progress, status, rating, tags, note, link, or branch while retaining canonical identity and event lineage.'],
+  ['POST', '/assistant/interpret', 'Interpret a natural-language consumption note into a reviewable set of personal records, profile signals, and follow-up questions without writing anything.'],
+  ['GET', '/hardcover', 'Read the configured Hardcover mirror, sync state, and which external books are already imported into the Personal Data Studio.'],
+  ['POST', '/hardcover/sync', 'Fetch the authenticated Hardcover library into the server-side mirror without importing anything into Queue.'],
+  ['POST', '/hardcover/import', 'Import selected or all unimported Hardcover books into the branch-verified Personal Data Studio.'],
   ['GET', '/capture/feeds', 'Read RSS and Atom subscriptions.'],
   ['GET', '/capture/feeds/:id/entries', 'Read every article imported from one feed, paginated.'],
-  ['POST', '/capture/feeds', 'Subscribe to an RSS or Atom feed and import its latest entries; optional limit caps the initial import.'],
-  ['POST', '/capture/feeds/sync', 'Check every enabled web feed for new Inbox articles; optional limit caps entries per feed.'],
-  ['POST', '/capture/feeds/:id/sync', 'Check one web feed for new Inbox articles; optional limit caps imported entries.'],
+  ['POST', '/capture/feeds', 'Subscribe to an RSS or Atom feed under a required verified default branch and import its latest entries; optional limit caps the initial import.'],
+  ['POST', '/capture/feeds/sync', 'Check every enabled web feed for new captured source records; optional limit caps entries per feed.'],
+  ['POST', '/capture/feeds/:id/sync', 'Check one web feed for new captured source records; optional limit caps imported entries.'],
   ['DELETE', '/capture/feeds/:id', 'Unsubscribe from a web feed without deleting captured articles.'],
   ['GET', '/capture/queue', 'Read the active queue.'],
   ['POST', '/capture/:id/triage', 'Queue, neutrally remove from Queue, or exclude a captured source; queue cap is enforced.'],
@@ -39,6 +114,7 @@ const CAPABILITIES = [
   ['GET', '/capture/:id', 'Read one capture.'],
   ['GET', '/capture/:id/record', 'Read the canonical source record with exact feedback, extracted note sections, jobs, proposals, files, recall, sessions, memory influence, and outcome.'],
   ['GET', '/compass/pick', 'Read the newest active ready/started Compass Pick; multiple concurrent picks may exist.'],
+  ['GET', '/compass/pick/:id', 'Read one exact persisted Compass Pick and its candidate decision record.'],
   ['GET', '/compass/context', 'Read the bounded canonical Thread, profile, exclusions, history, and candidate contract before Hermes researches recommendation candidates.'],
   ['POST', '/compass/semantic/index', 'Explicitly index changed Learning Compass sources, Threads, Notes, and Units into the private semantic retrieval index; no recommendation is created.'],
   ['POST', '/compass/picks', 'Submit 3–24 candidates for server-owned adaptive Compass Pick selection while queued/in-progress Queue count is below five; does not auto-start.'],
@@ -64,7 +140,7 @@ const CAPABILITIES = [
   ['GET', '/brain/profile/intelligence', 'Read typed profile assertions, health, and reversible revisions.'],
   ['PUT', '/brain/profile/assertions/:key', 'Create or replace a typed profile assertion as an explicit user edit.'],
   ['POST', '/brain/profile/revisions/:id/revert', 'Undo one typed profile revision.'],
-  ['GET', '/brain/branch-deck', 'Read the personal top-level branch index, category index, status, round, and linked activity.'],
+  ['GET', '/brain/branch-deck', 'Read the personal top-level branch index, category index, status, and linked activity.'],
   ['POST', '/brain/branch-swipe', 'Activate, pause, prioritize, archive, add, edit, or undo a personal branch.'],
   ['POST', '/brain/branch-suggest', 'Request review-before-commit new-branch ideas grounded in live Compass context; nothing is written.'],
   ['POST', '/brain/priorities', 'Replace priorities.'],
@@ -165,6 +241,8 @@ const CAPABILITIES = [
   ['PUT', '/dashboard/layout', 'Edit dashboard layout.'],
   ['GET', '/agent/jobs', 'Read durable jobs.'],
   ['GET', '/agent/jobs/health', 'Read Hermes job queue health, overdue retries, and stale lease counts.'],
+  ['GET', '/agent/jobs/active', 'Read active and recently terminal jobs for bounded recovery verification.'],
+  ['GET', '/agent/jobs/:id', 'Read one exact durable job and its current lease, retry, workflow, and result state.'],
   ['POST', '/agent/jobs/reconcile', 'Dry-run or apply conservative reconciliation of visual jobs against canonical sources and complete R2 pairs.'],
   ['POST', '/agent/jobs/:id/claim', 'Claim a leased job.'],
   ['POST', '/agent/jobs/:id/checkpoint', 'Advance one resumable workflow to its next declared step.'],
@@ -232,7 +310,7 @@ const CAPABILITIES = [
 
 const CAPABILITY_PATTERNS = CAPABILITIES.map(([method, path]) => ({
   method,
-  regex: new RegExp('^' + path.replace(/:[^/]+/g, '[^/]+') + '(?:\\?.*)?$'),
+  regex: agentCapabilityPathPattern(path),
 }))
 
 function isAllowedAgentRequest(method: string, path: string) {
@@ -243,24 +321,25 @@ async function logAgentAction(DB: any, c: any, action: string, payload: unknown,
   try {
     const agent = c.req.header('x-agent-name') || c.req.header('user-agent') || 'unknown-agent'
     await DB.prepare('INSERT INTO agent_logs (agent_name, action, payload_json, status) VALUES (?, ?, ?, ?)')
-      .bind(agent.slice(0, 120), action.slice(0, 200), JSON.stringify(payload ?? null).slice(0, 20000), status.slice(0, 40)).run()
+      .bind(redactSensitiveText(agent, 120), redactSensitiveText(action, 200), JSON.stringify(boundAgentValue(payload ?? null, 16000)).slice(0, 20000), redactSensitiveText(status, 40)).run()
   } catch { /* audit failure must not break the product request */ }
 }
 
 async function persistAgentReceipt(DB: any, c: any, receipt: any, statusCode: number, verified: boolean) {
   try {
     const agent = c.req.header('x-agent-name') || c.req.header('user-agent') || 'unknown-agent'
+    const projectedReceipt = projectAgentReceipt(receipt)
     await DB.prepare(`INSERT INTO agent_receipts
       (id,request_id,agent_name,intent,target,status_code,verified,receipt_json)
       VALUES (?,?,?,?,?,?,?,?)`).bind(
       `receipt_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`,
-      c.req.header('x-request-id') || null,
-      agent.slice(0, 120),
-      String(receipt?.intent || 'unknown').slice(0, 40),
-      String(receipt?.target || '').slice(0, 500),
+      c.req.header('x-request-id') ? redactSensitiveText(c.req.header('x-request-id'), 120) : null,
+      redactSensitiveText(agent, 120),
+      redactSensitiveText(receipt?.intent || 'unknown', 40),
+      redactSensitiveText(receipt?.target || '', 500),
       statusCode,
       verified ? 1 : 0,
-      JSON.stringify(receipt).slice(0, 100000),
+      JSON.stringify(projectedReceipt).slice(0, 100000),
     ).run()
   } catch { /* receipt persistence must not turn a committed mutation into a failure */ }
 }
@@ -270,38 +349,77 @@ app.get('/briefing', async (c) => {
   try {
     return c.json(await loadHermesBrief(c.env.DB))
   } catch (error) {
-    return c.json(safeError('Hermes briefing unavailable')(error), 503)
+    const failure = safeError('Hermes briefing unavailable')(error)
+    return c.json({
+      ...failure,
+      as_of: new Date().toISOString(),
+      health: { status: 'unavailable' },
+      next_action: null,
+      blockers: { context_unavailable: true },
+      counts: null,
+    }, 503)
   }
 })
 
 app.get('/activity', async (c) => {
-  const limit = Math.max(1, Math.min(50, Number(c.req.query('limit') || 20)))
+  c.header('Cache-Control', 'no-store')
+  const requestedLimit = Number(c.req.query('limit') || 10)
+  const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(25, Math.floor(requestedLimit))) : 10
+  const asOf = new Date().toISOString()
+  const sections: Record<string, { status: 'ok' | 'degraded'; error?: string }> = {}
+  const load = async (name: string, operation: () => Promise<any>) => {
+    try {
+      const result = await operation()
+      sections[name] = { status: 'ok' }
+      return result
+    } catch {
+      sections[name] = { status: 'degraded', error: 'query_failed' }
+      return { results: [] }
+    }
+  }
   const [receipts, logs, jobs, proposals] = await Promise.all([
-    c.env.DB.prepare(`SELECT id,request_id,agent_name,intent,target,status_code,verified,receipt_json,created_at
-      FROM agent_receipts ORDER BY created_at DESC LIMIT ?`).bind(limit).all<any>(),
-    c.env.DB.prepare(`SELECT id,ts,agent_name,action,status FROM agent_logs ORDER BY ts DESC LIMIT ?`).bind(limit).all<any>(),
-    c.env.DB.prepare(`SELECT id,job_type,status,error,attempts,created_at,updated_at FROM agent_jobs
-      WHERE status IN ('pending','running','retry','failed','dead_letter') ORDER BY updated_at DESC LIMIT ?`).bind(limit).all<any>(),
-    c.env.DB.prepare(`SELECT id,change_type AS proposal_type,status,created_at,reviewed_at,applied_at,
-      COALESCE(applied_at,reviewed_at,created_at) AS updated_at FROM feedback_proposals
-      WHERE status IN ('pending','approved','applied','rejected')
-      ORDER BY COALESCE(applied_at,reviewed_at,created_at) DESC LIMIT ?`).bind(limit).all<any>(),
+    load('receipts', () => c.env.DB.prepare(`SELECT id,request_id,agent_name,intent,target,status_code,verified,receipt_json,created_at
+      FROM agent_receipts ORDER BY created_at DESC LIMIT ?`).bind(limit).all<any>()),
+    load('audit_events', () => c.env.DB.prepare(`SELECT id,ts,agent_name,action,status FROM agent_logs ORDER BY ts DESC LIMIT ?`).bind(limit).all<any>()),
+    load('jobs', () => c.env.DB.prepare(`SELECT id,job_type,status,error,attempts,created_at,updated_at,lease_expires_at,
+      SUM(CASE WHEN status IN ('pending','running','retry') THEN 1 ELSE 0 END) OVER () active_total,
+      SUM(CASE WHEN status IN ('failed','dead_letter') THEN 1 ELSE 0 END) OVER () failed_total,
+      SUM(CASE WHEN status='running' AND lease_expires_at<datetime('now') THEN 1 ELSE 0 END) OVER () stale_total,
+      SUM(CASE WHEN status='dead_letter' THEN 1 ELSE 0 END) OVER () dead_letter_total
+      FROM agent_jobs WHERE status IN ('pending','running','retry','failed','dead_letter')
+      ORDER BY updated_at DESC LIMIT ?`).bind(limit).all<any>()),
+    load('proposals', () => c.env.DB.prepare(`SELECT id,change_type AS proposal_type,status,created_at,reviewed_at,applied_at,
+      COALESCE(applied_at,reviewed_at,created_at) AS updated_at,
+      SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) OVER () pending_total
+      FROM feedback_proposals WHERE status IN ('pending','approved','applied','rejected')
+      ORDER BY COALESCE(applied_at,reviewed_at,created_at) DESC LIMIT ?`).bind(limit).all<any>()),
   ])
   const parsedReceipts = (receipts.results || []).map((row: any) => {
     let receipt: any = null
     try { receipt = JSON.parse(row.receipt_json || '{}') } catch { receipt = { blocker: { message: 'Receipt payload could not be decoded.' } } }
-    return { ...row, verified: Boolean(row.verified), receipt, receipt_json: undefined }
+    const { receipt_json: _receiptJson, ...metadata } = row
+    return { ...redactAgentValue(metadata), verified: Boolean(row.verified), receipt: projectAgentReceipt(receipt) }
   })
+  const auditRows = (logs.results || []).map((row: any) => redactAgentValue(row))
+  const jobRows = (jobs.results || []).map(({ active_total: _active, failed_total: _failed, stale_total: _stale, dead_letter_total: _dead, ...row }: any) => boundAgentValue(row, 8000))
+  const proposalRows = (proposals.results || []).map(({ pending_total: _pending, ...row }: any) => redactAgentValue(row))
+  const jobTotals = jobs.results?.[0] || {}
+  const proposalTotals = proposals.results?.[0] || {}
+  const degraded = Object.values(sections).some((section) => section.status === 'degraded')
   return c.json({
-    as_of: new Date().toISOString(),
+    as_of: asOf,
     receipts: parsedReceipts,
-    audit_events: logs.results || [],
-    jobs: jobs.results || [],
-    proposals: proposals.results || [],
+    audit_events: auditRows,
+    jobs: jobRows,
+    proposals: proposalRows,
     health: {
-      active_jobs: (jobs.results || []).filter((row: any) => ['pending', 'running', 'retry'].includes(row.status)).length,
-      failed_jobs: (jobs.results || []).filter((row: any) => ['failed', 'dead_letter'].includes(row.status)).length,
-      pending_proposals: (proposals.results || []).filter((row: any) => row.status === 'pending').length,
+      status: degraded ? 'degraded' : 'healthy',
+      sections,
+      active_jobs: Number(jobTotals.active_total || 0),
+      failed_jobs: Number(jobTotals.failed_total || 0),
+      stale_jobs: Number(jobTotals.stale_total || 0),
+      dead_letter_jobs: Number(jobTotals.dead_letter_total || 0),
+      pending_proposals: Number(proposalTotals.pending_total || 0),
     },
   })
 })
@@ -327,9 +445,11 @@ app.get('/context', async (c) => {
   const profile = await load<any>('profile', null, () => DB.prepare('SELECT identity_json, mega_priority_json, core_filter, reaction_style_json, quality_rules_json, patterns_summary_json FROM profile WHERE id = 1').first<any>())
   const priorities = await load<any>('priorities', { results: [] }, () => DB.prepare('SELECT rank, branch_id, label, rationale FROM priorities ORDER BY rank ASC LIMIT 10').all())
   const activeQueue = await load<any[]>('active_queue', [], () => loadCaptureQueue(DB, 50))
-  const brief = await load<any>('brief', null, () => loadHermesBrief(DB))
   const profileAssertions = await load<any>('profile_assertions', { results: [] }, () => DB.prepare("SELECT assertion_key,category,scope,value_json,weight,confidence,status,source_kind,version,updated_at FROM profile_assertions WHERE status IN ('active','hypothesis') ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,confidence DESC,updated_at DESC LIMIT 100").all())
-  const gaps = await load<any>('learning_gaps', { results: [] }, () => Promise.resolve({ results: [] }))
+  // Recommendation targets are canonical only in /compass/context. Until this
+  // aggregate owns a real query, expose the section as unavailable rather than
+  // presenting a healthy empty array as live truth.
+  sectionHealth.learning_gaps = { status: 'degraded', as_of: asOf, error: 'canonical_source_is_compass_context' }
   const completedThreads = await load<any>('completed_threads', { results: [] }, () => DB.prepare(`
     SELECT id,title,thread_type,guiding_question,definition_of_done,final_synthesis,completed_at
     FROM learning_threads WHERE status='verified' ORDER BY COALESCE(completed_at,updated_at) DESC LIMIT 50`).all())
@@ -400,11 +520,11 @@ app.get('/context', async (c) => {
     return {
       window_days: balance.window_days,
       unmapped_count: balance.portfolio?.unmapped_count || 0,
-      attention_by_r1: branches.filter((branch: any) => branch.round === 'R1').sort((a: any, b: any) => Number(b.attention_share || 0) - Number(a.attention_share || 0)).slice(0, 12).map((branch: any) => ({ id: branch.id, label: branch.label, attention_share: branch.attention_share, priority_share: branch.priority_share })),
+      attention_by_branch: [...branches].sort((a: any, b: any) => Number(b.attention_share || 0) - Number(a.attention_share || 0)).slice(0, 12).map((branch: any) => ({ id: branch.id, label: branch.label, attention_share: branch.attention_share, priority_share: branch.priority_share })),
       overfocused_branches: compact('over-focused').map((branch: any) => ({ id: branch.id, label: branch.label, attention_share: branch.attention_share, priority_share: branch.priority_share, reasons: branch.reasons })),
-      at_risk_branches: compact('at-risk').map((branch: any) => ({ id: branch.id, label: branch.label, round: branch.round, last_consumed_at: branch.last_consumed_at, srs_due: branch.srs_due, recall_strength: branch.recall_strength, reasons: branch.reasons })),
-      weakly_consolidated_branches: compact('exposed').map((branch: any) => ({ id: branch.id, label: branch.label, round: branch.round, consumed_count: branch.consumed_count, reasons: branch.reasons })),
-      uncovered_branches: compact('uncovered').map((branch: any) => ({ id: branch.id, label: branch.label, round: branch.round, priority_rank: branch.priority_rank })),
+      at_risk_branches: compact('at-risk').map((branch: any) => ({ id: branch.id, label: branch.label, last_consumed_at: branch.last_consumed_at, srs_due: branch.srs_due, recall_strength: branch.recall_strength, reasons: branch.reasons })),
+      weakly_consolidated_branches: compact('exposed').map((branch: any) => ({ id: branch.id, label: branch.label, consumed_count: branch.consumed_count, reasons: branch.reasons })),
+      uncovered_branches: compact('uncovered').map((branch: any) => ({ id: branch.id, label: branch.label, priority_rank: branch.priority_rank })),
     }
   })
 
@@ -441,9 +561,8 @@ app.get('/context', async (c) => {
     },
     priorities: priorities?.results || [],
     active_queue: activeQueue,
-    brief,
     neglected_branches: neglected?.results || [],
-    learning_gaps: gaps?.results || [],
+    learning_gaps: null,
     completed_threads: completedThreads?.results || [],
     legacy_mastered: mastered?.results || [],
     blind_spots: blindSpots?.results || [],
@@ -515,7 +634,7 @@ app.post('/memory', async (c) => {
   if (!['durable', 'episodic', 'working', 'rejection', 'hypothesis'].includes(memoryKind)) return c.json({ error: 'invalid memory_kind' }, 400)
   if (!isMemoryOwnershipAllowed(memoryKey)) return c.json({ error: 'memory_key belongs to profile or live learning state; use its canonical API instead' }, 409)
   if (memoryKind === 'durable' && confidence < 0.7) return c.json({ error: 'durable memory requires confidence >= 0.7' }, 400)
-  const existing = await c.env.DB.prepare(`SELECT id FROM hermes_memory WHERE memory_key=? AND status='active' ORDER BY updated_at DESC LIMIT 1`).bind(memoryKey).first<any>()
+  const existing = await c.env.DB.prepare(`SELECT id FROM hermes_memory WHERE memory_key=? AND status IN ('active','approved') ORDER BY updated_at DESC,id DESC LIMIT 1`).bind(memoryKey).first<any>()
   const id = `mem_${crypto.randomUUID()}`
   const expiry = body.expires_at ? String(body.expires_at).replace('T', ' ').replace('Z', '').slice(0, 19) : (memoryKind === 'working' || memoryKind === 'hypothesis' ? sqliteTime(30 * 86400000) : null)
   const evidence = Array.isArray(body.evidence) ? body.evidence.slice(0, 20).map((item: any) => ({
@@ -527,11 +646,11 @@ app.post('/memory', async (c) => {
   })) : []
   if (['durable', 'hypothesis'].includes(memoryKind) && !evidence.length) return c.json({ error: 'validated memory requires evidence' }, 400)
   const statements: D1PreparedStatement[] = []
-  if (existing) statements.push(c.env.DB.prepare(`UPDATE hermes_memory SET status='superseded',updated_at=datetime('now') WHERE id=?`).bind(existing.id))
+  if (existing) statements.push(c.env.DB.prepare(`UPDATE hermes_memory SET status='superseded',updated_at=datetime('now') WHERE memory_key=? AND status IN ('active','approved')`).bind(memoryKey))
   statements.push(c.env.DB.prepare(`INSERT INTO hermes_memory (id,memory_key,memory_kind,value_json,confidence,source,status,supersedes_id,expires_at,evidence_json) VALUES (?,?,?,?,?,?,'active',?,?,?)`)
     .bind(id, memoryKey, memoryKind, JSON.stringify(body.value).slice(0, 12000), confidence, source, existing?.id || null, expiry, JSON.stringify(evidence).slice(0, 16000)))
+  statements.push(...buildMemoryEvidenceStatements(c.env.DB, id, evidence))
   await c.env.DB.batch(statements)
-  await writeMemoryEvidence(c.env.DB, id, evidence)
   return c.json({ ok: true, id, superseded_id: existing?.id || null, expires_at: expiry }, 201)
 })
 
@@ -548,8 +667,8 @@ app.post('/memory/:id/expire', async (c) => {
 app.post('/memory/:id/resolve', async (c) => {
   const body: { status?: 'superseded' | 'rejected' } = await c.req.json<{ status?: 'superseded' | 'rejected' }>().catch(() => ({} as { status?: 'superseded' | 'rejected' }))
   if (!body.status || !['superseded', 'rejected'].includes(body.status)) return c.json({ error: 'status must be superseded or rejected' }, 400)
-  const result = await c.env.DB.prepare(`UPDATE hermes_memory SET status=?,updated_at=datetime('now') WHERE id=? AND status='active'`).bind(body.status, c.req.param('id')).run()
-  return result.meta.changes ? c.json({ ok: true, status: body.status }) : c.json({ error: 'active memory not found' }, 404)
+  const result = await c.env.DB.prepare(`UPDATE hermes_memory SET status=?,updated_at=datetime('now') WHERE id=? AND status IN ('active','approved')`).bind(body.status, c.req.param('id')).run()
+  return result.meta.changes ? c.json({ ok: true, status: body.status }) : c.json({ error: 'live memory not found' }, 404)
 })
 
 app.post('/alerts/:id/ack', async (c) => {
@@ -562,10 +681,10 @@ app.get('/capabilities', (c) => {
     domain: c.req.query('domain'),
     intent: c.req.query('intent'),
     method: c.req.query('method'),
-    q: c.req.query('q'),
+    q: (c.req.query('q') || '').slice(0, 120) || undefined,
   }
   const catalog = buildCapabilityCatalog(CAPABILITIES, filters)
-  const summary = c.req.query('view') === 'summary'
+  const summary = c.req.query('view') !== 'full'
   const capabilities = summary
     ? catalog.map(({ method, path, description, domain, intent, risk, reversible }) => ({ method, path, description, domain, intent, risk, reversible }))
     : catalog
@@ -573,7 +692,7 @@ app.get('/capabilities', (c) => {
     version: AGENT_CONTRACT_VERSION,
     protocol: AGENT_PROTOCOL,
     description: 'Structured allow-listed control surface for Learning Compass.',
-    authentication: 'Writes require x-api-token when API_TOKEN is configured.',
+    authentication: 'No Learning Compass API token is required. Telegram and external-provider integrations retain their own dedicated credentials.',
     filters,
     view: summary ? 'summary' : 'full',
     total: CAPABILITIES.length,
@@ -590,10 +709,10 @@ app.post('/maintenance/run', async (c) => {
 
 app.get('/system', async (c) => {
   const DB = c.env.DB
-  const [health, feedCount, sourceCount, noteCount, artifactCount, jobCount, annotationCount, receiptCount] = await Promise.all([
+  const [health, dataQuality, personalItemCount, noteCount, artifactCount, jobCount, annotationCount, receiptCount] = await Promise.all([
     loadOperationalHealth(c.env),
-    DB.prepare('SELECT COUNT(*) count FROM feed_sources WHERE enabled=1').first<{ count: number }>(),
-    DB.prepare("SELECT COUNT(*) count FROM recommendations WHERE deleted_at IS NULL").first<{ count: number }>(),
+    loadDataQuality(DB),
+    DB.prepare('SELECT COUNT(*) count FROM personal_library_items').first<{ count: number }>(),
     DB.prepare('SELECT COUNT(*) count FROM notes').first<{ count: number }>(),
     DB.prepare('SELECT COUNT(*) count FROM artifacts').first<{ count: number }>(),
     DB.prepare("SELECT COUNT(*) count FROM agent_jobs WHERE status IN ('pending','running','retry')").first<{ count: number }>(),
@@ -609,7 +728,7 @@ app.get('/system', async (c) => {
     protocol: AGENT_PROTOCOL,
     contract_version: AGENT_CONTRACT_VERSION,
     storage: [
-      { name: 'D1', purpose: 'Canonical sources, Threads, notes, recall, settings, jobs, and audit history', status: health.storage.d1 ? 'connected' : 'unavailable' },
+      { name: 'D1', purpose: 'Canonical personal records, sources, Threads, notes, recall, settings, jobs, and audit history', status: health.storage.d1 ? 'connected' : 'unavailable' },
       { name: 'R2', purpose: 'PDF, HTML, transcript, and generated companion files', status: health.storage.r2 ? 'connected' : 'unavailable' },
       { name: 'Browser', purpose: 'Local preferences and recoverable offline mutations', status: 'client managed' },
     ],
@@ -626,6 +745,7 @@ app.get('/system', async (c) => {
     }],
     recovery: health.recovery,
     operational_health: health,
+    data_quality: dataQuality,
     on_demand_only: [
       'Hermes job execution',
       'Learning Thread closure and verification',
@@ -634,15 +754,16 @@ app.get('/system', async (c) => {
       'Hermes self-improvement and deployment',
     ],
     counts: {
-      active_feeds: Number(feedCount?.count || 0),
-      sources: Number(sourceCount?.count || 0),
+      active_feeds: dataQuality.counts.enabled_feeds,
+      personal_library_items: Number(personalItemCount?.count || 0),
+      sources: dataQuality.counts.stored_sources,
       notes: Number(noteCount?.count || 0),
       artifacts: Number(artifactCount?.count || 0),
       active_jobs: Number(jobCount?.count || 0),
       active_annotations: Number(annotationCount?.count || 0),
       agent_receipts: Number(receiptCount?.count || 0),
     },
-    authentication: c.env.REQUIRE_API_AUTH === 'true' ? 'All API routes require x-api-token when private mode is enabled.' : c.env.API_TOKEN ? 'Writes require x-api-token; private read mode is disabled.' : 'Local/open mode: configure REQUIRE_API_AUTH=true and API_TOKEN for private deployment.',
+    authentication: 'Learning Compass reads and writes are open at the Worker URL; Telegram and external-provider integrations retain dedicated authentication.',
     safety: ['No arbitrary SQL', 'No arbitrary outbound proxy', 'Validated mutations only', 'Agent mutations are audit logged', 'Receipts persist canonical before/after verification'],
   })
 })
@@ -654,16 +775,29 @@ app.post('/request', async (c) => {
   const { DB } = c.env
   type Assertion = { path?: string; field?: string; equals?: unknown }
   const readField = (value: any, field?: string) => field ? field.split('.').reduce((current, key) => current == null ? undefined : current[key], value) : value
-  const readTarget = async (path: string, token: string | undefined, agentName: string | undefined) => {
-    const normalized = path.startsWith('/') ? path : `/${path}`
+  const normalizeLocalPath = (input: string) => {
+    const raw = input.startsWith('/') ? input : `/${input}`
+    const parsed = new URL(raw, c.req.url)
+    if (parsed.origin !== new URL(c.req.url).origin || parsed.hash) {
+      const error: any = new Error('Agent paths must stay on the current Worker origin and cannot contain fragments.')
+      error.code = 'invalid_path'
+      throw error
+    }
+    return `${parsed.pathname}${parsed.search}`
+  }
+  const readTarget = async (path: string, token: string | undefined, agentName: string | undefined, allowNotFound = false) => {
+    const normalized = normalizeLocalPath(path)
     if (!isAllowedAgentRequest('GET', normalized)) throw new Error(`verification path is not allow-listed: ${normalized}`)
     const headers = new Headers({ accept: 'application/json' })
     if (token) headers.set('x-api-token', token)
+    const cookie = c.req.header('cookie')
+    if (cookie) headers.set('cookie', cookie)
     if (agentName) headers.set('x-agent-name', agentName)
     const response = await fetch(new URL(normalized, c.req.url), { headers })
     const text = await response.text()
     let data: any = text
     try { data = text ? JSON.parse(text) : null } catch {}
+    if (allowNotFound && response.status === 404) return { path: normalized, status: 404, data: { absent: true }, absent: true }
     if (!response.ok) throw new Error(`verification read failed: GET ${normalized} returned ${response.status}`)
     return { path: normalized, status: response.status, data }
   }
@@ -691,7 +825,9 @@ app.post('/request', async (c) => {
     }>()
     const method = String(input.method || 'GET').toUpperCase() as AgentMethod
     const rawPath = String(input.path || '')
-    const path = rawPath.startsWith('/') ? rawPath : `/${rawPath}`
+    const path = normalizeLocalPath(rawPath)
+    const precondition = input.precondition?.path ? { ...input.precondition, path: normalizeLocalPath(input.precondition.path) } : input.precondition
+    const verify = input.verify?.path ? { ...input.verify, path: normalizeLocalPath(input.verify.path) } : input.verify
     const patternIndex = CAPABILITY_PATTERNS.findIndex((item) => item.method === method && item.regex.test(path))
     if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || patternIndex < 0) {
       await logAgentAction(DB, c, `${method} ${path}`, input.body, 'denied')
@@ -709,8 +845,8 @@ app.post('/request', async (c) => {
     }
     const requiredPreconditionPaths = resolveCapabilityReadbacks(capabilityKey, capability.precondition_path, capability.path, path, input.body)
     if (mutation && capability.risk === 'high' && !input.dry_run) {
-      const hasExpected = input.precondition && typeof input.precondition.field === 'string' && input.precondition.field.length > 0 && Object.prototype.hasOwnProperty.call(input.precondition, 'equals')
-      if (!hasExpected || requiredPreconditionPaths.length !== 1 || input.precondition?.path !== requiredPreconditionPaths[0]) {
+      const hasExpected = precondition && typeof precondition.field === 'string' && precondition.field.length > 0 && Object.prototype.hasOwnProperty.call(precondition, 'equals')
+      if (!hasExpected || requiredPreconditionPaths.length !== 1 || precondition?.path !== requiredPreconditionPaths[0]) {
         return c.json({
           error: 'high-risk mutations require an exact-target read precondition with field and expected value',
           risk: capability.risk,
@@ -719,9 +855,20 @@ app.post('/request', async (c) => {
       }
     }
 
-    const plannedVerificationPaths = input.verify?.path
-      ? [input.verify.path]
-      : resolveCapabilityReadbacks(capabilityKey, capability.verification_path, capability.path, path, input.body)
+    const plannedVerificationPaths = resolveCapabilityReadbacks(capabilityKey, capability.verification_path, capability.path, path, input.body)
+    if (mutation && !input.dry_run && precondition) {
+      const canonicalPreconditions = requiredPreconditionPaths.length ? requiredPreconditionPaths : plannedVerificationPaths
+      if (!canonicalPreconditions.includes(precondition.path || '')) {
+        return c.json({ error: 'precondition path must be the declared canonical target', required_precondition_paths: canonicalPreconditions }, 409)
+      }
+    }
+    if (mutation && !input.dry_run && verify && (
+      !capability.verification_path
+      || !agentReadbackPathPattern(capability.verification_path).test(verify.path || '')
+      || (plannedVerificationPaths.length > 0 && !plannedVerificationPaths.includes(verify.path || ''))
+    )) {
+      return c.json({ error: 'verification path must match the declared canonical readback', required_verification_path: capability.verification_path }, 409)
+    }
     if (input.dry_run) {
       return c.json({
         ok: true,
@@ -745,9 +892,9 @@ app.post('/request', async (c) => {
     const token = c.req.header('x-api-token')
     const agentName = c.req.header('x-agent-name')
     let before: any = null
-    if (input.precondition?.path) {
-      before = await readTarget(input.precondition.path, token, agentName)
-      assertTarget(before, input.precondition, 'precondition')
+    if (precondition?.path) {
+      before = await readTarget(precondition.path, token, agentName)
+      assertTarget(before, precondition, 'precondition')
     } else if (plannedVerificationPaths.length && mutation) {
       const snapshots = await Promise.all(plannedVerificationPaths.map((verificationPath) => readTarget(verificationPath, token, agentName)))
       before = snapshots.length === 1 ? snapshots[0] : snapshots
@@ -755,6 +902,8 @@ app.post('/request', async (c) => {
 
     const headers = new Headers({ accept: 'application/json' })
     if (token) headers.set('x-api-token', token)
+    const cookie = c.req.header('cookie')
+    if (cookie) headers.set('cookie', cookie)
     if (agentName) headers.set('x-agent-name', agentName)
     if (idempotencyKey) headers.set('x-client-mutation-id', idempotencyKey)
     if (mutation && method !== 'DELETE') {
@@ -773,17 +922,31 @@ app.post('/request', async (c) => {
 
     let after: any = null
     let verificationBlocker: any = null
-    const verificationPaths = input.verify?.path
-      ? [input.verify.path]
-      : resolveCapabilityReadbacks(capabilityKey, capability.verification_path, capability.path, path, input.body, payload)
+    const verificationPaths = resolveCapabilityReadbacks(capabilityKey, capability.verification_path, capability.path, path, input.body, payload)
     if (response.ok) {
-      if (capability.verification_path && !verificationPaths.length) {
+      if (mutation && !capability.verification_path) {
+        verificationBlocker = { code: 'verification_not_declared', message: 'Mutation committed but this capability has no canonical readback.', mutation_committed: true }
+      } else if (capability.verification_path && !verificationPaths.length) {
         verificationBlocker = { code: 'verification_unresolved', message: 'Mutation committed but the declared readback target could not be resolved.', mutation_committed: true }
       } else if (verificationPaths.length) {
         try {
-          const snapshots = await Promise.all(verificationPaths.map((verificationPath) => readTarget(verificationPath, token, agentName)))
+          const exactDeletionReadback = method === 'DELETE' && capability.verification_path === capability.path
+          const snapshots = await Promise.all(verificationPaths.map((verificationPath) => readTarget(verificationPath, token, agentName, exactDeletionReadback)))
+          if (exactDeletionReadback && snapshots.some((snapshot) => snapshot.status !== 404 || snapshot.absent !== true)) {
+            const error: any = new Error('Post-deletion readback still resolves the exact target.')
+            error.code = 'deletion_verification_failed'
+            throw error
+          }
           after = snapshots.length === 1 ? snapshots[0] : snapshots
-          if (input.verify) assertTarget(snapshots[0], input.verify, 'verification')
+          if (verify) {
+            const snapshot = snapshots.find((item) => item.path === verify.path)
+            if (!snapshot) {
+              const error: any = new Error('verification assertion did not match the resolved canonical readback')
+              error.code = 'verification_target_mismatch'
+              throw error
+            }
+            assertTarget(snapshot, verify, 'verification')
+          }
         } catch (verificationError: any) {
           verificationBlocker = {
             code: verificationError?.code || 'verification_failed',
@@ -799,7 +962,7 @@ app.post('/request', async (c) => {
       intent: capability.intent,
       target: path,
       before,
-      mutation_or_job: { method, status: response.status, mutation_committed: response.ok, idempotency_key: idempotencyKey || null, data: payload },
+      mutation_or_job: { method, status: response.status, mutation_committed: mutation && response.ok, idempotency_key: idempotencyKey || null, data: payload },
       after,
       evidence: [
         { kind: 'allow_list', capability: capabilityKey },
@@ -808,12 +971,14 @@ app.post('/request', async (c) => {
       ],
       blocker: response.ok ? verificationBlocker : payload,
     }
-    const verified = response.ok && !verificationBlocker
+    const verified = response.ok && !verificationBlocker && (!mutation || after != null)
+    const projectedReceipt = projectAgentReceipt(receipt)
     await persistAgentReceipt(DB, c, receipt, response.status, verified)
-    return c.json({ ok: response.ok, verified, status: response.status, data: payload, receipt }, response.status as any)
+    return c.json({ ok: response.ok, verified, status: response.status, data: boundAgentValue(payload), receipt: projectedReceipt }, response.status as any)
   } catch (err: any) {
     await logAgentAction(DB, c, 'agent_request', null, err?.code || 'error')
     if (err?.code === 'assertion_failed') return c.json({ error: err.code, message: err.message, expected: err.expected, actual: err.actual }, 409)
+    if (err?.code === 'invalid_path') return c.json({ error: err.code, message: err.message }, 400)
     return c.json(safeError('Agent request failed')(err), 400)
   }
 })
@@ -880,9 +1045,14 @@ app.post('/tool-call', async (c) => {
     }
 
     if (name === 'site_request') {
+      const headers = new Headers({ 'content-type': 'application/json', 'x-agent-name': c.req.header('x-agent-name') || 'tool-call' })
+      const token = c.req.header('x-api-token')
+      const cookie = c.req.header('cookie')
+      if (token) headers.set('x-api-token', token)
+      if (cookie) headers.set('cookie', cookie)
       const response = await fetch(new URL('/agent/request', c.req.url), {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-token': c.req.header('x-api-token') || '', 'x-agent-name': c.req.header('x-agent-name') || 'tool-call' },
+        headers,
         body: JSON.stringify(args || {}),
       })
       return c.json(await response.json(), response.status as any)

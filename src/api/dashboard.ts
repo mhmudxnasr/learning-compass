@@ -12,7 +12,7 @@ app.get('/briefing', async (c) => {
     const [active, due, inbox, pending, drafts, momentum, bestWeek, recent, latestSignal, topFormat, activityDates, streakDays] = await Promise.all([
       DB.prepare(`SELECT r.id,r.video_title,r.creator,r.content_type,r.video_url,r.why_this,r.context_brief,r.notebook_url,r.created_at,
          m.learning_state,m.priority_rank,m.progress_percent,m.estimated_minutes,m.started_at,m.last_opened_at,
-         m.branch_id,COALESCE(n.label,r.branch) branch_label,COALESCE(n.round_label,r.round) round_label,COALESCE(n.status,'love') branch_status,
+         m.branch_id,COALESCE(n.label,r.branch) branch_label,COALESCE(n.status,'love') branch_status,
          (SELECT ts.thread_id FROM thread_sources ts JOIN learning_threads lt ON lt.id=ts.thread_id WHERE ts.recommendation_id=r.id AND ts.status='active' AND lt.status='active' LIMIT 1) thread_id,
          (SELECT COUNT(*) FROM notes n WHERE n.recommendation_id=r.id) note_count
          FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id

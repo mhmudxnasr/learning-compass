@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A practical field guide to the August 2026 Hermes production-hardening work, its failures, fixes, verification gates, and operating method.">
+  <title>Hermes production hardening field guide</title>
+  <style>
+    :root {
+      --ink: #18231d;
+      --muted: #58665e;
+      --paper: #f4f0e4;
+      --sheet: #fffdf7;
+      --line: #d8d3c5;
+      --cypress: #174b3a;
+      --moss: #547a4e;
+      --amber: #b46620;
+      --red: #973e35;
+      --blue: #285d75;
+      --code: #17231e;
+      --shadow: 0 18px 50px rgba(35, 45, 38, .10);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font: 17px/1.68 ui-serif, Georgia, Cambria, "Times New Roman", serif;
+    }
+    a { color: var(--cypress); text-underline-offset: .18em; }
+    code, pre, .eyebrow, .metric strong, th, .tag {
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+    header {
+      padding: 6.5rem max(1.5rem, calc((100vw - 1120px) / 2)) 4.5rem;
+      color: #f7f1df;
+      background:
+        linear-gradient(110deg, rgba(17, 57, 43, .96), rgba(24, 76, 57, .90)),
+        repeating-linear-gradient(90deg, transparent 0 59px, rgba(255,255,255,.04) 60px 61px);
+      border-bottom: 8px solid #c58a42;
+    }
+    .eyebrow { margin: 0 0 1.2rem; color: #e0bc7e; font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { max-width: 900px; margin: 0; font-size: clamp(2.7rem, 7vw, 5.7rem); line-height: .98; letter-spacing: -.045em; }
+    .lede { max-width: 780px; margin: 2rem 0 0; color: #e2e8df; font-size: clamp(1.08rem, 2vw, 1.32rem); }
+    .stamp { display: inline-block; margin-top: 2rem; padding: .42rem .7rem; border: 1px solid #d8b87c; color: #f3dba8; font: .8rem/1.2 ui-monospace, monospace; }
+    main { width: min(1120px, calc(100% - 2rem)); margin: -2rem auto 5rem; }
+    nav, section { background: var(--sheet); border: 1px solid var(--line); box-shadow: var(--shadow); }
+    nav { position: relative; padding: 1.2rem 1.4rem; }
+    nav ol { display: flex; flex-wrap: wrap; gap: .45rem 1.4rem; margin: 0; padding-left: 1.2rem; }
+    nav a { font-size: .94rem; }
+    section { margin-top: 1.25rem; padding: clamp(1.5rem, 4vw, 3.4rem); }
+    h2 { margin: 0 0 1.5rem; color: var(--cypress); font-size: clamp(1.8rem, 4vw, 3rem); line-height: 1.1; letter-spacing: -.025em; }
+    h3 { margin: 2rem 0 .6rem; font-size: 1.25rem; line-height: 1.25; }
+    p { max-width: 78ch; }
+    .callout { margin: 1.6rem 0; padding: 1rem 1.2rem; border-left: 5px solid var(--amber); background: #fff5df; }
+    .callout.blocked { border-color: var(--red); background: #fff0ed; }
+    .callout.good { border-color: var(--moss); background: #edf6e9; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: .85rem; margin: 1.5rem 0; }
+    .metric, .card { padding: 1rem; border: 1px solid var(--line); background: #faf8f0; }
+    .metric strong { display: block; color: var(--cypress); font-size: 1.65rem; line-height: 1.15; }
+    .metric span { color: var(--muted); font-size: .9rem; }
+    .flow { display: grid; grid-template-columns: repeat(6, 1fr); gap: .55rem; margin: 1.8rem 0; }
+    .flow div { position: relative; min-height: 86px; padding: .85rem .75rem; border-top: 4px solid var(--moss); background: #eef2e8; font-weight: 700; text-align: center; }
+    .flow small { display: block; margin-top: .25rem; color: var(--muted); font-weight: 400; }
+    ol.steps { counter-reset: step; list-style: none; padding: 0; }
+    ol.steps li { position: relative; margin: 0 0 1rem; padding: .85rem 1rem .85rem 3.8rem; border-left: 1px solid var(--line); }
+    ol.steps li::before { counter-increment: step; content: counter(step); position: absolute; left: .8rem; top: .7rem; width: 2rem; height: 2rem; display: grid; place-items: center; color: white; background: var(--cypress); border-radius: 50%; font: 700 .85rem/1 ui-monospace, monospace; }
+    table { width: 100%; border-collapse: collapse; margin: 1.2rem 0; font-size: .94rem; }
+    th, td { padding: .75rem .65rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--cypress); background: #f0eee5; font-size: .78rem; letter-spacing: .03em; text-transform: uppercase; }
+    pre { overflow-x: auto; padding: 1rem; color: #e7efe8; background: var(--code); border-left: 5px solid #68a477; font-size: .82rem; line-height: 1.55; }
+    code { font-size: .88em; }
+    details { margin: .65rem 0; padding: .8rem 1rem; border: 1px solid var(--line); background: #fbf9f2; }
+    summary { cursor: pointer; color: var(--cypress); font-weight: 700; }
+    .tag { display: inline-block; padding: .18rem .45rem; border: 1px solid currentColor; color: var(--blue); font-size: .72rem; line-height: 1.2; text-transform: uppercase; }
+    .checklist { padding-left: 1.3rem; }
+    .checklist li { margin: .48rem 0; }
+    footer { width: min(1120px, calc(100% - 2rem)); margin: 0 auto 4rem; color: var(--muted); font-size: .88rem; }
+    @media (max-width: 820px) {
+      header { padding-top: 4rem; }
+      .flow { grid-template-columns: 1fr 1fr; }
+      table { display: block; overflow-x: auto; }
+    }
+    @media print {
+      body { background: white; font-size: 11pt; }
+      header { padding: 2cm; background: var(--cypress); }
+      main { width: auto; margin: 0; }
+      nav { display: none; }
+      section { margin: 0; padding: 1cm 0; border: 0; box-shadow: none; break-inside: avoid; }
+      details { break-inside: avoid; }
+      details > * { display: block; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">Learning Compass · production operations · incident field guide</p>
+    <h1>Hermes production hardening</h1>
+    <p class="lede">What changed, what failed, what passed, and how to operate Mahmood's agent without guessing routes, losing mutation receipts, or confusing activity with completion.</p>
+    <span class="stamp">Evidence cutoff: 2026-08-26 · Africa/Cairo</span>
+  </header>
+
+  <main>
+    <nav aria-label="Document contents">
+      <ol>
+        <li><a href="#outcome">Outcome</a></li>
+        <li><a href="#system">The system</a></li>
+        <li><a href="#work">What changed</a></li>
+        <li><a href="#failures">Failures and fixes</a></li>
+        <li><a href="#operate">How to operate Hermes</a></li>
+        <li><a href="#troubleshoot">Troubleshooting</a></li>
+        <li><a href="#agents">The 21-agent audit</a></li>
+        <li><a href="#release">Release gate</a></li>
+      </ol>
+    </nav>
+
+    <section id="outcome">
+      <p class="eyebrow">01 · outcome first</p>
+      <h2>Hermes is hardened and the private Worker release is deployed.</h2>
+      <p>The hardening pass repaired the Worker contract, both installed site clients, manager routing, turn identity, mutation receipts, focused Hermes skills, production credentials, and release documentation. Focused evaluation covered all 21 manager cases. Local Worker tests, builds, migrations, browser acceptance tests, and the Hermes contract verifier passed.</p>
+      <div class="grid" aria-label="Verified results">
+        <div class="metric"><strong>344</strong><span>unit tests passed</span></div>
+        <div class="metric"><strong>21 / 21</strong><span>focused manager cases passed</span></div>
+        <div class="metric"><strong>52 / 52</strong><span>operations in each installed site client</span></div>
+        <div class="metric"><strong>117.14 KB</strong><span>base client JavaScript, gzip</span></div>
+        <div class="metric"><strong>69 / 32 / 120</strong><span>migrations, checks, and routes verified</span></div>
+        <div class="metric"><strong>0</strong><span>live readiness blockers</span></div>
+      </div>
+      <div class="callout good"><strong>Deployment result:</strong> Worker version <code>e34efd4b-72e0-4e4e-9847-b40a8af75143</code> is live. Readiness, private authentication, browser-session exchange, core product reads, public updates, and rollback inventory were verified after deployment.</div>
+    </section>
+
+    <section id="system">
+      <p class="eyebrow">02 · the operating model</p>
+      <h2>One request, one bounded path, one readback</h2>
+      <p>Hermes is not the database and it is not allowed to improvise the API. It translates an instruction into one focused workflow, uses the first-party client to discover the current contract, sends the request to the Worker, and verifies the canonical record after any write.</p>
+      <div class="flow" aria-label="Hermes request flow">
+        <div>Mahmood<small>states the outcome</small></div>
+        <div>Manager<small>chooses one skill</small></div>
+        <div>Site client<small>discovers capability</small></div>
+        <div>Worker<small>validates contract</small></div>
+        <div>D1 + R2<small>persist data and files</small></div>
+        <div>Receipt<small>proves final state</small></div>
+      </div>
+      <p>The manager owns intent and routing. Focused skills own domain rules. The site client owns bounded transport, retries, idempotency, and response shaping. The Worker owns authorization and business invariants. D1 and R2 own durable state. A final answer is grounded only after a canonical readback.</p>
+    </section>
+
+    <section id="work">
+      <p class="eyebrow">03 · completed hardening</p>
+      <h2>What changed</h2>
+
+      <h3>Manager and skill routing</h3>
+      <ul>
+        <li>The manager now loads one focused skill before the first API read.</li>
+        <li>“What should I do next?” uses one exact briefing and does not invent projected actions.</li>
+        <li>Activity reporting returns the actual job state without manufacturing a briefing.</li>
+        <li>The operating-system router and site-operator skill were compressed to 7,943 and 11,409 bytes while keeping the decisive rules.</li>
+        <li>Eight unrelated skills were disabled in Hermes configuration, not deleted, to keep the default tool prompt within contract.</li>
+      </ul>
+
+      <h3>Transport and mutation safety</h3>
+      <ul>
+        <li>Turn IDs propagate across the manager, site client, Worker request, retries, and receipts.</li>
+        <li>Mutation IDs are stable and guarded. A timeout does not authorize a second ambiguous write.</li>
+        <li>The client retries eligible reads, while the manager no longer duplicates that retry policy.</li>
+        <li>Every write follows target read → capability discovery → guarded mutation → canonical readback.</li>
+        <li>Both installed copies of the site client expose the same 52-operation contract and pass parity checks.</li>
+      </ul>
+
+      <h3>Source and feedback correctness</h3>
+      <ul>
+        <li>Capture preserves an exact verified branch and domain in the same durable transaction.</li>
+        <li>Queue remains a separate commitment. Capturing something does not silently queue it.</li>
+        <li>Recommendation workflows cannot proceed with unresolved candidates or guessed fields.</li>
+        <li>Feedback preserves the user's exact words, uses the supported feedback endpoint, and never invents session IDs.</li>
+        <li>Feedback processing never chains into a fresh recommendation.</li>
+      </ul>
+
+      <h3>Worker and production state</h3>
+      <ul>
+        <li>The preferred <code>LEARNING_COMPASS_API_TOKEN</code> secret was staged and the fallback secret was removed.</li>
+        <li>The Hermes API server key was rotated; the new key returns 200 and the old key returns 401.</li>
+        <li>The gateway listens only on <code>127.0.0.1:8642</code>; the stale alternate port is gone.</li>
+        <li>An exact scan of 13 credential values across 161 changed, injected, and log files found zero matches.</li>
+        <li>Production readiness reports healthy with no blockers, 100% branch coverage, and 257/257 learning events carrying lineage.</li>
+        <li>The verified backup <code>backup_20260826T123709Z</code> passed D1, R2, and restore checks.</li>
+      </ul>
+    </section>
+
+    <section id="failures">
+      <p class="eyebrow">04 · failure ledger</p>
+      <h2>The failures were mostly coordination failures, not intelligence failures</h2>
+      <table>
+        <thead><tr><th>Observed failure</th><th>Root cause</th><th>Correction</th><th>Proof</th></tr></thead>
+        <tbody>
+          <tr><td>Repeated context and target reads</td><td>Retry ownership was split between manager prose and client code.</td><td>The client owns eligible GET retries; the manager makes one bounded call.</td><td>Focused recovery cases passed.</td></tr>
+          <tr><td>Guessed routes or request fields</td><td>The manager treated remembered examples as current schema.</td><td>Capability discovery is mandatory before mutation.</td><td>Worker-contract cases passed.</td></tr>
+          <tr><td>A successful write with a weak final answer</td><td>The manager reported the HTTP response instead of canonical state.</td><td>Every mutation ends with a specific record or collection readback.</td><td>Receipt-guard cases passed.</td></tr>
+          <tr><td>Turn identity disappeared across retries</td><td>The original caller identity was not part of the full transport ledger.</td><td>A stable hashed turn ID now propagates end to end.</td><td>Turn-ID propagation and review passed.</td></tr>
+          <tr><td>Manager prompt became too large</td><td>Broad, unrelated skills entered the default prompt and core skills repeated policy.</td><td>Disable unrelated skills; compress router and operator instructions.</td><td>Default prompt measured 49,694 characters with 13 tools.</td></tr>
+          <tr><td>Stale findings remained “active” for hours</td><td>Agent status was being treated as evidence of unfinished work.</td><td>Read each durable report, reconcile it against live state, then stop the agent.</td><td>All 21 reports reconciled; zero agents remain active.</td></tr>
+          <tr><td>Real-model aggregate varied</td><td>Nondeterministic combined samples ranged from 19/21 to 20/21.</td><td>Preserve every sample, fix observed defects, and use the deterministic harness plus focused regressions as the release gate.</td><td>37 deterministic checks and focused defect regressions pass.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout"><strong>The useful distinction:</strong> a stale report can be obsolete, a focused test can pass, and a release can still be blocked. Those facts can all be true at once.</div>
+    </section>
+
+    <section id="operate">
+      <p class="eyebrow">05 · practical playbook</p>
+      <h2>How to deal with Hermes</h2>
+      <ol class="steps">
+        <li><strong>State the outcome.</strong> “Capture this and queue it under Systems Thinking” is better than narrating every API step. Hermes should choose the valid path.</li>
+        <li><strong>Name the target exactly when it matters.</strong> Give the source URL, source ID, Thread, lesson, or note ID if you have it. If not, Hermes should perform one bounded lookup.</li>
+        <li><strong>Keep capture and Queue separate.</strong> “Save this” means durable capture. “Commit this to Queue” is a second explicit action. The normal Queue cap is five.</li>
+        <li><strong>Expect branch verification.</strong> Every captured, recommended, or queued item needs a non-pruned branch. If a familiar branch is pruned, Hermes must choose or ask for a valid one; it must not force the old label.</li>
+        <li><strong>For a write, demand the receipt.</strong> The final answer should contain the item ID, resulting state, branch/domain, and the canonical readback used to verify them.</li>
+        <li><strong>For “what next,” expect one briefing.</strong> Hermes should read the exact operational briefing once and act from it. Extra speculative plans are noise.</li>
+        <li><strong>For jobs, separate acceptance from completion.</strong> A 202 response means queued, not done. Ask Hermes to follow the job until the terminal record is verified.</li>
+        <li><strong>Give feedback in your own words.</strong> Hermes should store the raw feedback, structured tags, and disposition without polishing away the meaning. It must not automatically recommend something else.</li>
+        <li><strong>Use “fix all” for in-scope execution, not invisible permission expansion.</strong> Hermes should repair discovered blockers within the named system. It must still stop at destructive, external, or lockout-risk actions.</li>
+      </ol>
+
+      <h3>Good instruction patterns</h3>
+      <div class="grid">
+        <div class="card"><span class="tag">Capture</span><p>“Capture this URL under Systems Thinking. Do not queue it.”</p></div>
+        <div class="card"><span class="tag">Queue</span><p>“Read source <code>rec_…</code>, queue it, then verify it appears in Queue.”</p></div>
+        <div class="card"><span class="tag">Feedback</span><p>“Record this exact feedback on <code>rec_…</code>. Do not recommend anything afterward.”</p></div>
+        <div class="card"><span class="tag">Job</span><p>“Start the supported job and follow it until the final source record proves completion.”</p></div>
+        <div class="card"><span class="tag">Release</span><p>“Run the release checklist, deploy only if every gate passes, then perform live smoke checks.”</p></div>
+        <div class="card"><span class="tag">Status</span><p>“Summarize active agents from their durable reports and live state. Stop stale workers.”</p></div>
+      </div>
+
+      <h3>What Hermes must not do</h3>
+      <ul>
+        <li>Do not guess an endpoint, enum, ID, branch, or request field.</li>
+        <li>Do not repeat a mutation after a timeout until canonical state proves the first attempt did not commit.</li>
+        <li>Do not call a queued job “finished.”</li>
+        <li>Do not treat a rating as permission to create notes or recall cards.</li>
+        <li>Do not create a recommendation because feedback was recorded.</li>
+        <li>Do not deploy because most checks passed. Release gates are conjunctive: all required checks must pass.</li>
+        <li>Do not rotate the active Linux login password unattended when recovery is not proven.</li>
+      </ul>
+    </section>
+
+    <section id="troubleshoot">
+      <p class="eyebrow">06 · troubleshooting</p>
+      <h2>Read the status code as a routing clue</h2>
+      <table>
+        <thead><tr><th>Status</th><th>Meaning in practice</th><th>Hermes response</th></tr></thead>
+        <tbody>
+          <tr><td><code>400 / 422</code></td><td>The request violates the current schema or content boundary.</td><td>Read the error and capability schema; correct the payload. Do not retry unchanged.</td></tr>
+          <tr><td><code>401 / 403</code></td><td>The credential is absent, stale, or lacks the required scope.</td><td>Stop. Verify the configured credential path without printing secrets.</td></tr>
+          <tr><td><code>404</code></td><td>The target or route is not present in this deployment.</td><td>Re-read the target and capability list. Never substitute a guessed route.</td></tr>
+          <tr><td><code>409</code></td><td>A business invariant blocked the write: branch conflict, Queue cap, stale revision, or duplicate role.</td><td>Read canonical state and resolve the specific conflict. Do not override unless Mahmood explicitly authorizes the relevant exception.</td></tr>
+          <tr><td><code>429</code></td><td>The bounded client or service is rate-limited.</td><td>Respect the retry window. Preserve the same turn and mutation identity.</td></tr>
+          <tr><td><code>5xx / timeout</code></td><td>The outcome may be unknown, especially for a write.</td><td>For reads, use the client's bounded retry. For writes, read canonical state before any second attempt.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Safe operator commands</h3>
+      <pre><code># Narrow read
+site_request.py request GET '/capture/queue' --summary
+
+# Discover the current mutation contract
+site_request.py capabilities --domain capture --intent update --method POST --q queue --summary
+
+# Execute a guarded JSON mutation from a reviewed request object
+site_request.py mutate request.json --expect-path '/capture/ITEM_ID/record'
+
+# Local release evidence
+npm test
+npm run build
+npm run test:e2e
+npm run verify:hermes
+git diff --check
+
+# Deploy only after every release gate is green
+npx wrangler deploy --config wrangler.toml</code></pre>
+      <p>Never put an API token or password directly in a shell command, transcript, request file, or final answer. Load it from the configured protected file or secret store.</p>
+    </section>
+
+    <section id="agents">
+      <p class="eyebrow">07 · audit coverage</p>
+      <h2>What the 21 agents contributed</h2>
+      <p>These were durable work reports, not 21 independent production approvals. Their findings were reconciled against current code and live state before the agents were stopped.</p>
+
+      <details open><summary>Runtime, contract, and client work</summary>
+        <ul>
+          <li><strong>worker_control</strong> — Worker control-plane checks and operational state.</li>
+          <li><strong>site_client</strong> — first-party client operations, bounded output, and parity.</li>
+          <li><strong>hermes_runtime</strong> — manager/runtime behavior and evaluation coordination.</li>
+          <li><strong>worker_contract_alignment</strong> — route and schema alignment between Hermes and Worker.</li>
+          <li><strong>client_receipt_guard</strong> — canonical readback after mutations.</li>
+          <li><strong>site_turn_ledger</strong> — request identity across site operations.</li>
+          <li><strong>hermes_runtime/site_client_get_retry</strong> — centralized GET retry behavior.</li>
+        </ul>
+      </details>
+
+      <details><summary>Turn identity and manager evaluation</summary>
+        <ul>
+          <li><strong>turn_id_propagation</strong> — stable identity through the full call chain.</li>
+          <li><strong>turn_id_review</strong> — independent review of the identity contract.</li>
+          <li><strong>transcript_quality</strong> — final-answer grounding and unnecessary-call detection.</li>
+          <li><strong>full21_triage</strong> — consolidated manager case inventory.</li>
+          <li><strong>manager_architecture_fix</strong> — manager boundary and routing repair.</li>
+          <li><strong>hermes_runtime/eval_failure_triage</strong> — grouped failure causes rather than patching outputs.</li>
+          <li><strong>hermes_runtime/manager_runtime_fix</strong> — runtime corrections for failing cases.</li>
+          <li><strong>hermes_runtime/correct_eval_cases</strong> — repaired evaluation cases and assertions.</li>
+        </ul>
+      </details>
+
+      <details><summary>Release, isolation, and security</summary>
+        <ul>
+          <li><strong>integration_review</strong> — cross-component consistency review.</li>
+          <li><strong>security_release_audit</strong> — credentials, listening services, and release risk.</li>
+          <li><strong>final_docs_audit</strong> — product and runtime documentation alignment.</li>
+          <li><strong>release_blockers</strong> — explicit separation of completed work from blocking work.</li>
+          <li><strong>release_docs_audit</strong> — release-checklist and operator documentation review.</li>
+          <li><strong>fresh_release_isolation</strong> — clean-environment release verification; must be refreshed after the latest edits.</li>
+        </ul>
+      </details>
+    </section>
+
+    <section id="release">
+      <p class="eyebrow">08 · final release gate</p>
+      <h2>What must happen before deployment</h2>
+      <ul class="checklist">
+        <li>✓ All focused manager cases pass: mutation 4/4, management and recovery 9/9, specialists 8/8.</li>
+        <li>✓ Unit tests and typecheck pass: 344 tests, two expected Chrome skips.</li>
+        <li>✓ Client production build passes at 117.14 KB gzip.</li>
+        <li>✓ Migration rehearsal and full browser acceptance suite pass.</li>
+        <li>✓ Hermes contract verifier passes: 69 migrations, 32 checks, 120 routes.</li>
+        <li>✓ Production readiness, data quality, migration status, jobs, credentials, and backup are verified.</li>
+        <li>✓ Release contract uses the deterministic harness plus focused defect regressions; real-model aggregate samples remain diagnostic.</li>
+        <li>□ Run fresh release isolation after the latest skill and documentation changes.</li>
+        <li>□ Rotate the exposed Linux login password with Mahmood present and prove login/sudo recovery.</li>
+        <li>✓ Deploy the private Worker auth code from this repository.</li>
+        <li>✓ Run post-deploy health, private-auth, Queue, source-record, job, and artifact smoke checks.</li>
+      </ul>
+      <div class="callout good"><strong>Operational rule:</strong> “Done” means implementation, tests, documentation, Hermes synchronization, deployment evidence, and live readback agree. A long-running agent, a green partial suite, or a successful HTTP write is not enough by itself.</div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Prepared as a durable Learning Compass artifact from the Hermes production-hardening work completed and deployed on 26 August 2026. It contains no credentials.</p>
+  </footer>
+</body>
+</html>

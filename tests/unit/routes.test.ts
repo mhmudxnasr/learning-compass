@@ -210,6 +210,7 @@ test('the router exposes five roots and twelve grouped modes with focus state', 
   assert.equal(views.learn.length, 4)
   assert.equal(modes.library[0]?.key, 'books')
   assert.equal(modes.learn.some((mode) => mode.key === 'canon'), false)
+  assert.deepEqual(roots.find((root) => root.key === 'learn'), { key: 'learn', label: 'Learn', defaultMode: 'practice', defaultFocus: 'notes', defaultView: 'notes' })
   assert.equal(modes.library.find((mode) => mode.key === 'catalog')?.label, 'Archive')
   assert.deepEqual(modes.library.find((mode) => mode.key === 'catalog')?.focuses?.map((item) => item.key), ['archive'])
   for (const root of roots) {
@@ -238,6 +239,27 @@ test('Library Archive requests completed and excluded records before pagination'
 })
 
 test('root modes parse from query state while typed object links keep their identity', () => {
+  const learn = parseRoute('#/learn')
+  assert.equal(learn.mode, 'practice')
+  assert.equal(learn.focus, 'notes')
+  assert.equal(learn.view, 'notes')
+  assert.equal(learn.canonical, '/learn')
+
+  const learnThread = parseRoute('#/learn/thread/thread%201')
+  assert.equal(learnThread.mode, 'paths')
+  assert.equal(learnThread.focus, undefined)
+  assert.equal(learnThread.canonical, '/learn/thread/thread%201')
+
+  const learnCard = parseRoute('#/learn/card/card%201')
+  assert.equal(learnCard.mode, 'practice')
+  assert.equal(learnCard.focus, 'recall')
+  assert.equal(learnCard.canonical, '/learn/card/card%201')
+
+  const learnNote = parseRoute('#/learn/note/note%201')
+  assert.equal(learnNote.mode, 'practice')
+  assert.equal(learnNote.focus, 'notes')
+  assert.equal(learnNote.canonical, '/learn/note/note%201')
+
   for (const href of ['#/library?mode=catalog&focus=books', '#/library?mode=books', '#/library/books', '#/curate/books']) {
     const books = parseRoute(href)
     assert.equal(books.root, 'library')

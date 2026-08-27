@@ -1,3 +1,5 @@
+import { authFetch } from './auth.ts'
+
 export type CustomPalette = {
   brand: string
   shell: string
@@ -833,7 +835,7 @@ export function initTheme() {
 export async function hydrateThemeFromServer() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return
   try {
-    const response = await fetch('/settings')
+    const response = await authFetch('/settings')
     if (!response.ok) return
     const payload = await response.json() as { resolved?: { appearance?: Record<string, unknown> } }
     const appearance = payload.resolved?.appearance

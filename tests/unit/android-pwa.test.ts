@@ -45,7 +45,7 @@ test('the app links its manifest, registers the service worker, and exposes a re
   assert.match(worker, /cacheShell\(\)/)
   assert.match(worker, /CORE_DATA = \['\/dashboard\/briefing'\]/)
   assert.match(worker, /learning-compass-shell-v\d+/)
-  assert.match(worker, /learning-compass-html-artifacts-v1/)
+  assert.match(worker, /learning-compass-html-artifacts-v2/)
   assert.match(worker, /isArtifactNavigation\(url\)/)
   assert.match(worker, /cache\.put\(request, response\.clone\(\)\)/)
   assert.match(worker, /isAppShellNavigation\(url\)/)

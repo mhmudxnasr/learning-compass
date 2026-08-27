@@ -10,7 +10,7 @@ test('custom visual-system JSON reaches the global startup and heading seams', (
   assert.match(theme, /getActiveCustomPalette\(\)/)
   assert.match(theme, /const customPalette = theme === 'custom' \? getActiveCustomPalette\(\) : undefined/)
   assert.match(theme, /export async function hydrateThemeFromServer\(\)/)
-  assert.match(theme, /fetch\('\/settings'\)/)
+  assert.match(theme, /authFetch\('\/settings'\)/)
   assert.match(studio, /font-family: var\(--font-display\) !important/)
   assert.match(studio, /letter-spacing: var\(--font-letter-spacing\) !important/)
   assert.match(settings, /applyFont\(nextFont, nextFont === 'custom' \? nextCustomFont : undefined\)/)

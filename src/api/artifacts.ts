@@ -1,10 +1,48 @@
 import { Hono } from 'hono'
-import { LITE_VISUAL_RECEIPT_SCHEMA, LITE_VISUAL_WORKFLOW_CONTRACT, mergeArtifactMultipartMetadata, normalizeQualityAssurance, sha256Hex, validateArtifactIntegrity, validateLiteVisualPair, type LiteVisualValidationReceipt } from '../artifact-metadata'
+import { inspectArtifactContent, LITE_VISUAL_RECEIPT_SCHEMA, LITE_VISUAL_WORKFLOW_CONTRACT, mergeArtifactMultipartMetadata, normalizeQualityAssurance, sha256Hex, validateLiteVisualPair, type LiteVisualValidationReceipt } from '../artifact-metadata'
 import { Bindings, escapeHtml, safeError } from '../lib'
 import { resolveLearningScope } from '../services/learning-scope'
 
 const app = new Hono<{ Bindings: Bindings }>()
-const artifactCsp = "default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'none'; img-src data: https:; font-src data: https:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline'"
+const artifactCsp = "sandbox; default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'none'"
+const inertAttachmentCsp = "sandbox; default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'none'; style-src 'none'; script-src 'none'"
+const activeXmlArtifact = (row: { media_type?: unknown; filename?: unknown }) => /(?:svg\+xml|application\/(?:xml|xhtml\+xml)|text\/xml)/i.test(String(row.media_type || '')) || /\.(?:svg|xml|xhtml|xsl)$/i.test(String(row.filename || ''))
+const htmlArtifact = (row: { media_type?: unknown; filename?: unknown }) => /html/i.test(String(row.media_type || '')) || /\.html?$/i.test(String(row.filename || ''))
+const textArtifact = (row: { media_type?: unknown; filename?: unknown }) => !activeXmlArtifact(row) && (/markdown|text\/plain/i.test(String(row.media_type || '')) || /\.md$/i.test(String(row.filename || '')))
+const inlineBinaryArtifact = (row: { media_type?: unknown }) => /^(?:application\/pdf|video\/(?:mp4|webm|quicktime)|audio\/(?:mpeg|mp4|webm|ogg|opus|wav))(?:;|$)/i.test(String(row.media_type || ''))
+const originalFilename = (value: unknown) => Array.from(String(value || 'artifact')).slice(0, 180).join('') || 'artifact'
+const safeFilename = (value: unknown) => originalFilename(value).replace(/[^\x20-\x7e]|["\\]/g, '_') || 'artifact'
+const encodedFilename = (value: unknown) => encodeURIComponent(originalFilename(value)).replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
+const disposition = (kind: 'inline' | 'attachment', value: unknown) => `${kind}; filename="${safeFilename(value)}"; filename*=UTF-8''${encodedFilename(value)}`
+
+function artifactHeaders(row: { media_type?: unknown; filename?: unknown }) {
+  const filename = row.filename
+  const headers: Record<string, string> = {
+    'content-disposition': disposition('attachment', filename),
+    'content-security-policy': inertAttachmentCsp,
+    'cross-origin-resource-policy': 'same-origin',
+    'referrer-policy': 'no-referrer',
+    'x-content-type-options': 'nosniff',
+  }
+  if (activeXmlArtifact(row)) {
+    headers['content-type'] = 'application/octet-stream'
+    return headers
+  }
+  if (htmlArtifact(row)) {
+    headers['content-type'] = 'text/html; charset=utf-8'
+    headers['content-disposition'] = disposition('inline', filename)
+    headers['content-security-policy'] = artifactCsp
+    return headers
+  }
+  if (inlineBinaryArtifact(row)) {
+    headers['content-type'] = String(row.media_type || 'application/octet-stream')
+    headers['content-disposition'] = disposition('inline', filename)
+    delete headers['content-security-policy']
+    return headers
+  }
+  headers['content-type'] = 'application/octet-stream'
+  return headers
+}
 
 function markdownToHtml(markdown: string, title: string) {
   const inline = (value: string) => escapeHtml(value).replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
@@ -179,6 +217,7 @@ app.post('/pairs', async (c) => {
 })
 
 app.post('/', async (c) => {
+  let storedKey: string | null = null
   try {
     const form = await c.req.formData()
     const file = form.get('file')
@@ -195,9 +234,9 @@ app.post('/', async (c) => {
     }
     const validation = mergeArtifactMultipartMetadata(metadata, form, file)
     const bytes = await file.arrayBuffer()
-    const integrityFailures = validateArtifactIntegrity(metadata, file, bytes)
-    if (!validation.ok || integrityFailures.length) {
-      const failures = [...new Set([...(validation.ok ? [] : validation.failures), ...integrityFailures])]
+    const content = inspectArtifactContent(metadata, file, bytes)
+    if (!validation.ok || !content.ok || !content.mediaType) {
+      const failures = [...new Set([...(validation.ok ? [] : validation.failures), ...content.failures])]
       return c.json({ error: 'artifact_metadata_validation_failed', failures }, 422)
     }
     const threadId = String(metadata.thread_id || '').trim().slice(0, 120) || null
@@ -223,10 +262,17 @@ app.post('/', async (c) => {
     }
     const id = `artifact_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
     const key = `${new Date().toISOString().slice(0, 10)}/${id}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
-    if (c.env.ARTIFACTS) await c.env.ARTIFACTS.put(key, file.stream(), { httpMetadata: { contentType: file.type || 'application/octet-stream' } })
-    await c.env.DB.prepare(`INSERT INTO artifacts (id,filename,media_type,r2_key,size_bytes,metadata_json,thread_id,stage_id,lesson_id) VALUES (?,?,?,?,?,?,?,?,?)`).bind(id, file.name, file.type || 'application/octet-stream', key, file.size, JSON.stringify({ source: 'artifact_upload', ...metadata }), threadId, stageId, lessonId).run()
+    if (c.env.ARTIFACTS) {
+      await c.env.ARTIFACTS.put(key, bytes, { httpMetadata: { contentType: content.mediaType } })
+      storedKey = key
+    }
+    await c.env.DB.prepare(`INSERT INTO artifacts (id,filename,media_type,r2_key,size_bytes,metadata_json,thread_id,stage_id,lesson_id) VALUES (?,?,?,?,?,?,?,?,?)`).bind(id, file.name, content.mediaType, key, file.size, JSON.stringify({ source: 'artifact_upload', ...metadata }), threadId, stageId, lessonId).run()
+    storedKey = null
     return c.json({ ok: true, id, filename: file.name, r2_key: key, metadata, quality_assurance: normalizeQualityAssurance(metadata) }, 201)
-  } catch (error) { return c.json(safeError('Artifact upload failed')(error), 500) }
+  } catch (error) {
+    if (storedKey && c.env.ARTIFACTS) await c.env.ARTIFACTS.delete(storedKey).catch(() => {})
+    return c.json(safeError('Artifact upload failed')(error), 500)
+  }
 })
 
 app.post('/:id/process', async (c) => {
@@ -267,24 +313,22 @@ app.post('/:id/process', async (c) => {
 app.get('/:id/view', async (c) => {
   const row = await c.env.DB.prepare(`SELECT id,filename,media_type,r2_key FROM artifacts WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!row) return c.json({ error: 'not found' }, 404)
-  if (!/markdown|text\/plain/i.test(row.media_type || '') && !/\.md$/i.test(row.filename || '')) return c.redirect(`/artifacts/${row.id}`)
+  if (!textArtifact(row)) return c.redirect(`/artifacts/${row.id}`)
   if (!c.env.ARTIFACTS || !row.r2_key) return c.json({ error: 'artifact missing' }, 404)
   const object = await c.env.ARTIFACTS.get(row.r2_key)
   if (!object) return c.json({ error: 'artifact missing' }, 404)
   const markdown = await object.text()
-  return new Response(markdownToHtml(markdown, row.filename), { headers: { 'content-type': 'text/html; charset=utf-8', 'content-disposition': `inline; filename="${row.filename.replace(/"/g, '')}"`, 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" } })
+  return new Response(markdownToHtml(markdown, row.filename), { headers: { ...artifactHeaders({ media_type: 'text/html', filename: row.filename }), 'content-security-policy': artifactCsp } })
 })
 
 app.get('/:id', async (c) => {
   const row = await c.env.DB.prepare(`SELECT * FROM artifacts WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!row) return c.json({ error: 'not found' }, 404)
-  if (/markdown|text\/plain/i.test(row.media_type || '') || /\.md$/i.test(row.filename || '')) return c.redirect(`/artifacts/${row.id}/view`)
+  if (textArtifact(row)) return c.redirect(`/artifacts/${row.id}/view`)
   if (!c.env.ARTIFACTS || !row.r2_key) return c.json({ artifact: row })
   const object = await c.env.ARTIFACTS.get(row.r2_key)
   if (!object) return c.json({ error: 'artifact missing' }, 404)
-  const headers: Record<string, string> = { 'content-type': row.media_type, 'content-disposition': `inline; filename="${row.filename.replace(/"/g, '')}"` }
-  if (/html/i.test(row.media_type || '') || /\.html?$/i.test(row.filename || '')) headers['content-security-policy'] = artifactCsp
-  return new Response(object.body, { headers })
+  return new Response(object.body, { headers: artifactHeaders(row) })
 })
 
 app.delete('/:id', async (c) => {

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
-import { recordLearningEvent } from '../services/learning-core'
+import { completedLearningStatus, deriveLevelStatus, deriveThreadStatus, recordLearningEvent } from '../services/learning-core'
 import { selectLearningSourceRenditions } from '../services/learning-material-renditions'
 import { loadNotebookLearningStates, summarizeNotebookLearningState } from '../services/notebooklm-learning'
 import { loadThreadLearningMaterials } from '../services/learning-scope'
@@ -15,7 +15,7 @@ const clean = (value: unknown, max = 4000) => String(value || '').trim().slice(0
 const threadTypes = new Set(['understand', 'decide', 'build', 'practice'])
 const unitTypes = new Set(['claim', 'concept', 'method', 'example', 'question', 'application', 'counterclaim'])
 const COMPLETED_STORAGE_STATUS = 'verified'
-const completedStage = (status: unknown) => ['verified', 'waived', 'completed'].includes(String(status || ''))
+const completedStage = completedLearningStatus
 const publicStatus = (status: unknown) => completedStage(status) || status === 'ready_to_verify' ? 'completed' : status
 const publicThread = (thread: any) => ({ ...thread, status: publicStatus(thread.status), evidence_requirements_json: undefined })
 
@@ -48,24 +48,16 @@ async function syncPathStatuses(db: any, threadId: string) {
     const totalLessons = Number(lessons?.total || 0)
     const completedLessons = Number(lessons?.completed || 0)
     const current = String(stage.status || 'locked')
-    const next = completedStage(current)
-      ? COMPLETED_STORAGE_STATUS
-      : !priorComplete
-        ? 'locked'
-        : totalLessons > 0 && completedLessons === totalLessons
-          ? COMPLETED_STORAGE_STATUS
-          : completedLessons > 0 || current === 'in_progress'
-            ? 'in_progress'
-            : 'available'
+    const next = deriveLevelStatus({ priorComplete, totalLessons, completedLessons, currentStatus: current })
     if (next !== current) await db.prepare(`UPDATE learning_path_stages SET status=?,updated_at=datetime('now') WHERE id=?`).bind(next, stage.id).run()
     priorComplete = completedStage(next)
   }
   const remaining: any = await db.prepare(`SELECT COUNT(*) count FROM learning_path_stages WHERE thread_id=? AND status NOT IN ('verified','waived')`).bind(threadId).first()
   const thread: any = await db.prepare(`SELECT status FROM learning_threads WHERE id=?`).bind(threadId).first()
-  if (thread && !['verified','abandoned'].includes(thread.status)) {
+  if (thread) {
     const complete = (stages.results || []).length > 0 && Number(remaining?.count || 0) === 0
-    const next = complete ? COMPLETED_STORAGE_STATUS : thread.status === 'ready_to_verify' ? 'active' : thread.status
-    if (next !== thread.status) await db.prepare(`UPDATE learning_threads SET status=?,completed_at=CASE WHEN ?=? THEN COALESCE(completed_at,datetime('now')) ELSE completed_at END,updated_at=datetime('now') WHERE id=?`).bind(next, next, COMPLETED_STORAGE_STATUS, threadId).run()
+    const next = deriveThreadStatus(String(thread.status || ''), complete)
+    if (next !== thread.status) await db.prepare(`UPDATE learning_threads SET status=?,completed_at=CASE WHEN ?=? THEN COALESCE(completed_at,datetime('now')) ELSE NULL END,verified_at=CASE WHEN ?=? THEN verified_at ELSE NULL END,updated_at=datetime('now') WHERE id=?`).bind(next, next, COMPLETED_STORAGE_STATUS, next, COMPLETED_STORAGE_STATUS, threadId).run()
   }
 }
 
@@ -110,9 +102,9 @@ app.get('/threads/:id/path', async (c) => {
   const [stages, items, sources, lessons, lessonSources, projects, materials] = await Promise.all([
     c.env.DB.prepare(`SELECT * FROM learning_path_stages WHERE thread_id=? ORDER BY position`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT i.* FROM learning_path_items i JOIN learning_path_stages s ON s.id=i.stage_id WHERE s.thread_id=? ORDER BY s.position,i.position`).bind(thread.id).all<any>(),
-    c.env.DB.prepare(`SELECT ps.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state,m.branch_id,COALESCE(n.label,r.branch) branch_label,COALESCE(n.round_label,r.round) round_label,n.status branch_status FROM learning_path_sources ps JOIN learning_path_stages s ON s.id=ps.stage_id JOIN recommendations r ON r.id=ps.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE s.thread_id=? ORDER BY s.position,ps.position`).bind(thread.id).all<any>(),
+    c.env.DB.prepare(`SELECT ps.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state,m.branch_id,COALESCE(n.label,r.branch) branch_label,n.status branch_status FROM learning_path_sources ps JOIN learning_path_stages s ON s.id=ps.stage_id JOIN recommendations r ON r.id=ps.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE s.thread_id=? ORDER BY s.position,ps.position`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT * FROM thread_lessons WHERE thread_id=? ORDER BY stage_id,position`).bind(thread.id).all<any>(),
-    c.env.DB.prepare(`SELECT ls.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state,m.branch_id,COALESCE(n.label,r.branch) branch_label,COALESCE(n.round_label,r.round) round_label,n.status branch_status FROM thread_lesson_sources ls JOIN thread_lessons l ON l.id=ls.lesson_id JOIN recommendations r ON r.id=ls.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE l.thread_id=? ORDER BY l.stage_id,l.position,ls.position`).bind(thread.id).all<any>(),
+    c.env.DB.prepare(`SELECT ls.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state,m.branch_id,COALESCE(n.label,r.branch) branch_label,n.status branch_status FROM thread_lesson_sources ls JOIN thread_lessons l ON l.id=ls.lesson_id JOIN recommendations r ON r.id=ls.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE l.thread_id=? ORDER BY l.stage_id,l.position,ls.position`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT * FROM thread_projects WHERE thread_id=? ORDER BY CASE WHEN type='level' THEN 0 ELSE 1 END,created_at`).bind(thread.id).all<any>(),
     loadThreadLearningMaterials(c.env.DB, thread.id),
   ])
@@ -200,11 +192,11 @@ app.patch('/threads/:id/lessons/:lessonId', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}))
   const lesson = await c.env.DB.prepare(`SELECT l.*,s.status stage_status FROM thread_lessons l JOIN learning_path_stages s ON s.id=l.stage_id WHERE l.id=? AND l.thread_id=?`).bind(c.req.param('lessonId'), c.req.param('id')).first<any>()
   if (!lesson) return c.json({ error: 'lesson not found' }, 404)
-  if (lesson.stage_status === 'locked') return c.json({ error: 'level is locked; complete the previous Level first' }, 409)
-  if (lesson.stage_status === 'available') return c.json({ error: 'start the level before updating its lessons' }, 409)
-  if (completedStage(lesson.stage_status)) return c.json({ error: 'completed Levels are read-only' }, 409)
   const status = ['not_started','in_progress','completed'].includes(body.status) ? body.status : null
   if (!status) return c.json({ error: 'invalid lesson status' }, 400)
+  if (lesson.stage_status === 'locked') return c.json({ error: 'level is locked; complete the previous Level first' }, 409)
+  if (lesson.stage_status === 'available') return c.json({ error: 'start the level before updating its lessons' }, 409)
+  if (completedStage(lesson.stage_status) && status === 'completed') return c.json({ error: 'completed Levels are read-only unless a lesson is explicitly reopened' }, 409)
   const statements: D1PreparedStatement[] = [c.env.DB.prepare(`UPDATE thread_lessons SET status=?,why_learn=COALESCE(?,why_learn),why_now=COALESCE(?,why_now),takeaway=COALESCE(?,takeaway),content=COALESCE(?,content),updated_at=datetime('now') WHERE id=?`).bind(status, body.why_learn || null, body.why_now || null, body.takeaway || null, body.content || null, lesson.id)]
   if (lesson.legacy_item_id) statements.push(c.env.DB.prepare(`UPDATE learning_path_items SET status=CASE WHEN ?='completed' THEN 'satisfied' WHEN ? IN ('not_started','in_progress') AND status='satisfied' THEN 'open' ELSE status END,updated_at=datetime('now') WHERE id=?`).bind(status, status, lesson.legacy_item_id))
   await c.env.DB.batch(statements)

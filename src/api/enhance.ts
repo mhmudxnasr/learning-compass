@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { Bindings, safeError } from '../lib'
+import { Bindings, safeError, safeErrorMessage } from '../lib'
 import { freeAi, geminiThemeAi } from '../services/ai'
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -63,7 +63,7 @@ app.post('/enhance', async (c) => {
       const result = await freeAi(c.env, 'You are a light-touch copy editor. Preserve the writer\'s meaning, uncertainty, conversational voice, and spoken tone. Never invent claims. Return only the edited feedback.', seed, 1024)
       if (result) return c.json({ text: result.text, source: 'ai', model: result.model })
     } catch (e) {
-      console.warn('enhance upstream failed, falling back', e)
+      console.warn('enhance upstream failed, falling back', safeErrorMessage(e))
     }
   }
 

@@ -27,9 +27,9 @@ try {
     ['d1', 'migrations', 'apply', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir],
   ]) await run(args)
 
-  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8794'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true })
+  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8794', '--var', 'REQUIRE_API_AUTH:false', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true })
   for (let attempt = 0; attempt < 60; attempt++) {
-    try { if ((await fetch('http://127.0.0.1:8794/health')).ok) break } catch {}
+    try { if ((await fetch('http://127.0.0.1:8794/health/live')).ok) break } catch {}
     if (attempt === 59) throw new Error('Worker did not start')
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
@@ -40,14 +40,14 @@ try {
   }
   const query = async (command) => run(['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--command', command])
 
-  const BRANCH = 'r1-deep-work'
+  const BRANCH = 'deep-work-branch'
   const ASSERTION = `user.profile.branch_preference.${BRANCH}`
 
   // Seed one branch with one explicitly mapped source (recommendation_meta
   // branch_id) and one consumed source that only matches via dedup_key prefix —
   // the legacy fallback the deck must still resolve.
   await query(`
-    INSERT INTO tree_nodes (id,type,label,super_category,parent_id,status,round_label,updated_at) VALUES ('${BRANCH}','branch','Deep Work','cat-mind','root','fresh','R1',datetime('now'));
+    INSERT INTO tree_nodes (id,type,label,super_category,parent_id,status,updated_at) VALUES ('${BRANCH}','branch','Deep Work','cat-mind','root','fresh',datetime('now'));
     INSERT INTO recommendations (id,video_title,creator,content_type,video_url,status,user_rating,dedup_key,consumed_date) VALUES
       ('rec_mapped','Deep work session planning','Cal Newport','lecture','https://example.org/deep-a','consumed','8','${BRANCH}-source-a','2026-07-01'),
       ('rec_unmapped','A focused work field study','Researcher B','paper','https://example.org/deep-b','consumed','7','${BRANCH}-source-b','2026-07-05');
@@ -65,10 +65,12 @@ try {
   assert.equal(branch.mapped_count, 1, 'explicitly mapped source must be counted via recommendation_meta.branch_id')
   assert.equal(branch.unmapped_count, 1, 'dedup_key-prefix fallback must count the unmapped consumed source')
   assert.equal(branch.status, 'fresh')
+  assert.equal('round' in branch, false, 'retired synthetic rounds must not return in the deck')
+  assert.equal('round_label' in branch, false, 'legacy round columns must not return in the deck')
   assert.equal(branch.is_candidate, true, 'candidate/active/fresh branches are waiting on a decision')
 
   // 2. Prune is a reversible exclusion, not an applied fact.
-  const pruned = await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: BRANCH, action: 'prune', label: 'Deep Work', super_category: 'cat-mind', round_label: 'R1' }) })
+  const pruned = await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: BRANCH, action: 'prune', label: 'Deep Work', super_category: 'cat-mind' }) })
   assert.equal(pruned.status, 200, JSON.stringify(pruned.body))
   assert.equal(pruned.body.affinity_score, 0.5, 'prune writes a negative taste signal')
   let node = parseJson(await query(`SELECT status FROM tree_nodes WHERE id='${BRANCH}'`)).results[0]
@@ -95,7 +97,7 @@ try {
 
   // 4. Priority is one explicit renumbered rank, and love status.
   const priorityOrderBeforePromotion = parseJson(await query('SELECT branch_id,rank FROM priorities ORDER BY rank')).results
-  const promoted = await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: BRANCH, action: 'priority', label: 'Deep Work', super_category: 'cat-mind', round_label: 'R1' }) })
+  const promoted = await request('/brain/branch-swipe', { method: 'POST', body: JSON.stringify({ id: BRANCH, action: 'priority', label: 'Deep Work', super_category: 'cat-mind' }) })
   assert.equal(promoted.status, 200, JSON.stringify(promoted.body))
   node = parseJson(await query(`SELECT status FROM tree_nodes WHERE id='${BRANCH}'`)).results[0]
   assert.equal(node.status, 'love')

@@ -38,10 +38,37 @@ export function normalizeStructuredFeedback(body: any, fallback: FeedbackComplet
   }
 }
 
+export function feedbackLifecycle(completionState: FeedbackCompletionState) {
+  if (completionState === 'completed') return {
+    complete: true,
+    stopped: false,
+    sessionStatus: 'completed' as const,
+    learningState: 'completed' as const,
+    progressPercent: 100,
+    recommendationStatus: 'consumed' as const,
+  }
+  if (completionState === 'stopped') return {
+    complete: false,
+    stopped: true,
+    sessionStatus: 'returned' as const,
+    learningState: 'excluded' as const,
+    progressPercent: 0,
+    recommendationStatus: 'rejected' as const,
+  }
+  return {
+    complete: false,
+    stopped: false,
+    sessionStatus: 'returned' as const,
+    learningState: 'in_progress' as const,
+    progressPercent: 50,
+    recommendationStatus: null,
+  }
+}
+
 export function feedbackMetadata(
   feedback: StructuredFeedback,
   score: number | null,
   context: Record<string, unknown> = {},
-) {
+): { learning_feedback: StructuredFeedback & { score: number | null; recorded_at: string } & Record<string, unknown> } {
   return { learning_feedback: { ...feedback, score, ...context, recorded_at: new Date().toISOString() } }
 }

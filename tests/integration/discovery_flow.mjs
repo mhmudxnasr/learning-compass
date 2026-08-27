@@ -2,10 +2,20 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createServer } from 'node:net'
 import assert from 'node:assert/strict'
 
 const wrangler = './node_modules/.bin/wrangler'
 const persistDir = mkdtempSync(join(tmpdir(), 'learning-compass-disc-test-'))
+const port = await new Promise((resolve, reject) => {
+  const probe = createServer()
+  probe.once('error', reject)
+  probe.listen(0, '127.0.0.1', () => {
+    const address = probe.address()
+    probe.close((error) => error ? reject(error) : resolve(address.port))
+  })
+})
+const baseUrl = `http://127.0.0.1:${port}`
 let server
 
 try {
@@ -23,7 +33,7 @@ try {
   }
 
   console.log('2. Starting local Wrangler dev server...')
-  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8788'], {
+  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', String(port), '--var', 'REQUIRE_API_AUTH:false', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   })
@@ -33,7 +43,7 @@ try {
 
   for (let attempt = 0; attempt < 60; attempt++) {
     try {
-      const response = await fetch('http://127.0.0.1:8788/health')
+      const response = await fetch(`${baseUrl}/health/live`)
       if (response.ok) break
     } catch {}
     if (attempt === 59) throw new Error(`Worker did not start:\n${serverLog}`)
@@ -41,7 +51,7 @@ try {
   }
 
   const req = async (path, options = {}) => {
-    const res = await fetch(`http://127.0.0.1:8788${path}`, {
+    const res = await fetch(`${baseUrl}${path}`, {
       headers: { 'content-type': 'application/json' },
       ...options,
     })

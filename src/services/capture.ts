@@ -72,10 +72,10 @@ export async function createCapture(
     DB.prepare(`INSERT INTO agent_jobs (id,job_type,payload_json,idempotency_key) VALUES (?,'enrich_capture',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(`job_${crypto.randomUUID()}`, JSON.stringify({ recommendation_id: id, source, artifact_id: artifact?.id || null, r2_key: artifact?.r2_key || null }), `capture:${dedup}`),
   )
   await DB.batch(statements)
-  // Incremental FTS5: index immediately so new captures are searchable without waiting for cron
+  // Update the portable search projection immediately instead of waiting for cron.
   try {
-    const ftsText = [title, contentType, source].filter(Boolean).join(' ')
-    await DB.prepare("INSERT OR REPLACE INTO search_idx(source, ref_id, text) VALUES ('rec', ?, ?)").bind(id, ftsText).run()
-  } catch { /* FTS update is best-effort; cron will catch up */ }
+    const searchText = [title, contentType, source].filter(Boolean).join(' ')
+    await DB.prepare("INSERT OR REPLACE INTO search_idx(source, ref_id, text) VALUES ('rec', ?, ?)").bind(id, searchText).run()
+  } catch { /* Search projection is best-effort; maintenance will rebuild it. */ }
   return { id, duplicate: false, status: 'active', dedup, branch_id: input.branch?.id || null }
 }

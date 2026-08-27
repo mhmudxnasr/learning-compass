@@ -1,4 +1,4 @@
-import { objectHref, useRoute, Route } from '../app/router'
+import { objectHref, routeHref, useRoute, Route } from '../app/router'
 import { useData } from '../app/useData'
 import { Empty, ErrorState, Loading } from '../components/States'
 import { LearnNotesView } from './learn/LearnNotesView'
@@ -7,7 +7,6 @@ import { LearnRecallView } from './learn/LearnRecallView'
 import { LearnThreadView } from './learn/LearnThreadView'
 import { LearnCanonView } from './learn/LearnCanonView'
 import { LearnContradictionsView } from './learn/LearnContradictionsView'
-import { routeHref } from '../app/router'
 
 export type LearnWorkspaceProps = {
   route?: Route
@@ -58,7 +57,7 @@ export function LearnWorkspace({ route }: LearnWorkspaceProps = {}) {
   const practiceFocus: PracticeFocus = activeRoute.objectType === 'note' || routeFocus === 'notes' || routeMode === 'notes' ? 'notes' : routeFocus === 'contradictions' || routeMode === 'contradictions' ? 'contradictions' : 'recall'
   const activeMode: LearnMode = activeRoute.objectType === 'note' || routeMode === 'practice' || routeMode === 'notes' || routeMode === 'recall' ? 'practice' : 'paths'
 
-  const content = activeRoute.objectType === 'thread' && activeRoute.objectId ? <LearnThreadView threadId={activeRoute.objectId} tab={activeRoute.query.get('tab') || undefined} />
+  const content = activeRoute.objectType === 'thread' && activeRoute.objectId ? <LearnThreadView threadId={activeRoute.objectId} tab={activeRoute.query.get('tab') || undefined} focusLevelId={activeRoute.query.get('level') || undefined} />
     : activeRoute.objectType === 'level' && activeRoute.objectId && activeRoute.parentObjectId ? <LearnThreadView threadId={activeRoute.parentObjectId} levelId={activeRoute.objectId} />
     : activeRoute.objectType === 'lesson' && activeRoute.objectId && activeRoute.parentObjectId ? <LearnThreadView threadId={activeRoute.parentObjectId} lessonId={activeRoute.objectId} />
     : activeRoute.objectType === 'unit' && activeRoute.objectId ? <LearnUnitView unitId={activeRoute.objectId} />
@@ -77,7 +76,7 @@ function LearnUnitView({ unitId }: { unitId: string }) {
   const data = useData<{ unit: { statement: string; unit_type?: string; user_synthesis?: string | null; confidence?: number; branch?: { id: string; label: string; domain: string } }; relations?: Array<{ id: string; relation_type: string; direction: 'incoming' | 'outgoing'; why: string; counterpart: { unit_id: string; statement: string; branch: { id: string; label: string; domain: string }; anchor?: { locator: string } | null } }> }>(`/learning/core/units/${encodeURIComponent(unitId)}`)
   if (data.loading && !data.data) return <Loading label="Loading learning unit" />
   if (data.error && !data.data) return <ErrorState message={data.error} retry={data.reload} />
-  if (!data.data) return <Empty title="Learning unit not found" body="This typed Learn link no longer points to an available unit." action={<a class="button secondary" href="#/learn">Return to Threads</a>} />
+  if (!data.data) return <Empty title="Learning unit not found" body="This typed Learn link no longer points to an available unit." action={<a class="button secondary" href={routeHref('learn', 'practice', 'notes')}>Return to Notes</a>} />
   return <article class="learn-object-detail relation-unit-detail"><p class="folio-object-kicker">Learning Unit · {data.data.unit.unit_type || 'concept'}</p>{data.data.unit.branch && <span class="folio-branch-pill">{data.data.unit.branch.label} · {data.data.unit.branch.domain}</span>}<h1>{data.data.unit.statement}</h1>{data.data.unit.user_synthesis && <p>{data.data.unit.user_synthesis}</p>}<small>Confidence: {Math.round(Number(data.data.unit.confidence || 0) * 100)}%</small>{data.data.relations?.length ? <section class="unit-relations"><h2>Semantic relationships</h2>{data.data.relations.map((relation) => <article key={relation.id}><div><span class="relation-direction">{relation.direction}</span><strong>{relation.relation_type.replace(/_/g, ' ')}</strong><span class="folio-branch-pill">{relation.counterpart.branch.label} · {relation.counterpart.branch.domain}</span></div><a href={objectHref('learn', 'unit', relation.counterpart.unit_id)}>{relation.counterpart.statement}</a><p>{relation.why}</p>{relation.counterpart.anchor && <small>Anchor: {relation.counterpart.anchor.locator}</small>}</article>)}</section> : null}</article>
 }
 

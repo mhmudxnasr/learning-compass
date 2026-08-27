@@ -75,7 +75,6 @@ export interface PathSource {
   branch_id?: string | null
   branch_label?: string | null
   branch_status?: string | null
-  round_label?: string | null
   artifacts?: { html?: PathArtifact; pdf?: PathArtifact }
 }
 
@@ -96,7 +95,6 @@ export interface NoteRecord {
   content_type?: string | null
   branch_id?: string | null
   branch_label?: string | null
-  round_label?: string | null
   category?: string | null
   thread_id?: string | null
   stage_id?: string | null

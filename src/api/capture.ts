@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { queueDecision } from '../domain'
-import { Bindings, safeError } from '../lib'
+import { Bindings, redactSensitiveText, safeError } from '../lib'
 import { createCapture } from '../services/capture'
 import { addFeed, syncAllFeeds, syncFeed } from '../services/rss'
 import { recordRecommendationSignal } from '../services/intelligence-v2'
@@ -10,10 +10,16 @@ import { projectBook } from '../services/book-projection'
 import { normalizeQualityAssurance } from '../artifact-metadata'
 import { deliveryContextFromQuery, resolveDeliveryContext } from '../services/delivery-context'
 import { LITE_VISUAL_CHECKPOINT_REQUIREMENTS, LITE_VISUAL_SOURCE_EXTRACTION_SCHEMA, LITE_VISUAL_STAGES, LITE_VISUAL_WORKFLOW_CONTRACT, LITE_VISUAL_WORKFLOW_VERSION, resolveLiteVisualResume } from '../services/lite-visual-workflow'
+import { createPersonalLibraryItem, loadPersonalLibrary, loadPersonalLibraryItem, PERSONAL_ITEM_STATES, PERSONAL_ITEM_TYPES, updatePersonalLibraryItem, type PersonalItemState, type PersonalItemType, type PersonalLibraryInput } from '../services/personal-library'
 
 import { activateWaitingRun } from './discovery'
 
 const app = new Hono<{ Bindings: Bindings }>()
+
+const withoutLegacyRound = (row: any) => {
+  const { round: _legacyRound, round_label: _legacyRoundLabel, ...item } = row
+  return item
+}
 
 const feedImportLimit = (value: unknown) => {
   if (value === undefined) return undefined
@@ -33,8 +39,9 @@ app.post('/', async (c) => {
       : null
     if (body.artifact_id && !artifact) return c.json({ error: 'artifact not found' }, 404)
     const branchId = String(body.branch_id || '').trim()
+    if (!branchId) return c.json({ error: 'branch_id required' }, 400)
     const branch = branchId
-      ? await DB.prepare("SELECT id,label,status FROM tree_nodes WHERE id=? AND type IN ('root','category','branch','leaf')").bind(branchId).first<any>()
+      ? await DB.prepare("SELECT n.id,n.label,n.status,n.super_category FROM tree_nodes n WHERE n.id=? AND n.type='branch' AND (n.parent_id='root' OR EXISTS (SELECT 1 FROM tree_nodes p WHERE p.id=n.parent_id AND p.type='category'))").bind(branchId).first<any>()
       : null
     if (branchId && !branch) return c.json({ error: 'branch not found' }, 404)
     if (String(branch?.status || '').toLowerCase() === 'pruned') return c.json({ error: 'cannot capture to a pruned branch', branch_id: branch.id }, 409)
@@ -54,9 +61,58 @@ app.post('/', async (c) => {
       ok: true,
       ...result,
       state: result.duplicate ? undefined : 'captured',
-      ...(branch ? { branch: { id: branch.id, label: branch.label, status: branch.status } } : {}),
+      ...(branch ? { branch: { id: branch.id, label: branch.label, status: branch.status, super_category: branch.super_category } } : {}),
     }, result.duplicate ? 200 : 201)
   } catch (error) { return c.json(safeError('Capture failed')(error), 500) }
+})
+
+app.get('/personal', async (c) => {
+  const itemType = String(c.req.query('item_type') || '').trim()
+  const state = String(c.req.query('state') || '').trim()
+  if (itemType && !PERSONAL_ITEM_TYPES.includes(itemType as PersonalItemType)) return c.json({ error: 'unsupported item_type' }, 400)
+  if (state && !PERSONAL_ITEM_STATES.includes(state as PersonalItemState)) return c.json({ error: 'unsupported state' }, 400)
+  try {
+    return c.json(await loadPersonalLibrary(c.env.DB, {
+      q: c.req.query('q'),
+      item_type: itemType,
+      state,
+      limit: Number(c.req.query('limit') || 200),
+      offset: Number(c.req.query('offset') || 0),
+    }))
+  } catch (error) {
+    return c.json(safeError('Personal library could not be loaded')(error), 500)
+  }
+})
+
+app.get('/personal/:id', async (c) => {
+  try {
+    const item = await loadPersonalLibraryItem(c.env.DB, c.req.param('id'))
+    return item ? c.json({ item }) : c.json({ error: 'personal item not found' }, 404)
+  } catch (error) {
+    return c.json(safeError('Personal item could not be loaded')(error), 500)
+  }
+})
+
+app.post('/personal', async (c) => {
+  try {
+    const body = await c.req.json<PersonalLibraryInput>()
+    const result = await createPersonalLibraryItem(c.env.DB, body)
+    if (!result.ok) return c.json({ error: result.error, ...('recommendation_id' in result ? { recommendation_id: result.recommendation_id } : {}) }, result.status as 400 | 409)
+    return c.json({ ok: true, item: result.item }, 201)
+  } catch (error) {
+    return c.json(safeError('Personal item could not be saved')(error), 500)
+  }
+})
+
+app.patch('/personal/:id', async (c) => {
+  try {
+    const body = await c.req.json<PersonalLibraryInput>()
+    const result = await updatePersonalLibraryItem(c.env.DB, c.req.param('id'), body)
+    if (!result.ok) return c.json({ error: result.error, ...('recommendation_id' in result ? { recommendation_id: result.recommendation_id } : {}) }, result.status as 400 | 404 | 409)
+    return c.json({ ok: true, item: result.item })
+  } catch (error) {
+    return c.json(safeError('Personal item could not be updated')(error), 500)
+  }
 })
 
 app.get('/', async (c) => {
@@ -66,7 +122,7 @@ app.get('/', async (c) => {
     FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id
     WHERE r.status='active' AND m.learning_state='captured'
     ORDER BY CASE WHEN json_extract(m.source_metadata_json,'$.resurface_at') IS NOT NULL AND datetime(json_extract(m.source_metadata_json,'$.resurface_at'))<=datetime('now') THEN 0 ELSE 1 END, r.created_at DESC LIMIT 200`).all()
-  return c.json({ items: rows.results || [] })
+  return c.json({ items: (rows.results || []).map(withoutLegacyRound) })
 })
 
 app.get('/queue', async (c) => {
@@ -77,8 +133,10 @@ app.get('/queue', async (c) => {
 })
 
 app.get('/feeds', async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT fs.*,COUNT(fe.guid) entry_count
-    FROM feed_sources fs LEFT JOIN feed_entries fe ON fe.feed_id=fs.id
+  const rows = await c.env.DB.prepare(`SELECT fs.*,n.label branch_label,n.status branch_status,COUNT(fe.guid) entry_count
+    FROM feed_sources fs
+    LEFT JOIN tree_nodes n ON n.id=fs.branch_id
+    LEFT JOIN feed_entries fe ON fe.feed_id=fs.id
     GROUP BY fs.id ORDER BY fs.created_at DESC`).all()
   return c.json({ feeds: rows.results || [] })
 })
@@ -89,37 +147,47 @@ app.get('/feeds/:id/entries', async (c) => {
   const offset = Math.max(Number(c.req.query('offset') || 0), 0)
   if (feedId === 'all') {
     const [rows, count] = await Promise.all([
-      c.env.DB.prepare(`SELECT r.*,fe.guid,fe.published_at,fe.created_at feed_imported_at,fs.title feed_title,fs.id feed_id
+      c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,n.label branch_label,n.status branch_status,fe.guid,fe.published_at,fe.created_at feed_imported_at,fs.title feed_title,fs.id feed_id
         FROM feed_entries fe JOIN recommendations r ON r.id=fe.recommendation_id
         JOIN feed_sources fs ON fs.id=fe.feed_id
+        JOIN recommendation_meta m ON m.recommendation_id=r.id
+        LEFT JOIN tree_nodes n ON n.id=m.branch_id
         WHERE (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL
         ORDER BY COALESCE(fe.published_at,fe.created_at) DESC LIMIT ? OFFSET ?`).bind(limit, offset).all(),
       c.env.DB.prepare(`SELECT COUNT(*) count FROM feed_entries fe JOIN recommendations r ON r.id=fe.recommendation_id WHERE (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL`).first<{ count: number }>(),
     ])
-    return c.json({ feed: { id: 'all', title: 'All Subscribed Sources', feed_url: 'All feeds' }, items: rows.results || [], total: count?.count || 0, limit, offset })
+    return c.json({ feed: { id: 'all', title: 'All Subscribed Sources', feed_url: 'All feeds' }, items: (rows.results || []).map(withoutLegacyRound), total: count?.count || 0, limit, offset })
   }
-  const feed = await c.env.DB.prepare('SELECT id,title,feed_url,site_url,last_checked_at FROM feed_sources WHERE id=?').bind(feedId).first<any>()
+  const feed = await c.env.DB.prepare(`SELECT fs.id,fs.title,fs.feed_url,fs.site_url,fs.last_checked_at,fs.branch_id,n.label branch_label,n.status branch_status
+    FROM feed_sources fs LEFT JOIN tree_nodes n ON n.id=fs.branch_id WHERE fs.id=?`).bind(feedId).first<any>()
   if (!feed) return c.json({ error: 'feed not found' }, 404)
   const [rows, count] = await Promise.all([
-    c.env.DB.prepare(`SELECT r.*,fe.guid,fe.published_at,fe.created_at feed_imported_at,fs.title feed_title,fs.id feed_id
+    c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,n.label branch_label,n.status branch_status,fe.guid,fe.published_at,fe.created_at feed_imported_at,fs.title feed_title,fs.id feed_id
       FROM feed_entries fe JOIN recommendations r ON r.id=fe.recommendation_id
       JOIN feed_sources fs ON fs.id=fe.feed_id
+      JOIN recommendation_meta m ON m.recommendation_id=r.id
+      LEFT JOIN tree_nodes n ON n.id=m.branch_id
       WHERE fe.feed_id=? AND (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL
       ORDER BY COALESCE(fe.published_at,fe.created_at) DESC LIMIT ? OFFSET ?`).bind(feed.id, limit, offset).all(),
     c.env.DB.prepare(`SELECT COUNT(*) count FROM feed_entries fe JOIN recommendations r ON r.id=fe.recommendation_id WHERE fe.feed_id=? AND (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL`).bind(feed.id).first<{ count: number }>(),
   ])
-  return c.json({ feed, items: rows.results || [], total: count?.count || 0, limit, offset })
+  return c.json({ feed, items: (rows.results || []).map(withoutLegacyRound), total: count?.count || 0, limit, offset })
 })
 
 app.post('/feeds', async (c) => {
   try {
-    const body = await c.req.json<{ url?: string; limit?: number }>()
+    const body = await c.req.json<{ url?: string; branch_id?: string; limit?: number }>()
     if (!body.url?.trim()) return c.json({ error: 'feed URL required' }, 400)
+    const branchId = String(body.branch_id || '').trim()
+    if (!branchId) return c.json({ error: 'branch_id required' }, 400)
+    const branch = await c.env.DB.prepare("SELECT n.id,n.label,n.status FROM tree_nodes n WHERE n.id=? AND n.type='branch' AND (n.parent_id='root' OR EXISTS (SELECT 1 FROM tree_nodes p WHERE p.id=n.parent_id AND p.type='category'))").bind(branchId).first<any>()
+    if (!branch) return c.json({ error: 'branch not found' }, 404)
+    if (String(branch.status || '').toLowerCase() === 'pruned') return c.json({ error: 'cannot subscribe to a pruned branch', branch_id: branch.id }, 409)
     const limit = feedImportLimit(body.limit)
     if (limit === null) return c.json({ error: 'limit must be a number from 1 to 20' }, 400)
-    return c.json({ ok: true, ...(await addFeed(c.env.DB, body.url, limit)) }, 201)
+    return c.json({ ok: true, ...(await addFeed(c.env.DB, body.url, { id: branch.id, label: branch.label }, limit)) }, 201)
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Could not subscribe to feed'
+    const message = error instanceof Error ? redactSensitiveText(error, 500) : 'Could not subscribe to feed'
     return c.json({ error: message }, /already subscribed/.test(message) ? 409 : 400)
   }
 })
@@ -132,19 +200,20 @@ app.post('/feeds/sync', async (c) => {
   return c.json({
     ok: true,
     imported: results.reduce((sum, item: any) => sum + (item.imported || 0), 0),
+    branch_conflicts: results.reduce((sum, item: any) => sum + (item.branch_conflicts || 0), 0),
     errors: results.filter((item: any) => item.error),
     results,
   })
 })
 
 app.post('/feeds/:id/sync', async (c) => {
-  const feed = await c.env.DB.prepare(`SELECT id,feed_url,title,site_url,etag,last_modified FROM feed_sources WHERE id=?`).bind(c.req.param('id')).first<any>()
+  const feed = await c.env.DB.prepare(`SELECT id,feed_url,title,site_url,etag,last_modified,branch_id FROM feed_sources WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!feed) return c.json({ error: 'feed not found' }, 404)
   const body: { limit?: number } = await c.req.json<{ limit?: number }>().catch(() => ({}))
   const limit = feedImportLimit(body.limit)
   if (limit === null) return c.json({ error: 'limit must be a number from 1 to 20' }, 400)
   try { return c.json({ ok: true, ...(await syncFeed(c.env.DB, feed, limit)) }) }
-  catch (error) { return c.json({ error: error instanceof Error ? error.message : 'Feed check failed' }, 400) }
+  catch (error) { return c.json({ error: error instanceof Error ? redactSensitiveText(error, 500) : 'Feed check failed' }, 400) }
 })
 
 app.delete('/feeds/:id/entries/:recId', async (c) => {
@@ -259,16 +328,16 @@ app.post('/:id/triage', async (c) => {
   return c.json({ ok: true, state: 'queued', ...(thread ? { thread_id: thread.id } : {}), ...decision })
 })
 
-// Apply a reviewed, high-confidence branch classification before or during Queue work.
+// Apply a reviewed, high-confidence branch classification to an existing source.
 // Metadata-only: this does not claim the source was consumed or learned.
 app.post('/:id/branch-map', async (c) => {
   try {
     const body = await c.req.json<{ branch_id?: string; confidence?: string; reason?: string }>().catch(() => ({} as any))
     const confidence = String(body.confidence || '').toLowerCase()
     if (confidence !== 'high') return c.json({ error: 'only high-confidence mappings may be applied automatically' }, 422)
-    const item = await c.env.DB.prepare("SELECT r.id,m.learning_state FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=? AND r.status='active'").bind(c.req.param('id')).first<any>()
-    if (!item) return c.json({ error: 'active recommendation not found' }, 404)
-    if (!['captured','queued','in_progress'].includes(String(item.learning_state || 'captured'))) return c.json({ error: 'item is not an active source or Queue item' }, 409)
+    const item = await c.env.DB.prepare("SELECT r.id,m.learning_state FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.id=? AND r.status IN ('active','consumed','rejected')").bind(c.req.param('id')).first<any>()
+    if (!item) return c.json({ error: 'recommendation not found' }, 404)
+    if (!['captured','queued','in_progress','completed','excluded'].includes(String(item.learning_state || 'captured'))) return c.json({ error: 'item is not a mappable source' }, 409)
     const branch = await c.env.DB.prepare("SELECT id,label,status FROM tree_nodes WHERE id=? AND type IN ('root','category','branch','leaf')").bind(String(body.branch_id || '')).first<any>()
     if (!branch) return c.json({ error: 'branch not found' }, 404)
     if (String(branch.status || '').toLowerCase() === 'pruned') return c.json({ error: 'cannot map to a pruned branch', branch_id: branch.id }, 409)
@@ -354,7 +423,7 @@ app.get('/:id', async (c) => {
 app.get('/:id/record', async (c) => {
   const recommendationId = c.req.param('id')
   const item = await c.env.DB.prepare(`SELECT r.*,m.learning_state,m.branch_id,m.tags_json,m.source_metadata_json,m.progress_percent,m.estimated_minutes,
-    n.id verified_branch_id,n.label verified_branch_label,n.status verified_branch_status
+    n.id verified_branch_id,n.label verified_branch_label,n.status verified_branch_status,n.super_category verified_branch_domain
     FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(recommendationId).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
   const [sessions, notes, sections, artifacts, drafts, cards, outcome, memories, proposals, jobs, threads, units, anchors, annotations, relations, consolidation, disposition, feedbackRows, canonMembershipRows] = await Promise.all([
@@ -399,15 +468,18 @@ app.get('/:id/record', async (c) => {
   const relationsByUnit = new Map<string, any[]>()
   for (const relation of relations.results || []) relationsByUnit.set(relation.source_unit_id, [...(relationsByUnit.get(relation.source_unit_id) || []), relation])
   const annotationRows = (annotations.results || []).map((annotation: any) => ({ ...annotation, selector: parseJson(annotation.selector_json) || {}, selector_json: undefined }))
-  const feedback = (feedbackRows.results || []).map((row: any) => ({
-    ...row,
-    reason_tags: parseJson(row.reason_tags_json) || [],
-    exposure: parseJson(row.exposure_json) || {},
-    structured: parseJson(row.structured_json) || {},
-    reason_tags_json: undefined,
-    exposure_json: undefined,
-    structured_json: undefined,
-  }))
+  const feedback = (feedbackRows.results || []).map((row: any) => {
+    const { round: _legacyRound, round_label: _legacyRoundLabel, ...exposure } = parseJson(row.exposure_json) || {}
+    return {
+      ...row,
+      reason_tags: parseJson(row.reason_tags_json) || [],
+      exposure,
+      structured: parseJson(row.structured_json) || {},
+      reason_tags_json: undefined,
+      exposure_json: undefined,
+      structured_json: undefined,
+    }
+  })
   const unitRows = (units.results || []).map((unit: any) => ({ ...unit, anchors: anchorsByUnit.get(unit.id) || [], relations: relationsByUnit.get(unit.id) || [] }))
   const consolidationSteps = consolidation ? await c.env.DB.prepare(`SELECT * FROM consolidation_steps WHERE run_id=? ORDER BY position`).bind(consolidation.id).all<any>() : { results: [] }
   const cardRows = (cards.results || []).map((card: any) => ({ ...card }))
@@ -428,7 +500,7 @@ app.get('/:id/record', async (c) => {
   const branchVerified = Boolean(item.verified_branch_id) && String(item.verified_branch_status || '').toLowerCase() !== 'pruned'
   const branchLabel = branchVerified ? item.verified_branch_label : String(item.branch || '').trim() || null
   const branchId = branchVerified ? item.verified_branch_id : null
-  const branchInfo = branchLabel ? { id: branchId, label: branchLabel, status: branchVerified ? String(item.verified_branch_status || '').trim().toLowerCase() : null, verified: branchVerified, linkable: branchVerified } : null
+  const branchInfo = branchLabel ? { id: branchId, label: branchLabel, status: branchVerified ? String(item.verified_branch_status || '').trim().toLowerCase() : null, super_category: branchVerified ? item.verified_branch_domain || null : null, verified: branchVerified, linkable: branchVerified } : null
   const companions = { html: htmlArtifact ? { id: htmlArtifact.id, filename: htmlArtifact.filename, size_bytes: htmlArtifact.size_bytes } : null, pdf: pdfArtifact ? { id: pdfArtifact.id, filename: pdfArtifact.filename, size_bytes: pdfArtifact.size_bytes } : null }
   const companionMetadata = htmlArtifact ? parseJson(htmlArtifact.metadata_json) || {} : {}
   const companion = htmlArtifact && pdfArtifact ? { status: 'ready', pair_id: companionMetadata.pair_id || null, primary: { role: 'html', ...companions.html }, secondary: { role: 'pdf', ...companions.pdf } } : { status: 'not_ready', pair_id: null, primary: null, secondary: null }

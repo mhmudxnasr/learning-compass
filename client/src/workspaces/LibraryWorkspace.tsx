@@ -158,7 +158,6 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
         selection.data = {
           ...selection.data,
           branch: data.item?.branch || selection.data.branch,
-          round: data.item?.round || selection.data.round,
           thread_id: linkedThread?.id || selection.data.thread_id,
           thread_title: linkedThread?.title || selection.data.thread_title,
         }
@@ -264,11 +263,11 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     }
   }
 
-  const addFeed = async (url: string) => {
+  const addFeed = async (url: string, branchId: string) => {
     setWorking('add-feed')
     setNotice('')
     try {
-      await api('/capture/feeds', { method: 'POST', body: JSON.stringify({ url, limit: 5 }) })
+      await api('/capture/feeds', { method: 'POST', body: JSON.stringify({ url, branch_id: branchId, limit: 5 }) })
       setNotice('Feed subscribed and latest entries added to Library.')
       reload()
     } catch (actionError) {

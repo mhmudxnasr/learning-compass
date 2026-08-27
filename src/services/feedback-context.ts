@@ -21,25 +21,23 @@ export async function loadFeedbackContext(db: FeedbackDb) {
       WHERE n.kind='reflection' AND TRIM(COALESCE(s.content,''))!=''
       ORDER BY n.updated_at ASC`).all<any>(),
     db.prepare(`SELECT le.id,le.recommendation_id,le.session_id,le.thread_id,le.occurred_at,le.payload_json,
-        r.video_title title,r.creator,r.content_type,r.video_url url,r.status,m.branch_id,COALESCE(n.round_label,r.round) round_label
+        r.video_title title,r.creator,r.content_type,r.video_url url,r.status,m.branch_id
       FROM learning_events le
       LEFT JOIN recommendations r ON r.id=le.recommendation_id
       LEFT JOIN recommendation_meta m ON m.recommendation_id=le.recommendation_id
-      LEFT JOIN tree_nodes n ON n.id=m.branch_id
       WHERE le.event_type='reflection_submitted'
       ORDER BY le.occurred_at ASC,le.id ASC`).all<any>(),
     db.prepare(`SELECT cf.id,cf.pick_id,cf.recommendation_id,cf.outcome,cf.score,cf.reason_tags_json,cf.reflection,cf.exposure_json,cf.structured_json,cf.disposition,cf.created_at,
         p.strategy lane,p.thread_id,p.engine_version,p.candidate_count,
-        r.video_title title,r.creator,r.content_type,r.video_url url,r.status,m.branch_id,COALESCE(n.round_label,r.round) round_label
+        r.video_title title,r.creator,r.content_type,r.video_url url,r.status,m.branch_id
       FROM compass_feedback cf
       LEFT JOIN compass_picks p ON p.id=cf.pick_id
       LEFT JOIN recommendations r ON r.id=cf.recommendation_id
       LEFT JOIN recommendation_meta m ON m.recommendation_id=cf.recommendation_id
-      LEFT JOIN tree_nodes n ON n.id=m.branch_id
       ORDER BY cf.created_at ASC`).all<any>(),
     db.prepare(`SELECT core_filter,mega_priority_json,identity_json,reaction_style_json,quality_rules_json,operational_style_json,patterns_summary_json,recent_signal FROM profile WHERE id=1`).first<any>(),
     db.prepare(`SELECT assertion_key,category,scope,value_json,weight,confidence,status,source_kind,version,updated_at FROM profile_assertions WHERE status IN ('active','hypothesis') ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,confidence DESC,updated_at DESC`).all<any>(),
-    db.prepare(`SELECT id,type,label,parent_id,super_category,status,round_label,meta_json FROM tree_nodes WHERE type IN ('root','category','branch','leaf') ORDER BY label`).all<any>(),
+    db.prepare(`SELECT id,type,label,parent_id,super_category,status,meta_json FROM tree_nodes WHERE type IN ('root','category','branch','leaf') ORDER BY label`).all<any>(),
   ])
 
   const feedbackEvents: any[] = []
@@ -94,7 +92,6 @@ export async function loadFeedbackContext(db: FeedbackDb) {
       url: row.url || null,
       status: row.status || null,
       branch_id: row.branch_id || null,
-      round: row.round_label || null,
       rating: payload.rating ?? null,
       disposition: payload.disposition || 'undecided',
       reason_tags: Array.isArray(structured.reason_tags) ? structured.reason_tags : [],
@@ -113,7 +110,8 @@ export async function loadFeedbackContext(db: FeedbackDb) {
 
   for (const row of compassFeedback.results || []) {
     const reasonTags = parseJson(row.reason_tags_json)
-    const exposure = parseJson(row.exposure_json) || {}
+    const rawExposure = parseJson(row.exposure_json) || {}
+    const { round: _legacyRound, round_label: _legacyRoundLabel, ...exposure } = rawExposure
     const storedStructured = parseJson(row.structured_json) || {}
     const event = {
       event_id: row.id,
@@ -126,7 +124,6 @@ export async function loadFeedbackContext(db: FeedbackDb) {
       url: row.url || null,
       status: row.status || null,
       branch_id: exposure.branch_id || row.branch_id || null,
-      round: exposure.round || row.round_label || null,
       thread_id: exposure.thread_id || row.thread_id || null,
       target_lesson_id: exposure.target_lesson_id || null,
       lane: exposure.lane || row.lane || null,

@@ -8,8 +8,7 @@ export type Bindings = {
   // retrieval. Keeping these optional makes local D1 tests deterministic.
   AI?: any
   COMPASS_VECTORS?: any
-  API_TOKEN?: string
-  REQUIRE_API_AUTH?: string
+  ALLOW_UNAUTHENTICATED_LOCAL_WRITES?: string
   GOOGLE_API_KEY?: string
   GEMINI_API_KEY?: string
   OPENCODE_ZEN_API_KEY?: string
@@ -18,6 +17,7 @@ export type Bindings = {
   TELEGRAM_ALLOWED_CHAT_ID?: string
   VAPID_PUBLIC_KEY?: string
   VAPID_PRIVATE_KEY?: string
+  HARDCOVER_API_TOKEN?: string
 }
 
 export type Recommendation = {
@@ -111,9 +111,27 @@ export const isValidLength = (v: unknown, min: number, max: number): v is string
 export const escapeHtml = (s: string): string =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 
+export function redactSensitiveText(value: unknown, maxLength = 500): string {
+  let text = value instanceof Error ? value.message : String(value)
+  const sensitiveName = String.raw`(?:access[_-]?token|refresh[_-]?token|client[_-]?secret|webhook[_-]?secret|token|secret|password|authorization|api[_-]?key|private[_-]?key|cookie|session|signature)`
+  const jsonCredential = new RegExp(`(["']?${sensitiveName}["']?\\s*:\\s*)(["'])(.*?)\\2`, 'gi')
+  const assignedCredential = new RegExp(`(${sensitiveName}\\s*[:=]\\s*)[^\\s,;]+`, 'gi')
+  const queryCredential = new RegExp(`([?&](?:${sensitiveName}|key)=)[^&\\s]+`, 'gi')
+  text = text
+    .replace(/(https:\/\/api\.telegram\.org\/bot)[^/\s]+/gi, '$1[redacted]')
+    .replace(/\b(?:Bearer\s+)[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [redacted]')
+    .replace(/\b(?:Basic\s+)[A-Za-z0-9+/]+=*/gi, 'Basic [redacted]')
+    .replace(/\b(?:sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{8,}\b/g, '[redacted]')
+    .replace(jsonCredential, '$1$2[redacted]$2')
+    .replace(assignedCredential, '$1[redacted]')
+    .replace(queryCredential, '$1[redacted]')
+  return text.slice(0, maxLength)
+}
+
+export const safeErrorMessage = (error: unknown): string => redactSensitiveText(error)
+
 export const safeError = (fallback: string) => (err: unknown) => {
-  const msg = err instanceof Error ? err.message : String(err)
-  console.error('[err]', msg)
+  console.error('[err]', safeErrorMessage(err))
   return { error: fallback }
 }
 

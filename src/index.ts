@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { Bindings } from './lib'
+import { Bindings, safeErrorMessage } from './lib'
 
 import recsApi from './api/recommendations'
 import brainApi from './api/brain'
@@ -13,6 +13,8 @@ import agentApi from './api/agent'
 import tasteApi from './api/taste'
 import suggestApi from './api/suggest'
 import syncApi from './api/sync'
+import hardcoverApi from './api/hardcover'
+import assistantApi from './api/assistant'
 import homeApi from './api/home'
 import captureApi from './api/capture'
 import productApi from './api/product'
@@ -32,22 +34,31 @@ import analyticsApi from './api/analytics'
 import learningCoreApi from './api/learning-core'
 import canonApi from './api/canon'
 import annotationsApi from './api/annotations'
+import { DAILY_READ_BUDGET, DAILY_WRITE_BUDGET, reserveFreeTierBudget, secondsUntilUtcReset } from './services/free-tier-budget'
+import { DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, mutationReservationDisposition } from './services/mutation-recovery'
 
 const app = new Hono<{ Bindings: Bindings; Variables: { requestId: string } }>()
 const PUBLIC_LEARNING_UPDATE_PATH = '/updates/learning-materials'
 const PUBLIC_LEARNING_UPDATE_FILE_PATH = `${PUBLIC_LEARNING_UPDATE_PATH}.html`
 const isPublicLearningUpdatePath = (path: string) => path === PUBLIC_LEARNING_UPDATE_PATH || path === PUBLIC_LEARNING_UPDATE_FILE_PATH
+const isPublicRequestPath = (path: string) => path === '/' || path === '/ui' || isPublicLearningUpdatePath(path) || path === '/health' || path.startsWith('/health/') || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path === '/favicon.ico' || path === '/api/telegram' || path.startsWith('/assets/') || path.startsWith('/icons/')
 
 const RATE_LIMIT_WINDOW = 60000
 const RATE_LIMIT_MAX_READS = 300
 const RATE_LIMIT_MAX_WRITES = 60
 const rateLimitStore = new Map<string, { reads: number[]; writes: number[] }>()
 
-function getClientIp(c: any): string {
-  return c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-    c.req.header('x-real-ip') ||
-    c.req.header('cf-connecting-ip') ||
-    'unknown'
+const allowsUnauthenticatedLocalWrite = (request: Request, enabled?: string) => {
+  if (enabled !== 'true' || ['GET', 'HEAD', 'OPTIONS'].includes(request.method.toUpperCase())) return false
+  return ['127.0.0.1', '::1', 'localhost'].includes(new URL(request.url).hostname)
+}
+
+export function getClientIp(c: any): string {
+  const cloudflareIp = c.req.header('cf-connecting-ip')?.trim()
+  if (cloudflareIp) return cloudflareIp
+  const realIp = c.req.header('x-real-ip')?.trim()
+  if (realIp) return realIp
+  return c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
 }
 
 function checkRateLimit(ip: string, isWrite: boolean): { allowed: boolean; retryAfter: number } {
@@ -86,6 +97,8 @@ app.use('/*', async (c, next) => {
   const status = c.res.status
   const ua = c.req.header('user-agent') || '-'
   const ip = getClientIp(c)
+  c.res.headers.set('Server-Timing', `app;dur=${duration}`)
+  c.res.headers.set('X-Response-Time-Ms', String(duration))
   if (status >= 400 || duration >= 1000) {
     console.warn(JSON.stringify({ ts: new Date().toISOString(), level: status >= 500 ? 'error' : 'warn', msg: 'request', method, path, status, duration, ip, ua, requestId }))
   }
@@ -95,7 +108,7 @@ app.onError((error, c) => {
   const requestId = c.get('requestId') || crypto.randomUUID()
   const method = c.req.method
   const path = new URL(c.req.url).pathname
-  console.error(JSON.stringify({ ts: new Date().toISOString(), level: 'error', msg: 'unhandled_request_error', method, path, requestId, error: error instanceof Error ? error.message : String(error) }))
+  console.error(JSON.stringify({ ts: new Date().toISOString(), level: 'error', msg: 'unhandled_request_error', method, path, requestId, error: safeErrorMessage(error) }))
   c.header('X-Request-Id', requestId)
   return c.json({ error: 'internal_error', message: 'Learning Compass could not complete this request.', request_id: requestId }, 500)
 })
@@ -115,6 +128,7 @@ app.use('/*', async (c, next) => {
 app.use('/*', async (c, next) => {
   const method = c.req.method.toUpperCase()
   if (method === 'GET' || method === 'OPTIONS' || method === 'HEAD') return next()
+  if (allowsUnauthenticatedLocalWrite(c.req.raw, c.env.ALLOW_UNAUTHENTICATED_LOCAL_WRITES)) return next()
   const ip = getClientIp(c)
   const { allowed, retryAfter } = checkRateLimit(ip, true)
   if (!allowed) {
@@ -149,17 +163,18 @@ app.use('/*', async (c, next) => {
 
 app.use('/*', async (c, next) => {
   const method = c.req.method.toUpperCase()
-  if (method === 'OPTIONS' || method === 'HEAD') return next()
+  if (method === 'OPTIONS') return next()
   const path = new URL(c.req.url).pathname
-  const staticPath = path === '/' || path === '/ui' || isPublicLearningUpdatePath(path) || path.startsWith('/health') || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path === '/favicon.ico' || path === '/api/telegram' || path.startsWith('/assets/') || path.startsWith('/icons/')
-  if (staticPath) return next()
-  const token = c.req.header('x-api-token') || (!c.env.REQUIRE_API_AUTH ? c.req.query('token') : undefined)
-  const expected = c.env.API_TOKEN
-  const privateMode = c.env.REQUIRE_API_AUTH === 'true'
-  if (privateMode && !expected) return c.json({ error: 'private_mode_misconfigured' }, 503)
-  if ((privateMode || (method !== 'GET' && method !== 'HEAD')) && expected && token !== expected) {
-    return c.json({ error: 'Unauthorized' }, 401)
+  const exempt = isPublicRequestPath(path)
+  if (exempt) return next()
+  const budget = await reserveFreeTierBudget(c.env.DB, method, path)
+  if (!budget.allowed) {
+    const retryAfter = secondsUntilUtcReset()
+    c.header('Retry-After', String(retryAfter))
+    return c.json({ error: 'daily_free_tier_budget_exhausted', reset_at: new Date(Date.now() + retryAfter * 1000).toISOString() }, 429)
   }
+  c.header('X-D1-Estimated-Rows-Read', String(budget.read))
+  c.header('X-D1-Estimated-Rows-Written', String(budget.written))
   return next()
 })
 
@@ -186,22 +201,43 @@ app.use('/*', async (c, next) => {
 
   const cached = await replay()
   if (cached) return cached
-  await c.env.DB.prepare("DELETE FROM sync_mutation_locks WHERE expires_at<=datetime('now')").run()
-  const reservation = await c.env.DB.prepare("INSERT OR IGNORE INTO sync_mutation_locks (mutation_id,method,endpoint,request_hash,expires_at) VALUES (?,?,?,?,datetime('now','+2 minutes'))")
-    .bind(mutationId, c.req.method, endpoint, requestHash).run()
+  // Only an ordinary short lease may expire. Unknown-outcome reservations are
+  // durable tombstones: legacy builds represented those by extending the
+  // expiry well beyond created_at, while current builds use the explicit
+  // far-future sentinel. Neither may be deleted and turned into a blind replay.
+  await c.env.DB.prepare("DELETE FROM sync_mutation_locks WHERE expires_at<=datetime('now') AND expires_at<=datetime(created_at,'+5 minutes')").run()
+  // Reserve fail-closed from the first write. If the handler or the later
+  // receipt write crashes, the row is already a durable tombstone; a follow-up
+  // database failure cannot leave behind a short lease that later blind-replays.
+  const reservation = await c.env.DB.prepare('INSERT OR IGNORE INTO sync_mutation_locks (mutation_id,method,endpoint,request_hash,expires_at) VALUES (?,?,?,?,?)')
+    .bind(mutationId, c.req.method, endpoint, requestHash, DURABLE_UNKNOWN_MUTATION_EXPIRES_AT).run()
   if (!reservation.meta.changes) {
     const completed = await replay()
     if (completed) return completed
-    const lock = await c.env.DB.prepare('SELECT method,endpoint,request_hash FROM sync_mutation_locks WHERE mutation_id=?').bind(mutationId).first<any>()
+    const lock = await c.env.DB.prepare(`SELECT method,endpoint,request_hash,expires_at,
+      CASE WHEN (expires_at=? AND created_at<=datetime('now','-2 minutes'))
+        OR (expires_at<>? AND expires_at>datetime(created_at,'+5 minutes'))
+        THEN 1 ELSE 0 END outcome_unknown
+      FROM sync_mutation_locks WHERE mutation_id=?`)
+      .bind(DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, mutationId).first<any>()
     if (lock && (lock.method !== c.req.method || lock.endpoint !== endpoint || lock.request_hash !== requestHash)) {
       return c.json({ error: 'mutation_id_reused_for_different_operation' }, 409)
+    }
+    if (Number(lock?.outcome_unknown || 0)) {
+      return c.json({ error: 'mutation_outcome_unknown', mutation_committed: 'unknown', retryable: false, reread_required: true }, 409)
     }
     return c.json({ error: 'mutation_in_progress', retryable: true }, 409)
   }
 
   await next()
-  if (c.res.status < 200 || c.res.status >= 300) {
+  const disposition = mutationReservationDisposition(c.res.status)
+  if (disposition === 'release') {
     await c.env.DB.prepare('DELETE FROM sync_mutation_locks WHERE mutation_id=? AND request_hash=?').bind(mutationId, requestHash).run()
+    return
+  }
+  if (disposition === 'hold_unknown') {
+    await c.env.DB.prepare('UPDATE sync_mutation_locks SET expires_at=? WHERE mutation_id=? AND request_hash=?')
+      .bind(DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, mutationId, requestHash).run().catch(() => undefined)
     return
   }
   try {
@@ -210,9 +246,10 @@ app.use('/*', async (c, next) => {
       .bind(mutationId, c.req.method, endpoint, requestHash, c.res.status, body || '{}').run()
     await c.env.DB.prepare('DELETE FROM sync_mutation_locks WHERE mutation_id=? AND request_hash=?').bind(mutationId, requestHash).run()
   } catch {
-    // The write may already be committed. Keep the reservation long enough to
-    // prevent a blind retry from repeating it while storage recovers.
-    await c.env.DB.prepare("UPDATE sync_mutation_locks SET expires_at=datetime('now','+1 day') WHERE mutation_id=? AND request_hash=?").bind(mutationId, requestHash).run().catch(() => undefined)
+    // The write may already be committed. Quarantine the key durably so a later
+    // cleanup cannot turn an unresolved outcome into a blind replay.
+    await c.env.DB.prepare('UPDATE sync_mutation_locks SET expires_at=? WHERE mutation_id=? AND request_hash=?')
+      .bind(DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, mutationId, requestHash).run().catch(() => undefined)
   }
 })
 
@@ -236,6 +273,8 @@ app.route('/ai', enhanceApi)
 app.route('/agent', agentApi)
 app.route('/ai', suggestApi)
 app.route('/sync', syncApi)
+app.route('/hardcover', hardcoverApi)
+app.route('/assistant', assistantApi)
 app.route('/home', homeApi)
 app.route('/capture', captureApi)
 app.route('/agent/jobs', jobsApi)
@@ -250,6 +289,17 @@ app.route('/', intelligenceApi)
 app.route('/', productApi)
 
 app.get('/health/live', (c) => c.json({ ok: true, status: 'live', now: new Date().toISOString() }))
+
+app.get('/health/free-tier-budget', async (c) => {
+  const usage = await c.env.DB.prepare(`SELECT estimated_rows_read,estimated_rows_written,read_requests,write_requests,updated_at FROM free_tier_usage_budget WHERE day_utc=date('now')`).first<any>()
+  return c.json({
+    day_utc: new Date().toISOString().slice(0, 10),
+    reads: { estimated: Number(usage?.estimated_rows_read || 0), budget: DAILY_READ_BUDGET, cloudflare_limit: 5_000_000 },
+    writes: { estimated: Number(usage?.estimated_rows_written || 0), budget: DAILY_WRITE_BUDGET, cloudflare_limit: 100_000 },
+    requests: { reads: Number(usage?.read_requests || 0), writes: Number(usage?.write_requests || 0) },
+    updated_at: usage?.updated_at || null,
+  })
+})
 const readiness = async (c: any) => {
   const health = await loadOperationalHealth(c.env)
   return c.json(health, health.ok ? 200 : 503)
@@ -294,7 +344,7 @@ app.get('/manifest.json', async (c) => {
 
 app.get('/sw.js', async (c) => {
   const assetUrl = new URL(c.req.url)
-  assetUrl.searchParams.set('release', 'shell-v38')
+  assetUrl.searchParams.set('release', 'shell-v44-data-v5')
   const asset = await c.env.ASSETS.fetch(assetUrl.toString())
   const headers = new Headers(asset.headers)
   headers.set('Content-Type', 'application/javascript; charset=utf-8')
@@ -317,7 +367,7 @@ app.post('/api/share-target', async (c) => {
     const result = await createCapture(c.env.DB, { source: candidate, title: derivedTitle })
     return c.redirect(`/#/library/source/${encodeURIComponent(result.id)}?from=home&share=${result.duplicate ? 'existing' : 'saved'}`, 303)
   } catch (error) {
-    console.error(JSON.stringify({ ts: new Date().toISOString(), level: 'error', msg: 'share_target_capture_failed', error: error instanceof Error ? error.message : String(error) }))
+    console.error(JSON.stringify({ ts: new Date().toISOString(), level: 'error', msg: 'share_target_capture_failed', error: safeErrorMessage(error) }))
     const query = new URLSearchParams({ action: 'capture', share: 'retry', ...(candidate ? { capture: candidate } : {}) })
     return c.redirect(`/#/home?${query.toString()}`, 303)
   }
@@ -351,7 +401,7 @@ async function telegramReply(token: string, payload: Record<string, unknown>) {
     })
     if (!response.ok) console.warn(JSON.stringify({ ts: new Date().toISOString(), level: 'warn', msg: 'telegram_reply_failed', status: response.status }))
   } catch (error) {
-    console.warn(JSON.stringify({ ts: new Date().toISOString(), level: 'warn', msg: 'telegram_reply_failed', error: error instanceof Error ? error.message : String(error) }))
+    console.warn(JSON.stringify({ ts: new Date().toISOString(), level: 'warn', msg: 'telegram_reply_failed', error: safeErrorMessage(error) }))
   }
 }
 
@@ -411,7 +461,7 @@ app.post('/api/telegram', async (c) => {
     }
     return c.json({ ok: true, result_id: resultId })
   } catch (error) {
-    const failure = error instanceof Error ? error.message : String(error)
+    const failure = safeErrorMessage(error)
     if (durableUpdate) await DB.prepare("UPDATE telegram_updates SET status='failed',error=?,updated_at=datetime('now') WHERE update_id=?").bind(failure.slice(0, 1000), updateId).run().catch(() => undefined)
     throw error
   }

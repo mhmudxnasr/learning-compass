@@ -90,7 +90,7 @@
 .note-ledger-copy small,
 .note-ledger-measure { color: var(--studio-muted); font-size: 11.5px; line-height: 1.45; }
 .note-ledger-measure { text-align: end; }
-.note-ledger-delete { align-self: center; opacity: .25; }
+.note-ledger-delete { align-self: center; width: 44px; min-width: 44px; opacity: .25; }
 .note-ledger-row:hover .note-ledger-delete,
 .note-ledger-delete:focus-visible { opacity: 1; }
 
@@ -127,7 +127,7 @@
 .reader-list { gap: 6px; margin: 0 0 18px; }
 .reader-blockquote { margin: 20px 0; padding: 4px 0 4px 20px; border-inline-start: 3px solid var(--studio-cypress); border-radius: 0; background: transparent; font-style: normal; }
 
-.note-personal-reflection { margin: 0 0 40px; padding: 18px 0 18px 22px; border-inline-start: 3px solid var(--studio-map); }
+.note-personal-reflection { margin: 0 0 40px; padding: 18px 22px; border: 1px solid color-mix(in srgb, var(--studio-map) 32%, var(--studio-seam)); background: color-mix(in srgb, var(--studio-map) 3%, transparent); }
 .note-personal-reflection h2 { margin: 0 0 12px; font-family: var(--font-display); font-size: 20px; }
 .note-related-source { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 36px; padding-block: 14px; border-block: 1px solid var(--studio-seam); font-size: 13px; }
 .note-related-source span { color: var(--studio-muted); }
@@ -206,7 +206,7 @@
   .notes-create-form,
   .notes-index-tools,
   .note-editor-meta { grid-template-columns: 1fr; }
-  .note-ledger-main { grid-template-columns: 54px minmax(0, 1fr) 18px; gap: 10px; padding-block: 15px; }
+  .note-ledger-main { grid-template-columns: 54px minmax(0, 1fr); gap: 10px; padding-block: 15px; }
   .note-ledger-measure { display: none; }
   .note-ledger-copy strong { white-space: normal; }
   .note-reading-actions { align-items: stretch; flex-direction: column; }

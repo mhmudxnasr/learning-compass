@@ -47,7 +47,7 @@ export type Route = {
 export const roots: RootDefinition[] = [
   { key: 'home', label: 'Home', defaultMode: 'today', defaultView: 'today' },
   { key: 'library', label: 'Library', defaultMode: 'books', defaultView: 'books' },
-  { key: 'learn', label: 'Learn', defaultMode: 'paths', defaultView: 'paths' },
+  { key: 'learn', label: 'Learn', defaultMode: 'practice', defaultFocus: 'notes', defaultView: 'notes' },
   { key: 'map', label: 'Map', defaultMode: 'atlas', defaultView: 'atlas' },
   { key: 'settings', label: 'Settings', defaultMode: 'personal', defaultFocus: 'profile', defaultView: 'profile' },
 ]
@@ -70,7 +70,7 @@ export const modes: Record<RootKey, ModeDefinition[]> = {
       focuses: [focus('archive', 'Archive', 'Completed and excluded sources kept for recovery.')],
     },
     {
-      key: 'assets', label: 'Assets', description: 'Open files and reading companions.', defaultView: 'files', defaultFocus: 'files',
+      key: 'assets', label: 'Files', description: 'Open files and reading companions.', defaultView: 'files', defaultFocus: 'files',
       focuses: [focus('files', 'Files', 'Uploaded files and generated reading companions.')],
     },
   ],
@@ -90,7 +90,7 @@ export const modes: Record<RootKey, ModeDefinition[]> = {
       key: 'personal', label: 'Personal', description: 'Tune priorities and learning behavior.', defaultView: 'profile', defaultFocus: 'profile',
       focuses: [focus('profile', 'Profile', 'Priorities, exclusions, and learned patterns.'), focus('preferences', 'Preferences', 'Learning, recall, and curation defaults.')],
     },
-    { key: 'data', label: 'Data & sync', description: 'Inspect exports, storage, and recovery.', defaultView: 'data' },
+    { key: 'data', label: 'Data & recovery', description: 'Inspect exports, storage, and recovery.', defaultView: 'data' },
     { key: 'system', label: 'System', description: 'Inspect capabilities, schedules, and safety.', defaultView: 'system' },
   ],
 }
@@ -225,6 +225,14 @@ function defaultState(root: RootKey) {
   return { mode: meta.defaultMode, focus: meta.defaultFocus }
 }
 
+function implicitObjectState(root: RootKey, type: string | undefined) {
+  if (root !== 'learn' || !type) return undefined
+  if (['thread', 'level', 'lesson', 'canon-domain'].includes(type)) return { mode: 'paths', focus: undefined }
+  if (type === 'card') return { mode: 'practice', focus: 'recall' }
+  if (['note', 'unit'].includes(type)) return { mode: 'practice', focus: 'notes' }
+  return undefined
+}
+
 function normalizeState(root: RootKey, requestedMode: string | undefined, requestedFocus: string | undefined): { mode: string; focus?: string; invalid: boolean } {
   const fallback = defaultState(root)
   let mode = requestedMode
@@ -343,8 +351,9 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const pathState = segmentState || (pathSegment && modeMeta(root, pathSegment) ? { root, mode: pathSegment } : undefined)
   const queryMode = originalQuery.get('mode') || undefined
   const queryFocus = originalQuery.get('focus') || undefined
-  const requestedMode = movedBookObject || movedBooksQuery ? 'books' : queryMode || exactAlias?.mode || pathState?.mode
-  const rawRequestedFocus = movedBookObject || movedBooksQuery ? undefined : queryFocus || exactAlias?.focus || pathState?.focus
+  const objectState = !queryMode && !queryFocus && !exactAlias ? implicitObjectState(root, objectType) : undefined
+  const requestedMode = movedBookObject || movedBooksQuery ? 'books' : queryMode || exactAlias?.mode || objectState?.mode || pathState?.mode
+  const rawRequestedFocus = movedBookObject || movedBooksQuery ? undefined : queryFocus || exactAlias?.focus || objectState?.focus || pathState?.focus
   const legacyBooksFocus = root === 'library' && requestedMode === 'books' && ['shelf', 'atlas'].includes(String(rawRequestedFocus || ''))
   const retiredCatalogFocus = root === 'library' && requestedMode === 'catalog' && ['all', 'journal', 'collections'].includes(String(rawRequestedFocus || ''))
   const retiredMapFocus = root === 'map' && requestedMode === 'review' && ['branches', 'balance'].includes(String(rawRequestedFocus || ''))
@@ -363,8 +372,10 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
       ? canonDomainPath
         ? `/learn/canon/${encodeURIComponent(objectId || '')}`
         : lessonPath || levelPath
-        ? `/learn/t/${encodeURIComponent(parentObjectId || '')}/${lessonPath ? 'l' : 'v'}/${encodeURIComponent(objectId || '')}${queryFor(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)}`
-        : canonicalObject(root, objectType!, objectId || '', state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
+        ? `/learn/t/${encodeURIComponent(parentObjectId || '')}/${lessonPath ? 'l' : 'v'}/${encodeURIComponent(objectId || '')}${objectState ? '' : queryFor(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)}`
+        : objectState
+          ? `/${root}/${encodeURIComponent(objectType!)}/${encodeURIComponent(objectId || '')}`
+          : canonicalObject(root, objectType!, objectId || '', state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
       : canonicalRoot(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
   const rawComparable = rawPath + (queryString ? `?${queryString}` : '')
   const changed = canonical !== rawComparable
@@ -402,6 +413,8 @@ export function routeHref(root: RootKey, mode?: string, focusValue?: string) {
 
 /** Typed records remain addressable while their owning root/mode/focus is preserved. */
 export function objectHref(root: RootKey, type: string, id: string, mode?: string, focusValue?: string) {
+  const objectState = mode || focusValue ? undefined : implicitObjectState(root, type)
+  if (objectState) return `#/${root}/${encodeURIComponent(type)}/${encodeURIComponent(id)}`
   const state = normalizeHrefState(root, mode, focusValue)
   const explicitLeaf = Boolean(mode && !modeMeta(root, mode) && leafMeta(root, mode))
   const explicitFocus = Boolean(focusValue)

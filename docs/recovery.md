@@ -16,7 +16,7 @@ For a production export, make the scope explicit:
 node scripts/export-recovery.mjs --remote --output backups/learning-compass-remote.sql
 ```
 
-Each export produces `*.manifest.json` beside the SQL file. The manifest records the source (`local` or `remote`), export method, SQL byte count and SHA-256, and hashes of the migration files used to interpret the dump. Local Wrangler currently refuses FTS5 virtual tables, so the script falls back to SQLite's native `.dump` only for the exact local Wrangler D1 file and records that fallback in the manifest. Verify before storing or restoring it:
+Each export produces `*.manifest.json` beside the SQL file. The manifest records the source (`local` or `remote`), export method, SQL byte count and SHA-256, and hashes of the migration files used to interpret the dump. Migration `0067_portable_search_and_lineage_repair.sql` replaces the former FTS5 virtual table with an ordinary derived search projection, so both local and remote Wrangler exports are expected to use the normal D1 exporter. The local SQLite fallback remains a compatibility path for older pre-0067 fixtures only; a production database that still exposes any virtual table is not backup-ready. Verify before storing or restoring it:
 
 ```bash
 npm run verify:recovery -- backups/learning-compass-remote.sql.manifest.json

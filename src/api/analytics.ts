@@ -112,8 +112,10 @@ app.post('/snapshot', async (c) => {
   const { DB } = c.env
   try {
     const token = c.req.header('x-api-token')
+    const cookie = c.req.header('cookie')
     const headers: Record<string, string> = {}
     if (token) headers['x-api-token'] = token
+    if (cookie) headers.cookie = cookie
     const metricsRes = await fetch(new URL('/analytics/recommendations?days=30', c.req.url).toString(), { headers })
     const metrics = await metricsRes.json<any>()
     const id = `snap_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`

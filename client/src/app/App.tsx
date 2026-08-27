@@ -74,7 +74,7 @@ function workspace(route: Route, onCapture: () => void, onInspect: (selection: I
     const mapRoute = { view: route.view as MapWorkspaceRoute['view'], objectType: route.objectType as MapObjectType | undefined, objectId: route.objectId }
     return <MapWorkspace route={mapRoute} onRouteChange={(next) => navigate(mapRouteHref(next))}/>
   }
-  return <SettingsWorkspace route={{ view: route.view as SettingsWorkspaceRoute['view'] }} onRouteChange={(next: SettingsWorkspaceRoute) => navigate(routeHref('settings', next.view))}/>
+  return <SettingsWorkspace route={{ view: route.view as SettingsWorkspaceRoute['view'] }} onRouteChange={(next: SettingsWorkspaceRoute) => navigate(routeHref('settings', next.view))} onCapture={onCapture}/>
 }
 
 export function App() {

@@ -45,9 +45,7 @@ function formatBranchPill(branch?: LibraryRecord | null) {
   const label = String(branch.label || branch.title || '').trim()
   if (!label) return null
 
-  const roundText = String(branch.round || branch.round_label || '').trim()
-
-  return { label, round: roundText, linkable: branch.linkable !== false && branch.verified !== false }
+  return { label, linkable: branch.linkable !== false && branch.verified !== false }
 }
 
 export const computeBookProgress = bookProgress
@@ -95,7 +93,6 @@ function bookSearchText(book: LibraryRecord) {
     sourceCreator(book),
     book.why_this,
     book.branch?.label,
-    book.branch?.round,
     parseMetadata(book.source_metadata_json).isbn,
     ...canon,
     ...threads,

@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { Bindings, safeError, isNonEmptyStr, escapeHtml } from '../lib'
+import { Bindings, safeError, safeErrorMessage, isNonEmptyStr, escapeHtml } from '../lib'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -61,7 +61,7 @@ app.get('/download/:id', async (c) => {
       }
     })
   } catch (err) {
-    console.error('[html/download]', err)
+    console.error('[html/download]', safeErrorMessage(err))
     return c.text('Download failed', 500)
   }
 })
@@ -232,7 +232,7 @@ window.onload = function() {};
       headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Frame-Options': 'ALLOWALL' }
     })
   } catch (err) {
-    console.error('[html/print]', err)
+    console.error('[html/print]', safeErrorMessage(err))
     return c.text('Print view failed', 500)
   }
 })

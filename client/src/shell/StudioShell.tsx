@@ -63,7 +63,7 @@ export function StudioShell({ route, children, inspector, onInspectorClose, onCa
         </div>
         <div class="rail-top" aria-label="Global tools">
           <button type="button" class="rail-command" onClick={onSearch} aria-keyshortcuts="Control+K Meta+K" title="Search (Ctrl/Command K)"><Icon name="search" size={19}/><span class="rail-label">Search</span></button>
-          <button type="button" class="rail-command rail-command-capture" onClick={onCapture} title="Save source" aria-label="Save source"><Icon name="capture" size={20}/><span class="rail-label" aria-hidden="true">Capture</span></button>
+          <button type="button" class="rail-command rail-command-capture" onClick={onCapture} title="Add anything" aria-label="Add anything"><Icon name="capture" size={20}/><span class="rail-label" aria-hidden="true">Add</span></button>
         </div>
         {roots.map((item) => <a key={item.key} href={routeHref(item.key)} class={route.root === item.key ? 'active' : ''} aria-current={route.root === item.key ? 'page' : undefined} title={item.label} aria-label={item.label}>
           <Icon name={rootIcons[item.key]} size={20}/><span class="rail-label">{item.label}</span>

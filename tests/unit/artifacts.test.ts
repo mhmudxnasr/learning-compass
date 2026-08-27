@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createServer, type ViteDevServer } from 'vite'
-import { LITE_VISUAL_RECEIPT_SCHEMA, LITE_VISUAL_WORKFLOW_CONTRACT, mergeArtifactMultipartMetadata, normalizeQualityAssurance, sha256Hex, validateArtifactIntegrity, validateLiteVisualPair } from '../../src/artifact-metadata.ts'
+import { inspectArtifactContent, LITE_VISUAL_RECEIPT_SCHEMA, LITE_VISUAL_WORKFLOW_CONTRACT, mergeArtifactMultipartMetadata, normalizeQualityAssurance, sha256Hex, validateArtifactIntegrity, validateLiteVisualPair } from '../../src/artifact-metadata.ts'
 
 let artifactsApp: any
 let vite: ViteDevServer
@@ -60,6 +60,28 @@ test('artifact integrity accepts real HTML and PDF signatures', () => {
   assert.deepEqual(validateArtifactIntegrity({ role: 'html' }, { name: 'companion.html', type: 'text/html' }, new TextEncoder().encode('<!doctype html><html></html>').buffer), [])
   assert.deepEqual(validateArtifactIntegrity({ role: 'pdf' }, { name: 'companion.pdf', type: 'application/pdf' }, new TextEncoder().encode('%PDF-1.7').buffer), [])
   assert.ok(validateArtifactIntegrity({ role: 'pdf' }, { name: 'companion.pdf', type: 'application/pdf' }, new TextEncoder().encode('<html>').buffer).some((failure) => failure.includes('PDF signature')))
+})
+
+test('artifact inspection rejects active or disguised content before R2 storage', () => {
+  const cases = [
+    [{}, { name: 'payload.svg', type: 'image/svg+xml' }, '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'],
+    [{}, { name: 'notes.txt', type: 'text/plain' }, '<?xml version="1.0"?><svg onload="alert(1)"/>'],
+    [{ role: 'html' }, { name: 'companion.html', type: 'text/html' }, '<!doctype html><html><body><script>alert(1)</script></body></html>'],
+    [{ role: 'html' }, { name: 'companion.html', type: 'text/html' }, '<!doctype html><html><body onload="alert(1)"></body></html>'],
+    [{ role: 'pdf' }, { name: 'companion.pdf', type: 'application/pdf' }, '<!doctype html><html></html>'],
+  ] as const
+  for (const [metadata, file, body] of cases) {
+    const result = inspectArtifactContent(metadata, file, new TextEncoder().encode(body).buffer)
+    assert.equal(result.ok, false, `${file.name} was accepted`)
+    assert.equal(result.mediaType, null)
+  }
+  const arabic = inspectArtifactContent(
+    { role: 'html' },
+    { name: 'companion.html', type: 'text/html' },
+    new TextEncoder().encode('<!doctype html><html lang="ar" dir="rtl"><head><style>body{font-family:sans-serif}</style></head><body><article>شرح عربي</article></body></html>').buffer,
+  )
+  assert.equal(arabic.ok, true, arabic.failures.join('\n'))
+  assert.equal(arabic.mediaType, 'text/html; charset=utf-8')
 })
 
 test('artifact role cannot bypass the uploaded media contract', () => {
@@ -150,6 +172,113 @@ class PairDatabase {
     return statements.map(() => ({ success: true }))
   }
 }
+
+class ArtifactDatabase {
+  inserted: unknown[] | null = null
+  failInsert = false
+  private readonly row?: Record<string, unknown>
+
+  constructor(row?: Record<string, unknown>) { this.row = row }
+
+  prepare(sql: string) {
+    const statement: any = {
+      values: [] as unknown[],
+      bind: (...values: unknown[]) => { statement.values = values; return statement },
+      first: async () => sql.includes('SELECT * FROM artifacts') || sql.includes('SELECT id,filename,media_type,r2_key FROM artifacts') ? this.row || null : null,
+      all: async () => ({ results: [] }),
+      run: async () => {
+        if (sql.includes('INSERT INTO artifacts')) {
+          this.inserted = statement.values
+          if (this.failInsert) throw new Error('forced insert failure')
+        }
+        return { success: true, meta: { changes: 1 } }
+      },
+    }
+    return statement
+  }
+
+  async batch(statements: any[]) { return Promise.all(statements.map((statement) => statement.run())) }
+}
+
+const r2Object = (body: string) => ({ body: new Blob([body]).stream(), text: async () => body })
+
+test('generic upload stores only inspected canonical media and rejects scriptable payloads', async () => {
+  const validDb = new ArtifactDatabase()
+  const puts: Array<{ key: string; value: unknown; contentType?: string }> = []
+  const valid = new FormData()
+  valid.set('file', new Blob(['<!doctype html><html lang="ar" dir="rtl"><body><article>رفيق عربي</article></body></html>'], { type: 'text/html' }), 'arabic.html')
+  valid.set('metadata', JSON.stringify({ generator: 'other', role: 'html' }))
+  const validResponse = await artifactsApp.request('https://compass.test/', { method: 'POST', body: valid }, {
+    DB: validDb,
+    ARTIFACTS: { put: async (key: string, value: unknown, options: any) => puts.push({ key, value, contentType: options?.httpMetadata?.contentType }) },
+  } as any)
+  assert.equal(validResponse.status, 201, await validResponse.text())
+  assert.equal(puts[0]?.contentType, 'text/html; charset=utf-8')
+  assert.equal(validDb.inserted?.[2], 'text/html; charset=utf-8')
+
+  for (const [name, type, body] of [
+    ['payload.svg', 'image/svg+xml', '<svg onload="alert(1)"/>'],
+    ['payload.txt', 'text/plain', '<svg onload="alert(1)"/>'],
+    ['payload.html', 'text/html', '<!doctype html><html><script>alert(1)</script></html>'],
+  ]) {
+    const db = new ArtifactDatabase()
+    let stored = false
+    const form = new FormData()
+    form.set('file', new Blob([body], { type }), name)
+    const response = await artifactsApp.request('https://compass.test/', { method: 'POST', body: form }, {
+      DB: db,
+      ARTIFACTS: { put: async () => { stored = true } },
+    } as any)
+    assert.equal(response.status, 422, `${name}: ${await response.text()}`)
+    assert.equal(stored, false)
+    assert.equal(db.inserted, null)
+  }
+})
+
+test('generic upload removes its staged R2 object when the D1 insert fails', async () => {
+  const db = new ArtifactDatabase()
+  db.failInsert = true
+  const puts: string[] = []
+  const deletes: string[] = []
+  const form = new FormData()
+  form.set('file', new Blob(['<!doctype html><html lang="ar" dir="rtl"><body><article>رفيق عربي</article></body></html>'], { type: 'text/html' }), 'arabic.html')
+  const response = await artifactsApp.request('https://compass.test/', { method: 'POST', body: form }, {
+    DB: db,
+    ARTIFACTS: {
+      put: async (key: string) => { puts.push(key) },
+      delete: async (key: string) => { deletes.push(key) },
+    },
+  } as any)
+  assert.equal(response.status, 500)
+  assert.equal(puts.length, 1)
+  assert.deepEqual(deletes, puts)
+})
+
+test('served HTML remains readable but sandboxed, while active XML is forced to download', async () => {
+  const htmlBody = '<!doctype html><html lang="ar" dir="rtl"><body><p>شرح عربي</p><script>globalThis.compromised=true</script></body></html>'
+  const htmlResponse = await artifactsApp.request('https://compass.test/html-id', {}, {
+    DB: new ArtifactDatabase({ id: 'html-id', filename: 'companion.html', media_type: 'text/html; charset=utf-8', r2_key: 'html-key' }),
+    ARTIFACTS: { get: async () => r2Object(htmlBody) },
+  } as any)
+  assert.equal(htmlResponse.status, 200)
+  assert.match(htmlResponse.headers.get('content-type') || '', /^text\/html/)
+  assert.match(htmlResponse.headers.get('content-disposition') || '', /^inline/)
+  const htmlCsp = htmlResponse.headers.get('content-security-policy') || ''
+  assert.match(htmlCsp, /(?:^|;)\s*sandbox(?:;|$)/)
+  assert.match(htmlCsp, /script-src 'none'/)
+  assert.doesNotMatch(htmlCsp, /script-src 'unsafe-inline'/)
+  assert.match(await htmlResponse.text(), /شرح عربي/)
+
+  const svgResponse = await artifactsApp.request('https://compass.test/svg-id', {}, {
+    DB: new ArtifactDatabase({ id: 'svg-id', filename: 'payload.svg', media_type: 'text/plain', r2_key: 'svg-key' }),
+    ARTIFACTS: { get: async () => r2Object('<svg onload="alert(1)"/>') },
+  } as any)
+  assert.equal(svgResponse.status, 200)
+  assert.equal(svgResponse.headers.get('content-type'), 'application/octet-stream')
+  assert.match(svgResponse.headers.get('content-disposition') || '', /^attachment/)
+  assert.match(svgResponse.headers.get('content-security-policy') || '', /script-src 'none'/)
+  assert.equal(svgResponse.headers.get('x-content-type-options'), 'nosniff')
+})
 
 async function atomicPairForm() {
   const { htmlText, pdfText, source } = atomicPairFixture()

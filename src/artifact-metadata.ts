@@ -6,10 +6,127 @@ export type ArtifactMetadataValidation =
   | { ok: true; metadata: Record<string, unknown>; failures: [] }
   | { ok: false; metadata: Record<string, unknown>; failures: string[] }
 
+export type ArtifactContentInspection = {
+  ok: boolean
+  mediaType: string | null
+  failures: string[]
+}
+
 export const LITE_VISUAL_WORKFLOW_CONTRACT = 'lite-visual-linear/v4'
 export const LITE_VISUAL_RECEIPT_SCHEMA = 'lite-visual-validation/v5'
 const SHA256_RE = /^[a-f0-9]{64}$/
 const PAIR_ID_RE = /^lv-[a-zA-Z0-9._-]+$/
+const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024
+type ArtifactMediaKind = 'html' | 'pdf' | 'markdown' | 'text' | 'video' | 'audio'
+
+const ALLOWED_MEDIA_TYPES: Record<string, { kind: ArtifactMediaKind; canonical: string }> = {
+  'text/html': { kind: 'html', canonical: 'text/html; charset=utf-8' },
+  'application/pdf': { kind: 'pdf', canonical: 'application/pdf' },
+  'text/markdown': { kind: 'markdown', canonical: 'text/markdown; charset=utf-8' },
+  'text/x-markdown': { kind: 'markdown', canonical: 'text/markdown; charset=utf-8' },
+  'text/plain': { kind: 'text', canonical: 'text/plain; charset=utf-8' },
+  'video/mp4': { kind: 'video', canonical: 'video/mp4' },
+  'video/x-m4v': { kind: 'video', canonical: 'video/mp4' },
+  'video/webm': { kind: 'video', canonical: 'video/webm' },
+  'video/quicktime': { kind: 'video', canonical: 'video/quicktime' },
+  'audio/mpeg': { kind: 'audio', canonical: 'audio/mpeg' },
+  'audio/mp4': { kind: 'audio', canonical: 'audio/mp4' },
+  'audio/x-m4a': { kind: 'audio', canonical: 'audio/mp4' },
+  'audio/webm': { kind: 'audio', canonical: 'audio/webm' },
+  'audio/ogg': { kind: 'audio', canonical: 'audio/ogg' },
+  'audio/opus': { kind: 'audio', canonical: 'audio/opus' },
+  'audio/wav': { kind: 'audio', canonical: 'audio/wav' },
+  'audio/x-wav': { kind: 'audio', canonical: 'audio/wav' },
+}
+
+const EXTENSION_MEDIA: Record<string, { kind: ArtifactMediaKind | 'webm'; canonical: string }> = {
+  html: { kind: 'html', canonical: 'text/html; charset=utf-8' },
+  htm: { kind: 'html', canonical: 'text/html; charset=utf-8' },
+  pdf: { kind: 'pdf', canonical: 'application/pdf' },
+  md: { kind: 'markdown', canonical: 'text/markdown; charset=utf-8' },
+  markdown: { kind: 'markdown', canonical: 'text/markdown; charset=utf-8' },
+  txt: { kind: 'text', canonical: 'text/plain; charset=utf-8' },
+  mp4: { kind: 'video', canonical: 'video/mp4' },
+  m4v: { kind: 'video', canonical: 'video/mp4' },
+  mov: { kind: 'video', canonical: 'video/quicktime' },
+  webm: { kind: 'webm', canonical: 'video/webm' },
+  mp3: { kind: 'audio', canonical: 'audio/mpeg' },
+  m4a: { kind: 'audio', canonical: 'audio/mp4' },
+  ogg: { kind: 'audio', canonical: 'audio/ogg' },
+  opus: { kind: 'audio', canonical: 'audio/opus' },
+  wav: { kind: 'audio', canonical: 'audio/wav' },
+}
+
+const activeXmlMedia = (mediaType: string) => /^(?:image\/svg\+xml|application\/(?:xml|xhtml\+xml)|text\/xml)$/.test(mediaType)
+const extensionOf = (name: string) => name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || ''
+const mediaKindCompatible = (declared: ArtifactMediaKind, extension: ArtifactMediaKind | 'webm') => extension === 'webm'
+  ? declared === 'video' || declared === 'audio'
+  : declared === extension || (['text', 'markdown'].includes(declared) && ['text', 'markdown'].includes(extension))
+
+const startsWithBytes = (bytes: Uint8Array, expected: number[], offset = 0) => expected.every((value, index) => bytes[offset + index] === value)
+const hasIsoMediaSignature = (bytes: Uint8Array) => bytes.length >= 12 && new TextDecoder().decode(bytes.slice(4, 8)) === 'ftyp'
+const hasWebmSignature = (bytes: Uint8Array) => startsWithBytes(bytes, [0x1a, 0x45, 0xdf, 0xa3])
+
+export function inspectArtifactContent(
+  metadata: Record<string, unknown>,
+  file: { name?: string; type?: string; size?: number },
+  bytes: ArrayBuffer,
+): ArtifactContentInspection {
+  const failures: string[] = []
+  const view = new Uint8Array(bytes)
+  const filename = String(file.name || '')
+  const extension = extensionOf(filename)
+  const declaredType = String(file.type || '').toLowerCase().split(';', 1)[0].trim()
+  const declared = ALLOWED_MEDIA_TYPES[declaredType]
+  const extensionMedia = EXTENSION_MEDIA[extension]
+  const head = new TextDecoder().decode(view.slice(0, 4096)).replace(/^\uFEFF/, '').trimStart()
+  const activeXml = activeXmlMedia(declaredType) || ['svg', 'xml', 'xhtml', 'xsl'].includes(extension) || /^<\?xml\b/i.test(head) || /^<svg\b/i.test(head)
+
+  if (!view.byteLength) failures.push('artifact must not be empty')
+  if (view.byteLength > MAX_ARTIFACT_BYTES) failures.push('artifact must not exceed 10 MB')
+  if (activeXml) failures.push('SVG, XML, and XHTML artifacts are not supported')
+  if (declaredType && declaredType !== 'application/octet-stream' && !declared && !activeXmlMedia(declaredType)) failures.push('artifact media type is not supported')
+  if (!declared && !extensionMedia) failures.push('artifact must use a supported media type or filename extension')
+  if (declared && extensionMedia && !mediaKindCompatible(declared.kind, extensionMedia.kind)) failures.push('artifact filename extension does not match its media type')
+
+  const kind = declared?.kind || (extensionMedia?.kind === 'webm' ? 'video' : extensionMedia?.kind)
+  let mediaType = declared?.canonical || extensionMedia?.canonical || null
+  if (extensionMedia?.kind === 'webm' && declared?.kind === 'audio') mediaType = declared.canonical
+
+  if (kind === 'pdf' && new TextDecoder().decode(view.slice(0, 5)) !== '%PDF-') failures.push('PDF artifact must have a valid PDF signature')
+  if (kind === 'html') {
+    if (!/<\s*!doctype\s+html|<\s*html[\s>]/i.test(head)) failures.push('HTML artifact must contain a document root')
+    const html = new TextDecoder().decode(view)
+    if (/<\s*(?:script|iframe|object|embed)\b/i.test(html) || /\son[a-z][a-z0-9_-]*\s*=/i.test(html) || /(?:href|src)\s*=\s*["']?\s*javascript\s*:/i.test(html) || /<meta\b[^>]*http-equiv\s*=\s*["']?refresh\b/i.test(html)) {
+      failures.push('HTML artifact must not contain executable or embedded active content')
+    }
+  }
+  if (kind === 'markdown' || kind === 'text') {
+    try {
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(view)
+      if (text.includes('\0')) failures.push('text artifact must contain valid UTF-8 text')
+    } catch { failures.push('text artifact must contain valid UTF-8 text') }
+  }
+  if (kind === 'video') {
+    if (mediaType === 'video/webm' ? !hasWebmSignature(view) : !hasIsoMediaSignature(view)) failures.push('video artifact must have a valid container signature')
+  }
+  if (kind === 'audio') {
+    const valid = mediaType === 'audio/webm' ? hasWebmSignature(view)
+      : mediaType === 'audio/mp4' ? hasIsoMediaSignature(view)
+        : mediaType === 'audio/mpeg' ? new TextDecoder().decode(view.slice(0, 3)) === 'ID3' || (view[0] === 0xff && (view[1] & 0xe0) === 0xe0)
+          : mediaType === 'audio/ogg' || mediaType === 'audio/opus' ? new TextDecoder().decode(view.slice(0, 4)) === 'OggS'
+            : mediaType === 'audio/wav' ? new TextDecoder().decode(view.slice(0, 4)) === 'RIFF' && new TextDecoder().decode(view.slice(8, 12)) === 'WAVE'
+              : false
+    if (!valid) failures.push('audio artifact must have a valid container signature')
+  }
+
+  const role = String(metadata.role || '').toLowerCase()
+  if (role === 'html' && kind !== 'html') failures.push('role html does not match uploaded media')
+  if (role === 'pdf' && kind !== 'pdf') failures.push('role pdf does not match uploaded media')
+  if (role === 'video' && kind !== 'video') failures.push('role video does not match uploaded media')
+
+  return { ok: failures.length === 0, mediaType: failures.length ? null : mediaType, failures: [...new Set(failures)] }
+}
 
 export type LiteVisualValidationReceipt = {
   schema_version?: unknown
@@ -82,21 +199,7 @@ export async function validateLiteVisualPair(
 }
 
 export function validateArtifactIntegrity(metadata: Record<string, unknown>, file: { name?: string; type?: string; size?: number }, bytes: ArrayBuffer) {
-  const failures: string[] = []
-  if (!bytes.byteLength) failures.push('artifact must not be empty')
-  const role = String(metadata.role || '').toLowerCase()
-  const filename = String(file.name || '').toLowerCase()
-  const mediaType = String(file.type || '').toLowerCase()
-  const view = new Uint8Array(bytes)
-  if (role === 'pdf' || mediaType.includes('pdf') || filename.endsWith('.pdf')) {
-    const signature = new TextDecoder().decode(view.slice(0, 5))
-    if (signature !== '%PDF-') failures.push('PDF artifact must have a valid PDF signature')
-  }
-  if (role === 'html' || mediaType.includes('html') || /\.html?$/.test(filename)) {
-    const head = new TextDecoder().decode(view.slice(0, 4096)).toLowerCase()
-    if (!/<\s*!doctype\s+html|<\s*html[\s>]/.test(head)) failures.push('HTML artifact must contain a document root')
-  }
-  return failures
+  return inspectArtifactContent(metadata, file, bytes).failures
 }
 
 function parseBoolean(value: unknown, key: string) {

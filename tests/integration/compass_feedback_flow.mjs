@@ -25,9 +25,9 @@ try {
     ['d1', 'migrations', 'apply', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir],
   ]) await run(args)
 
-  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8792'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true })
+  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8792', '--var', 'REQUIRE_API_AUTH:false', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true })
   for (let attempt = 0; attempt < 60; attempt++) {
-    try { if ((await fetch('http://127.0.0.1:8792/health')).ok) break } catch {}
+    try { if ((await fetch('http://127.0.0.1:8792/health/live')).ok) break } catch {}
     if (attempt === 59) throw new Error('Worker did not start')
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
@@ -65,7 +65,7 @@ try {
   const declinedEvent = feedbackContext.body.feedback_events.find((event) => event.pick_id === 'pick_decline')
   assert.equal(declinedEvent.lane, 'fit')
   assert.equal(declinedEvent.branch_id, 'compass-branch')
-  assert.equal(declinedEvent.round, 'R1')
+  assert.equal('round' in declinedEvent, false)
   assert.equal(declinedEvent.outcome, 'declined')
   assert.equal(declinedEvent.structured.effort, 'light')
   assert.deepEqual(declinedEvent.reason_tags, ['too_shallow'])
@@ -83,7 +83,7 @@ try {
   assert.equal(declinedExposure.engine, 'v1')
   assert.equal(declinedExposure.lane, 'fit')
   assert.equal(declinedExposure.branch_id, 'compass-branch')
-  assert.equal(declinedExposure.round, 'R1')
+  assert.equal('round' in declinedExposure, false)
 
   await query(`
     INSERT INTO recommendations (id,video_title,creator,content_type,video_url,status,dedup_key) VALUES ('rec_complete','Completed source','Creator B','lecture','https://example.org/completed','active','completed-source');
@@ -180,6 +180,7 @@ try {
   const firstOrdinaryFeedback = await request('/feedback/record', { method: 'POST', body: JSON.stringify({
     source_url: 'https://example.org/ordinary-feedback-history',
     title: 'Ordinary feedback history',
+    branch_id: 'compass-branch',
     feedback: 'I need to continue this when I have a longer block.',
     completion_state: 'in_progress',
     reason_tags: ['not_now'],
@@ -190,6 +191,8 @@ try {
     disposition: 'reference',
   }) })
   assert.equal(firstOrdinaryFeedback.status, 200)
+  const firstOrdinaryRecord = await request(`/capture/${firstOrdinaryFeedback.body.source.id}/record`)
+  assert.equal(firstOrdinaryRecord.body.item.branch_id, 'compass-branch')
   const secondOrdinaryFeedback = await request('/feedback/record', { method: 'POST', body: JSON.stringify({
     recommendation_id: firstOrdinaryFeedback.body.source.id,
     feedback: 'Finished it later; the final mechanism was worth retaining.',
@@ -203,6 +206,8 @@ try {
     disposition: 'retain',
   }) })
   assert.equal(secondOrdinaryFeedback.status, 200)
+  const secondOrdinaryRecord = await request(`/capture/${firstOrdinaryFeedback.body.source.id}/record`)
+  assert.equal(secondOrdinaryRecord.body.item.branch_id, 'compass-branch')
   const ordinaryFeedbackContext = await request('/feedback/context')
   const ordinaryEvents = ordinaryFeedbackContext.body.feedback_events.filter((event) => event.recommendation_id === firstOrdinaryFeedback.body.source.id && event.source !== 'compass_pick')
   assert.equal(ordinaryEvents.length, 2)

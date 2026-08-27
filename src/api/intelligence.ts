@@ -66,7 +66,7 @@ async function engineReadiness(DB: D1Database) {
 
 app.get('/knowledge/graph', async (c) => {
   const [nodes, explicit, hierarchy] = await Promise.all([
-    all(c.env.DB.prepare(`SELECT id,type,label,super_category,parent_id,status,round_label,meta_json FROM tree_nodes ORDER BY type,label LIMIT 1500`)),
+    all(c.env.DB.prepare(`SELECT id,type,label,super_category,parent_id,status,meta_json FROM tree_nodes ORDER BY type,label LIMIT 1500`)),
     allOr(c.env.DB.prepare(`SELECT id,source_id,target_id,relation_type,evidence_json,confidence FROM knowledge_edges ORDER BY confidence DESC LIMIT 1000`)),
     all(c.env.DB.prepare(`SELECT 'parent-'||id id,parent_id source_id,id target_id,'hierarchy' relation_type,'[]' evidence_json,1 confidence FROM tree_nodes WHERE parent_id IS NOT NULL`)),
   ])

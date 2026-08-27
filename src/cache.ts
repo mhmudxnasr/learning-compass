@@ -20,6 +20,11 @@ function makeCacheKey(key: string): Request {
 }
 
 export async function cached<T>(key: string, ttlMs: number, fetcher: () => Promise<T>): Promise<T> {
+  // A zero TTL is an explicit no-cache contract used by mutation-confirming
+  // reads. Do not let the Edge Cache's one-second minimum resurrect stale
+  // state immediately after a write or revert.
+  if (ttlMs <= 0) return fetcher()
+
   const now = Date.now()
   const inMemory = store.get(key)
   if (inMemory && inMemory.expiresAt > now) {

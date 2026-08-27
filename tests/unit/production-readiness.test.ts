@@ -78,3 +78,22 @@ test('unexpected request failures return a structured request-id envelope', () =
   assert.match(index, /request_id: requestId/)
   assert.match(index, /unhandled_request_error/)
 })
+
+test('Learning Compass has no browser or Worker API-token gate', () => {
+  const index = readFileSync('src/index.ts', 'utf8')
+  const browser = readFileSync('client/src/auth.ts', 'utf8')
+  const config = readFileSync('wrangler.toml', 'utf8')
+  assert.doesNotMatch(index, /x-api-token|auth\/session|authentication_required|private_mode_misconfigured/)
+  assert.doesNotMatch(index, /c\.req\.query\('token'\)/)
+  assert.doesNotMatch(config, /REQUIRE_API_AUTH/)
+  assert.doesNotMatch(browser, /window\.prompt|auth\/session/)
+  assert.match(browser, /credentials: 'same-origin'/)
+})
+
+test('first-party responses expose local timing and conservative D1 budget evidence', () => {
+  const index = readFileSync('src/index.ts', 'utf8')
+  assert.match(index, /Server-Timing/)
+  assert.match(index, /X-Response-Time-Ms/)
+  assert.match(index, /X-D1-Estimated-Rows-Read/)
+  assert.match(index, /X-D1-Estimated-Rows-Written/)
+})
