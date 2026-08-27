@@ -746,11 +746,9 @@ app.patch('/content-types', async (c) => {
     })
     if (nonYoutube.length) return c.json({ error: 'video_type_requires_youtube_url', ids: nonYoutube.map((row: any) => row.id) }, 409)
 
-    for (const batch of chunkForD1(ids)) {
-      await c.env.DB.batch(batch.map((id) => c.env.DB.prepare(
-        `UPDATE recommendations SET content_type='video',updated_at=datetime('now') WHERE id=?`
-      ).bind(id)))
-    }
+    await c.env.DB.batch(ids.map((id) => c.env.DB.prepare(
+      `UPDATE recommendations SET content_type='video',updated_at=datetime('now') WHERE id=?`
+    ).bind(id)))
     return c.json({ ok: true, requested: ids.length, updated: ids.length, content_type: 'video', ids })
   } catch (err) {
     return c.json(safeError('Content type repair failed')(err), 500)
