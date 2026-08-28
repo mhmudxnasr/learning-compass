@@ -20,6 +20,12 @@ Learning Compass uses the first-party HTTP client at `~/.hermes/skills/workflow/
 
 The direct client is not a general proxy. It restricts origins, methods, response size, redirects, credentials, mutation paths, and output. The Worker remains the only owner of validation and canonical state transitions.
 
+### Lite Visual corpus replacement
+
+Production verifies `lite-visual-validation/v6` receipts with the `LITE_VISUAL_RECEIPT_SIGNING_KEY` Worker secret; the local validator signs with the matching mode-0600 Hermes key. Never print, commit, upload, or include that key in a receipt. The Worker fails closed when the secret or R2 binding is absent.
+
+Large replacement runs create one manifest-, ordered-target-set-, and aggregate-audit-bound corpus through `POST /artifacts/corpora`. The authoritative Riyadh target-set SHA-256 is `18a24b536b45d5c95fd55e638b334f8f933d6707ee024c6672f3fcc45b451f3f`; never narrow the manifest to make validation pass. Each pair upload must derive its identity from the five receipt hashes, match one active `visualise_source` job and current-pair supersession precondition, survive R2 head verification, and remain `staged`. Staging can resume over multiple UTC write windows without changing the visible companions. Application-only releases may proceed through the normal verified deployment lane only when they perform no corpus mutation. Do not register a corpus, stage, upload, activate, or roll back while any signed-v6 target lacks accepted semantic-completeness evidence, the aggregate `lite-visual-corpus-audit/v1` is incomplete, or independent review is absent. After that corpus hard stop clears, activate only through `POST /artifacts/corpora/:id/activate` with the exact corpus preconditions; one D1 transaction exposes all expected pairs, supersedes prior pairs, completes the bound jobs, and moves the Thread pointer. If any precondition or readback fails, do not retry blindly or alter the active corpus: reconcile the exact staged corpus and job lineage first.
+
 ## Manager request lifecycle
 
 1. Interpret rough or misspelled intent with `learning-compass-operating-system`.
@@ -66,8 +72,8 @@ The normal path is `site_request.py mutate @request.json` through `POST /agent/r
 Required write controls:
 
 - allow-listed method and path;
-- API token only in `x-api-token`, never a URL or command argument; browser users exchange it once through `/auth/session` for a signed `HttpOnly; Secure; SameSite=Strict` cookie;
-- the installed client uses an explicitly present `TASTE_MAP_API_TOKEN` first, including empty for local tests, otherwise `~/.hermes/secrets/learning-compass-api-token`; either value is bounded to 4 KiB of visible ASCII, and the file must be current-user-owned, regular, non-symlink, and have no group/other permission bits (`0600` recommended);
+- ordinary Learning Compass reads and writes are public at the transport layer; clients contain no Learning Compass credential-file, credential-header, or browser-session path, and `POST /auth/session` remains absent;
+- Telegram and external-provider credentials retain their independent headers and server-only secret boundaries; they are never accepted as Learning Compass API authorization;
 - stable caller-provided `idempotency_key`;
 - exact read-before-write target;
 - `confirm:true` and declared field precondition for high-risk work;
@@ -86,7 +92,7 @@ The Worker fingerprints method, path, and body under each mutation key. Reusing 
 | `2xx` plus matching readback | Verified success | Report completion |
 | `2xx` but readback unavailable/mismatched | Possibly committed, unverified | Reread once; stop with blocker if unresolved |
 | `400`/`422` | Deterministic invalid input | Correct the returned field once; use a new key only if the body changes |
-| `401`/`403` | Authorization or allow-list failure | Verify configuration/capability; never bypass |
+| `401`/`403` | Unexpected Learning Compass challenge or allow-list failure | Treat an ordinary API challenge as release-blocking drift; otherwise verify the declared capability and never bypass it |
 | `404` | Target or route absent | Read parent/capabilities; do not guess a mutation route |
 | `409 mutation_in_progress` | Matching request is running | Wait for canonical state/receipt; do not duplicate |
 | `409 mutation_outcome_unknown` | Prior handler may have committed; the key remains durably quarantined | Canonical reread; report verified recovery only when exact desired state exists, otherwise stop |
@@ -137,16 +143,16 @@ hermes -p compass prompt-size --platform telegram --json
 
 Record system bytes, skill-index bytes, memory/profile/project bytes, tool-schema bytes by toolset, tool count, and total fixed bytes. Use the same profile, platform, project directory, and configuration before and after. Do not switch models during the comparison.
 
-Latest repeatable local measurement on 2026-08-26:
+Latest repeatable Telegram measurement on 2026-08-28; CLI rows retain the 2026-08-26 repository baseline:
 
 | Tier | System bytes | Tool-schema bytes | Fixed bytes | Tools |
 |---|---:|---:|---:|---:|
-| Default Telegram | 25,596 | 24,098 | 49,694 | 13 |
-| Compass Telegram | 25,825 | 24,115 | 49,940 | 13 |
+| Default Telegram | 25,717 | 24,098 | 49,815 | 13 |
+| Compass Telegram | 26,064 | 24,115 | 50,179 | 13 |
 | Default CLI | 49,660 | 55,352 | 105,012 | 19 |
 | Compass CLI | 44,298 | 33,828 | 78,126 | 15 |
 
-Two consecutive Telegram JSON runs were byte-identical. The task baseline was 50,244 fixed bytes, so the default Telegram tier fell 1.1% without changing its 13-tool surface. The broader measured baseline was 55,657 bytes. Ordinary loaded router plus site-operator instructions fell from 46,180 to 19,642 bytes (57.5%). The CLI rows were measured from `/home/mahmud/recommendations-worker`; CLI context is project-sensitive, so comparisons must keep the working directory fixed.
+The 2026-08-28 Telegram measurement includes the newly active `media-transcription-systems` skill, its caption-first routing line, and the synchronized current user profile. Default Telegram remains below the original 50,244-byte task baseline at 49,815 fixed bytes without changing its 13-tool surface; Compass measures 50,179 bytes. Ordinary loaded router plus site-operator instructions measure 21,229 bytes against a 21,235-byte ceiling. The CLI rows were measured from `/home/mahmud/recommendations-worker`; CLI context is project-sensitive, so comparisons must keep the working directory fixed.
 
 Latency benchmark uses at least eight matched production reads after one warm-up, with identical filters and no mutation:
 
@@ -185,7 +191,7 @@ The original 2026-08-26 full release slate passed only 4/21; its saved artifact 
 | Zero unverified branch/domain items in recommended, captured, or queued state | `/agent/system.data_quality` and exact source projections |
 | Zero feedback-triggered recommendation chains | Deterministic feedback tests and event audit |
 | Zero generated recall cards | Route/domain tests and card-origin audit |
-| Zero credential exposure | Diff scan, redaction tests, bounded logs, header and non-persistent signed-session auth tests |
+| Zero credential exposure | Diff scan, redaction tests, bounded logs, absence of Learning Compass token/session plumbing, and dedicated Telegram/provider boundary tests |
 | Zero unowned active skills or profile mirror drift | `npm run verify:hermes` |
 | Daily D1 estimates remain below the configured circuit-breaker budgets | `/health/free-tier-budget` and response headers |
 
@@ -195,17 +201,17 @@ Worker-owned/local evidence includes request IDs, `Server-Timing`, response-time
 
 Before a Worker release:
 
-1. Identify the exact hardening delta and inspect every dirty file. Do not deploy an inseparable unrelated change set.
-2. Capture the current production Worker version, D1 migration state, and D1 Time Travel recovery point.
-3. Before deploying auth code, use the Cloudflare secret inventory to confirm a valid `LEARNING_COMPASS_API_TOKEN` binding is pre-staged. The old Worker ignores this name, so it closes the rollout gap that staging legacy `API_TOKEN` would create before `/auth/session` exists. Do not print the value, put it in a URL/command argument, or configure `ALLOW_UNAUTHENTICATED_LOCAL_WRITES` remotely. New code keeps `API_TOKEN` only as a compatibility/local fallback.
-4. Run `npm test`, `npm run build`, `npm run test:e2e`, `npm run verify:hermes`, `npm run verify:migrations`, and `git diff --check`.
-5. Run `hermes config check`, prompt benchmarks, skill/profile/memory parity, direct production read smokes, a secret scan, and orphan-process inspection. Verify canonical/profile site-client byte parity and the secure environment/file token-resolution tests.
-6. Verify private reads and writes fail closed without valid credentials; the preferred secret wins when both bindings exist and the legacy fallback works alone; header auth succeeds; `/auth/session` sets the exact Strict host cookie without returning the token; tampered/cross-site sessions fail; and static/update/health/Telegram surfaces retain their dedicated boundaries. Confirm the new service-worker data-cache namespace deletes the pre-auth namespace on activation.
-7. Before deployment, require the current production `/health/live` and `/health/ready` gates, verified backup/restore evidence, clean job and data-quality blockers, auth-secret inventory, the deterministic manager harness, and focused regressions for every observed real-model defect. Stop on any 503 or unresolved deterministic gate.
-8. Apply pending remote migrations `0066` then `0067` in rollback-compatible order. Verify remote migration parity, the ordinary search projection, preserved learning-event count, repaired lineage, unique live memory keys, and branch/domain invariants. Create and restore-test the now-possible D1 export and create a separately verified R2 copy before continuing.
-9. Deploy only from this repository with `npx wrangler deploy --config wrangler.toml`.
-10. Confirm the new Worker version and require `/health/ready` again, then smoke unauthenticated rejection, header and browser-session auth, briefing, filtered capabilities, Queue, exact source dossier, branch/domain projections, system health, PWA shell, and authenticated offline-data fallback.
-11. Roll back to the captured version on contract, migration, authorization, latency, or integrity regression. Additive migrations are not reversed blindly; restore application code first and follow the documented D1 recovery procedure when data repair is required.
+1. Identify the exact release delta and inspect every dirty file. The user-authorized full-tree release still must be internally consistent and preserve unrelated state.
+2. Run the single deterministic `npm run verify:release` gate; it owns the unit, type, build, E2E, migration, agent/Hermes, prompt-budget, parity, secret-scan, and diff checks documented by the repository. Preserve exact failures instead of bypassing them.
+3. Before any corpus mutation, require signed `lite-visual-validation/v6` receipts and accepted semantic-completeness evidence for every immutable target, the exact authoritative target-set hash, a passing aggregate `lite-visual-corpus-audit/v1`, and independent reviewer acceptance. Until these exist, do not register a corpus, stage pairs, upload, activate, or roll back. Application-only deployment remains a separate lane and must prove it performs none of those operations.
+4. Inspect the remote D1 migration ledger. Migrations `0066` and `0067` are already applied and must never be replayed; require `0068_lite_visual_corpus_activation.sql` to be the sole pending migration.
+5. Capture the current production Worker version. Create a complete checksummed D1-plus-R2 backup, verify object parity, restore it into a disposable environment, run integrity/readiness checks there, and record a D1 Time Travel bookmark immediately before migration.
+6. After the signed-corpus hold clears, install the production signing key without printing it and require at least 32 trimmed characters. Confirm the deployment configuration declares D1, R2, Assets, AI, and Vectorize bindings; require current production `/health/live`, `/health/ready`, and `/health/free-tier-budget`; clean job/data-quality blockers; Hermes configuration/parity; the deterministic manager harness; and focused regressions for every observed defect. Stop on any readiness, budget, or deterministic blocker.
+7. Verify the public API contract before release: representative unauthenticated reads return 200; malformed unauthenticated writes reach normal 400/422 domain validation; `POST /auth/session` and a fake route return 404; no response emits `WWW-Authenticate` or the retired Learning Compass auth cookie. Telegram/provider boundaries remain independently authenticated. Never configure `ALLOW_UNAUTHENTICATED_LOCAL_WRITES` remotely.
+8. After every prior gate passes, apply only migration `0068`, verify exact remote parity and readiness, then deploy only from this repository with `npx wrangler deploy --config wrangler.toml`.
+9. Confirm the new Worker version and require `/health/live` plus `/health/ready` again. Readiness must prove every `0068` table/index/trigger, D1/R2/Assets/AI/Vectorize bindings, and the signing-key boundary. Run `verify-deploy.sh`, then smoke briefing, filtered capabilities, Queue, exact source dossier, branch/domain projections, system health, PWA shell/offline recovery, and the corpus staging surface without registering or mutating a corpus prematurely.
+10. Register, stage, upload, and atomically activate only the independently accepted corpus. Verify every ordered target, exact artifact IDs, active-corpus pointer, R2 head, and bound job reads completed before reporting `294/294`.
+11. On corpus regression, use guarded corpus rollback first while the prior objects remain verified. On Worker regression, restore the captured Worker version after restoring compatible corpus visibility. Use D1 Time Travel or the verified D1-plus-R2 restore only when schema/data recovery is required; never blindly reverse an additive migration.
 
 Data-only writes do not justify a Worker deployment. If isolation from unrelated work cannot be proven, leave the verified local implementation undeployed and report the exact blocker plus rollback version.
 

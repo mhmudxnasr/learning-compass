@@ -74,6 +74,7 @@ expectedMigrations.push('0064_personal_library_studio.sql')
 expectedMigrations.push('0065_reconcile_personal_book_states.sql')
 expectedMigrations.push('0066_hermes_memory_live_key.sql')
 expectedMigrations.push('0067_portable_search_and_lineage_repair.sql')
+expectedMigrations.push('0068_lite_visual_corpus_activation.sql')
 if (migrationNames.length !== expectedMigrations.length || expectedMigrations.some((name, index) => migrationNames[index] !== name)) throw new Error(`Migration order drift: expected ${expectedMigrations.join(', ')}, found ${migrationNames.join(', ')}`)
 
 const checks = [
@@ -188,6 +189,21 @@ if (authentication?.learning_compass_api_token_required !== false
   || !String(authentication.local_write_bypass || '').includes('exact loopback')) {
   throw new Error('Canonical open-access contract drift')
 }
+if (existsSync(join(root, 'src/auth.ts'))) throw new Error('Retired private-auth module remains in Worker source')
+const workerEntrySource = read('src/index.ts')
+for (const retired of ["from './auth'", "app.post('/auth/session'", 'authenticatePrivateRequest', 'createBrowserSession', 'privateApiRequired', 'configuredApiToken']) {
+  if (workerEntrySource.includes(retired)) throw new Error(`Retired private-auth plumbing remains in Worker entry: ${retired}`)
+}
+const browserClientSource = read('client/src/auth.ts')
+for (const retired of ['TASTE_MAP_API_TOKEN', 'LEARNING_COMPASS_API_TOKEN', 'x-api-token', '/auth/session', '__Host-learning_compass_session']) {
+  if (browserClientSource.includes(retired)) throw new Error(`Retired private-auth plumbing remains in browser client: ${retired}`)
+}
+for (const [file, required] of [
+  ['docs/API.md', 'Learning Compass API reads and writes do not require an API token or browser session. `POST /auth/session` is retired.'],
+  ['PROJECT_CONTEXT.md', 'Learning Compass ordinary reads and writes require no API token or browser unlock session'],
+]) {
+  if (!read(file).includes(required)) throw new Error(`Public Learning Compass API contract drift: ${file}`)
+}
 const evolution = contract.policies?.self_evolution
 if (evolution?.enabled !== true || evolution.scope !== 'verified_system_improvement' || evolution.persist_to !== 'canonical source plus D1 self_improvement_runs receipt; hermes_memory only for durable profile or skill_procedure evidence' || evolution.skill_source_edits !== 'automatic_after_replay_or_test_gate_in_active_conversation' || evolution.deployment !== 'automatic_after_release_verification_with_observed_live_smoke') {
   throw new Error('Canonical Hermes self-evolution policy drift')
@@ -198,10 +214,10 @@ for (const trigger of ['specialist evolution handoff', 'observed skill failure',
 if (contract.self_evolution_owner !== 'learning-compass-self-evolution') throw new Error('Canonical self-evolution owner drift')
 const activeSkills = contract.skill_graph?.active || []
 const retiredSkills = contract.skill_graph?.retired || []
-if (activeSkills.length !== 26 || new Set(activeSkills.map((skill) => skill.name)).size !== activeSkills.length) {
+if (activeSkills.length !== 27 || new Set(activeSkills.map((skill) => skill.name)).size !== activeSkills.length) {
   throw new Error('Canonical Hermes active skill graph is incomplete or duplicated')
 }
-for (const name of ['learning-compass-operating-system', 'learning-compass-self-evolution', 'learning-compass-site-operator', 'recommendations-worker-ops', 'cloudflare-ai-pipeline-operations', 'taste-mapper', 'taste-rec', 'learning-notes-extractor', 'lite-visual', 'visual-mind', 'notebooklm', 'rss-feed', 'agent-cli-delegation', 'youtube-playlist-verification', 'learning-thread-authoring', 'riyadh-salihin-al-badr', 'progressive-learning-curriculum', 'learning-compass-source-ingestion', 'learning-hub-companion-authoring', 'compass-recommendation-workflows', 'hermes-configuration-operations', 'learning-compass-feedback-corrections', 'learning-compass-foundation-curation', 'learning-compass-job-backlog-operations', 'hermes-learning-compass', 'epub-repair']) {
+for (const name of ['learning-compass-operating-system', 'learning-compass-self-evolution', 'learning-compass-site-operator', 'recommendations-worker-ops', 'cloudflare-ai-pipeline-operations', 'taste-mapper', 'taste-rec', 'learning-notes-extractor', 'lite-visual', 'visual-mind', 'notebooklm', 'rss-feed', 'agent-cli-delegation', 'youtube-playlist-verification', 'media-transcription-systems', 'learning-thread-authoring', 'riyadh-salihin-al-badr', 'progressive-learning-curriculum', 'learning-compass-source-ingestion', 'learning-hub-companion-authoring', 'compass-recommendation-workflows', 'hermes-configuration-operations', 'learning-compass-feedback-corrections', 'learning-compass-foundation-curation', 'learning-compass-job-backlog-operations', 'hermes-learning-compass', 'epub-repair']) {
   if (!activeSkills.some((skill) => skill.name === name && skill.path && skill.role)) throw new Error(`Canonical active skill missing: ${name}`)
 }
 for (const name of ['taste-enhancer', 'compass-queue-fill', 'learning-compass-curator-policy', 'master-editorial-synthesis', 'learning-thread-curation', 'learning-compass-bridge']) {

@@ -300,19 +300,20 @@ Add offline mutation recovery, large-data tests, bilingual direction handling, r
 - Feedback processing does not request a new recommendation.
 - Completed sources can be explicitly attached to existing knowledge-map nodes; ambiguous matches stay unresolved instead of creating speculative branches.
 - An abstained Compass Pick with a verified or restricted reachable source can be explicitly added to the Queue anyway; the override bypasses only the automatic threshold, and the five-item Queue cap still applies.
-- One Lite Visual source creates one atomic Arabic HTML/PDF reading-companion pair and counts as one taste signal. `extract_source.py` routes articles, YouTube/audio, PDF/OCR, EPUB, documents, and text into one hash-bound `source.txt`; valid cache hits return in milliseconds, while first network/transcription runs report their real elapsed time. HTML is the complete canonical body; PDF is its exact print rendition. Every artifact is designed fresh after Intent and Frontend Design reasoning and uses only semantic HTML, source-specific CSS, native structures/equations, and rare justified inline SVG. Templates, preset themes/palettes/layouts, mind maps, raster/generated images, image agents, scripts, widgets, transcript padding, and decorative media are forbidden.
+- One Lite Visual source creates one atomic Arabic HTML/PDF reading-companion pair and counts as one taste signal. `extract_source.py` routes articles, YouTube/audio, PDF/OCR, EPUB, documents, and text into one hash-bound `source.txt`; valid cache hits return in milliseconds, while first network/transcription runs report their real elapsed time. YouTube always uses a complete manual or generated caption track when available; audio transcription runs only after caption inventory positively confirms that the exact video has no tracks. HTML is the complete canonical body; PDF is its exact print rendition. Every artifact is designed fresh after Intent and Frontend Design reasoning and uses only semantic HTML, source-specific CSS, native structures/equations, and rare justified inline SVG. The v6 path requires a contiguous semantic inventory of no more than 120 source words per reviewed scope, exactly one matching claim and non-appendix authored anchor per scope, plus one visible complete-source edition proving every normalized accepted source word remains readable in screen and print output. Templates, preset themes/palettes/layouts, mind maps, raster/generated images, image agents, scripts, widgets, unstructured transcript duplication used as depth padding, and decorative media are forbidden.
 
 ```bash
 python3 /home/mahmud/.hermes/skills/lite-visual/scripts/extract_source.py '<URL-or-file>' \
   --output /abs/work/source.txt \
   --manifest /abs/work/source-extraction.json
 ```
+- Lite Visual v6 receipts are HMAC-attested over a cross-runtime-safe integer/string domain. Replacement corpora persist chapter-aware ordered targets and immutable workflow runs, stage as invisible R2-verified pairs with lease-free `awaiting_activation` jobs, and become visible only through one all-target D1 activation transaction. Activation re-verifies R2, current source identity, and every current-pair precondition; abort safely discards hidden staging; guarded rollback rechecks and restores the immediately prior visible set. A stale or interrupted lifecycle request cannot mutate the winning state.
 - D1 remains canonical; R2 stores large artifacts; Obsidian remains an archive export.
 - Every registered destination resolves to a purposeful view.
 
 ## Deployment
 
-Run the full [release checklist](docs/release-checklist.md), then deploy only from this repository:
+Run `npm run verify:release` and the full [release checklist](docs/release-checklist.md), then deploy only from this repository. Application-only deployments require a fresh complete D1-plus-R2 backup with verified restore, healthy readiness, exact migration parity, and no corpus mutation. Corpus registration, staging, upload, activation, and rollback remain separately prohibited until every immutable target has accepted semantic-completeness evidence, the aggregate corpus audit passes, and independent review accepts it. Migration `0068` is already applied and must never be replayed.
 
 ```bash
 npx wrangler deploy --config wrangler.toml

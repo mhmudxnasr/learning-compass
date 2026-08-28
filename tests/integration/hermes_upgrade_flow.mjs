@@ -19,7 +19,7 @@ try {
   }
   await run(['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--file', 'schema.sql'])
   await run(['d1', 'migrations', 'apply', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir])
-  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8789', '--var', 'REQUIRE_API_AUTH:false', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true })
+  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8789', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true })
   server.stdout.on('data', () => {})
   server.stderr.on('data', () => {})
   for (let attempt = 0; attempt < 60; attempt++) {

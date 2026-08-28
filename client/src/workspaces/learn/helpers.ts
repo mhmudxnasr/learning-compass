@@ -81,3 +81,8 @@ export function percent(completed: number, total: number) {
   if (!total) return 0
   return Math.round((completed / total) * 100)
 }
+
+export function cleanTitle(value?: string | null): string {
+  if (!value) return ''
+  return value.replace(/^(\d{1,4})([\u0600-\u06FF])/, '$1 · $2').trim()
+}

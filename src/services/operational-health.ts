@@ -1,6 +1,7 @@
 import type { Bindings } from '../lib'
 import { MAINTENANCE_STALE_AFTER_MS } from './maintenance'
 import { DELAYED_RETRY_COUNT_SQL, OVERDUE_RETRY_COUNT_SQL } from './job-retry-health.ts'
+import { loadReleaseContractHealth } from './release-readiness.ts'
 
 const BACKUP_STALE_AFTER_MS = 26 * 60 * 60 * 1000
 const RETRY_STALE_AFTER_MINUTES = 30
@@ -104,21 +105,25 @@ export async function loadOperationalHealth(env: Bindings, now = Date.now()) {
   const checkedAt = new Date(now).toISOString()
   try {
     await env.DB.prepare('SELECT 1 ok').first()
-    const [integrity, jobs, maintenance, recovery] = await Promise.all([
+    const [integrity, jobs, maintenance, recovery, release] = await Promise.all([
       loadIntegrityHealth(env.DB),
       loadJobHealth(env.DB),
       loadMaintenanceHealth(env.DB, now),
       loadRecoveryHealth(env.DB, now),
+      loadReleaseContractHealth(env),
     ])
     const storage = { d1: true, r2: Boolean(env.ARTIFACTS), assets: Boolean(env.ASSETS) }
     const blockers = [
       ...(!storage.r2 ? ['R2 binding unavailable'] : []),
       ...(!integrity.ok ? [`${integrity.active_orphans} active and ${integrity.quarantined_unresolved} unresolved integrity records`] : []),
-      ...(!jobs.ok ? [`${jobs.overdue_retries} overdue retries, ${jobs.stale_running} stale leases, ${jobs.dead_letters} dead letters`] : []),
+      ...(!jobs.ok ? [`${jobs.failed_last_24h} recent failures, ${jobs.overdue_retries} overdue retries, ${jobs.stale_running} stale leases, ${jobs.dead_letters} dead letters`] : []),
       ...(!maintenance.ok ? ['Maintenance has never succeeded or is stale'] : []),
       ...(!recovery.ok ? ['No recent verified full recovery backup'] : []),
+      ...(release.schema.missing.length ? [`Release schema missing: ${release.schema.missing.join(', ')}`] : []),
+      ...(Object.entries(release.bindings).filter(([, configured]) => !configured).length ? [`Release bindings unavailable: ${Object.entries(release.bindings).filter(([, configured]) => !configured).map(([name]) => name).join(', ')}`] : []),
+      ...(!release.signing_secret_configured ? ['Lite Visual receipt signing key unavailable'] : []),
     ]
-    return { ok: blockers.length === 0, status: blockers.length ? 'needs_attention' : 'healthy', checked_at: checkedAt, storage, integrity, jobs, maintenance, recovery, blockers }
+    return { ok: blockers.length === 0, status: blockers.length ? 'needs_attention' : 'healthy', checked_at: checkedAt, storage, integrity, jobs, maintenance, recovery, release, blockers }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     return {
@@ -130,6 +135,7 @@ export async function loadOperationalHealth(env: Bindings, now = Date.now()) {
       jobs: null,
       maintenance: null,
       recovery: null,
+      release: null,
       blockers: [`D1 readiness check failed: ${reason}`],
     }
   }

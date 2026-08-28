@@ -233,6 +233,13 @@ const CAPABILITIES = [
   ['POST', '/feedback/proposals/:id/reject', 'Reject a proposed profile or map change.'],
   ['GET', '/artifacts', 'Read R2 artifact metadata and pairs.'],
   ['POST', '/artifacts', 'Upload an HTML, PDF, or other source artifact.'],
+  ['POST', '/artifacts/pairs', 'Publish one receipt-attested atomic Lite Visual HTML/PDF pair or stage it inside an exact corpus.'],
+  ['POST', '/artifacts/corpora', 'Create one manifest-, target-set-, aggregate-audit-, and workflow-run-bound Lite Visual corpus.'],
+  ['GET', '/artifacts/corpora/:id', 'Read one exact Lite Visual corpus and its activation state.'],
+  ['GET', '/artifacts/corpora/:id/pairs/:pairId', 'Read one hidden staged pair from its exact corpus.'],
+  ['POST', '/artifacts/corpora/:id/activate', 'Atomically activate one complete audited Lite Visual corpus.'],
+  ['POST', '/artifacts/corpora/:id/abort', 'Abort one exact staged corpus and safely release its target jobs.'],
+  ['POST', '/artifacts/corpora/:id/rollback', 'Guardedly restore the immediately prior visible Lite Visual corpus.'],
   ['POST', '/artifacts/:id/process', 'Queue idempotent note extraction.'],
   ['DELETE', '/artifacts/:id', 'Delete an artifact and its R2 object.'],
   ['GET', '/artifacts/hub', 'Read file metadata directly owned by a Learning Thread (thread_id) or exact Level (stage_id).'],
@@ -383,11 +390,11 @@ app.get('/activity', async (c) => {
       FROM agent_receipts ORDER BY created_at DESC LIMIT ?`).bind(limit).all<any>()),
     load('audit_events', () => c.env.DB.prepare(`SELECT id,ts,agent_name,action,status FROM agent_logs ORDER BY ts DESC LIMIT ?`).bind(limit).all<any>()),
     load('jobs', () => c.env.DB.prepare(`SELECT id,job_type,status,error,attempts,created_at,updated_at,lease_expires_at,
-      SUM(CASE WHEN status IN ('pending','running','retry') THEN 1 ELSE 0 END) OVER () active_total,
+      SUM(CASE WHEN status IN ('pending','running','retry','awaiting_activation') THEN 1 ELSE 0 END) OVER () active_total,
       SUM(CASE WHEN status IN ('failed','dead_letter') THEN 1 ELSE 0 END) OVER () failed_total,
       SUM(CASE WHEN status='running' AND lease_expires_at<datetime('now') THEN 1 ELSE 0 END) OVER () stale_total,
       SUM(CASE WHEN status='dead_letter' THEN 1 ELSE 0 END) OVER () dead_letter_total
-      FROM agent_jobs WHERE status IN ('pending','running','retry','failed','dead_letter')
+      FROM agent_jobs WHERE status IN ('pending','running','retry','awaiting_activation','failed','dead_letter')
       ORDER BY updated_at DESC LIMIT ?`).bind(limit).all<any>()),
     load('proposals', () => c.env.DB.prepare(`SELECT id,change_type AS proposal_type,status,created_at,reviewed_at,applied_at,
       COALESCE(applied_at,reviewed_at,created_at) AS updated_at,
@@ -715,8 +722,8 @@ app.get('/system', async (c) => {
     loadDataQuality(DB),
     DB.prepare('SELECT COUNT(*) count FROM personal_library_items').first<{ count: number }>(),
     DB.prepare('SELECT COUNT(*) count FROM notes').first<{ count: number }>(),
-    DB.prepare('SELECT COUNT(*) count FROM artifacts').first<{ count: number }>(),
-    DB.prepare("SELECT COUNT(*) count FROM agent_jobs WHERE status IN ('pending','running','retry')").first<{ count: number }>(),
+    DB.prepare("SELECT COUNT(*) count FROM artifacts WHERE COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged'").first<{ count: number }>(),
+    DB.prepare("SELECT COUNT(*) count FROM agent_jobs WHERE status IN ('pending','running','retry','awaiting_activation')").first<{ count: number }>(),
     DB.prepare("SELECT COUNT(*) count FROM source_annotations WHERE status='active'").first<{ count: number }>(),
     DB.prepare('SELECT COUNT(*) count FROM agent_receipts').first<{ count: number }>(),
   ])
@@ -786,13 +793,10 @@ app.post('/request', async (c) => {
     }
     return `${parsed.pathname}${parsed.search}`
   }
-  const readTarget = async (path: string, token: string | undefined, agentName: string | undefined, allowNotFound = false) => {
+  const readTarget = async (path: string, agentName: string | undefined, allowNotFound = false) => {
     const normalized = normalizeLocalPath(path)
     if (!isAllowedAgentRequest('GET', normalized)) throw new Error(`verification path is not allow-listed: ${normalized}`)
     const headers = new Headers({ accept: 'application/json' })
-    if (token) headers.set('x-api-token', token)
-    const cookie = c.req.header('cookie')
-    if (cookie) headers.set('cookie', cookie)
     if (agentName) headers.set('x-agent-name', agentName)
     const response = await fetch(new URL(normalized, c.req.url), { headers })
     const text = await response.text()
@@ -890,21 +894,17 @@ app.post('/request', async (c) => {
       })
     }
 
-    const token = c.req.header('x-api-token')
     const agentName = c.req.header('x-agent-name')
     let before: any = null
     if (precondition?.path) {
-      before = await readTarget(precondition.path, token, agentName)
+      before = await readTarget(precondition.path, agentName)
       assertTarget(before, precondition, 'precondition')
     } else if (plannedVerificationPaths.length && mutation) {
-      const snapshots = await Promise.all(plannedVerificationPaths.map((verificationPath) => readTarget(verificationPath, token, agentName)))
+      const snapshots = await Promise.all(plannedVerificationPaths.map((verificationPath) => readTarget(verificationPath, agentName)))
       before = snapshots.length === 1 ? snapshots[0] : snapshots
     }
 
     const headers = new Headers({ accept: 'application/json' })
-    if (token) headers.set('x-api-token', token)
-    const cookie = c.req.header('cookie')
-    if (cookie) headers.set('cookie', cookie)
     if (agentName) headers.set('x-agent-name', agentName)
     if (idempotencyKey) headers.set('x-client-mutation-id', idempotencyKey)
     if (mutation && method !== 'DELETE') {
@@ -932,7 +932,7 @@ app.post('/request', async (c) => {
       } else if (verificationPaths.length) {
         try {
           const exactDeletionReadback = method === 'DELETE' && capability.verification_path === capability.path
-          const snapshots = await Promise.all(verificationPaths.map((verificationPath) => readTarget(verificationPath, token, agentName, exactDeletionReadback)))
+          const snapshots = await Promise.all(verificationPaths.map((verificationPath) => readTarget(verificationPath, agentName, exactDeletionReadback)))
           if (exactDeletionReadback && snapshots.some((snapshot) => snapshot.status !== 404 || snapshot.absent !== true)) {
             const error: any = new Error('Post-deletion readback still resolves the exact target.')
             error.code = 'deletion_verification_failed'
@@ -1047,10 +1047,6 @@ app.post('/tool-call', async (c) => {
 
     if (name === 'site_request') {
       const headers = new Headers({ 'content-type': 'application/json', 'x-agent-name': c.req.header('x-agent-name') || 'tool-call' })
-      const token = c.req.header('x-api-token')
-      const cookie = c.req.header('cookie')
-      if (token) headers.set('x-api-token', token)
-      if (cookie) headers.set('cookie', cookie)
       const response = await fetch(new URL('/agent/request', c.req.url), {
         method: 'POST',
         headers,

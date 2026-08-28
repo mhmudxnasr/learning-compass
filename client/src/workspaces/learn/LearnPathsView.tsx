@@ -29,11 +29,10 @@ const initialInterview: InterviewValues = {
 }
 
 const filterOptions = [
-  { key: 'current', label: 'Current Work' },
-  { key: 'active', label: 'Active' },
+  { key: 'active', label: 'In progress' },
   { key: 'paused', label: 'Paused' },
   { key: 'completed', label: 'Completed' },
-  { key: 'all', label: 'All Threads' },
+  { key: 'all', label: 'All' },
 ]
 
 export function LearnPathsView() {
@@ -43,7 +42,7 @@ export function LearnPathsView() {
   const [working, setWorking] = useState(false)
   const [message, setMessage] = useState('')
   const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState('current')
+  const [filter, setFilter] = useState('active')
 
   if (hub.loading && !hub.data) return <Loading label="Loading Learning Threads" />
   if (hub.error && !hub.data) return <ErrorState message={hub.error} retry={hub.reload} />
@@ -53,8 +52,8 @@ export function LearnPathsView() {
     const matchesFilter =
       filter === 'all'
         ? true
-        : filter === 'current'
-        ? !['completed', 'abandoned'].includes(path.status)
+        : filter === 'active'
+        ? path.status === 'active'
         : filter === 'completed'
         ? path.status === 'completed'
         : path.status === filter
@@ -107,11 +106,15 @@ export function LearnPathsView() {
 
   return (
     <section class="learn-workspace folio-learn folio-paths" aria-labelledby="learn-threads-title">
-      <header class="learn-surface-head folio-surface-head">
+      <header class="learn-surface-head folio-surface-head thread-index-head">
         <div class="learn-header-content">
-          <p class="folio-object-kicker">Learning Compass · Curriculum Paths</p>
-          <h1 id="learn-threads-title">Structured Learning Threads</h1>
-          <p class="folio-lede">Finite, purposeful curriculum Threads built from direct lesson progress and real-world capability.</p>
+          <h1 id="learn-threads-title">Learning Threads</h1>
+          <p class="folio-lede">Continue an active path, inspect its lessons, or return to a completed Thread.</p>
+          <div class="thread-index-summary" aria-label="Learning Thread summary">
+            <span><strong>{activeCount}</strong> in progress</span>
+            <span><strong>{totalCompletedLessons} of {totalLessons}</strong> lessons complete</span>
+            <span><strong>{percent(totalCompletedLessons, totalLessons)}%</strong> overall</span>
+          </div>
         </div>
         <button
           class="button primary folio-primary thread-new-btn"
@@ -124,26 +127,6 @@ export function LearnPathsView() {
           <span>{interviewOpen ? 'Close interview' : 'New Thread'}</span>
         </button>
       </header>
-
-      {/* Metric Summary Cards */}
-      <div class="thread-summary-strip">
-        <div class="thread-summary-card">
-          <span class="thread-summary-value">{paths.length}</span>
-          <span class="thread-summary-label">Total Threads</span>
-        </div>
-        <div class="thread-summary-card">
-          <span class="thread-summary-value highlight">{activeCount}</span>
-          <span class="thread-summary-label">Active Thread{activeCount === 1 ? '' : 's'}</span>
-        </div>
-        <div class="thread-summary-card">
-          <span class="thread-summary-value">{totalCompletedLessons} <small>/ {totalLessons}</small></span>
-          <span class="thread-summary-label">Lessons Completed</span>
-        </div>
-        <div class="thread-summary-card">
-          <span class="thread-summary-value">{percent(totalCompletedLessons, totalLessons)}%</span>
-          <span class="thread-summary-label">Overall Progress</span>
-        </div>
-      </div>
 
       {message && <output class="folio-status" aria-live="polite">{message}</output>}
 
@@ -270,17 +253,14 @@ export function LearnPathsView() {
         </form>
       )}
 
-      {/* Main Ledger Section */}
-      <section class="folio-ledger-section" aria-labelledby="active-threads-title">
-        <div class="folio-section-head">
+      <section class="folio-ledger-section thread-index-ledger" aria-labelledby="active-threads-title">
+        <div class="folio-section-head thread-index-ledger-head">
           <div>
-            <p class="folio-object-kicker">Curriculum Library</p>
-            <h3 id="active-threads-title">All Learning Threads</h3>
+            <h2 id="active-threads-title">Your Threads</h2>
+            <p>Open one Thread to see its exact next lesson and complete path.</p>
           </div>
-          <span class="folio-measure">{visiblePaths.length} of {paths.length} {paths.length === 1 ? 'Thread' : 'Threads'}</span>
+          <span class="folio-measure">{visiblePaths.length} of {paths.length}</span>
         </div>
-
-        {/* Enhanced Filter & Search Bar */}
         <div class="thread-filter-toolbar">
           <div class="thread-filter-tabs" role="tablist">
             {filterOptions.map((opt) => (
@@ -317,12 +297,12 @@ export function LearnPathsView() {
           </div>
         ) : (
           <Empty
-            title={query ? 'No matching Threads found' : 'No Learning Threads yet'}
-            body={query ? `No Threads match "${query}". Try adjusting your search query or filter.` : 'Start with a core question and topic. Learning Compass will help structure your curriculum into progressive levels.'}
+            title={query ? 'No matching Threads' : paths.length ? `No ${filterOptions.find((option) => option.key === filter)?.label.toLowerCase()} Threads` : 'No Learning Threads yet'}
+            body={query ? `No Threads match "${query}" in this view.` : paths.length ? 'Choose another status to see the rest of your Threads.' : 'Start with one question or capability. Learning Compass will shape it into progressive Levels and lessons.'}
             action={
-              query ? (
+              paths.length ? (
                 <button class="button secondary" type="button" onClick={() => { setQuery(''); setFilter('all') }}>
-                  Reset search filters
+                  Show all Threads
                 </button>
               ) : (
                 <button class="button primary folio-primary" type="button" onClick={() => setInterviewOpen(true)}>
@@ -345,16 +325,13 @@ function PathRow({ path }: { path: PathRecord }) {
   const completion = percent(completedLessonCount, lessonCount)
   const statusKey = (path.status || 'draft').toLowerCase().replace(/\s+/g, '_')
   const threadType = path.thread_type || 'understand'
-  const currentStageDisplay = path.current_stage_title || (stageCount > 0 ? 'Level 1 Planned' : 'Curriculum in design')
+  const currentStageDisplay = path.current_stage_title || (stageCount > 0 ? 'Curriculum ready to inspect' : 'Curriculum in design')
   const stageStatus = path.current_stage_status ? statusLabel(path.current_stage_status) : (path.updated_at ? `Updated ${formatDate(path.updated_at)}` : '')
+  const actionLabel = path.status === 'completed' ? 'Review Thread' : path.status === 'active' ? 'Continue Thread' : path.status === 'draft' ? 'Build Thread' : 'Open Thread'
 
   return (
     <article class={`folio-path-card status-${statusKey}`}>
-      <a href={threadHref(path.id)} aria-label={`Open learning Thread ${path.title}`}>
-        <span class={`folio-path-mark status-${statusKey}`} aria-hidden="true">
-          <Icon name="spark" size={15} />
-        </span>
-
+      <a href={threadHref(path.id)} aria-label={`${actionLabel}: ${path.title}`}>
         <div class="folio-path-main">
           <div class="folio-path-badges">
             <span class={`folio-status-tag status-${statusKey}`}>
@@ -367,33 +344,30 @@ function PathRow({ path }: { path: PathRecord }) {
             ) : null}
           </div>
 
-          <h3 class="folio-path-title">{path.title}</h3>
-
-          {path.guiding_question && (
-            <p class="folio-path-question">{path.guiding_question}</p>
-          )}
+          <h3 class="folio-path-title" dir="auto">{path.title}</h3>
+          {path.guiding_question && <p class="folio-path-question" dir="auto">{path.guiding_question}</p>}
         </div>
 
         <div class="folio-path-meta-side">
-          <div class="folio-path-progress-box">
-            <div class="folio-path-progress-bar" role="progressbar" aria-valuenow={completion} aria-valuemin={0} aria-valuemax={100}>
-              <i style={{ width: `${completion}%` }} />
-            </div>
-            <div class="folio-path-progress-labels">
-              <span><strong>{completedLessonCount}/{lessonCount}</strong> lessons</span>
-              <span><strong>{completedStageCount}/{stageCount}</strong> levels</span>
-            </div>
-          </div>
-
           <div class="folio-path-current-stage">
             <span class="folio-path-stage-kicker">Current Level</span>
             <strong class="folio-path-stage-title">{currentStageDisplay}</strong>
             {stageStatus && <small class="folio-path-stage-status">{stageStatus}</small>}
           </div>
+          <div class="folio-path-progress-box">
+            <div class="folio-path-progress-bar" role="progressbar" aria-label={`${path.title} lesson progress`} aria-valuenow={completion} aria-valuemin={0} aria-valuemax={100}>
+              <i style={{ width: `${completion}%` }} />
+            </div>
+            <div class="folio-path-progress-labels">
+              <span><strong>{completedLessonCount}/{lessonCount}</strong> lessons</span>
+              <span><strong>{completedStageCount}/{stageCount}</strong> Levels</span>
+            </div>
+          </div>
         </div>
 
-        <span class="folio-path-chevron" aria-hidden="true">
-          <Icon name="chevron" size={16} />
+        <span class="folio-path-open-label" aria-hidden="true">
+          <span>{actionLabel}</span>
+          <Icon name="chevron" size={15} />
         </span>
       </a>
     </article>

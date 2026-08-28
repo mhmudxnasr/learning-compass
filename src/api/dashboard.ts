@@ -96,6 +96,7 @@ app.get('/briefing', async (c) => {
         json_extract(metadata_json,'$.notebook_url') notebook_url,
         metadata_json
         FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${placeholders})
+          AND COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged'
         ORDER BY created_at DESC`).bind(...activeItems.map((item: any) => item.id)).all<any>()
       artifacts = rows.results || []
     }

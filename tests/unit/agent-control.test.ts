@@ -100,7 +100,9 @@ test('agent OpenAPI is generated from the same catalog with control schemas and 
   assert.equal(spec.paths['/recommendations/{id}/permanent'].delete['x-risk'], 'high')
   assert.equal(spec.paths['/agent/request'].post.requestBody.content['application/json'].schema.$ref, '#/components/schemas/AgentRequest')
   assert.deepEqual(spec.components.schemas.AgentAssertion.required, ['path', 'field', 'equals'])
-  assert.equal(spec.components.securitySchemes.ApiToken.name, 'x-api-token')
+  assert.equal(spec.components.securitySchemes, undefined)
+  assert.equal(spec.paths['/capture/{id}/triage'].post.security, undefined)
+  assert.equal(spec.paths['/agent/request'].post.security, undefined)
   assert.equal(spec.paths['/capture/{id}/triage'].post.parameters.at(-1).name, 'x-client-mutation-id')
   assert.deepEqual(spec.paths['/capture/feeds'].post.requestBody.content['application/json'].schema.required, ['url', 'branch_id'])
   assert.equal(spec.paths['/capture/feeds'].post.requestBody.content['application/json'].schema.properties.limit.maximum, 20)
@@ -517,6 +519,16 @@ test('agent activity stays bounded, redacts historical secrets, and reports exac
     assert.equal(text.includes(secret), false, `activity leaked ${secret}`)
   }
   assert.ok(Buffer.byteLength(text) < 40000)
+})
+
+test('agent operational counts include lease-free activation waits as active work', () => {
+  const source = readFileSync(new URL('../../src/api/agent.ts', import.meta.url), 'utf8')
+  const activity = source.match(/app\.get\('\/activity',[\s\S]*?\n\}\)/)?.[0] || ''
+  const system = source.match(/app\.get\('\/system',[\s\S]*?\n\}\)/)?.[0] || ''
+
+  assert.equal(activity.match(/status IN \('pending','running','retry','awaiting_activation'/g)?.length, 2)
+  assert.match(system, /status IN \('pending','running','retry','awaiting_activation'\)/)
+  assert.match(system, /FROM artifacts WHERE COALESCE\(json_extract\(metadata_json,'\$\.publication_state'\),'ready'\)!='staged'/)
 })
 
 test('agent context marks the placeholder gap section unavailable and omits synthetic rounds', async () => {

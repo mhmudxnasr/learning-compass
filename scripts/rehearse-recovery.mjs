@@ -30,6 +30,8 @@ try {
   execFileSync('sqlite3', [databasePath, `.read ${JSON.stringify(sqlPath)}`], { stdio: 'pipe', maxBuffer: 100 * 1024 * 1024 })
   const integrity = execFileSync('sqlite3', [databasePath, 'PRAGMA integrity_check;'], { encoding: 'utf8' }).trim()
   if (integrity !== 'ok') throw new Error(`Restored SQLite integrity failed: ${integrity}`)
+  const foreignKeyRows = JSON.parse(execFileSync('sqlite3', ['-json', databasePath, 'PRAGMA foreign_key_check;'], { encoding: 'utf8' }) || '[]')
+  if (foreignKeyRows.length) throw new Error(`Restored SQLite foreign-key check failed: ${JSON.stringify(foreignKeyRows.slice(0, 10))}`)
   const counts = JSON.parse(execFileSync('sqlite3', ['-json', databasePath, `SELECT
     (SELECT COUNT(*) FROM recommendations) recommendations,
     (SELECT COUNT(*) FROM notes) notes,
@@ -59,6 +61,7 @@ try {
     artifacts: { count: manifest.artifacts.count, bytes: artifactBytes },
     restored_counts: counts,
     sqlite_integrity: integrity,
+    foreign_key_violations: foreignKeyRows.length,
     rehearsed_at: rehearsedAt,
     status: 'verified',
   }

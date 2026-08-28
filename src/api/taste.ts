@@ -93,12 +93,7 @@ app.post('/rerank', async (c) => {
   const { DB } = c.env
   try {
     const active = await DB.prepare("SELECT r.*,m.branch_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status = 'active' ORDER BY r.created_at DESC").all<any>()
-    const headers: Record<string, string> = {}
-    const token = c.req.header('x-api-token')
-    const cookie = c.req.header('cookie')
-    if (token) headers['x-api-token'] = token
-    if (cookie) headers.cookie = cookie
-    const vectorsRes = await fetch(new URL('/taste/vector', c.req.url).toString(), { headers })
+    const vectorsRes = await fetch(new URL('/taste/vector', c.req.url).toString())
     const vectorData = await vectorsRes.json<any>()
     const vMap = new Map<string, number>()
     for (const v of (vectorData.vectors || [])) {

@@ -43,6 +43,17 @@ test('chapter companion projection keeps the newest role with deterministic time
   assert.equal(chapters[0].pdf?.id, 'tie-z')
 })
 
+test('chapter projection defensively ignores staged artifact metadata', () => {
+  const chapters = normalizeBookChapters([], [
+    { id: 'ready-html', filename: 'ready.html', created_at: '2026-08-21T12:00:00Z', metadata_json: JSON.stringify({ chapter_key: 'chapter-1', chapter_number: 1, role: 'html', publication_state: 'ready' }) },
+    { id: 'staged-html', filename: 'staged.html', created_at: '2026-08-22T12:00:00Z', metadata_json: JSON.stringify({ chapter_key: 'chapter-1', chapter_number: 1, role: 'html', publication_state: 'staged' }) },
+    { id: 'staged-only', filename: 'staged.pdf', metadata: { chapter_key: 'chapter-2', chapter_number: 2, role: 'pdf', publication_state: 'STAGED' } },
+  ])
+
+  assert.deepEqual(chapters.map((chapter) => chapter.key), ['chapter-1'])
+  assert.equal(chapters[0].html?.id, 'ready-html')
+})
+
 test('projection derives progress and the next unread chapter from one normalized array', () => {
   const projection = projectBook({ learning_state: 'captured' }, [
     { chapter_key: 'chapter-2', chapter_title: 'Two', position: 2 },

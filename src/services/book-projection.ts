@@ -106,6 +106,7 @@ export function normalizeBookChapters(chapterRows: Row[] = [], artifactRows: Row
 
   for (const artifact of artifactRows) {
     const metadata = parseObject(artifact.metadata_json ?? artifact.metadata)
+    if (String(metadata.publication_state || '').trim().toLowerCase() === 'staged') continue
     if (!metadata.chapter_key || isSyntheticWholeBookChapter(metadata)) continue
     const role = String(metadata.role || '').toLowerCase()
     if (role !== 'html' && role !== 'pdf') continue

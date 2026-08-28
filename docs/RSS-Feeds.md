@@ -47,7 +47,7 @@ Base URL: `https://recommendations-worker.mhmudnasr30.workers.dev`
 | GET | `/capture` | Read captured feed articles in the durable source ledger |
 | POST | `/capture/:id/triage` | Queue or exclude an imported article |
 
-Writes require a valid `x-api-token` or signed browser session. Agent clients should discover the allow-list from `GET /agent/capabilities` and use `POST /agent/request` rather than guessing routes.
+Ordinary reads and writes are public at the transport layer. Agent clients send no Learning Compass token/header/session; they should still discover the allow-list from `GET /agent/capabilities` and use `POST /agent/request` rather than guessing routes.
 
 ## Safety and limits
 

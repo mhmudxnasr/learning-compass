@@ -47,3 +47,17 @@ export function Icon({ name, size = 20, class: classProp, className }: { name: I
   const extraClass = classProp || className || ''
   return <svg class={`icon ${extraClass}`.trim()} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{paths[name]}</svg>
 }
+
+/**
+ * The bespoke folio mark is a compass rose drawn as a botanical sprig.
+ * The paired wordmark sets only the text; no tile sits behind the icon.
+ */
+export function BrandMark({ size = 28 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="14" cy="14" r="10.5" />
+    <path d="M14 3.5v2.4M14 22.1v2.4M3.5 14h2.4M22.1 14h2.4M15.2 13.7l3.6 3.3" />
+    <path d="M14 14 L19 9.5" />
+    <path d="M14 14 L9.6 18.5" />
+    <circle cx="14" cy="14" r="0.9" fill="currentColor" stroke="none" />
+  </svg>
+}

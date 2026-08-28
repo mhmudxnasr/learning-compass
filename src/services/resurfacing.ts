@@ -27,8 +27,8 @@ const itemQuery = `SELECT
   b.id branch_id,b.label branch_label,b.status branch_status,
   d.id domain_id,d.label domain_label,
   (SELECT COUNT(*) FROM resurfacing_presentations p WHERE p.recommendation_id=r.id) presentation_count,
-  (SELECT a.id FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=r.id AND (a.media_type LIKE '%html%' OR a.filename LIKE '%.html') ORDER BY a.created_at DESC LIMIT 1) html_artifact_id,
-  (SELECT a.id FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=r.id AND (a.media_type LIKE '%pdf%' OR a.filename LIKE '%.pdf') ORDER BY a.created_at DESC LIMIT 1) pdf_artifact_id
+  (SELECT a.id FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=r.id AND COALESCE(json_extract(a.metadata_json,'$.publication_state'),'ready')!='staged' AND (a.media_type LIKE '%html%' OR a.filename LIKE '%.html') ORDER BY a.created_at DESC LIMIT 1) html_artifact_id,
+  (SELECT a.id FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id')=r.id AND COALESCE(json_extract(a.metadata_json,'$.publication_state'),'ready')!='staged' AND (a.media_type LIKE '%pdf%' OR a.filename LIKE '%.pdf') ORDER BY a.created_at DESC LIMIT 1) pdf_artifact_id
 FROM recommendations r
 JOIN recommendation_meta m ON m.recommendation_id=r.id
 JOIN tree_nodes b ON b.id=m.branch_id AND b.type IN ('branch','leaf') AND lower(COALESCE(b.status,''))!='pruned'

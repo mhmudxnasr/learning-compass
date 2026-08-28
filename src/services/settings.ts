@@ -68,11 +68,13 @@ export function normalizeSettings(input: unknown): TasteMapSettings {
   }))
   const typographySource = isRecord(appearance.typography) ? appearance.typography : {}
   const typography = Object.fromEntries(([
-    ['baseSize', 14, 20], ['bodyWeight', 350, 700], ['headingWeight', 450, 800],
-    ['lineHeight', 1.2, 2], ['letterSpacing', -0.03, 0.08], ['displayScale', 0.9, 1.3], ['readingMeasure', 52, 82]
+    ['baseSize', 12, 24], ['bodyWeight', 300, 800], ['headingWeight', 400, 900],
+    ['lineHeight', 1.15, 2.3], ['letterSpacing', -0.04, 0.1], ['displayScale', 0.8, 1.5], ['readingMeasure', 45, 90]
   ] as const).flatMap(([key, min, max]) => {
     const value = typographySource[key]
-    return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? [[key, value]] : []
+    return typeof value === 'number' && Number.isFinite(value)
+      ? [[key, Math.min(max, Math.max(min, value))]]
+      : []
   }))
   return {
     appearance: {

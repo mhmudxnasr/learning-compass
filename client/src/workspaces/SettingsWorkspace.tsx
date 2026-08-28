@@ -7,7 +7,7 @@ import { OperationalHealthPanel } from './OperationalHealthPanel'
 import { NotificationSettings } from './NotificationSettings'
 import { useData } from '../app/useData'
 import { useRoute } from '../app/router'
-import { THEME_PRESETS, FONT_PRESETS, THEME_VARIANTS, applyTheme, applyFont, applyDisplayPreferences, applyTypography, getSavedTheme, getSavedFontId, getSavedCustomFont, getSavedCustomPalette, getSavedDisplayPreferences, getSavedTypography, getSavedThemePair, saveThemePair, contrastRatio, extractColorsFromText, normalizeColor, normalizeCustomFont, type CustomPalette, type CustomFont, type DisplayPreferences, type TypographyPreferences, type ThemePair, DEFAULT_CUSTOM_PALETTE, DEFAULT_CUSTOM_FONT, DEFAULT_TYPOGRAPHY } from '../theme'
+import { THEME_PRESETS, FONT_PRESETS, THEME_VARIANTS, TYPOGRAPHY_LIMITS, applyTheme, applyFont, applyDisplayPreferences, applyTypography, auditThemeContrast, computeThemeVariables, getSavedTheme, getSavedFontId, getSavedCustomFont, getSavedCustomPalette, getSavedDisplayPreferences, getSavedTypography, getSavedThemePair, saveThemePair, extractColorsFromText, normalizeColor, normalizeCustomFont, type CustomPalette, type CustomFont, type DisplayPreferences, type TypographyPreferences, type ThemePair, type ThemeMode, DEFAULT_CUSTOM_PALETTE, DEFAULT_CUSTOM_FONT, DEFAULT_TYPOGRAPHY } from '../theme'
 import { PersonalDataStudio } from './settings/PersonalDataStudio'
 
 export type SettingsView = 'profile' | 'preferences' | 'data' | 'system'
@@ -84,7 +84,60 @@ const personalFilters: Array<{ key: SettingsFocus; label: string; description: s
   { key: 'preferences', label: 'Preferences', description: 'How the studio behaves' },
 ]
 
-const paletteRoles = ['Brand', 'Surface', 'Highlight', 'Accent']
+type PaletteField = {
+  key: keyof CustomPalette
+  label: string
+  fallback: string
+  description: string
+}
+
+const CUSTOM_COLOR_GROUPS: Array<{ name: string; description: string; fields: PaletteField[] }> = [
+  {
+    name: 'Foundations',
+    description: 'The planes, text, and seams that carry most of the interface.',
+    fields: [
+      { key: 'shell', label: 'Shell', fallback: '#F7EAE0', description: 'Outer workspace plane' },
+      { key: 'surface', label: 'Surface', fallback: '#FFFFFF', description: 'Cards and ledgers' },
+      { key: 'ink', label: 'Ink', fallback: '#2B170F', description: 'Primary text' },
+      { key: 'seam', label: 'Seam', fallback: '#DEDAD0', description: 'Borders and dividers' },
+    ],
+  },
+  {
+    name: 'Identity & emphasis',
+    description: 'The visual signature used for actions, highlights, and supporting accents.',
+    fields: [
+      { key: 'brand', label: 'Brand', fallback: '#1D4533', description: 'Primary actions and focus' },
+      { key: 'highlight', label: 'Highlight', fallback: '#F9D2BA', description: 'Selected and active planes' },
+      { key: 'accent', label: 'Accent', fallback: '#5E3122', description: 'Supporting emphasis' },
+    ],
+  },
+  {
+    name: 'Navigation & signals',
+    description: 'Navigation depth and the colors that communicate state.',
+    fields: [
+      { key: 'rail', label: 'Rail', fallback: '#133325', description: 'Primary navigation' },
+      { key: 'due', label: 'Due', fallback: '#874606', description: 'Time-sensitive work' },
+      { key: 'danger', label: 'Danger', fallback: '#9C2E21', description: 'Destructive feedback' },
+      { key: 'map', label: 'Map', fallback: '#3F6E4E', description: 'Atlas relationships' },
+    ],
+  },
+]
+
+const TYPOGRAPHY_CONTROLS: Array<{
+  key: keyof TypographyPreferences
+  label: string
+  description: string
+  step: number
+  suffix: string
+}> = [
+  { key: 'baseSize', label: 'Base size', description: 'Interface and body text scale', step: 1, suffix: 'px' },
+  { key: 'displayScale', label: 'Display scale', description: 'Heading size multiplier across the studio', step: 0.05, suffix: '×' },
+  { key: 'bodyWeight', label: 'Body weight', description: 'Reading comfort and copy density', step: 50, suffix: '' },
+  { key: 'headingWeight', label: 'Heading weight', description: 'Title and section authority', step: 50, suffix: '' },
+  { key: 'lineHeight', label: 'Line height', description: 'Vertical breathing room and rhythm', step: 0.05, suffix: '' },
+  { key: 'letterSpacing', label: 'Letter spacing', description: 'Tracking across interface text', step: 0.01, suffix: 'em' },
+  { key: 'readingMeasure', label: 'Reading width', description: 'Comfortable maximum line length', step: 1, suffix: 'ch' },
+]
 
 type VisualPreset = {
   id: string
@@ -424,6 +477,30 @@ function ThemeContextPreview() {
     </div>
     <div class="theme-preview-scope"><span>Home</span><span>Library</span><span>Learn</span><span>Map</span><span>Settings</span></div>
   </section>
+}
+
+function ThemeSemanticPreview({ palette, mode }: { palette: CustomPalette; mode: ThemeMode }) {
+  const variables = computeThemeVariables(palette, mode)
+  const previewStyle = {
+    '--theme-mini-rail': variables['--studio-rail'],
+    '--theme-mini-rail-ink': variables['--studio-rail-ink'],
+    '--theme-mini-canvas': variables['--studio-canvas'],
+    '--theme-mini-surface': variables['--studio-surface'],
+    '--theme-mini-ink': variables['--studio-ink'],
+    '--theme-mini-muted': variables['--studio-secondary'],
+    '--theme-mini-brand': variables['--studio-cypress'],
+    '--theme-mini-action-ink': variables['--studio-action-ink'],
+    '--theme-mini-highlight': variables['--studio-lichen'],
+    '--theme-mini-seam': variables['--studio-seam'],
+  }
+  return <span class="theme-semantic-preview" style={previewStyle as any} aria-hidden="true">
+    <span class="theme-semantic-rail"><i /><i class="active" /><i /></span>
+    <span class="theme-semantic-canvas">
+      <span class="theme-semantic-toolbar"><i /><b /></span>
+      <span class="theme-semantic-ledger"><strong /><em /><small /></span>
+      <span class="theme-semantic-signal" />
+    </span>
+  </span>
 }
 
 function PreferencesView() {
@@ -898,6 +975,13 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
   const activeFontPreset = FONT_PRESETS.find((preset) => preset.id === font)
   const activeThemeName = activeThemePreset?.name || (theme === 'custom' ? 'Custom palette' : labelize(theme))
   const activeSwatches = activeThemePreset?.swatches || [customPalette.brand, customPalette.shell, customPalette.highlight, customPalette.accent]
+  const themePresetGroups = [
+    { mode: 'light' as const, title: 'Day palettes', description: 'Paper-bright systems for daylight and focused reading.' },
+    { mode: 'dark' as const, title: 'Night palettes', description: 'Low-light systems with luminous type and restrained signals.' },
+  ]
+  const customThemeMode: ThemeMode = themeMode === 'night' ? 'dark' : 'light'
+  const contrastChecks = auditThemeContrast(customPalette, customThemeMode)
+  const contrastFailures = contrastChecks.filter((check) => !check.passes).length
 
   return <div class="settings-page preferences-page">
     <header class="settings-intro preferences-hero">
@@ -917,6 +1001,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
     </details>
 
     <div class="preferences-layout">
+      <aside class="preferences-preview-rail" aria-label="Current appearance preview"><ThemeContextPreview /><div class="preferences-scope-note"><strong>One system, everywhere</strong><p>Your appearance choices apply to Home, Library, Learn, Map, Settings, dialogs, and object views.</p></div></aside>
       <div class="preferences-main">
 
     <section class="visual-presets-section" aria-labelledby="visual-presets-title" id="visual-presets-heading">
@@ -966,61 +1051,61 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
         <div><span class="preference-section-number">03 · Theme</span><h2>Choose the atmosphere</h2><p class="section-description">Pick a complete day or night palette. Your content and learning data stay unchanged.</p></div>
       </div>
 
-      <div class="theme-presets-grid" role="group" aria-label="Color themes">
-        {THEME_PRESETS.map((preset) => (
-          <button
-            key={preset.id}
-            type="button"
-            class={`theme-preset-card ${theme === preset.id ? 'active' : ''}`}
-            onClick={() => selectTheme(preset.id)}
-            aria-pressed={theme === preset.id}
-          >
-            <div class="theme-preset-header">
-              <span class="theme-preset-title">{preset.name}</span>
-              <div class="theme-swatches" aria-hidden="true">
-                {preset.swatches.map((c, i) => (
-                  <span key={i} class="theme-swatch" style={{ background: c }} title={`${paletteRoles[i]} · ${c}`} />
-                ))}
-              </div>
-            </div>
-            <p class="theme-preset-desc"><span class={`theme-preset-mode mode-${preset.mode}`}>{preset.mode === 'dark' ? 'Dark' : 'Day'}</span>{preset.description}</p>
-          </button>
-        ))}
-
-        <button
-          type="button"
-          class={`theme-preset-card ${theme === 'custom' ? 'active' : ''}`}
-          onClick={() => selectTheme('custom')}
-          aria-pressed={theme === 'custom'}
-        >
-          <div class="theme-preset-header">
-            <span class="theme-preset-title">Custom visual system</span>
-            <div class="theme-swatches" aria-hidden="true">
-              <span class="theme-swatch" style={{ background: customPalette.brand }} />
-              <span class="theme-swatch" style={{ background: customPalette.shell }} />
-              <span class="theme-swatch" style={{ background: customPalette.highlight }} />
-              <span class="theme-swatch" style={{ background: customPalette.accent }} />
-            </div>
+      <div class="theme-preset-groups">
+        {themePresetGroups.map((group) => <section class="theme-preset-group" aria-labelledby={`theme-group-${group.mode}`} key={group.mode}>
+          <header class="theme-preset-group-heading"><div><h3 id={`theme-group-${group.mode}`}>{group.title}</h3><p>{group.description}</p></div><span>{THEME_PRESETS.filter((preset) => preset.mode === group.mode).length} palettes</span></header>
+          <div class="theme-presets-grid" role="group" aria-label={group.title}>
+            {THEME_PRESETS.filter((preset) => preset.mode === group.mode).map((preset) => {
+              const isSelected = theme === preset.id
+              const palette: CustomPalette = { brand: preset.swatches[0], shell: preset.swatches[1], highlight: preset.swatches[2], accent: preset.swatches[3], ink: preset.ink }
+              return <button
+                key={preset.id}
+                type="button"
+                class={`theme-preset-card${isSelected ? ' active' : ''}`}
+                onClick={() => selectTheme(preset.id)}
+                aria-pressed={isSelected}
+              >
+                <ThemeSemanticPreview palette={palette} mode={preset.mode} />
+                <span class="theme-preset-copy">
+                  <span class="theme-preset-title-row"><strong class="theme-preset-title">{preset.name}</strong>{isSelected && <span class="theme-selected-marker">Selected</span>}</span>
+                  <small class={`theme-preset-mode mode-${preset.mode}`}>{preset.mode === 'dark' ? 'Night' : 'Day'}</small>
+                  <span class="theme-preset-desc">{preset.description}</span>
+                </span>
+              </button>
+            })}
           </div>
-          <p class="theme-preset-desc">Tune every semantic color, generate variants, and import or export the complete visual system.</p>
-        </button>
+        </section>)}
+
+        <section class="theme-preset-group theme-custom-choice" aria-labelledby="theme-group-custom">
+          <header class="theme-preset-group-heading"><div><h3 id="theme-group-custom">Custom visual system</h3><p>Build a paired day and night system from the semantic roles below.</p></div><span>11 color roles</span></header>
+          <button
+            type="button"
+            class={`theme-preset-card theme-custom-card${theme === 'custom' ? ' active' : ''}`}
+            onClick={() => selectTheme('custom')}
+            aria-pressed={theme === 'custom'}
+          >
+            <ThemeSemanticPreview palette={customPalette} mode={customThemeMode} />
+            <span class="theme-preset-copy">
+              <span class="theme-preset-title-row"><strong class="theme-preset-title">Your visual system</strong>{theme === 'custom' && <span class="theme-selected-marker">Selected</span>}</span>
+              <small class={`theme-preset-mode mode-${customThemeMode}`}>{themeMode === 'night' ? 'Night pair' : 'Day pair'}</small>
+              <span class="theme-preset-desc">Tune every semantic color, explore variants, and exchange the complete system when you need it.</span>
+            </span>
+          </button>
+        </section>
       </div>
 
       {theme === 'custom' && (
         <div class="custom-palette-panel" aria-label="Custom visual system editor">
           <div class="custom-palette-header">
             <div>
-              <h3>Custom visual system</h3>
-          <p>Adjust the semantic colors used across all five workspaces. Changes preview immediately and save automatically.</p>
+              <h3>Shape your day and night pair</h3>
+              <p>Choose a mode, explore a direction, then tune the semantic roles. Changes preview immediately and save automatically.</p>
             </div>
-            <button type="button" class="palette-prompt-button" onClick={copyThemePrompt} title="Copy a prompt for another AI to generate the full visual system" aria-label="Copy full visual system prompt">{promptCopied ? 'Copied' : 'Copy full AI prompt'}</button>
-      </div>
-      <div class="theme-json-explainer" role="note">
-        <strong>Complete system exchange</strong>
-        <span>JSON can carry day/night palettes, font roles, type rhythm, density, corners, text size, and motion across the whole studio.</span>
-        <small>Use web-loadable fonts or include reliable fallbacks for local typefaces.</small>
-      </div>
-      <div class="theme-workshop-toolbar" aria-label="Theme workshop controls">
+            <span class="theme-palette-mode-status">Editing {themeMode === 'night' ? 'night' : 'day'} palette</span>
+          </div>
+          <div class="theme-workshop-stage">
+            <div class="theme-workshop-stage-copy"><strong>Explore this pair</strong><span>Generate a related direction or move through your local edit history.</span></div>
+            <div class="theme-workshop-toolbar" aria-label="Theme workshop controls">
             <div class="theme-mode-switch" role="group" aria-label="Theme mode">
               <button type="button" class={themeMode === 'day' ? 'active' : ''} aria-pressed={themeMode === 'day'} onClick={() => switchThemeMode('day')}>Day</button>
               <button type="button" class={themeMode === 'night' ? 'active' : ''} aria-pressed={themeMode === 'night'} onClick={() => switchThemeMode('night')}>Night</button>
@@ -1030,185 +1115,61 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
             <button type="button" class="btn-secondary" onClick={surpriseMe} disabled={variantGenerating}>Surprise me</button>
             <button type="button" class="btn-secondary" onClick={undoPalette} disabled={!paletteHistory.length}>Undo</button>
             <button type="button" class="btn-secondary" onClick={redoPalette} disabled={!paletteFuture.length}>Redo</button>
-            <button type="button" class="btn-secondary" onClick={copyThemeJson} title="Copy colors, fonts, typography, and interface settings">Copy visual system JSON</button>
-            <button type="button" class="btn-secondary" onClick={exportTheme} title="Download the complete visual system">Export visual system JSON</button>
-            <label class="theme-import-button" title="Apply colors, fonts, typography, and interface settings across the studio">Import visual system JSON<input type="file" accept="application/json" onChange={(event) => importTheme((event.target as HTMLInputElement).files?.[0])} /></label>
-            <button type="button" class="btn-secondary" onClick={saveNamedTheme}>Save snapshot</button>
-            {Object.keys(savedThemes).length > 0 && <select class="theme-saved-select" aria-label="Saved themes" value="" onChange={(event) => loadNamedTheme((event.target as HTMLSelectElement).value)}><option value="">Saved themes…</option>{Object.keys(savedThemes).map((name) => <option value={name} key={name}>{name}</option>)}</select>}
+          </div>
           </div>
 
-          <div class="custom-palette-paste-box">
-            <textarea
-              aria-label="Paste color codes or visual-system JSON"
-              placeholder={`Paste 11 color codes or a complete visual-system JSON. JSON applies colors, fonts, typography, and interface settings.`}
-              value={pasteCodes}
-              onInput={(e) => setPasteCodes((e.target as HTMLTextAreaElement).value)}
-              rows={3}
-            />
-            <div class="custom-palette-actions">
-              <button type="button" class="btn-apply" onClick={handleApplyPastedCodes}>
-                Apply colors or JSON
-              </button>
-              <button
-                type="button"
-                class="btn-secondary"
-                onClick={() => {
-                  setPasteCodes(`#1D4533\n#F7EAE0\n#FFFFFF\n#F9D2BA\n#5E3122\n#1D4533\n#133325\n#DEDAD0\n#874606\n#9C2E21\n#3F6E4E`)
-                }}
-              >
-                Insert sample codes
-              </button>
-              <button
-                type="button"
-                class="btn-secondary"
-                onClick={() => {
-                  setCustomPalette(DEFAULT_CUSTOM_PALETTE)
-                  applyTheme('custom', DEFAULT_CUSTOM_PALETTE)
-                  persist('appearance', { theme: 'custom', density, custom_palette: DEFAULT_CUSTOM_PALETTE })
-                }}
-              >
-                Reset palette
-              </button>
+          <div class="theme-color-workspace">
+            <div class="custom-palette-fields" aria-label="Semantic color roles">
+              {CUSTOM_COLOR_GROUPS.map((group) => <fieldset class="custom-color-group" key={group.name}>
+                <legend><strong>{group.name}</strong><span>{group.description}</span></legend>
+                <div class="custom-color-group-fields">
+                  {group.fields.map(({ key, label, fallback, description }) => <div class="custom-color-item" key={key}>
+                    <label for={`color-${key}`}><strong>{label}</strong><small>{description}</small></label>
+                    <div class="custom-color-input-group">
+                      <input id={`color-${key}-picker`} type="color" aria-label={`${label} color picker`} value={normalizeColor(customPalette[key] || fallback, fallback)} onInput={(event) => updateCustomColor(key, (event.target as HTMLInputElement).value)} />
+                      <input id={`color-${key}`} type="text" value={customPalette[key] || ''} onInput={(event) => updateCustomColor(key, (event.target as HTMLInputElement).value)} placeholder={`${fallback} or rgb(...)`} spellcheck={false} />
+                    </div>
+                  </div>)}
+                </div>
+              </fieldset>)}
             </div>
+            <aside class="theme-contrast-report" aria-labelledby="theme-contrast-title">
+              <header><div><h4 id="theme-contrast-title">Rendered contrast</h4><p>Checks use the CSS colors the studio actually renders, including automatic foreground correction.</p></div><strong class={contrastFailures ? 'has-review' : 'all-pass'}>{contrastFailures ? `${contrastFailures} to review` : 'All pass'}</strong></header>
+              <div class="theme-contrast-grid">
+                {contrastChecks.map((check) => <span class={check.passes ? 'contrast-pass' : 'contrast-fail'} key={check.id}>
+                  <i class="theme-contrast-sample" style={{ background: check.background, color: check.foreground }} aria-hidden="true">Aa</i>
+                  <span><strong>{check.label}</strong><small>{check.ratio === null ? 'Invalid color' : `${check.ratio.toFixed(1)}:1 · ${check.passes ? 'Pass' : 'Review'}`}</small></span>
+                </span>)}
+              </div>
+              <p class="theme-contrast-note">Target: 4.5:1 for normal text. Authored colors stay unchanged; derived text tokens may be corrected for readability.</p>
+            </aside>
           </div>
-
-          <div class="custom-palette-fields">
-            <div class="custom-color-item">
-              <label for="color-brand">Brand</label>
-              <div class="custom-color-input-group">
-                <input
-                  id="color-brand-picker"
-                  type="color"
-                  aria-label="Brand color picker"
-                  value={normalizeColor(customPalette.brand, '#1D4533')}
-                  onInput={(e) => updateCustomColor('brand', (e.target as HTMLInputElement).value)}
-                />
-                <input
-                  id="color-brand"
-                  type="text"
-                  value={customPalette.brand}
-                  onInput={(e) => updateCustomColor('brand', (e.target as HTMLInputElement).value)}
-                  placeholder="#1D4533 or rgb(29, 69, 51)"
-                />
+          <details class="theme-workshop-advanced">
+            <summary><span><strong>Transfer, automation & snapshots</strong><small>Paste colors, exchange JSON, copy an AI brief, or save this full system for later.</small></span><em>Open tools</em></summary>
+            <div class="theme-workshop-advanced-body">
+              <div class="theme-json-explainer" role="note">
+                <strong>Complete system exchange</strong>
+                <span>JSON can carry day/night palettes, font roles, type rhythm, density, corners, text size, and motion across the whole studio.</span>
+                <small>Use web-loadable fonts or include reliable fallbacks for local typefaces.</small>
+              </div>
+              <div class="theme-workshop-toolbar theme-transfer-toolbar" aria-label="Visual system transfer controls">
+                <button type="button" class="palette-prompt-button" onClick={copyThemePrompt} title="Copy a prompt for another AI to generate the full visual system">{promptCopied ? 'AI prompt copied' : 'Copy AI prompt'}</button>
+                <button type="button" class="btn-secondary" onClick={copyThemeJson} title="Copy colors, fonts, typography, and interface settings">Copy JSON</button>
+                <button type="button" class="btn-secondary" onClick={exportTheme} title="Download the complete visual system">Export JSON</button>
+                <label class="theme-import-button" title="Apply colors, fonts, typography, and interface settings across the studio"><span>Import JSON</span><input type="file" accept="application/json" aria-label="Import visual system JSON" onChange={(event) => importTheme((event.target as HTMLInputElement).files?.[0])} /></label>
+                <button type="button" class="btn-secondary" onClick={saveNamedTheme}>Save snapshot</button>
+                {Object.keys(savedThemes).length > 0 && <select class="theme-saved-select" aria-label="Saved themes" value="" onChange={(event) => loadNamedTheme((event.target as HTMLSelectElement).value)}><option value="">Load saved theme…</option>{Object.keys(savedThemes).map((name) => <option value={name} key={name}>{name}</option>)}</select>}
+              </div>
+              <div class="custom-palette-paste-box">
+                <textarea aria-label="Paste color codes or visual-system JSON" placeholder="Paste 11 color codes or a complete visual-system JSON. JSON applies colors, fonts, typography, and interface settings." value={pasteCodes} onInput={(event) => setPasteCodes((event.target as HTMLTextAreaElement).value)} rows={4} />
+                <div class="custom-palette-actions">
+                  <button type="button" class="btn-apply" onClick={handleApplyPastedCodes}>Apply colors or JSON</button>
+                  <button type="button" class="btn-secondary" onClick={() => setPasteCodes(`#1D4533\n#F7EAE0\n#FFFFFF\n#F9D2BA\n#5E3122\n#1D4533\n#133325\n#DEDAD0\n#874606\n#9C2E21\n#3F6E4E`)}>Insert sample codes</button>
+                  <button type="button" class="btn-secondary" onClick={() => commitPalette(DEFAULT_CUSTOM_PALETTE)}>Reset palette</button>
+                </div>
               </div>
             </div>
-
-            <div class="custom-color-item">
-              <label for="color-shell">Shell</label>
-              <div class="custom-color-input-group">
-                <input
-                  id="color-shell-picker"
-                  type="color"
-                  aria-label="Shell color picker"
-                  value={normalizeColor(customPalette.shell, '#F7EAE0')}
-                  onInput={(e) => updateCustomColor('shell', (e.target as HTMLInputElement).value)}
-                />
-                <input
-                  id="color-shell"
-                  type="text"
-                  value={customPalette.shell}
-                  onInput={(e) => updateCustomColor('shell', (e.target as HTMLInputElement).value)}
-                  placeholder="#F7EAE0 or rgb(247, 234, 224)"
-                />
-              </div>
-            </div>
-
-            <div class="custom-color-item">
-              <label for="color-surface">Surface</label>
-              <div class="custom-color-input-group">
-                <input id="color-surface-picker" type="color" aria-label="Surface color picker" value={normalizeColor(customPalette.surface || customPalette.shell, '#FFFFFF')} onInput={(e) => updateCustomColor('surface', (e.target as HTMLInputElement).value)} />
-                <input id="color-surface" type="text" value={customPalette.surface || ''} onInput={(e) => updateCustomColor('surface', (e.target as HTMLInputElement).value)} placeholder="#FFFFFF or rgb(255, 255, 255)" />
-              </div>
-            </div>
-
-            <div class="custom-color-item">
-              <label for="color-highlight">Highlight</label>
-              <div class="custom-color-input-group">
-                <input
-                  id="color-highlight-picker"
-                  type="color"
-                  aria-label="Highlight color picker"
-                  value={normalizeColor(customPalette.highlight, '#F9D2BA')}
-                  onInput={(e) => updateCustomColor('highlight', (e.target as HTMLInputElement).value)}
-                />
-                <input
-                  id="color-highlight"
-                  type="text"
-                  value={customPalette.highlight}
-                  onInput={(e) => updateCustomColor('highlight', (e.target as HTMLInputElement).value)}
-                  placeholder="#F9D2BA or rgb(249, 210, 186)"
-                />
-              </div>
-            </div>
-
-            <div class="custom-color-item">
-              <label for="color-accent">Accent</label>
-              <div class="custom-color-input-group">
-                <input
-                  id="color-accent-picker"
-                  type="color"
-                  aria-label="Accent color picker"
-                  value={normalizeColor(customPalette.accent, '#5E3122')}
-                  onInput={(e) => updateCustomColor('accent', (e.target as HTMLInputElement).value)}
-                />
-                <input
-                  id="color-accent"
-                  type="text"
-                  value={customPalette.accent}
-                  onInput={(e) => updateCustomColor('accent', (e.target as HTMLInputElement).value)}
-                  placeholder="#5E3122 or rgb(94, 49, 34)"
-                />
-              </div>
-            </div>
-
-            <div class="custom-color-item">
-              <label for="color-ink">Ink</label>
-              <div class="custom-color-input-group">
-                <input
-                  id="color-ink-picker"
-                  type="color"
-                  aria-label="Ink color picker"
-                  value={normalizeColor(customPalette.ink || customPalette.brand, customPalette.brand)}
-                  onInput={(e) => updateCustomColor('ink', (e.target as HTMLInputElement).value)}
-                />
-                <input
-                  id="color-ink"
-                  type="text"
-                  value={customPalette.ink || ''}
-                  onInput={(e) => updateCustomColor('ink', (e.target as HTMLInputElement).value)}
-                  placeholder="#2B170F or rgb(43, 23, 15)"
-                />
-              </div>
-            </div>
-
-            {([
-              ['rail', 'Rail', '#133325'],
-              ['seam', 'Seam', '#DEDAD0'],
-              ['due', 'Due', '#874606'],
-              ['danger', 'Danger', '#9C2E21'],
-              ['map', 'Map', '#3F6E4E'],
-            ] as const).map(([key, label, fallback]) => <div class="custom-color-item" key={key}>
-              <label for={`color-${key}`}>{label}</label>
-              <div class="custom-color-input-group">
-                <input id={`color-${key}-picker`} type="color" aria-label={`${label} color picker`} value={normalizeColor(customPalette[key] || fallback, fallback)} onInput={(e) => updateCustomColor(key, (e.target as HTMLInputElement).value)} />
-                <input id={`color-${key}`} type="text" value={customPalette[key] || ''} onInput={(e) => updateCustomColor(key, (e.target as HTMLInputElement).value)} placeholder={`${fallback} or rgb(...)`} />
-              </div>
-            </div>)}
-          </div>
-          {(() => {
-            const background = customPalette.surface || customPalette.shell
-            const checks = [
-              ['Ink / surface', customPalette.ink || customPalette.brand, background],
-              ['Ink / shell', customPalette.ink || customPalette.brand, customPalette.shell],
-              ['Rail / brand', customPalette.rail || customPalette.brand, customPalette.brand],
-              ['Map / canvas', customPalette.map || '#3F6E4E', background],
-            ]
-            return <div class="theme-contrast-grid">{checks.map(([label, foreground, backdrop]) => {
-              const ratio = contrastRatio(foreground, backdrop)
-              const pass = ratio !== null && ratio >= 4.5
-              return <span class={pass ? 'contrast-pass' : 'contrast-fail'} key={label}><strong>{label}</strong><small>{ratio === null ? 'Invalid color' : `${ratio.toFixed(1)}:1 · ${pass ? 'Pass' : 'Review'}`}</small></span>
-            })}</div>
-          })()}
+          </details>
           <div class="theme-token-map" aria-label="Theme token usage">
             <span><strong>Brand</strong><small>primary actions · focus</small></span>
             <span><strong>Rail</strong><small>navigation</small></span>
@@ -1223,10 +1184,10 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
     </details>
 
     <details class="font-section preference-disclosure" id="font-section">
-      <summary><span class="preference-summary-type" style={{ fontFamily: activeFontPreset?.ui || customFont.ui }} aria-hidden="true">Aa</span><span><strong>Font family</strong><small>{activeFontPreset?.name || 'Custom font stacks'} · interface, reading, and evidence</small></span><em>Choose</em></summary>
+      <summary><span class="preference-summary-type" style={{ fontFamily: activeFontPreset?.ui || customFont.ui }} aria-hidden="true">Aa</span><span><strong>Font family</strong><small>{activeFontPreset?.name || (font === 'custom' ? 'Custom font stacks' : font)} · interface, reading, headings, and code</small></span><em>Choose</em></summary>
       <div class="preference-disclosure-body">
       <div class="section-head">
-        <div><span class="preference-section-number">04 · Reading</span><h2>Choose the voice of the page</h2><p class="section-description">Select a coordinated family for interface text, long-form reading, headings, and evidence labels.</p></div>
+        <div><span class="preference-section-number">04 · Reading & fonts</span><h2>Choose the voice of the page</h2><p class="section-description">Select a coordinated family for interface text, long-form reading, headings, and code metadata.</p></div>
       </div>
       <div class="font-presets-grid" role="group" aria-label="Fonts">
         {FONT_PRESETS.map((f) => (
@@ -1271,7 +1232,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
                 type="text"
                 value={customFont.ui}
                 onInput={(e) => updateCustomFont('ui', (e.target as HTMLInputElement).value)}
-                placeholder='"IBM Plex Sans", system-ui, sans-serif'
+                placeholder='"IBM Plex Sans", "Noto Sans Arabic", system-ui, sans-serif'
               />
             </label>
             <label>
@@ -1280,7 +1241,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
                 type="text"
                 value={customFont.display}
                 onInput={(e) => updateCustomFont('display', (e.target as HTMLInputElement).value)}
-                placeholder='"IBM Plex Serif", Georgia, serif'
+                placeholder='"IBM Plex Serif", "Literata", "Noto Naskh Arabic", Georgia, serif'
               />
             </label>
             <label>
@@ -1289,7 +1250,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
                 type="text"
                 value={customFont.reading}
                 onInput={(e) => updateCustomFont('reading', (e.target as HTMLInputElement).value)}
-                placeholder='"IBM Plex Serif", Georgia, serif'
+                placeholder='"IBM Plex Serif", "Literata", "Noto Naskh Arabic", Georgia, serif'
               />
             </label>
             <label>
@@ -1298,11 +1259,11 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
                 type="text"
                 value={customFont.mono}
                 onInput={(e) => updateCustomFont('mono', (e.target as HTMLInputElement).value)}
-                placeholder='"IBM Plex Mono", ui-monospace, monospace'
+                placeholder='"IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace'
               />
             </label>
           </div>
-          <p class="custom-font-hint">Try: Inter, Space Grotesk, Fraunces, Playfair Display, IBM Plex Mono, JetBrains Mono, Noto Sans Arabic, Noto Naskh Arabic.</p>
+          <p class="custom-font-hint">Try: Inter, Plus Jakarta Sans, Newsreader, Literata, JetBrains Mono, Fira Code, IBM Plex Sans Arabic, Noto Sans Arabic, Noto Naskh Arabic.</p>
           <div class="custom-font-actions">
             <button
               type="button"
@@ -1324,27 +1285,21 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
     <details class="typography-controls-section preference-disclosure" id="type-controls">
       <summary><span class="preference-summary-type" aria-hidden="true">Tt</span><span><strong>Detailed typography</strong><small>{effectiveBaseSize}px body · {typography.lineHeight} line height · {typography.readingMeasure}ch measure</small></span><em>Fine-tune</em></summary>
       <div class="preference-disclosure-body">
-      <div class="section-head"><div><span class="preference-section-number">05 · Type tuning</span><h2>Adjust reading rhythm</h2><p class="section-description">Fine-tune scale, weight, rhythm, and line length after choosing a font family.</p><p class="type-responsive-note"><strong>{effectiveBaseSize}px effective body size</strong> · {viewportBoost ? `wide-screen comfort adds ${viewportBoost}% at ${viewportWidth}px` : 'mobile and standard desktop use your selected size'} · reading measure stays {typography.readingMeasure}ch</p></div><button type="button" class="btn-secondary" onClick={resetTypography}>Reset type</button></div>
+      <div class="section-head"><div><span class="preference-section-number">05 · Type tuning</span><h2>Adjust reading rhythm</h2><p class="section-description">Fine-tune scale, weight, rhythm, and line length across the entire studio.</p><p class="type-responsive-note"><strong>{effectiveBaseSize}px effective body size</strong> · {viewportBoost ? `wide-screen comfort adds ${viewportBoost}% at ${viewportWidth}px` : 'mobile and standard desktop use your selected size'} · reading measure stays {typography.readingMeasure}ch</p></div><button type="button" class="btn-secondary" onClick={resetTypography}>Reset type</button></div>
       <div class="typography-layout">
         <div class="typography-controls">
-          {([
-            ['baseSize', 'Base size', 'Interface text scale', 14, 20, 1, 'px'],
-            ['bodyWeight', 'Body weight', 'Reading comfort and density', 350, 700, 10, ''],
-            ['headingWeight', 'Heading weight', 'Title and section authority', 450, 800, 10, ''],
-            ['lineHeight', 'Line height', 'Vertical breathing room', 1.2, 2, 0.05, ''],
-            ['letterSpacing', 'Letter spacing', 'Tracking across interface text', -0.03, 0.08, 0.01, 'em'],
-            ['displayScale', 'Display scale', 'Heading size multiplier across the studio', 0.9, 1.3, 0.05, '×'],
-            ['readingMeasure', 'Reading width', 'Comfortable line length', 52, 82, 1, 'ch'],
-          ] as const).map(([key, label, description, min, max, step, suffix]) => {
+          {TYPOGRAPHY_CONTROLS.map(({ key, label, description, step, suffix }) => {
             const value = typography[key]
+            const { min, max } = TYPOGRAPHY_LIMITS[key]
             return <label class="type-range" key={key}><span class="type-range-label"><strong>{label}</strong><output>{value}{suffix}</output></span><small>{description}</small><input type="range" min={min} max={max} step={step} value={value} onInput={(event) => updateTypography(key, Number((event.target as HTMLInputElement).value))} /></label>
           })}
         </div>
         <div class="typography-preview" style={{ fontFamily: 'var(--font-reading)', fontSize: `calc(${typography.baseSize * typography.displayScale}px * var(--font-viewport-scale, 1))`, lineHeight: typography.lineHeight, maxWidth: `${typography.readingMeasure}ch` }}>
-          <span class="typography-preview-kicker">Live specimen · display + reading</span>
+          <span class="typography-preview-kicker">Live specimen · display + reading + arabic + mono</span>
           <h3>Ideas become useful when they survive contact with practice.</h3>
           <p style={{ fontFamily: 'var(--font-ui)', fontSize: `calc(${typography.baseSize}px * var(--font-viewport-scale, 1))`, fontWeight: typography.bodyWeight, letterSpacing: `${typography.letterSpacing}em` }}>A calmer type system makes the next decision easier to see. Adjust weight, rhythm, and measure until the page feels effortless to scan and comfortable to stay in.</p>
-          <code style={{ fontFamily: 'var(--font-mono)' }}>retain → apply → remember</code>
+          <p dir="rtl" style={{ fontFamily: 'var(--font-reading), "Noto Naskh Arabic", "IBM Plex Sans Arabic", serif', fontSize: `calc(${typography.baseSize * 1.05}px * var(--font-viewport-scale, 1))`, lineHeight: typography.lineHeight, margin: '4px 0 0' }}>العلم النافع يبني العقل ويُهذب السلوك · رحلة التعلّم المستمر والبحث عن الحق</p>
+          <code style={{ fontFamily: 'var(--font-mono)' }}>retain → apply → remember · {effectiveBaseSize}px · {typography.lineHeight} rhythm</code>
         </div>
       </div>
       </div>
@@ -1425,7 +1380,6 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
     </details>
 
       </div>
-      <aside class="preferences-preview-rail" aria-label="Current appearance preview"><ThemeContextPreview /><div class="preferences-scope-note"><strong>One system, everywhere</strong><p>Your appearance choices apply to Home, Library, Learn, Map, Settings, dialogs, and object views.</p></div></aside>
     </div>
   </div>
 }

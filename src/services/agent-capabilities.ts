@@ -511,7 +511,6 @@ export function buildAgentOpenApi(origin: string, capabilities: readonly Capabil
       'x-reversible': capability.reversible,
       'x-precondition-path': capability.precondition_path,
       'x-verification-path': capability.verification_path,
-      ...(capability.method !== 'GET' ? { security: [{ ApiToken: [] }] } : {}),
       responses: {
         '200': { description: 'Successful JSON response', content: { 'application/json': { schema: capability.response_schema } } },
         '400': { $ref: '#/components/responses/ValidationError' },
@@ -534,7 +533,6 @@ export function buildAgentOpenApi(origin: string, capabilities: readonly Capabil
       operationId: 'agent_request',
       summary: 'Dry-run or execute one allow-listed capability with protocol-v2 safeguards.',
       tags: ['agent-control'],
-      security: [{ ApiToken: [] }],
       requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/AgentRequest' } } } },
       responses: {
         '200': { description: 'Dry-run or verified operation receipt', content: { 'application/json': { schema: { $ref: '#/components/schemas/AgentReceipt' } } } },
@@ -551,9 +549,6 @@ export function buildAgentOpenApi(origin: string, capabilities: readonly Capabil
     servers: [{ url: origin }],
     paths,
     components: {
-      securitySchemes: {
-        ApiToken: { type: 'apiKey', in: 'header', name: 'x-api-token', description: 'Installed-client credential for private API operations; browsers may use a signed session.' },
-      },
       schemas: {
         AgentAssertion: objectSchema({ path: { type: 'string', pattern: '^/' }, field: { type: 'string', minLength: 1 }, equals: {} }, ['path', 'field', 'equals']),
         AgentRequest: BODY_SCHEMAS['POST /agent/request'],

@@ -46,7 +46,7 @@ export function validateLiteVisualCheckpointEvidence(step: string, evidence: Rec
   }
   if (step === 'validate_pair') for (const field of ['html_sha256', 'pdf_sha256']) if (!SHA256_RE.test(String(evidence[field] || ''))) failures.push(`${field} must be a full lowercase SHA-256`)
   if (step === 'publish_pair') {
-    if (evidence.validation_schema !== 'lite-visual-validation/v5') failures.push('validation_schema must be lite-visual-validation/v5')
+    if (evidence.validation_schema !== 'lite-visual-validation/v6') failures.push('validation_schema must be lite-visual-validation/v6')
     if (evidence.validation_status !== 'passed') failures.push('validation_status must be passed')
     if (!SHA256_RE.test(String(evidence.receipt_sha256 || ''))) failures.push('receipt_sha256 must be a full lowercase SHA-256')
   }

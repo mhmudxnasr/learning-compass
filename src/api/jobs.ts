@@ -19,13 +19,14 @@ app.get('/', async (c) => {
 })
 
 app.get('/active', async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT id,job_type,status,payload_json,result_json,attempts,error,created_at,updated_at FROM agent_jobs WHERE status IN ('pending','running','retry') OR (status IN ('completed','failed','cancelled') AND datetime(updated_at) >= datetime('now', '-2 hours')) ORDER BY updated_at DESC LIMIT 50`).all<any>()
+  const rows = await c.env.DB.prepare(`SELECT id,job_type,status,payload_json,result_json,attempts,error,created_at,updated_at FROM agent_jobs WHERE status IN ('pending','running','retry','awaiting_activation') OR (status IN ('completed','failed','cancelled') AND datetime(updated_at) >= datetime('now', '-2 hours')) ORDER BY updated_at DESC LIMIT 50`).all<any>()
   return c.json({ jobs: (rows.results || []).map((row) => ({ ...row, payload: JSON.parse(row.payload_json || '{}'), result: row.result_json ? JSON.parse(row.result_json) : null, payload_json: undefined, result_json: undefined })) })
 })
 
 app.get('/health', async (c) => {
   const health = await loadJobHealth(c.env.DB)
-  return c.json(health, health.ok ? 200 : 503)
+  const activeJobs = ['pending', 'running', 'retry', 'awaiting_activation'].reduce((total, status) => total + Number(health.status[status] || 0), 0)
+  return c.json({ ...health, active_jobs: activeJobs }, health.ok ? 200 : 503)
 })
 
 app.post('/reconcile', async (c) => {
@@ -122,6 +123,23 @@ app.post('/:id/complete', async (c) => {
       return c.json({ error: 'Taste Mapper may propose changes but cannot create source notes or recall drafts' }, 400)
     }
     if (job.job_type === 'visualise_source') {
+      const stagedPair = job.workflow_run_id
+        ? await DB.prepare(`SELECT pair_id,corpus_id,workflow_run_id,html_artifact_id,pdf_artifact_id,receipt_sha256 FROM lite_visual_pairs
+            WHERE job_id=? AND workflow_run_id=? AND state='staged'`).bind(job.id, job.workflow_run_id).first<any>()
+        : null
+      if (stagedPair) {
+        if (job.workflow_step !== 'publish_pair') return c.json({ error: 'Staged Lite Visual must await activation from publish_pair', workflow_step: job.workflow_step }, 409)
+        if (body.pair_id !== stagedPair.pair_id || body.html_artifact_id !== stagedPair.html_artifact_id || body.pdf_artifact_id !== stagedPair.pdf_artifact_id
+          || body.receipt_sha256 != null && body.receipt_sha256 !== stagedPair.receipt_sha256 || body.validation_status !== 'passed') {
+          return c.json({ error: 'Staged Lite Visual completion must match the exact pair and receipt' }, 409)
+        }
+        const result = { ...body, pair_id: stagedPair.pair_id, html_artifact_id: stagedPair.html_artifact_id, pdf_artifact_id: stagedPair.pdf_artifact_id, receipt_sha256: stagedPair.receipt_sha256, corpus_id: stagedPair.corpus_id, workflow_run_id: stagedPair.workflow_run_id }
+        const awaiting = await DB.prepare(`UPDATE agent_jobs SET status='awaiting_activation',result_json=?,error=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now')
+          WHERE id=? AND workflow_run_id=? AND workflow_step='publish_pair' AND status='running' AND lease_owner=?`).bind(JSON.stringify(result), job.id, stagedPair.workflow_run_id, worker).run()
+        if (!awaiting.meta.changes) return c.json({ error: 'job unavailable while awaiting activation' }, 409)
+        await DB.prepare('DELETE FROM agent_job_retries WHERE job_id=?').bind(job.id).run()
+        return c.json({ ok: true, status: 'awaiting_activation', job_id: job.id, workflow_run_id: stagedPair.workflow_run_id, corpus_id: stagedPair.corpus_id, pair_id: stagedPair.pair_id })
+      }
       if (job.workflow_step !== 'verify_record') return c.json({ error: 'Lite Visual must reach verify_record before completion', workflow_step: job.workflow_step }, 409)
       if (!String(body.pair_id || '').startsWith('lv-') || !body.html_artifact_id || !body.pdf_artifact_id || body.validation_status !== 'passed') return c.json({ error: 'Lite Visual completion requires one verified atomic HTML/PDF pair' }, 400)
     }

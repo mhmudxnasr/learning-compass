@@ -144,7 +144,7 @@ app.get('/books', async (c) => {
   const placeholders = ids.map(() => '?').join(',')
   const [artifacts, jobs, canonMembershipRows, threadRows, chapterResult] = await Promise.all([
     ids.length
-      ? c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,created_at FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${placeholders}) ORDER BY created_at DESC,id DESC`).bind(...ids).all<any>()
+      ? c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,created_at FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${placeholders}) AND COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged' ORDER BY created_at DESC,id DESC`).bind(...ids).all<any>()
       : Promise.resolve({ results: [] }),
     ids.length
       ? c.env.DB.prepare(`SELECT id,job_type,status,error,payload_json,updated_at FROM agent_jobs WHERE job_type IN ('visualise_source','extract_notes') AND json_extract(payload_json,'$.recommendation_id') IN (${placeholders}) ORDER BY updated_at DESC,id DESC`).bind(...ids).all<any>()
@@ -336,6 +336,7 @@ app.post('/books/:id/chapters/:chapterKey/complete', async (c) => {
       WHERE json_extract(metadata_json,'$.recommendation_id')=?
         AND trim(json_extract(metadata_json,'$.chapter_key'))=?
         AND COALESCE(json_extract(metadata_json,'$.scope'),'book')='book'
+        AND COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged'
         AND lower(json_extract(metadata_json,'$.role')) IN ('html','pdf')
       ORDER BY created_at DESC,id DESC LIMIT 1`).bind(recommendationId, chapterKey).first<any>()
     let metadata: Record<string, any> = {}
@@ -826,11 +827,14 @@ app.delete('/:id/permanent', async (c) => {
     const recommendation = await DB.prepare('SELECT id,status FROM recommendations WHERE id=?').bind(recommendationId).first<{ id: string; status: string }>()
     if (!recommendation) return c.json({ error: 'not found' }, 404)
     if (recommendation.status === 'active') return c.json({ error: 'active sources must be archived before permanent deletion' }, 409)
+    const liteVisualPair = await DB.prepare('SELECT pair_id,corpus_id,state FROM lite_visual_pairs WHERE recommendation_id=? LIMIT 1').bind(recommendationId).first<any>()
+    if (liteVisualPair) return c.json({ error: 'lite_visual_pair_history_is_immutable', pair_id: liteVisualPair.pair_id, corpus_id: liteVisualPair.corpus_id, state: liteVisualPair.state }, 409)
+    const legacyLiteVisualPair = await DB.prepare(`SELECT json_extract(metadata_json,'$.pair_id') pair_id,json_extract(metadata_json,'$.corpus_id') corpus_id,json_extract(metadata_json,'$.publication_state') state
+      FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id')=? AND json_extract(metadata_json,'$.generator')='lite-visual'
+        AND json_extract(metadata_json,'$.pair_id') IS NOT NULL LIMIT 1`).bind(recommendationId).first<any>()
+    if (legacyLiteVisualPair) return c.json({ error: 'lite_visual_pair_history_is_immutable', pair_id: legacyLiteVisualPair.pair_id, corpus_id: legacyLiteVisualPair.corpus_id || null, state: legacyLiteVisualPair.state || 'legacy' }, 409)
 
     const artifacts = await DB.prepare(`SELECT id,r2_key FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id')=?`).bind(recommendationId).all<{ id: string; r2_key: string | null }>()
-    if (ARTIFACTS) {
-      for (const artifact of artifacts.results || []) if (artifact.r2_key) await ARTIFACTS.delete(artifact.r2_key)
-    }
 
     const unitIds = await DB.prepare('SELECT id FROM learning_units WHERE recommendation_id=?').bind(recommendationId).all<{ id: string }>()
     const unitIdList = (unitIds.results || []).map((row) => row.id)
@@ -881,6 +885,9 @@ app.delete('/:id/permanent', async (c) => {
     }
     statements.push(DB.prepare('DELETE FROM recommendations WHERE id=?').bind(recommendationId))
     await DB.batch(statements)
+    if (ARTIFACTS) {
+      for (const artifact of artifacts.results || []) if (artifact.r2_key) await ARTIFACTS.delete(artifact.r2_key).catch(() => {})
+    }
     return c.json({ ok: true, permanently_deleted: true, artifact_count: artifacts.results?.length || 0 })
   } catch (err) {
     return c.json(safeError('Permanent deletion failed')(err), 500)

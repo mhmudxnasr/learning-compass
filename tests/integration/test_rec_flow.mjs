@@ -25,7 +25,7 @@ try {
   }
 
   console.log('Step 2: Launching local worker server...')
-  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8789', '--var', 'REQUIRE_API_AUTH:false', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], {
+  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8789', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   })

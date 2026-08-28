@@ -1,8 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 
 const adapter = readFileSync('/home/mahmud/.hermes/skills/lite-visual/scripts/fetch_transcript.py', 'utf8')
+const adapterPath = '/home/mahmud/.hermes/skills/lite-visual/scripts/fetch_transcript.py'
+const sourceExtractor = readFileSync('/home/mahmud/.hermes/skills/lite-visual/scripts/extract_source.py', 'utf8')
+const mediaTranscription = readFileSync('/home/mahmud/.hermes/skills/media/media-transcription-systems/SKILL.md', 'utf8')
 const liteVisual = readFileSync('/home/mahmud/.hermes/skills/lite-visual/SKILL.md', 'utf8')
 const selfEvolution = readFileSync('/home/mahmud/.hermes/skills/workflow/learning-compass-self-evolution/SKILL.md', 'utf8')
 const notebookLm = readFileSync('/home/mahmud/.hermes/skills/notebooklm/SKILL.md', 'utf8')
@@ -11,6 +15,11 @@ const uploader = readFileSync('/home/mahmud/.hermes/skills/lite-visual/scripts/u
 const liteVisualQuality = readFileSync('/home/mahmud/.hermes/skills/lite-visual/SKILL.md', 'utf8')
 
 test('YouTube transcript adapter is Arabic-first with English fallback', () => {
+  assert.match(adapter, /VERSION = "lite-visual-transcript\/3"/)
+  assert.match(sourceExtractor, /VERSION = "lite-visual-source-extractor\/4"/)
+  assert.match(sourceExtractor, /--verified-transcript-receipt/)
+  assert.match(sourceExtractor, /"local_transcript_sha256"/)
+  assert.match(sourceExtractor, /"duplicate_passage_safe"/)
   assert.match(adapter, /default="ar,ar-SA,ar-EG,en"/)
   assert.match(adapter, /languages=languages/)
   assert.match(adapter, /"language"/)
@@ -19,7 +28,60 @@ test('YouTube transcript adapter is Arabic-first with English fallback', () => {
   assert.match(adapter, /sys\.stdout\.write\(transcript\)/)
   assert.match(adapter, /fetch_with_transcript_api/)
   assert.match(adapter, /fetch_with_whisper/)
+  assert.match(adapter, /receipt\["audio_fallback_reason"\]/)
   assert.doesNotMatch(adapter, /\.fetch\(video_id\(args\.url\)\)\s*$/m)
+})
+
+test('YouTube audio fallback runs only after captions are positively confirmed absent', () => {
+  const code = `
+import importlib.util, json
+s=importlib.util.spec_from_file_location('t','${adapterPath}')
+m=importlib.util.module_from_spec(s)
+s.loader.exec_module(m)
+calls={'audio': 0}
+def absent(*args, **kwargs): raise m.CaptionsAbsent('zero tracks')
+def audio(*args, **kwargs):
+    calls['audio'] += 1
+    return (' '.join(['كلمة'] * 25), 'ar', {'method': 'faster-whisper', 'caption_kind': 'speech-to-text'})
+m.fetch_with_transcript_api=absent
+m.fetch_with_ytdlp=absent
+m.fetch_with_whisper=audio
+text, language, receipt, checks, failures=m.acquire_transcript('https://www.youtube.com/watch?v=fixture', ['ar','en'], True, False)
+print(json.dumps({'calls': calls, 'reason': receipt.get('audio_fallback_reason'), 'evidence': len(receipt.get('caption_absence_evidence', [])), 'passed': checks['minimum_words']}))
+`
+  const result = spawnSync('python3', ['-c', code], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout), { calls: { audio: 1 }, reason: 'youtube_captions_confirmed_absent', evidence: 2, passed: true })
+})
+
+test('YouTube caption lookup failures block without downloading audio', () => {
+  const code = `
+import importlib.util, json
+s=importlib.util.spec_from_file_location('t','${adapterPath}')
+m=importlib.util.module_from_spec(s)
+s.loader.exec_module(m)
+calls={'audio': 0}
+def failed(*args, **kwargs): raise RuntimeError('network blocked')
+def audio(*args, **kwargs): calls['audio'] += 1; raise AssertionError('audio must not run')
+m.fetch_with_transcript_api=failed
+m.fetch_with_ytdlp=failed
+m.fetch_with_whisper=audio
+try:
+    m.acquire_transcript('https://www.youtube.com/watch?v=fixture', ['ar','en'], True, False)
+except RuntimeError as error:
+    print(json.dumps({'calls': calls, 'blocked': 'availability could not be confirmed' in str(error)}))
+else:
+    raise SystemExit('expected caption uncertainty to block')
+`
+  const result = spawnSync('python3', ['-c', code], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout), { calls: { audio: 0 }, blocked: true })
+})
+
+test('media transcription skill owns the strict YouTube no-caption gate', () => {
+  assert.match(mediaTranscription, /audio transcription is allowed only after at least one complete inventory positively reports zero manual and zero generated tracks/i)
+  assert.match(mediaTranscription, /audio_fallback_reason=youtube_captions_confirmed_absent/)
+  assert.match(mediaTranscription, /caption lookup fails without proving absence, stop with a blocked receipt/i)
 })
 
 test('Visual Lite forbids the English-only transcript default', () => {
@@ -85,7 +147,8 @@ test('Lite Visual keeps the repaired companion quality baseline for future files
 test('Lite Visual publishes one validated atomic pair and verifies its source record', () => {
   assert.match(uploader, /\/artifacts\/pairs/)
   assert.match(uploader, /--receipt/)
-  assert.match(uploader, /lite-visual-validation\/v5/)
+  assert.match(uploader, /from receipt_attestation import RECEIPT_SCHEMA/)
+  assert.match(uploader, /passing \{RECEIPT_SCHEMA\} receipt/)
   assert.match(uploader, /"recommended_start": "html"/)
   assert.match(uploader, /verify_pair/)
   assert.match(uploader, /source record did not expose the new pair as ready/)

@@ -13,7 +13,16 @@ export type ArtifactContentInspection = {
 }
 
 export const LITE_VISUAL_WORKFLOW_CONTRACT = 'lite-visual-linear/v4'
-export const LITE_VISUAL_RECEIPT_SCHEMA = 'lite-visual-validation/v5'
+export const LITE_VISUAL_RECEIPT_SCHEMA = 'lite-visual-validation/v6'
+export const LITE_VISUAL_ATTESTATION_KEY_ID = 'lite-visual-v6-2026-08-28-r2'
+export const LITE_VISUAL_AUDIT_PROVENANCE = {
+  audit_script_sha256: '0cda1edf25fe0fa283546f33e17b127ff8e8141a33acbd28e263a61075bbdb59',
+  series_sha256: '8d86f4b68626457b77b4d2a3c898a2e9436040793f924b6d0d61d40b026ba60a',
+  receipt_attestation_sha256: '812ef128a101cf94e5837779725ac5f01a273c89cfe2155a25d74caa708afb00',
+  python_implementation: 'CPython',
+  python_version: '3.11.15',
+  invocation_contract: 'audit_lite_visual.py manifest --report-out',
+} as const
 const SHA256_RE = /^[a-f0-9]{64}$/
 const PAIR_ID_RE = /^lv-[a-zA-Z0-9._-]+$/
 const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024
@@ -130,14 +139,52 @@ export function inspectArtifactContent(
 
 export type LiteVisualValidationReceipt = {
   schema_version?: unknown
+  workflow_contract?: unknown
   status?: unknown
   source_sha256?: unknown
   source_scope_sha256?: unknown
   coverage_ledger_sha256?: unknown
   html_sha256?: unknown
   pdf_sha256?: unknown
+  work_item_sha256?: unknown
+  source_extraction_sha256?: unknown
+  target_sha256?: unknown
+  target?: unknown
   checks?: unknown
   [key: string]: unknown
+}
+
+function stableJson(value: unknown): string {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value)
+  if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value)) throw new Error('receipt numbers must be safe integers')
+    return JSON.stringify(value)
+  }
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
+  if (!value || typeof value !== 'object') throw new Error(`receipt contains unsupported value type: ${typeof value}`)
+  const object = value as Record<string, unknown>
+  if (Object.keys(object).some((key) => !key || [...key].some((character) => { const code = character.codePointAt(0) || 0; return code < 0x20 || code > 0x7e }))) throw new Error('receipt object keys must be non-empty printable ASCII')
+  return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${stableJson(object[key])}`).join(',')}}`
+}
+
+function unsignedReceipt(receipt: LiteVisualValidationReceipt) {
+  return Object.fromEntries(Object.entries(receipt).filter(([key]) => key !== 'attestation'))
+}
+
+export async function liteVisualReceiptSignature(receipt: LiteVisualValidationReceipt, signingKey: string) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(signingKey), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(stableJson(unsignedReceipt(receipt))))
+  return [...new Uint8Array(signature)].map((part) => part.toString(16).padStart(2, '0')).join('')
+}
+
+export const liteVisualTargetSha256 = (target: Record<string, unknown>) => sha256Hex(stableJson(target))
+
+export async function validLiteVisualAttestation(receipt: LiteVisualValidationReceipt, signingKey: string) {
+  const attestation = receipt.attestation && typeof receipt.attestation === 'object' && !Array.isArray(receipt.attestation) ? receipt.attestation as Record<string, unknown> : {}
+  const signature = String(attestation.signature || '')
+  if (attestation.algorithm !== 'hmac-sha256' || attestation.key_id !== LITE_VISUAL_ATTESTATION_KEY_ID || !SHA256_RE.test(signature) || signingKey.length < 32) return false
+  try { return signature === await liteVisualReceiptSignature(receipt, signingKey) }
+  catch { return false }
 }
 
 export async function sha256Hex(bytes: ArrayBuffer | Uint8Array | string) {
@@ -155,6 +202,7 @@ export async function validateLiteVisualPair(
   pdfFile: { name?: string; type?: string; size?: number },
   htmlBytes: ArrayBuffer,
   pdfBytes: ArrayBuffer,
+  signingKey: string,
 ) {
   const failures: string[] = []
   const pairId = String(metadata.pair_id || '')
@@ -167,15 +215,22 @@ export async function validateLiteVisualPair(
   if (metadata.asset_policy !== 'code-only') failures.push('asset_policy must be code-only')
   if (metadata.recommended_start !== 'html') failures.push('recommended_start must be html for Lite Visual')
   if (receipt.schema_version !== LITE_VISUAL_RECEIPT_SCHEMA) failures.push(`validation receipt schema_version must be ${LITE_VISUAL_RECEIPT_SCHEMA}`)
+  if (receipt.workflow_contract !== LITE_VISUAL_WORKFLOW_CONTRACT) failures.push(`validation receipt workflow_contract must be ${LITE_VISUAL_WORKFLOW_CONTRACT}`)
   if (receipt.status !== 'passed') failures.push('validation receipt status must be passed')
+  if (!(await validLiteVisualAttestation(receipt, signingKey))) failures.push('validation receipt attestation is missing or invalid')
   if (receipt.source_sha256 !== sourceChecksum) failures.push('validation receipt source hash does not match metadata')
-  for (const key of ['source_scope_sha256', 'coverage_ledger_sha256', 'html_sha256', 'pdf_sha256'] as const) {
+  for (const key of ['source_scope_sha256', 'coverage_ledger_sha256', 'html_sha256', 'pdf_sha256', 'work_item_sha256', 'source_extraction_sha256', 'target_sha256'] as const) {
     if (!SHA256_RE.test(String(receipt[key] || ''))) failures.push(`validation receipt ${key} must be a full lowercase SHA-256`)
   }
   const checks = receipt.checks && typeof receipt.checks === 'object' && !Array.isArray(receipt.checks) ? receipt.checks as Record<string, unknown> : {}
-  for (const key of ['source_coverage', 'claim_traceability', 'canonical_html', 'code_only', 'rtl', 'accessibility', 'responsive', 'print_a4', 'pdf_parity'] as const) {
+  const requiredChecks = ['source_coverage', 'claim_traceability', 'exact_source_html', 'exact_source_pdf', 'canonical_html', 'code_only', 'rtl', 'accessibility', 'responsive', 'print_a4', 'pdf_parity'] as const
+  if (Object.keys(checks).length !== requiredChecks.length || Object.keys(checks).some((key) => !requiredChecks.includes(key as typeof requiredChecks[number]))) failures.push('validation receipt checks must contain only the exact v6 check set')
+  for (const key of requiredChecks) {
     if (checks[key] !== true) failures.push(`validation receipt check ${key} must be true`)
   }
+  const target = receipt.target && typeof receipt.target === 'object' && !Array.isArray(receipt.target) ? receipt.target as Record<string, unknown> : {}
+  if (!String(target.recommendation_id || '') || !String(target.source_url || '') || !String(target.source_title || '')) failures.push('validation receipt target identity is incomplete')
+  else if (receipt.target_sha256 !== await liteVisualTargetSha256(target)) failures.push('validation receipt target hash does not match target identity')
 
   failures.push(...validateArtifactIntegrity({ role: 'html' }, htmlFile, htmlBytes))
   failures.push(...validateArtifactIntegrity({ role: 'pdf' }, pdfFile, pdfBytes))

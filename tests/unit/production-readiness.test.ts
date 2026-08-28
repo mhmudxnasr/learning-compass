@@ -77,15 +77,17 @@ test('unexpected request failures return a structured request-id envelope', () =
   assert.match(index, /app\.onError/)
   assert.match(index, /request_id: requestId/)
   assert.match(index, /unhandled_request_error/)
+  assert.doesNotMatch(index, /request_id: requestId, details:/)
 })
 
-test('Learning Compass has no browser or Worker API-token gate', () => {
+test('ordinary API access stays public and retired browser auth is absent', () => {
   const index = readFileSync('src/index.ts', 'utf8')
+  const bindings = readFileSync('src/lib.ts', 'utf8')
   const browser = readFileSync('client/src/auth.ts', 'utf8')
   const config = readFileSync('wrangler.toml', 'utf8')
-  assert.doesNotMatch(index, /x-api-token|auth\/session|authentication_required|private_mode_misconfigured/)
-  assert.doesNotMatch(index, /c\.req\.query\('token'\)/)
-  assert.doesNotMatch(config, /REQUIRE_API_AUTH/)
+  const combined = [index, bindings, browser, config].join('\n')
+  assert.doesNotMatch(combined, /REQUIRE_API_AUTH|LEARNING_COMPASS_API_TOKEN|x-api-token/)
+  assert.doesNotMatch(index, /auth\/session|privateApiRequired|authentication_required|authPrincipal/)
   assert.doesNotMatch(browser, /window\.prompt|auth\/session/)
   assert.match(browser, /credentials: 'same-origin'/)
 })

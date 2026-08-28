@@ -39,7 +39,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     name: 'Botanical Folio',
     description: 'Deep forest cypress, crisp paper linen, and tender lichen accents.',
     mode: 'light',
-    swatches: ['#1b4332', '#f6f4ee', '#d8f3dc', '#2d3b32'],
+    swatches: ['#1b4332', '#f1e9d9', '#d8f3dc', '#2d3b32'],
     ink: '#17231c'
   },
   {
@@ -200,7 +200,7 @@ export const THEME_PRESETS: ThemePreset[] = [
 
 export const DEFAULT_CUSTOM_PALETTE: CustomPalette = {
   brand: '#1b4332',
-  shell: '#f6f4ee',
+  shell: '#f1e9d9',
   highlight: '#d8f3dc',
   accent: '#2d3b32',
   ink: '#1b4332',
@@ -252,27 +252,54 @@ export const FONT_PRESETS: FontPreset[] = [
     name: 'Plex Studio',
     description: 'Crisp humanist sans with a warm serif for reading.',
     ui: '"IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif',
-    display: '"IBM Plex Serif", "Literata", Georgia, serif',
-    reading: '"IBM Plex Serif", "Literata", Georgia, serif',
+    display: '"IBM Plex Serif", "Literata", "Noto Naskh Arabic", Georgia, serif',
+    reading: '"IBM Plex Serif", "Literata", "Noto Naskh Arabic", Georgia, serif',
     mono: '"IBM Plex Mono", ui-monospace, monospace'
+  },
+  {
+    id: 'inter',
+    name: 'Modern Inter',
+    description: 'Clean geometric neutral sans with editorial reading and JetBrains Mono.',
+    ui: '"Inter", "Noto Sans Arabic", system-ui, -apple-system, sans-serif',
+    display: '"Inter", "Noto Sans Arabic", system-ui, sans-serif',
+    reading: '"Literata", Georgia, "Times New Roman", serif',
+    mono: '"JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace'
+  },
+  {
+    id: 'editorial',
+    name: 'Editorial Literary',
+    description: 'Bookish serif throughout for a literary studio.',
+    ui: '"Literata", "Noto Naskh Arabic", Georgia, "Times New Roman", serif',
+    display: '"Literata", "Noto Naskh Arabic", Georgia, serif',
+    reading: '"Literata", "Noto Naskh Arabic", Georgia, serif',
+    mono: '"IBM Plex Mono", ui-monospace, monospace'
+  },
+  {
+    id: 'newsreader',
+    name: 'Newsreader Academic',
+    description: 'Scholarly serif display and reading with crisp humanist interface.',
+    ui: '"IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif',
+    display: '"Newsreader", "Literata", "Noto Naskh Arabic", Georgia, serif',
+    reading: '"Newsreader", "Literata", "Noto Naskh Arabic", Georgia, serif',
+    mono: '"JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace'
+  },
+  {
+    id: 'jakarta',
+    name: 'Plus Jakarta Crisp',
+    description: 'Contemporary high-clarity sans with Fraunces accents and Fira Code.',
+    ui: '"Plus Jakarta Sans", "Noto Sans Arabic", system-ui, sans-serif',
+    display: '"Plus Jakarta Sans", "Noto Sans Arabic", system-ui, sans-serif',
+    reading: '"Literata", Georgia, serif',
+    mono: '"Fira Code", "IBM Plex Mono", ui-monospace, monospace'
   },
   {
     id: 'system',
     name: 'System Clean',
     description: 'Native platform fonts for a neutral, fast feel.',
-    ui: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-    display: 'Georgia, "Times New Roman", serif',
+    ui: 'system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif',
+    display: '-apple-system, "Segoe UI", Roboto, Georgia, serif',
     reading: 'Georgia, "Times New Roman", serif',
     mono: 'ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace'
-  },
-  {
-    id: 'editorial',
-    name: 'Editorial Serif',
-    description: 'Bookish serif throughout for a literary studio.',
-    ui: '"Literata", Georgia, "Times New Roman", serif',
-    display: '"Literata", Georgia, serif',
-    reading: '"Literata", Georgia, serif',
-    mono: '"IBM Plex Mono", ui-monospace, monospace'
   },
   {
     id: 'terminal',
@@ -329,6 +356,16 @@ export const DEFAULT_TYPOGRAPHY: TypographyPreferences = {
   letterSpacing: 0,
   displayScale: 1,
   readingMeasure: 68,
+}
+
+export const TYPOGRAPHY_LIMITS: Record<keyof TypographyPreferences, { min: number; max: number }> = {
+  baseSize: { min: 12, max: 24 },
+  bodyWeight: { min: 300, max: 800 },
+  headingWeight: { min: 400, max: 900 },
+  lineHeight: { min: 1.15, max: 2.3 },
+  letterSpacing: { min: -0.04, max: 0.1 },
+  displayScale: { min: 0.8, max: 1.5 },
+  readingMeasure: { min: 45, max: 90 },
 }
 
 type RGB = { r: number; g: number; b: number }
@@ -446,7 +483,7 @@ function ensureTextContrast(color: RGB, backgrounds: RGB[], minimum = 4.5): RGB 
 export function extractColorsFromText(text: string): string[] {
   if (!text) return []
   const found: string[] = []
-  
+
   // Find all hex codes
   const hexes = text.match(/#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g) || []
   for (const h of hexes) found.push(normalizeColor(h))
@@ -494,12 +531,13 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
   // Seams/borders sit opposite the elevation: darker than shell in light, lighter in dark.
   const seam = parseColor(palette.seam || '') || (dark ? mixColors(shell, WHITE, 0.16) : mixColors(shell, BLACK, 0.12))
 
-  // Text — near-white on dark shells, deep ink on light shells.
+  // Text — preserve authored intent where possible, then derive readable CSS tokens.
   const parsedInk = palette.ink ? parseColor(palette.ink) : null
-  const ink = parsedInk || (dark ? mixColors(shell, WHITE, 0.86) : mixColors(accent, BLACK, 0.62))
+  const inkCandidate = parsedInk || (dark ? mixColors(shell, WHITE, 0.86) : mixColors(accent, BLACK, 0.62))
+  const textPlanes = [shell, canvas, surface]
+  const ink = ensureTextContrast(inkCandidate, textPlanes)
   const secondaryCandidate = dark ? mixColors(ink, shell, 0.40) : mixColors(ink, accent, 0.35)
   const mutedCandidate = mixColors(secondaryCandidate, shell, dark ? 0.42 : 0.35)
-  const textPlanes = [canvas, surface]
   const secondary = ensureTextContrast(secondaryCandidate, textPlanes)
   const muted = ensureTextContrast(mutedCandidate, textPlanes)
 
@@ -557,6 +595,41 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
     '--studio-ochre': rgbToHex(due),
     '--studio-focus-ring': `0 0 0 3px ${rgbToHex(canvas)}, 0 0 0 5px ${rgbToHex(brand)}`
   }
+}
+
+export type ThemeContrastCheck = {
+  id: string
+  label: string
+  foreground: string
+  background: string
+  ratio: number | null
+  minimum: number
+  passes: boolean
+}
+
+const THEME_CONTRAST_PAIRS = [
+  ['ink-shell', 'Ink / shell', '--studio-ink', '--studio-shell'],
+  ['ink-surface', 'Ink / surface', '--studio-ink', '--studio-surface'],
+  ['secondary-shell', 'Quiet text / shell', '--studio-secondary', '--studio-shell'],
+  ['secondary-surface', 'Quiet text / surface', '--studio-secondary', '--studio-surface'],
+  ['rail', 'Rail text / rail', '--studio-rail-ink', '--studio-rail'],
+  ['rail-active', 'Active rail / brand', '--studio-rail-active-ink', '--studio-rail-active-bg'],
+  ['action', 'Action text / brand', '--studio-action-ink', '--studio-cypress'],
+  ['map', 'Map text / map', '--studio-map-ink', '--studio-map'],
+  ['due', 'Due text / due', '--studio-due-ink', '--studio-due'],
+  ['danger', 'Danger text / danger', '--studio-danger-ink', '--studio-danger'],
+] as const
+
+/** Audit the actual foreground/background tokens emitted for a theme. */
+export function auditThemeContrast(palette: CustomPalette, modeOverride?: ThemeMode): ThemeContrastCheck[] {
+  const variables = computeThemeVariables(palette, modeOverride)
+  return THEME_CONTRAST_PAIRS.map(([id, label, foregroundToken, backgroundToken]) => {
+    const foreground = variables[foregroundToken]
+    const background = variables[backgroundToken]
+    const ratio = contrastRatio(foreground, background)
+    const minimum = 4.5
+    return { id, label, foreground, background, ratio, minimum, passes: ratio !== null && ratio >= minimum }
+  })
 }
 
 function paletteForTheme(themeId: string, customPalette?: CustomPalette): { palette: CustomPalette; mode: ThemeMode } {
@@ -762,7 +835,9 @@ export function applyFont(fontId: string, customFont?: CustomFont) {
     mono = preset.mono
   }
   root.style.setProperty('--font-ui', ui)
+  root.style.setProperty('--font-body', ui)
   root.style.setProperty('--font-display', display)
+  root.style.setProperty('--font-editorial', display)
   root.style.setProperty('--font-reading', reading)
   root.style.setProperty('--font-mono', mono)
   loadGoogleFonts([...extractFamilies(ui), ...extractFamilies(display), ...extractFamilies(reading), ...extractFamilies(mono)])
@@ -778,25 +853,28 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback
 }
 
+export function normalizeTypography(
+  preferences: Partial<TypographyPreferences>,
+  fallback: TypographyPreferences = DEFAULT_TYPOGRAPHY,
+): TypographyPreferences {
+  return Object.fromEntries(
+    (Object.keys(DEFAULT_TYPOGRAPHY) as Array<keyof TypographyPreferences>).map((key) => {
+      const { min, max } = TYPOGRAPHY_LIMITS[key]
+      return [key, clampNumber(preferences[key], min, max, fallback[key])]
+    }),
+  ) as TypographyPreferences
+}
+
 export function applyTypography(preferences: Partial<TypographyPreferences>) {
   if (typeof document === 'undefined') return
-  const fallback = getSavedTypography()
-  const next: TypographyPreferences = {
-    baseSize: clampNumber(preferences.baseSize, 14, 20, fallback.baseSize),
-    bodyWeight: clampNumber(preferences.bodyWeight, 350, 700, fallback.bodyWeight),
-    headingWeight: clampNumber(preferences.headingWeight, 450, 800, fallback.headingWeight),
-    lineHeight: clampNumber(preferences.lineHeight, 1.2, 2, fallback.lineHeight),
-    letterSpacing: clampNumber(preferences.letterSpacing, -0.03, 0.08, fallback.letterSpacing),
-    displayScale: clampNumber(preferences.displayScale, 0.9, 1.3, fallback.displayScale),
-    readingMeasure: clampNumber(preferences.readingMeasure, 52, 82, fallback.readingMeasure),
-  }
+  const next = normalizeTypography(preferences, getSavedTypography())
   const root = document.documentElement
   root.style.setProperty('--font-base-size', `${next.baseSize}px`)
   root.style.setProperty('--font-scale', `calc(${next.baseSize / DEFAULT_TYPOGRAPHY.baseSize} * var(--font-preference-scale, 1) * var(--font-viewport-scale, 1))`)
   root.style.setProperty('--font-body-weight', String(next.bodyWeight))
   root.style.setProperty('--font-heading-weight', String(next.headingWeight))
   root.style.setProperty('--font-medium-weight', String(Math.round((next.bodyWeight + next.headingWeight) / 2 / 10) * 10))
-  root.style.setProperty('--font-bold-weight', String(Math.min(800, next.headingWeight + 100)))
+  root.style.setProperty('--font-bold-weight', String(Math.min(900, next.headingWeight + 100)))
   root.style.setProperty('--font-line-height', String(next.lineHeight))
   root.style.setProperty('--font-letter-spacing', `${next.letterSpacing}em`)
   root.style.setProperty('--font-display-scale', String(next.displayScale))
@@ -809,15 +887,7 @@ export function getSavedTypography(): TypographyPreferences {
   if (typeof localStorage === 'undefined') return DEFAULT_TYPOGRAPHY
   try {
     const value = JSON.parse(localStorage.getItem('taste-map-typography') || '{}')
-    return {
-      baseSize: clampNumber(value?.baseSize, 14, 20, DEFAULT_TYPOGRAPHY.baseSize),
-      bodyWeight: clampNumber(value?.bodyWeight, 350, 700, DEFAULT_TYPOGRAPHY.bodyWeight),
-      headingWeight: clampNumber(value?.headingWeight, 450, 800, DEFAULT_TYPOGRAPHY.headingWeight),
-      lineHeight: clampNumber(value?.lineHeight, 1.2, 2, DEFAULT_TYPOGRAPHY.lineHeight),
-      letterSpacing: clampNumber(value?.letterSpacing, -0.03, 0.08, DEFAULT_TYPOGRAPHY.letterSpacing),
-      displayScale: clampNumber(value?.displayScale, 0.9, 1.3, DEFAULT_TYPOGRAPHY.displayScale),
-      readingMeasure: clampNumber(value?.readingMeasure, 52, 82, DEFAULT_TYPOGRAPHY.readingMeasure),
-    }
+    return normalizeTypography(value)
   } catch { return DEFAULT_TYPOGRAPHY }
 }
 

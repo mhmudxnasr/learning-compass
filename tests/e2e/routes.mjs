@@ -68,7 +68,7 @@ try {
     if (status !== 0) throw new Error(`D1 setup failed:\n${output}`)
   }
 
-  server = spawn(wrangler, ['dev', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', String(port), '--var', 'REQUIRE_API_AUTH:false', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], {
+  server = spawn(wrangler, ['dev', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', String(port), '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   })
@@ -87,6 +87,28 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
 
+  const publicRead = await fetch(`${baseUrl}/settings`)
+  if (!publicRead.ok) throw new Error(`unauthenticated settings read failed with ${publicRead.status}`)
+  const malformedPublicWrite = await fetch(`${baseUrl}/capture`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  })
+  if (malformedPublicWrite.status !== 400 || (await malformedPublicWrite.json()).error !== 'source required') {
+    throw new Error(`unauthenticated malformed write did not reach domain validation: ${malformedPublicWrite.status}`)
+  }
+  const retiredSession = await fetch(`${baseUrl}/auth/session`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  })
+  const unknownRoute = await fetch(`${baseUrl}/_e2e/missing-route`, { method: 'POST' })
+  for (const [label, response] of [['retired auth session', retiredSession], ['unknown route', unknownRoute]]) {
+    if (response.status !== 404) throw new Error(`${label} did not return the normal 404 boundary: ${response.status}`)
+    if (response.headers.has('www-authenticate')) throw new Error(`${label} emitted a retired authentication challenge`)
+    if (response.headers.has('set-cookie')) throw new Error(`${label} emitted a retired browser session cookie`)
+  }
+
   // Exercise the installed first-party client through the real Worker and D1.
   // The idempotency key belongs only to the inner canonical target; putting it
   // on the outer /agent/request would reserve the wrong endpoint and make the
@@ -103,7 +125,7 @@ try {
     }))
     for (let attempt = 0; attempt < 2; attempt++) {
       const client = spawn('python3', [siteRequestScript, 'mutate', `@${guardedMutationFile}`, '--raw'], {
-        env: { ...process.env, TASTE_MAP_URL: baseUrl, TASTE_MAP_ALLOW_LOCAL: '1', TASTE_MAP_API_TOKEN: '', TASTE_MAP_AGENT_NAME: 'learning-compass-e2e' },
+        env: { ...process.env, TASTE_MAP_URL: baseUrl, TASTE_MAP_ALLOW_LOCAL: '1', TASTE_MAP_AGENT_NAME: 'learning-compass-e2e' },
         stdio: ['ignore', 'pipe', 'pipe'],
       })
       let clientOutput = ''
@@ -306,11 +328,13 @@ if (rootHrefs.length !== roots.length || roots.some((root) => !rootHrefs.include
 if (await page.locator('.root-rail nav[aria-label="Five workspaces"] a').count() !== roots.length) throw new Error('root rail must contain exactly five global destinations')
 if (await page.locator('.root-rail + .context-pane, .context-pane').count()) throw new Error('desktop shell rendered a permanent context pane')
 const desktopRail = page.locator('.root-rail')
-if (await desktopRail.getByRole('button', { name: 'Search', exact: true }).count() !== 1 || await desktopRail.getByRole('button', { name: 'Add anything', exact: true }).count() !== 1) throw new Error('desktop rail is missing global Search or Add anything')
-await desktopRail.getByRole('button', { name: 'Search', exact: true }).click()
+if (await desktopRail.getByRole('button').count()) throw new Error('desktop rail must remain navigation-only')
+const desktopCommands = page.locator('.workspace-chrome')
+if (await desktopCommands.getByRole('button', { name: /Search everything/ }).count() !== 1 || await desktopCommands.getByRole('button', { name: 'Capture', exact: true }).count() !== 1) throw new Error('workspace command bar is missing global Search or Capture')
+await desktopCommands.getByRole('button', { name: /Search everything/ }).click()
 await page.locator('.search-dialog').waitFor({ state: 'visible' })
 await page.keyboard.press('Escape')
-await desktopRail.getByRole('button', { name: 'Add anything', exact: true }).click()
+await desktopCommands.getByRole('button', { name: 'Capture', exact: true }).click()
 await page.locator('.capture-dialog').waitFor({ state: 'visible' })
 const globalCaptureText = await page.locator('.capture-dialog').innerText()
 if (!globalCaptureText.includes('Book') || !globalCaptureText.includes('Movie') || !globalCaptureText.includes('Series') || !globalCaptureText.includes('refine every field later')) throw new Error('global Add anything does not expose typed, editable capture')
@@ -343,22 +367,35 @@ for (const route of modeRoutes) {
   const defaultModes = { home: 'today', library: 'books', learn: 'practice', map: 'atlas', settings: 'personal' }
   if (route.mode && route.mode !== defaultModes[route.root] && routeState.query.mode !== route.mode) throw new Error(`${route.href}: mode query was not preserved (${JSON.stringify(routeState.query)})`)
   if (route.focus && routeState.query.focus !== route.focus) throw new Error(`${route.href}: focus query was not preserved (${JSON.stringify(routeState.query)})`)
-  if (route.root !== 'home' && await page.locator('.workspace-mode-switcher').count() !== 1) throw new Error(`${route.href}: missing the active root's internal mode switcher`)
+  if (route.root !== 'home' && (await page.locator('.workspace-mode-switcher').count() !== 1 || await page.locator('.workspace-chrome-modes').count() !== 1)) throw new Error(`${route.href}: missing responsive and desktop mode navigation`)
   if (route.root === 'library' && route.mode === 'triage' && await page.locator('.workspace-filter-switcher').count() !== 1) throw new Error(`${route.href}: missing the Library filter switcher`)
   if (route.root === 'library' && route.mode === 'catalog' && await page.locator('.workspace-filter-switcher').count()) throw new Error(`${route.href}: Catalog rendered a redundant filter switcher`)
   if ((route.root === 'learn' && route.mode === 'practice') || (route.root === 'settings' && route.mode === 'personal')) {
     if (await page.locator('.workspace-filter-switcher').count() !== 1) throw new Error(`${route.href}: missing the active mode's focus switcher`)
   }
   if (route.root === 'map' && route.mode === 'review' && await page.locator('.workspace-filter-switcher').count()) throw new Error(`${route.href}: unified Review rendered a redundant focus switcher`)
-  if (route.root !== 'home' && !(await page.locator('.workspace-mode-switcher a.active, .workspace-mode-switcher a[aria-current="page"]').count())) throw new Error(`${route.href}: mode switcher did not mark its active mode`)
+  if (route.root !== 'home' && (!(await page.locator('.workspace-mode-switcher a.active, .workspace-mode-switcher a[aria-current="page"]').count()) || !(await page.locator('.workspace-chrome-modes a.active, .workspace-chrome-modes a[aria-current="page"]').count()))) throw new Error(`${route.href}: responsive or desktop mode navigation did not mark its active mode`)
   const workspaceWidth = await page.evaluate(() => {
     const canvas = document.querySelector('.workspace-canvas')
     const surface = document.querySelector('.workspace-canvas > div > :first-child')
     if (!canvas || !surface) return null
-    return { canvas: canvas.clientWidth, surface: surface.getBoundingClientRect().width }
+    const style = getComputedStyle(canvas)
+    const padding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight)
+    const available = canvas.clientWidth - padding
+    const surfaceRect = surface.getBoundingClientRect()
+    const canvasRect = canvas.getBoundingClientRect()
+    const contentLeft = canvasRect.left + Number.parseFloat(style.paddingLeft)
+    const contentRight = canvasRect.right - Number.parseFloat(style.paddingRight)
+    return {
+      canvas: canvas.clientWidth,
+      available,
+      surface: surfaceRect.width,
+      imbalance: Math.abs((surfaceRect.left - contentLeft) - (contentRight - surfaceRect.right)),
+    }
   })
-  if (!workspaceWidth || workspaceWidth.surface < workspaceWidth.canvas * 0.92) {
-    throw new Error(`${route.href}: workspace surface is not using the available desktop canvas (${JSON.stringify(workspaceWidth)})`)
+  const expectedSurface = Math.min(workspaceWidth?.available ?? 0, 1280)
+  if (!workspaceWidth || workspaceWidth.surface < expectedSurface * 0.92 || workspaceWidth.imbalance > 3) {
+    throw new Error(`${route.href}: workspace surface violates the centered 1280px canvas contract (${JSON.stringify(workspaceWidth)})`)
   }
   for (const selector of ['.orbit-bar', '.page-head', '.subnav', '.rail', '.app-shell', '.main']) {
     if (await page.locator(selector).count()) throw new Error(`${route.href}: rendered retired frontend selector ${selector}`)
@@ -663,6 +700,57 @@ for (const route of modeRoutes) {
   const persistedPreference = await renderedPreferences()
   if (persistedPreference.reducedMotion !== 'true' || persistedPreference.radius !== 'round' || persistedPreference.density !== 'comfortable') throw new Error(`display preferences did not survive reload: ${JSON.stringify(persistedPreference)}`)
   await page.locator('#theme-section > summary').click()
+  if (await page.locator('.theme-preset-group').count() !== 3 || !(await page.getByRole('heading', { name: 'Day palettes' }).isVisible()) || !(await page.getByRole('heading', { name: 'Night palettes' }).isVisible())) throw new Error('Themes did not group day, night, and custom systems')
+  if (await page.locator('.theme-semantic-preview').count() !== 21) throw new Error('theme choices did not render semantic studio previews')
+  const themeReadingOrder = await page.locator('.preferences-layout').evaluate((layout) => {
+    const children = [...layout.children]
+    return { preview: children.findIndex((node) => node.classList.contains('preferences-preview-rail')), main: children.findIndex((node) => node.classList.contains('preferences-main')) }
+  })
+  if (themeReadingOrder.preview < 0 || themeReadingOrder.main <= themeReadingOrder.preview) throw new Error(`appearance preview is not before controls in reading order: ${JSON.stringify(themeReadingOrder)}`)
+  const customTheme = page.locator('.theme-custom-card')
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok()),
+    customTheme.click(),
+  ])
+  await page.locator('.custom-palette-panel').waitFor({ state: 'visible' })
+  if (!(await customTheme.getByText('Selected', { exact: true }).isVisible())) throw new Error('custom theme did not expose a visible selected state')
+  if (await page.locator('.theme-contrast-grid > span').count() !== 10) throw new Error('custom theme did not audit the rendered semantic foreground pairs')
+  const advancedWorkshop = page.locator('.theme-workshop-advanced')
+  if (await advancedWorkshop.getAttribute('open') !== null) throw new Error('theme transfer and automation tools must start collapsed')
+  await advancedWorkshop.locator(':scope > summary').focus()
+  await page.keyboard.press('Enter')
+  if (!(await advancedWorkshop.getByText('Complete system exchange').isVisible()) || !(await page.getByLabel('Import visual system JSON').count())) throw new Error('keyboard did not reveal the advanced visual-system tools')
+  const brandInput = page.locator('#color-brand')
+  const originalBrand = await brandInput.inputValue()
+  const editedBrand = originalBrand.toLowerCase() === '#123456' ? '#234567' : '#123456'
+  const editedBrandSave = page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok())
+  await brandInput.fill(editedBrand)
+  await editedBrandSave
+  if ((await page.locator('#color-brand').inputValue()).toLowerCase() !== editedBrand) throw new Error('custom semantic color did not remain editable')
+  await page.setViewportSize({ width: 390, height: 844 })
+  const mobileThemeTargets = await page.evaluate(() => {
+    const size = (selector) => {
+      const rect = document.querySelector(selector)?.getBoundingClientRect()
+      return rect ? { width: rect.width, height: rect.height } : null
+    }
+    return {
+      mode: size('.theme-mode-switch button'),
+      color: size('.custom-color-input-group input[type="color"]'),
+      importControl: size('.theme-import-button'),
+    }
+  })
+  for (const [control, size] of Object.entries(mobileThemeTargets)) if (!size || size.width < 44 || size.height < 44) throw new Error(`mobile ${control} target is below 44px at normal text size: ${JSON.stringify(size)}`)
+  await page.evaluate(() => document.documentElement.style.setProperty('--font-scale', '2'))
+  const mobileThemeOverflow = await page.evaluate(() => {
+    const pageNode = document.querySelector('.preferences-page')
+    return pageNode ? pageNode.scrollWidth - pageNode.clientWidth : 0
+  })
+  if (mobileThemeOverflow > 2) throw new Error(`custom theme workshop overflows at mobile enlarged text: ${mobileThemeOverflow}px`)
+  await page.evaluate(() => document.documentElement.style.removeProperty('--font-scale'))
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const restoredBrandSave = page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok())
+  await brandInput.fill(originalBrand)
+  await restoredBrandSave
   await Promise.all([
     page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok()),
     page.locator('.theme-preset-card').filter({ hasText: 'Botanical Folio' }).click(),
@@ -827,26 +915,29 @@ if (!hubPathLoaded.stages[0].notes.some((note) => note.id === hubStageNote.id) |
 if (hubPathLoaded.stages[0].notes.some((note) => note.id === hubNote.id) || hubPathLoaded.stages[0].cards.some((card) => card.id === hubThreadCard.card_id)) throw new Error('Level material leaked a Thread-owned record')
 await page.goto(`${baseUrl}/#/learn?mode=paths`, { waitUntil: 'networkidle' })
 await page.locator('.folio-paths').waitFor({ state: 'visible' })
-await page.getByRole('button', { name: /All Threads/ }).click()
-if (!(await page.getByRole('link', { name: 'Open learning Thread Systems Thinking' }).count())) throw new Error('Learn Paths did not render the authored path')
+await page.getByRole('button', { name: 'All', exact: true }).click()
+if (!(await page.getByRole('link', { name: 'Review Thread: Systems Thinking' }).count())) throw new Error('Learn Paths did not render an explicit Thread review affordance')
 await page.goto(`${baseUrl}/#/learn/thread/${hubThread.id}`, { waitUntil: 'networkidle' })
 await page.locator('.thread-command-center').waitFor({ state: 'visible' })
 await page.locator('.vertical-thread-spine').waitFor({ state: 'visible' })
 if (!(await page.getByRole('heading', { level: 1, name: 'Systems Thinking' }).count())) throw new Error('typed Thread route is missing its Thread h1')
 if ((await page.locator('.course-stage-context').getByRole('link', { name: 'Threads' }).getAttribute('href')) !== '#/learn?mode=paths') throw new Error('Thread breadcrumb does not return to the Threads index')
-if (!(await page.getByLabel('Thread lesson progress').count()) || !(await page.getByLabel('Study progress').count()) || !(await page.getByLabel('Levels progress').count())) throw new Error('Vertical Journey does not show direct lesson and Level completion')
-if ((await page.locator('.vertical-overview-next').count()) !== 1 || (await page.locator('.vertical-journey-list > li').count()) !== 1) throw new Error('Thread Overview did not render one exact move and the compact Level journey')
-for (const tab of ['Overview', 'Curriculum', 'Practice', 'Materials']) if (!(await page.getByRole('link', { name: tab, exact: true }).count())) throw new Error(`Thread command center omitted ${tab}`)
+if (!(await page.getByLabel('Thread lesson progress').count()) || !(await page.locator('.vertical-journey-meta').count())) throw new Error('Vertical Journey does not show direct lesson progress and Level completion state')
+if ((await page.locator('.vertical-thread-overview > .vertical-thread-ledger').count()) !== 1 || (await page.locator('.vertical-journey-list > li').count()) !== 1) throw new Error('Thread Now view did not render its compact resources and Level journey')
+const overviewLevelLink = page.locator('.vertical-journey-list').getByRole('link', { name: 'Level 0 — Orientation', exact: true })
+if ((await overviewLevelLink.getAttribute('href')) !== `#/learn/thread/${hubThread.id}?tab=curriculum&level=${hubStage.id}`) throw new Error('Now Level link did not return through the Thread Lessons tab')
+if (await page.locator('.learn-workspace-shell > .workspace-mode-switcher').count()) throw new Error('typed Thread route retained the competing global Learn switcher')
+for (const tab of ['Now', 'Lessons', 'Projects', 'Resources']) if (!(await page.getByRole('link', { name: new RegExp(`^${tab}`) }).count())) throw new Error(`Thread command center omitted ${tab}`)
 if (await page.getByRole('link', { name: 'Evidence', exact: true }).count()) throw new Error('Thread command center exposed the retired Evidence tab')
-await page.getByRole('link', { name: 'Curriculum', exact: true }).click()
+await page.getByRole('link', { name: /^Lessons/ }).click()
 await page.locator('.vertical-curriculum').waitFor({ state: 'visible' })
-if ((await page.locator('.vertical-curriculum-journey > li.is-expanded').count()) !== 1) throw new Error('Curriculum did not keep exactly one Level expanded')
+if ((await page.locator('.vertical-curriculum-journey > li.is-expanded').count()) !== 1) throw new Error('Lessons did not keep exactly one Level expanded')
 await page.getByRole('button', { name: /Level 0 — Orientation/ }).click()
-if (!page.url().includes(`tab=curriculum&level=${hubStage.id}`)) throw new Error('Curriculum disclosure did not preserve the exact Level in the URL')
-await page.getByRole('link', { name: 'Practice', exact: true }).click()
+if (!page.url().includes(`tab=curriculum&level=${hubStage.id}`)) throw new Error('Lesson disclosure did not preserve the exact Level in the URL')
+await page.getByRole('link', { name: /^Projects/ }).click()
 await page.locator('.vertical-practice').waitFor({ state: 'visible' })
-if ((await page.locator('.vertical-practice-journey > li.is-expanded').count()) !== 1 || !(await page.getByText('Projects are optional practice.').count())) throw new Error('Practice did not render the one-Level non-gating journey')
-await page.getByRole('link', { name: 'Materials', exact: true }).click()
+if ((await page.locator('.vertical-practice-journey > li.is-expanded').count()) !== 1 || !(await page.getByText('Projects are optional practice.').count())) throw new Error('Projects did not render the one-Level non-gating journey')
+await page.getByRole('link', { name: /^Resources/ }).click()
 await page.locator('.vertical-materials').waitFor({ state: 'visible' })
 if (!(await page.getByText('Direct Thread material').count()) || !(await page.getByRole('link', { name: 'Path-level reflection' }).count()) || !(await page.getByRole('link', { name: 'إيه سؤال مسار التعلم؟' }).count())) throw new Error(`Learn Thread did not render direct Thread material: ${await page.locator('.thread-command-center').innerText()}`)
 const levelMaterialOwner = page.getByRole('button', { name: /Level 0 — Orientation/ })
@@ -857,6 +948,7 @@ if (!page.url().includes(`#/learn/thread/${hubThread.id}`)) throw new Error('typ
 if (await page.locator('.orbit-bar, .page-head, .subnav, .main-focus').count()) throw new Error('focused Learning Thread rendered retired shell selectors')
 await page.goto(`${baseUrl}/#/learn/t/${hubThread.id}/v/${hubStage.id}`, { waitUntil: 'networkidle' })
 await page.locator('.course-level-materials > summary').getByText('Level workspace').waitFor({ state: 'visible', timeout: 15000 })
+if ((await page.getByRole('link', { name: 'Lessons', exact: true }).getAttribute('href')) !== `#/learn/thread/${hubThread.id}?tab=curriculum&level=${hubStage.id}`) throw new Error('typed Level route did not expose a path back to the Thread Lessons tab')
 if (await page.locator('.course-level-list').evaluate((node) => node.hasAttribute('open'))) throw new Error('typed Level route reopened the unbounded full-Thread Level wall')
 if (await page.locator('.course-level-materials').evaluate((node) => node.hasAttribute('open'))) throw new Error('Level materials should use progressive disclosure')
 await page.locator('.course-level-materials > summary').click()
@@ -881,7 +973,10 @@ const materialScopedPath = await requestMaterialJson(`/learning/core/threads/${m
 const materialScopedLesson = materialScopedPath.stages[0].lessons.find((lesson) => lesson.id === materialLesson.id)
 if (!materialScopedLesson?.notes.some((note) => note.id === materialLessonNote.id) || !materialScopedLesson.files.some((file) => file.id === materialLessonFile.id) || !materialScopedLesson.cards.some((card) => card.id === materialLessonCard.card_id)) throw new Error('Thread path omitted exact Lesson-owned capture')
 if (materialScopedPath.notes.some((note) => note.id === materialLessonNote.id) || materialScopedPath.stages[0].notes.some((note) => note.id === materialLessonNote.id)) throw new Error('Lesson-owned capture leaked into a parent scope')
-await requestMaterialJson('/recommendations/push', { method: 'POST', body: JSON.stringify([{ id: 'material_launcher_source', video_title: 'Source with learning companions', video_url: 'https://example.com/material-launcher-original', creator: 'E2E', content_type: 'article', status: 'active' }]) })
+await requestMaterialJson('/recommendations/push', { method: 'POST', body: JSON.stringify([
+  { id: 'material_launcher_source', video_title: 'Source with learning companions', video_url: 'https://example.com/material-launcher-original', creator: 'E2E', content_type: 'article', status: 'active' },
+  { id: 'material_launcher_case', video_title: 'Secondary lesson case study', video_url: 'https://example.com/material-launcher-case', creator: 'E2E', content_type: 'article', status: 'active' },
+]) })
 await requestMaterialJson('/recommendations/action', { method: 'POST', body: JSON.stringify({ id: 'material_launcher_source', status: 'active', notebook_url: 'https://notebooklm.google.com/notebook/material-launcher' }) })
 await requestMaterialJson('/notebooklm/learning/receipts', { method: 'POST', body: JSON.stringify({ kind: 'source', recommendation_id: 'material_launcher_source', notebook_id: 'material-launcher', notebook_url: 'https://notebooklm.google.com/notebook/material-launcher', status: 'pending' }) })
 await requestMaterialJson('/notebooklm/learning/receipts', { method: 'POST', body: JSON.stringify({ kind: 'source', recommendation_id: 'material_launcher_source', notebook_id: 'material-launcher', notebook_url: 'https://notebooklm.google.com/notebook/material-launcher', status: 'indexed', provider_source_id: 'provider-material-source' }) })
@@ -889,6 +984,7 @@ const materialNotebookPlan = await requestMaterialJson('/notebooklm/learning/rou
 await requestMaterialJson('/notebooklm/learning/receipts', { method: 'POST', body: JSON.stringify({ kind: 'artifact', recommendation_id: 'material_launcher_source', notebook_id: 'material-launcher', notebook_url: 'https://notebooklm.google.com/notebook/material-launcher', plan_id: materialNotebookPlan.plan_id, format: 'quiz', status: 'pending', provider_task_id: 'provider-material-quiz-task', source_grounded: true, custom_prompt_applied: true }) })
 await requestMaterialJson('/notebooklm/learning/receipts', { method: 'POST', body: JSON.stringify({ kind: 'artifact', recommendation_id: 'material_launcher_source', notebook_id: 'material-launcher', notebook_url: 'https://notebooklm.google.com/notebook/material-launcher', plan_id: materialNotebookPlan.plan_id, format: 'quiz', status: 'ready', provider_artifact_id: 'provider-material-quiz', source_grounded: true, custom_prompt_applied: true, question_count: 6, hints_before_explanations: true, transfer_question_count: 1 }) })
 await requestMaterialJson(`/learning/core/threads/${materialThread.id}/lessons/${materialLesson.id}/sources`, { method: 'POST', body: JSON.stringify({ recommendation_id: 'material_launcher_source', branch_id: 'fixture-branch-id', role: 'primary', expected_contribution: 'Explain the source through a verified reading companion.', position: 0 }) })
+await requestMaterialJson(`/learning/core/threads/${materialThread.id}/lessons/${materialLesson.id}/sources`, { method: 'POST', body: JSON.stringify({ recommendation_id: 'material_launcher_case', branch_id: 'fixture-branch-id', role: 'case', expected_contribution: 'Apply the lesson through a contrasting case.', position: 1 }) })
 const materialPairId = 'material-launcher-pair'
 const materialHtmlUpload = new FormData()
 materialHtmlUpload.append('file', new Blob(['<!doctype html><html lang="ar" dir="rtl"><body><main><h1>رفيق القراءة</h1></main></body></html>'], { type: 'text/html' }), 'material-launcher.html')
@@ -904,7 +1000,8 @@ const materialPdf = await materialPdfResponse.json()
 if (!materialPdfResponse.ok) throw new Error(`material launcher PDF upload failed: ${JSON.stringify(materialPdf)}`)
 await page.goto(`${baseUrl}/#/learn/t/${materialThread.id}/l/${materialLesson.id}`, { waitUntil: 'networkidle' })
 await page.locator('.course-lesson-page').waitFor({ state: 'visible', timeout: 15000 })
-if (!(await page.getByRole('heading', { level: 2, name: 'Start the Level first' }).count()) || (await page.getByRole('button', { name: 'Mark lesson complete' }).isEnabled())) throw new Error('Lesson deep link bypassed the explicit Level start gate')
+if ((await page.locator('.course-stage-context').getByRole('link', { name: 'Level 0', exact: true }).getAttribute('href')) !== `#/learn/thread/${materialThread.id}?tab=curriculum&level=${materialStage.id}`) throw new Error('Lesson breadcrumb did not return to its exact Level inside the Thread Lessons tab')
+if (!(await page.getByText('Level not started', { exact: true }).count()) || (await page.getByRole('button', { name: 'Mark lesson complete' }).count())) throw new Error('Lesson deep link bypassed or duplicated the explicit Level start gate')
 const blockedLessonUpdate = await fetch(`${baseUrl}/learning/core/threads/${materialThread.id}/lessons/${materialLesson.id}`, { method: 'PATCH', headers: { ...materialHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) })
 if (blockedLessonUpdate.status !== 409) throw new Error('API allowed Lesson completion before its Level was started')
 await page.goto(`${baseUrl}/#/learn/t/${materialThread.id}/v/${materialStage.id}`, { waitUntil: 'networkidle' })
@@ -915,21 +1012,21 @@ await page.getByRole('button', { name: 'Start lesson' }).click()
 await page.getByRole('button', { name: 'Mark lesson complete' }).waitFor({ state: 'visible' })
 await page.locator('.course-level-materials > summary').click()
 for (const ownedMaterial of ['Lesson-owned observation', 'lesson-owned.txt', 'أي نطاق يملك البطاقة دي؟']) if (!(await page.getByText(ownedMaterial, { exact: true }).count())) throw new Error(`Lesson workspace omitted ${ownedMaterial}`)
-const primaryMaterial = page.locator('.course-material-primary')
-if (await primaryMaterial.count() !== 1 || (await primaryMaterial.getAttribute('href')) !== `/artifacts/${materialHtml.id}`) throw new Error('Lesson launcher did not make the recommended HTML companion the single primary action')
-const primaryMaterialText = await primaryMaterial.innerText()
-const normalizedPrimaryMaterialText = primaryMaterialText.toLowerCase()
-if (!normalizedPrimaryMaterialText.includes('recommended start') || !normalizedPrimaryMaterialText.includes('read the html companion') || !normalizedPrimaryMaterialText.includes('arabic') || !normalizedPrimaryMaterialText.includes('revision 2')) throw new Error(`Lesson launcher omitted primary purpose or metadata: ${primaryMaterialText}`)
-const materialAlternatives = page.locator('.course-material-option')
-if (await materialAlternatives.count() !== 3) throw new Error('Lesson launcher did not retain Original, PDF, and NotebookLM as alternatives')
-const materialLauncherText = await page.locator('.course-material-launcher').innerText()
-for (const copy of ['Read at the original source.', 'Read or annotate the exact A4 print edition on a tablet.', 'Open the Quiz made from this source.', 'Ready', '12 pages']) {
-  if (!materialLauncherText.toLowerCase().includes(copy.toLowerCase())) throw new Error(`Lesson launcher is missing purpose or metadata: ${copy}. Rendered: ${materialLauncherText}`)
-}
+const moreMaterials = page.locator('.lesson-more-sources')
+if (await moreMaterials.count() !== 1 || await moreMaterials.getAttribute('open') !== null) throw new Error('Lesson did not keep secondary material behind one closed disclosure')
+await moreMaterials.locator('summary').click()
+if (!(await page.getByText('Secondary lesson case study', { exact: true }).count())) throw new Error('Lesson did not reveal its secondary material')
+const formatActions = page.locator('.lesson-source-start .course-material-icon-action')
+if (await formatActions.count() !== 4) throw new Error('Lesson launcher did not reduce HTML, Original, PDF, and NotebookLM to four compact actions')
+const primaryMaterial = page.locator('.lesson-source-start .course-material-icon-action.material-html.is-primary')
+if (await primaryMaterial.count() !== 1 || (await primaryMaterial.getAttribute('href')) !== `/artifacts/${materialHtml.id}`) throw new Error('Lesson launcher did not preserve the recommended HTML companion as the primary icon')
+const primaryLabel = (await primaryMaterial.getAttribute('aria-label') || '').toLowerCase()
+for (const copy of ['recommended', 'read the html companion', 'arabic', 'revision 2']) if (!primaryLabel.includes(copy)) throw new Error(`Lesson HTML icon omitted accessible purpose or metadata: ${primaryLabel}`)
+for (const kind of ['original', 'pdf', 'notebooklm']) if (await page.locator(`.lesson-source-start .course-material-icon-action.material-${kind}`).count() !== 1) throw new Error(`Lesson launcher omitted the ${kind} icon action`)
 if (await page.locator('.course-source-links, .course-sources .folio-file-badge').count()) throw new Error('Lesson launcher still renders the old equal material badges')
 await page.setViewportSize({ width: 390, height: 844 })
 await page.goto(`${baseUrl}/#/learn/t/${materialThread.id}/l/${materialLesson.id}`, { waitUntil: 'networkidle' })
-if (!(await page.locator('.course-material-primary').isVisible()) || await page.locator('.course-material-option').count() !== 3) throw new Error('Lesson launcher lost its primary action or alternatives on mobile')
+if (!(await page.locator('.lesson-source-start .course-material-icon-action.is-primary').isVisible()) || await page.locator('.lesson-source-start .course-material-icon-action').count() !== 4) throw new Error('Lesson launcher lost its compact format actions on mobile')
 if (await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth) > 2) throw new Error('Lesson material launcher introduced mobile horizontal overflow')
 await page.setViewportSize({ width: 1440, height: 900 })
 for (const artifact of [materialHtml, materialPdf, materialLessonFile]) {

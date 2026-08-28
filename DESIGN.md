@@ -3,7 +3,7 @@ name: Botanical Folio
 description: Evidence Ledger and calm botanical study studio for Learning Compass
 colors:
   rail-bg: "#16281f"
-  shell-bg: "#f4f1eb"
+  shell-bg: "#f1e9d9"
   ledger-bg: "#faf8f3"
   canvas-bg: "#fffdf8"
   inspector-bg: "#f7f5ee"
@@ -87,6 +87,15 @@ Learning Compass is a quiet, editorial evidence ledger and botanical study studi
 - Clean 1px hairline seams, deliberate typography hierarchy, and purposeful whitespace.
 - Semantic day/night/custom color tokens ensuring accessible WCAG AA contrast (≥4.5:1 text, ≥3:1 large text).
 - Strict elimination of AI tells: zero arbitrary side-tab border stripes, zero chunky card-top borders, zero layout-thrashing animations.
+
+### Composition contract
+
+- Desktop uses a 108px navigation-only root rail and a separate 64px workspace command bar. Root location, grouped modes, global search, and capture share that command plane instead of competing inside the rail or appearing as a detached second header.
+- Ordinary workspaces use a centered canvas capped at 1280px. Atlas alone remains edge-to-edge because the graph is the work surface rather than content inside a page.
+- Grouped modes live in the desktop command bar with one restrained active rule. Subordinate filters stay in the working field only where the active mode needs them; compact layouts return the modes to equal-width inline controls.
+- Home is a master-detail workbench, not a card dashboard: current source and Queue share the decision row; Current rotation and incoming publications share the supporting row; seams define hierarchy without four floating boxes.
+- Map Review preserves the branch index beside a readable dossier on normal laptops. Signals and decisions move beneath the dossier instead of forcing a cramped third permanent rail.
+- Below 940px, the root rail becomes a branded sticky utility bar and five-item bottom dock. Root modes use equal-width grids sized to their actual count, including a single four-column Library row at phone widths.
 
 ## Colors
 
@@ -178,12 +187,14 @@ Surfaces rest flat at rest using subtle tonal layering between Canvas, Ledger, a
 
 ### Learning Thread — Vertical Journey
 
-- **Persistent spine:** Every Thread command-center tab begins at the working canvas's left edge and spans its available width with the same Thread identity, direct lesson progress, exact current Level and lesson, and the command center's only primary next-action link. Pause/activate remains secondary management.
-- **Overview:** One cypress current-move plane leads without duplicating the spine action. All-scope source/material totals and two direct progress tracks support it; the complete Level path stays a compact linked vertical index rather than repeating every lesson or adding an Open Curriculum control.
-- **Curriculum:** Every Level summary remains on one continuous hairline axis, but exactly one Level is expanded. Search returns one bounded lesson index with incremental disclosure. A selected Level is encoded in the URL so refresh, sharing, and the Practice handoff preserve exact context.
-- **Practice:** The same one-open-Level axis leads with current application and leaves future projects as previews. Projects and final synthesis are optional practice and never progression gates.
-- **Materials:** Thread, Level, and Lesson owners share one faceted vertical index. Exactly one owner opens at a time, long note bodies become bounded excerpts, and large owner/item sets reveal incrementally. Navigable item titles carry navigation without duplicate owner-workspace actions; direct material creation remains explicit progressive disclosure.
-- **Adaptation:** The component responds to its available canvas width, including inspector-narrowed desktop layouts. The four tabs become a visible 2×2 control on narrow containers; controls wrap, long titles break safely, and coarse-pointer targets remain at least 44px.
+- **Threads index:** The index answers “what can I continue?” before reporting aggregate progress. One compact summary, truthful In progress/Paused/Completed/All filters, search, and explicit Continue/Review/Open affordances lead into calm ledger rows; dashboard metric cards and overlapping Current Work/Active filters are absent.
+- **Persistent spine:** A typed Thread route removes the global Learn mode switcher and begins at the working canvas's left edge with one breadcrumb back to Threads. The flat, border-bottom spine keeps a compact title and question beside direct lesson progress, exact current Level/lesson, and the command center's only primary next-action link. Pause/activate is a quiet top-line action rather than another panel control.
+- **Task-language sections:** Stable query keys retain compatibility while visible labels read Now, Lessons, Projects, and Resources. Desktop uses one quiet underlined text row with no descriptions or segmented container; narrow containers preserve a visible 2×2, 44px-minimum control.
+- **Now:** The next action and current position remain only in the spine. The Now view contains one inline resource count and the complete linked Level journey; duplicate position cards, explanatory introductions, and repeated progress tracks are absent.
+- **Lessons:** Every Level summary remains on one continuous hairline axis, but exactly one Level is expanded. Search returns one bounded lesson index with incremental disclosure. Every Level entry point returns through `tab=curriculum&level=<id>` so browser navigation, breadcrumbs, refresh, sharing, and the Projects handoff preserve the exact place inside the Thread. Standalone typed Level links remain recovery surfaces, not the normal navigation path.
+- **Projects:** The same one-open-Level axis leads with current application and leaves future projects as previews. Projects and final synthesis are optional practice and never progression gates.
+- **Resources:** Thread, Level, and Lesson owners share one faceted vertical index. Exactly one owner opens at a time, long note bodies become bounded excerpts, and large owner/item sets reveal incrementally. Navigable item titles carry navigation without duplicate owner-workspace actions; direct material creation remains explicit progressive disclosure.
+- **Lesson sequence:** One breadcrumb and one compact metadata row establish place, duration, and truthful readiness; a locked Level reads Locked rather than Ready to study. The near-header action bar renders only when previous/next navigation or a valid start/complete action exists. Progression explanations, Lesson purpose, and the authored-guide disclosure are absent from the Lesson route; curriculum context remains in the Thread's Lessons view. Study materials are a flat ledger with source identity on the left and only compact, accessible icon actions for HTML, PDF, Original, and NotebookLM on the right. Every additional source remains preserved under one More materials disclosure, and notes/files/recall stay behind one final disclosure. Material icons retain complete purpose, availability, and metadata in their accessible labels and use tonal emphasis plus hairline seams, never nested cards or a multi-pixel side stripe.
 
 ### Add Anything
 

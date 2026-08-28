@@ -1,6 +1,5 @@
 import { Hono } from 'hono'
-import { cors } from 'hono/cors'
-import { Bindings, safeErrorMessage } from './lib'
+import { Bindings, safeErrorMessage, normalizeYouTubeUrl, isValidUrl } from './lib'
 
 import recsApi from './api/recommendations'
 import brainApi from './api/brain'
@@ -24,7 +23,6 @@ import dashboardApi from './api/dashboard'
 import artifactsApi from './api/artifacts'
 import discoveryApi from './api/discovery'
 import notebooklmApi from './api/notebooklm'
-import { normalizeYouTubeUrl, isValidUrl } from './lib'
 import { createCapture } from './services/capture'
 import { runMaintenance } from './services/maintenance'
 import { loadOperationalHealth } from './services/operational-health'
@@ -112,8 +110,6 @@ app.onError((error, c) => {
   c.header('X-Request-Id', requestId)
   return c.json({ error: 'internal_error', message: 'Learning Compass could not complete this request.', request_id: requestId }, 500)
 })
-
-app.use('/*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }))
 
 app.use('/*', async (c, next) => {
   await next()

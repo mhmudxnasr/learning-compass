@@ -1,7 +1,8 @@
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join, relative, resolve } from 'node:path'
+import { promisify } from 'node:util'
 
 const args = process.argv.slice(2)
 const value = (flag) => { const index = args.indexOf(flag); return index >= 0 ? args[index + 1] : undefined }
@@ -12,6 +13,7 @@ const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/,
 const snapshotId = `backup_${stamp}`
 const snapshotDir = join(outputRoot, 'snapshots', snapshotId)
 const objectDir = join(outputRoot, 'objects')
+const execFileAsync = promisify(execFile)
 mkdirSync(snapshotDir, { recursive: true })
 mkdirSync(objectDir, { recursive: true })
 
@@ -28,29 +30,44 @@ const inventoryResult = JSON.parse(inventoryOutput)
 const inventory = inventoryResult?.[0]?.results || []
 if (inventory.some((item) => !item.r2_key)) throw new Error('Every canonical artifact must have an R2 key before a full backup can pass')
 
-const objects = []
-let artifactBytes = 0
-for (const artifact of inventory) {
+const objects = new Array(inventory.length)
+let cursor = 0
+let completed = 0
+const downloadArtifact = async (artifact, index) => {
   const key = String(artifact.r2_key)
   const objectName = createHash('sha256').update(key).digest('hex')
   const objectPath = join(objectDir, objectName)
   const expectedSize = Number(artifact.size_bytes || 0)
-  if (!existsSync(objectPath) || (expectedSize > 0 && statSync(objectPath).size !== expectedSize)) {
-    const temporary = `${objectPath}.partial-${process.pid}`
-    rmSync(temporary, { force: true })
-    execFileSync('npx', ['wrangler', 'r2', 'object', 'get', `taste-map-artifacts/${key}`, '--remote', '--config', 'wrangler.toml', '--file', temporary], { stdio: 'inherit' })
+  // Always acquire the remote bytes. A same-key, same-size local cache entry is
+  // not checksum evidence and could otherwise preserve a stale overwritten object.
+  const temporary = `${objectPath}.partial-${process.pid}-${index}`
+  rmSync(temporary, { force: true })
+  try {
+    await execFileAsync('npx', ['wrangler', 'r2', 'object', 'get', `taste-map-artifacts/${key}`, '--remote', '--config', 'wrangler.toml', '--file', temporary], { maxBuffer: 2 * 1024 * 1024 })
     if (expectedSize > 0 && statSync(temporary).size !== expectedSize) {
-      rmSync(temporary, { force: true })
       throw new Error(`Downloaded R2 object size does not match D1: ${key}`)
     }
     renameSync(temporary, objectPath)
+  } catch (error) {
+    rmSync(temporary, { force: true })
+    throw error
   }
   const bytes = readFileSync(objectPath)
   const size = bytes.byteLength
   const sha256 = hash(bytes)
-  artifactBytes += size
-  objects.push({ id: artifact.id, filename: artifact.filename, r2_key: key, size_bytes: size, sha256, file: relative(snapshotDir, objectPath) })
+  objects[index] = { id: artifact.id, filename: artifact.filename, r2_key: key, size_bytes: size, sha256, file: relative(snapshotDir, objectPath) }
+  completed += 1
+  if (completed % 25 === 0 || completed === inventory.length) console.log(`Verified ${completed}/${inventory.length} remote R2 objects`)
 }
+const configuredConcurrency = Number(process.env.LEARNING_COMPASS_BACKUP_CONCURRENCY || 18)
+const workerCount = Math.min(Math.max(1, Number.isFinite(configuredConcurrency) ? Math.floor(configuredConcurrency) : 18), 24, inventory.length)
+await Promise.all(Array.from({ length: workerCount }, async () => {
+  while (cursor < inventory.length) {
+    const index = cursor++
+    await downloadArtifact(inventory[index], index)
+  }
+}))
+const artifactBytes = objects.reduce((sum, object) => sum + object.size_bytes, 0)
 
 const manifest = {
   format: 'learning-compass-full-recovery-v2',

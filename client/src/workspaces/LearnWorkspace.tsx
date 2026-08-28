@@ -68,7 +68,7 @@ export function LearnWorkspace({ route }: LearnWorkspaceProps = {}) {
         : activeMode === 'practice' && practiceFocus === 'contradictions' ? <LearnContradictionsView />
         : activeMode === 'practice' ? <LearnRecallView />
           : <LearnPathsView />
-  const showSwitcher = activeRoute.objectType !== 'lesson' && activeRoute.objectType !== 'canon-domain'
+  const showSwitcher = !['thread', 'level', 'lesson', 'canon-domain'].includes(activeRoute.objectType || '')
   return <div class="learn-workspace-shell workspace-surface">{showSwitcher && <LearnModeSwitcher active={activeMode} practiceFocus={practiceFocus} />}{content}</div>
 }
 

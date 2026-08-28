@@ -179,7 +179,7 @@
 
       <h3>Worker and production state</h3>
       <ul>
-        <li>The preferred <code>LEARNING_COMPASS_API_TOKEN</code> secret was staged and the fallback secret was removed.</li>
+        <li>Ordinary Learning Compass reads and writes use the public transport contract; the retired token/session gate is absent, while Telegram and provider secrets remain independent.</li>
         <li>The Hermes API server key was rotated; the new key returns 200 and the old key returns 401.</li>
         <li>The gateway listens only on <code>127.0.0.1:8642</code>; the stale alternate port is gone.</li>
         <li>An exact scan of 13 credential values across 161 changed, injected, and log files found zero matches.</li>

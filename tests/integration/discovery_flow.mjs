@@ -33,7 +33,7 @@ try {
   }
 
   console.log('2. Starting local Wrangler dev server...')
-  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', String(port), '--var', 'REQUIRE_API_AUTH:false', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], {
+  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', String(port), '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   })

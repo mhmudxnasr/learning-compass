@@ -12,6 +12,7 @@
     "verify:hermes": "node scripts/verify-hermes-contract.mjs && hermes prompt-size --platform telegram --check-contract docs/hermes-prompt-budget.json && hermes -p compass prompt-size --platform telegram --check-contract docs/hermes-compass-prompt-budget.json",
     "verify:agent-contract": "node --test tests/unit/agent-control.test.ts && node scripts/verify-hermes-contract.mjs",
     "verify:migrations": "node scripts/rehearse-migrations.mjs",
+    "verify:release": "node scripts/verify-release.mjs",
     "export:recovery": "node scripts/export-recovery.mjs",
     "backup:production": "node scripts/backup-production.mjs",
     "rehearse:recovery": "node scripts/rehearse-recovery.mjs",
@@ -19,8 +20,8 @@
     "verify:recovery": "node scripts/verify-recovery.mjs",
     "test": "npm run test:unit && npm run typecheck",
     "dev": "vite --host 127.0.0.1",
-    "dev:worker": "wrangler d1 execute recommendations-db --local --config wrangler.toml --file schema.sql && wrangler d1 migrations apply recommendations-db --local --config wrangler.toml && npm run build && wrangler dev --config wrangler.toml --var REQUIRE_API_AUTH:false --var ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true",
-    "deploy": "npm run build && wrangler deploy --config wrangler.toml"
+    "dev:worker": "wrangler d1 execute recommendations-db --local --config wrangler.toml --file schema.sql && wrangler d1 migrations apply recommendations-db --local --config wrangler.toml && npm run build && wrangler dev --config wrangler.toml --var ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true",
+    "deploy": "node scripts/deploy-release.mjs"
   },
   "dependencies": {
     "cytoscape": "^3.34.0",

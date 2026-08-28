@@ -348,9 +348,11 @@ app.post('/:id/branch-map', async (c) => {
 })
 
 app.post('/:id/visualise', async (c) => {
+  const body: Record<string, unknown> = await c.req.json<Record<string, unknown>>().catch(() => ({}))
+  const forceRevision = body.force_revision === true
   const item = await c.env.DB.prepare(`SELECT r.id,r.video_url,r.video_title,r.creator,r.content_type,m.source_metadata_json
     FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
-    WHERE r.id=? AND r.status='active'`).bind(c.req.param('id')).first<any>()
+    WHERE r.id=? AND r.status IN ('active','consumed') AND r.deleted_at IS NULL`).bind(c.req.param('id')).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
   let sourceMetadata: Record<string, any> = {}
   try { sourceMetadata = JSON.parse(item.source_metadata_json || '{}') } catch {}
@@ -358,14 +360,20 @@ app.post('/:id/visualise', async (c) => {
   if (!item.video_url && !sourceArtifactId) return c.json({ error: 'source URL or source artifact required' }, 400)
   const artifactRows = await c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,metadata_json,created_at FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id')=? ORDER BY created_at DESC`).bind(item.id).all<any>()
   const ready = selectLearningSourceRenditions(artifactRows.results || []).get(item.id)
+  let currentPairId: string | null = null
   if (ready?.html && ready?.pdf) {
     const metadata = (ready.html.metadata || {}) as Record<string, unknown>
     if (metadata.workflow_contract === 'lite-visual-linear/v4' && metadata.publication_state === 'ready') {
-      return c.json({ ok: true, status: 'ready', recommendation_id: item.id, pair_id: metadata.pair_id || null, companion: { primary: { role: 'html', id: ready.html.id }, secondary: { role: 'pdf', id: ready.pdf.id } } })
+      const pairId = String(metadata.pair_id || '')
+      currentPairId = pairId || null
+      if (!forceRevision) return c.json({ ok: true, status: 'ready', recommendation_id: item.id, pair_id: pairId || null, companion: { primary: { role: 'html', id: ready.html.id }, secondary: { role: 'pdf', id: ready.pdf.id } } })
+      if (!pairId || body.supersedes_pair_id !== pairId) return c.json({ error: 'ready_pair_revision_precondition_failed', pair_id: pairId || null }, 409)
     }
   }
-  const idempotencyKey = `visualise-source:${item.id}`
+  if (forceRevision && (!currentPairId || body.supersedes_pair_id !== currentPairId)) return c.json({ error: 'ready_pair_revision_precondition_failed', pair_id: currentPairId }, 409)
   const workflowRunId = `lv_${crypto.randomUUID()}`
+  const revisionIdempotencyPrefix = `visualise-source:${item.id}:revision:`
+  const idempotencyKey = forceRevision ? `${revisionIdempotencyPrefix}${workflowRunId}` : `visualise-source:${item.id}`
   const jobPayload = {
     recommendation_id: item.id,
     source_url: item.video_url || null,
@@ -382,6 +390,7 @@ app.post('/:id/visualise', async (c) => {
     allowed_rendering: ['semantic-html', 'source-specific-css', 'native-table', 'native-equation', 'minimal-inline-svg'],
     forbidden_rendering: ['template', 'preset-theme', 'preset-palette', 'mind-map', 'raster-image', 'generated-image', 'external-image-agent', 'interactive-widget'],
     notes_extraction: 'manual_only',
+    ...(forceRevision ? { revision_of_pair_id: String(body.supersedes_pair_id) } : {}),
     stages: [...LITE_VISUAL_STAGES],
     source_extraction: { schema: LITE_VISUAL_SOURCE_EXTRACTION_SCHEMA, command: '/home/mahmud/.hermes/skills/lite-visual/scripts/extract_source.py', output: 'source.txt', manifest: 'source-extraction.json', complete_status: 'complete' },
     checkpoint_requirements: LITE_VISUAL_CHECKPOINT_REQUIREMENTS,
@@ -394,11 +403,19 @@ app.post('/:id/visualise', async (c) => {
       chapter_artifact_contract: { metadata: ['chapter_key', 'chapter_title', 'chapter_number', 'pair_id', 'role'] },
     } : {}),
   }
-  const existing = await c.env.DB.prepare(`SELECT id,status,workflow_step,workflow_run_id,payload_json FROM agent_jobs WHERE idempotency_key=?`).bind(idempotencyKey).first<{ id: string; status: string; workflow_step?: string | null; workflow_run_id?: string | null; payload_json?: string | null }>()
-  if (existing && ['pending', 'retry', 'running'].includes(existing.status)) return c.json({ ok: true, status: existing.status === 'running' ? 'working' : 'queued', job_status: existing.status, workflow_step: existing.workflow_step || 'resolve_source', job_id: existing.id, recommendation_id: item.id }, 202)
-  const jobId = existing?.id || `job_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
+  const existing = forceRevision
+    ? await c.env.DB.prepare(`SELECT id,status,workflow_step,workflow_run_id,payload_json FROM agent_jobs
+        WHERE job_type='visualise_source' AND recommendation_id=? AND status IN ('pending','retry','running','awaiting_activation')
+          AND json_extract(payload_json,'$.revision_of_pair_id')=? AND json_extract(payload_json,'$.workflow_contract')=?
+          AND instr(idempotency_key,?)=1 ORDER BY created_at DESC LIMIT 1`).bind(item.id, currentPairId, LITE_VISUAL_WORKFLOW_CONTRACT, revisionIdempotencyPrefix).first<{ id: string; status: string; workflow_step?: string | null; workflow_run_id?: string | null; payload_json?: string | null }>()
+    : await c.env.DB.prepare(`SELECT id,status,workflow_step,workflow_run_id,payload_json FROM agent_jobs WHERE idempotency_key=?`).bind(idempotencyKey).first<{ id: string; status: string; workflow_step?: string | null; workflow_run_id?: string | null; payload_json?: string | null }>()
+  if (existing && ['pending', 'retry', 'running', 'awaiting_activation'].includes(existing.status)) {
+    const status = existing.status === 'running' ? 'working' : existing.status === 'awaiting_activation' ? 'awaiting_activation' : 'queued'
+    return c.json({ ok: true, status, job_status: existing.status, workflow_step: existing.workflow_step || 'resolve_source', job_id: existing.id, recommendation_id: item.id }, 202)
+  }
+  const jobId = !forceRevision && existing ? existing.id : `job_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
   jobPayload.recovery.checkpoint_endpoint = `/agent/jobs/${jobId}/checkpoint`
-  if (existing) {
+  if (!forceRevision && existing) {
     let previousPayload: Record<string, unknown> = {}
     try { previousPayload = JSON.parse(existing.payload_json || '{}') } catch {}
     const resume = resolveLiteVisualResume(previousPayload, existing.workflow_step)
@@ -433,8 +450,9 @@ app.get('/:id/record', async (c) => {
     c.env.DB.prepare(`SELECT s.note_id,s.section_key,s.label,s.content,s.direction,s.position FROM note_sections s JOIN notes n ON n.id=s.note_id WHERE n.recommendation_id=? ORDER BY s.note_id,s.position`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.r2_key,a.size_bytes,a.metadata_json,a.created_at,r.notebook_url
       FROM artifacts a LEFT JOIN recommendations r ON r.id=json_extract(a.metadata_json,'$.recommendation_id')
-      WHERE json_extract(a.metadata_json,'$.recommendation_id')=?
-         OR a.id=json_extract((SELECT source_metadata_json FROM recommendation_meta WHERE recommendation_id=?),'$.artifact_id')
+       WHERE (json_extract(a.metadata_json,'$.recommendation_id')=?
+          OR a.id=json_extract((SELECT source_metadata_json FROM recommendation_meta WHERE recommendation_id=?),'$.artifact_id'))
+         AND COALESCE(json_extract(a.metadata_json,'$.publication_state'),'ready')!='staged'
       ORDER BY a.created_at DESC`).bind(recommendationId,recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT id,question,answer,topic,status,unit_id,thread_id,provenance_json,created_at FROM srs_drafts WHERE recommendation_id=? ORDER BY created_at DESC`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT id,question,answer,topic,due_at,repetitions,interval_days,ease_factor,unit_id,thread_id,scheduler_version FROM srs_cards WHERE recommendation_id=? ORDER BY due_at`).bind(recommendationId).all<any>(),

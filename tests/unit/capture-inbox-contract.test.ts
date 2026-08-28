@@ -40,3 +40,18 @@ test('Captured sources can be branch-mapped but Queue rejects unmapped sources',
   assert.match(captureDialog, /id="capture-branch-input"/)
   assert.match(captureDialog, /branch_id: branchId/)
 })
+
+test('Lite Visual revisions require the exact ready pair and immutable job lineage', () => {
+  const visualise = captureApi.match(/app\.post\('\/:id\/visualise',[\s\S]*?\n\}\)\n\napp\.get\('\/:id'/)?.[0] || ''
+  assert.match(captureApi, /body\.force_revision === true/)
+  assert.match(captureApi, /body\.supersedes_pair_id !== pairId/)
+  assert.match(captureApi, /ready_pair_revision_precondition_failed/)
+  assert.match(visualise, /revision_of_pair_id/)
+  assert.match(visualise, /revisionIdempotencyPrefix = `visualise-source:\$\{item\.id\}:revision:`/)
+  assert.match(visualise, /forceRevision \? `\$\{revisionIdempotencyPrefix\}\$\{workflowRunId\}`/)
+  assert.match(visualise, /status IN \('pending','retry','running','awaiting_activation'\)/)
+  assert.match(visualise, /instr\(idempotency_key,\?\)=1/)
+  assert.match(visualise, /const jobId = !forceRevision && existing \? existing\.id : `job_/)
+  assert.match(visualise, /if \(!forceRevision && existing\) \{[\s\S]*?UPDATE agent_jobs/)
+  assert.doesNotMatch(visualise, /forceRevision \? \{ is_current: false, resume_from: 'resolve_source' \}/)
+})

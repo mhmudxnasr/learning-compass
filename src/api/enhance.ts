@@ -121,6 +121,23 @@ const themePalette = (value: any) => {
   return palette
 }
 
+const hexLuminance = (hex: string) => {
+  const channel = (offset: number) => {
+    const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
+}
+
+const hexContrast = (foreground: string, background: string) => {
+  const lighter = Math.max(hexLuminance(foreground), hexLuminance(background))
+  const darker = Math.min(hexLuminance(foreground), hexLuminance(background))
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
+const hasAccessibleThemeInk = (palette: Record<string, string>) =>
+  ['shell', 'surface'].every((plane) => hexContrast(palette.ink, palette[plane]) >= 4.5)
+
 app.post('/theme-variants', async (c) => {
   const body = await c.req.json<{ current?: Record<string, string>; mode?: 'day' | 'night' }>().catch(() => ({} as { current?: Record<string, string>; mode?: 'day' | 'night' }))
   const direction = SURPRISE_DIRECTIONS[Math.floor(Math.random() * SURPRISE_DIRECTIONS.length)]
@@ -132,7 +149,9 @@ app.post('/theme-variants', async (c) => {
     const variants = Array.isArray(parsed) ? parsed : parsed?.variants
     const day = themePalette(parsed?.day || parsed?.day_palette || parsed?.light || parsed?.light_palette || variants?.[0]?.day || variants?.[0]?.light || variants?.[0])
     const night = themePalette(parsed?.night || parsed?.night_palette || parsed?.dark || parsed?.dark_palette || variants?.[1]?.night || variants?.[1]?.dark || variants?.[1])
-    if (!day || !night) return c.json({ error: 'Gemini returned an invalid theme shape.', model: result.model }, 502)
+    if (!day || !night || !hasAccessibleThemeInk(day) || !hasAccessibleThemeInk(night)) {
+      return c.json({ error: 'Gemini returned an invalid theme shape.', model: result.model }, 502)
+    }
     return c.json({ day, night, model: result.model })
   } catch { return c.json({ error: 'Gemini returned invalid JSON.', model: result.model }, 502) }
 })

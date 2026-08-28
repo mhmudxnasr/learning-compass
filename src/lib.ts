@@ -18,6 +18,7 @@ export type Bindings = {
   VAPID_PUBLIC_KEY?: string
   VAPID_PRIVATE_KEY?: string
   HARDCOVER_API_TOKEN?: string
+  LITE_VISUAL_RECEIPT_SIGNING_KEY?: string
 }
 
 export type Recommendation = {

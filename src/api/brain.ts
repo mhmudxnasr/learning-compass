@@ -85,7 +85,7 @@ app.get('/profile', async (c) => {
           ORDER BY tv.affinity_score DESC, tv.consumption_count DESC LIMIT 50`).all().catch(() => ({ results: [] })),
         DB.prepare("SELECT s.id, r.video_title, r.creator, s.reflection, s.completed_at FROM learning_sessions s LEFT JOIN recommendations r ON r.id=s.recommendation_id WHERE s.reflection IS NOT NULL AND s.reflection != '' ORDER BY s.completed_at DESC LIMIT 20").all().catch(() => ({ results: [] })),
         DB.prepare("SELECT id, video_title, creator, user_rating, user_score, user_review, consumed_date FROM recommendations WHERE status='consumed' AND (user_rating IS NOT NULL OR user_score IS NOT NULL OR user_review IS NOT NULL) ORDER BY consumed_date DESC LIMIT 30").all().catch(() => ({ results: [] })),
-        DB.prepare("SELECT COUNT(*) as count FROM artifacts").first<{ count: number }>().catch(() => ({ count: 0 })),
+        DB.prepare("SELECT COUNT(*) as count FROM artifacts WHERE COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged'").first<{ count: number }>().catch(() => ({ count: 0 })),
         DB.prepare("SELECT COUNT(*) as count FROM feedback_proposals WHERE status = 'pending'").first<{ count: number }>().catch(() => ({ count: 0 })),
         profileIntelligenceSnapshot(DB).catch(() => ({ assertions: [], revisions: [], health: { status: 'unavailable' } })),
       ])
@@ -203,6 +203,7 @@ app.get('/branches/:id/items', async (c) => {
         ORDER BY sd.created_at DESC`).bind(id, id).all<any>(),
       DB.prepare(`SELECT a.id,a.filename,a.media_type,a.size_bytes,a.metadata_json,a.created_at
         FROM artifacts a WHERE json_extract(a.metadata_json,'$.recommendation_id') IN (SELECT m.recommendation_id FROM recommendation_meta m WHERE m.branch_id=?)
+          AND COALESCE(json_extract(a.metadata_json,'$.publication_state'),'ready')!='staged'
         ORDER BY a.created_at DESC LIMIT 100`).bind(id).all<any>(),
       buildLearningBalance(DB, 90).catch(() => null),
       loadCrossBranchBridges(DB, id),

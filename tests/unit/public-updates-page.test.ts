@@ -35,11 +35,9 @@ test('public learning update explains the real material contract in accessible p
   assert.doesNotMatch(updateHtml, /<script\b/i)
 })
 
-test('learning update stays public in private mode and is served with strict document headers', async () => {
+test('learning update stays public and is served with strict document headers', async () => {
   const requestedPaths: string[] = []
   const env = {
-    REQUIRE_API_AUTH: 'true',
-    API_TOKEN: 'configured-but-not-sent',
     ASSETS: {
       async fetch(request: Request) {
         requestedPaths.push(new URL(request.url).pathname)

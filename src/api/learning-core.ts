@@ -315,10 +315,7 @@ app.post('/threads', async (c) => {
   if (!title || !guidingQuestion || !definition || !threadTypes.has(type)) return c.json({ error: 'title, valid thread_type, guiding_question, and definition_of_done required' }, 400)
   const id = makeId('thread')
   const status = body.activate === true ? 'active' : 'draft'
-  const statements: D1PreparedStatement[] = []
-  if (status === 'active') statements.push(c.env.DB.prepare(`UPDATE learning_threads SET status='paused',paused_at=datetime('now'),updated_at=datetime('now') WHERE status='active'`))
-  statements.push(c.env.DB.prepare(`INSERT INTO learning_threads (id,title,thread_type,guiding_question,why_now,definition_of_done,evidence_requirements_json,status,started_at,priority) VALUES (?,?,?,?,?,?,'[]',?,CASE WHEN ?='active' THEN datetime('now') END,?)`).bind(id, title, type, guidingQuestion, clean(body.why_now, 2000) || null, definition, status, status, Number(body.priority || 0)))
-  await c.env.DB.batch(statements)
+  await c.env.DB.prepare(`INSERT INTO learning_threads (id,title,thread_type,guiding_question,why_now,definition_of_done,evidence_requirements_json,status,started_at,priority) VALUES (?,?,?,?,?,?,'[]',?,CASE WHEN ?='active' THEN datetime('now') END,?)`).bind(id, title, type, guidingQuestion, clean(body.why_now, 2000) || null, definition, status, status, Number(body.priority || 0)).run()
   await recordLearningEvent(c.env.DB, { eventType: 'thread_created', actorType: 'user', idempotencyKey: `thread-created:${id}`, threadId: id, payload: { type, status } })
   return c.json({ ok: true, id, status }, 201)
 })
@@ -410,10 +407,7 @@ app.post('/threads/:id/status', async (c) => {
   if (!['active', 'paused', 'abandoned'].includes(status)) return c.json({ error: 'status must be active, paused, or abandoned' }, 400)
   const thread = await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first()
   if (!thread) return c.json({ error: 'thread not found' }, 404)
-  const statements: D1PreparedStatement[] = []
-  if (status === 'active') statements.push(c.env.DB.prepare(`UPDATE learning_threads SET status='paused',paused_at=datetime('now'),updated_at=datetime('now') WHERE status='active' AND id!=?`).bind(c.req.param('id')))
-  statements.push(c.env.DB.prepare(`UPDATE learning_threads SET status=?,started_at=CASE WHEN ?='active' THEN COALESCE(started_at,datetime('now')) ELSE started_at END,paused_at=CASE WHEN ?='paused' THEN datetime('now') ELSE paused_at END,updated_at=datetime('now') WHERE id=?`).bind(status, status, status, c.req.param('id')))
-  await c.env.DB.batch(statements)
+  await c.env.DB.prepare(`UPDATE learning_threads SET status=?,started_at=CASE WHEN ?='active' THEN COALESCE(started_at,datetime('now')) ELSE started_at END,paused_at=CASE WHEN ?='paused' THEN datetime('now') ELSE paused_at END,updated_at=datetime('now') WHERE id=?`).bind(status, status, status, c.req.param('id')).run()
   return c.json({ ok: true, status })
 })
 
@@ -431,6 +425,8 @@ app.post('/threads/:id/sources', async (c) => {
 })
 
 app.delete('/threads/:id/sources/:sourceId', async (c) => {
+  const stagedTarget = await c.env.DB.prepare(`SELECT t.corpus_id FROM lite_visual_corpus_targets t JOIN lite_visual_corpora c ON c.id=t.corpus_id WHERE c.thread_id=? AND t.recommendation_id=? AND c.state='staging' LIMIT 1`).bind(c.req.param('id'), c.req.param('sourceId')).first<any>()
+  if (stagedTarget) return c.json({ error: 'source_is_bound_to_staged_lite_visual_corpus', corpus_id: stagedTarget.corpus_id }, 409)
   await c.env.DB.prepare(`UPDATE thread_sources SET status='removed',updated_at=datetime('now') WHERE thread_id=? AND recommendation_id=?`).bind(c.req.param('id'), c.req.param('sourceId')).run()
   return c.json({ ok: true })
 })
@@ -439,6 +435,8 @@ app.delete('/threads/:id', async (c) => {
   const id = c.req.param('id')
   const thread = await c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=?`).bind(id).first()
   if (!thread) return c.json({ error: 'thread not found' }, 404)
+  const corpus = await c.env.DB.prepare('SELECT id,state FROM lite_visual_corpora WHERE thread_id=? LIMIT 1').bind(id).first<any>()
+  if (corpus) return c.json({ error: 'thread_has_lite_visual_corpus_history', corpus_id: corpus.id, state: corpus.state }, 409)
   try {
     await c.env.DB.batch([
       c.env.DB.prepare(`DELETE FROM learning_path_sources WHERE stage_id IN (SELECT id FROM learning_path_stages WHERE thread_id=?)`).bind(id),

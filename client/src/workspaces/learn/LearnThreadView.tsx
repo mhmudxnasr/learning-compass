@@ -5,9 +5,8 @@ import { routeHref } from '../../app/router'
 import { Empty, ErrorState, Loading } from '../../components/States'
 import { Icon } from '../../components/Icon'
 import { useData } from '../../app/useData'
-import { artifactHref, cardHref, lessonHref, lessonReadiness, levelHref, noteHref, percent, roleLabel, statusLabel } from './helpers'
-import { buildSourceMaterialLauncher, SourceMaterialKind, SourceMaterialOption } from './sourceMaterials'
-import { parseNoteBlocks } from './noteReader'
+import { artifactHref, cardHref, cleanTitle, lessonHref, lessonReadiness, noteHref, percent, roleLabel, statusLabel } from './helpers'
+import { buildSourceMaterialLauncher, SourceMaterialKind } from './sourceMaterials'
 import { NoteRecord, PathArtifact, PathResponse, PathSource, PathStage, RecallCard, RecallDraft, ThreadLesson, ThreadProject } from './types'
 import { ThreadAuthoring } from './ThreadAuthoring'
 
@@ -85,10 +84,10 @@ export function LearnThreadView({
 }
 
 const threadTabs = [
-  { key: 'overview', label: 'Overview', icon: 'spark' },
-  { key: 'curriculum', label: 'Curriculum', icon: 'source' },
-  { key: 'practice', label: 'Practice', icon: 'edit' },
-  { key: 'materials', label: 'Materials', icon: 'file' },
+  { key: 'overview', label: 'Now' },
+  { key: 'curriculum', label: 'Lessons' },
+  { key: 'practice', label: 'Projects' },
+  { key: 'materials', label: 'Resources' },
 ] as const
 type ThreadTabKey = (typeof threadTabs)[number]['key']
 
@@ -205,7 +204,6 @@ function ThreadCommandCenter({
     (sum, stage) => sum + Number(stage.progress?.study_total ?? stage.lessons.length),
     0
   )
-  const completedLevels = path.stages.filter((stage) => stage.status === 'completed').length
   const next = threadNextLesson(path)
   const hasLessons = totalLessons > 0
   const currentStage =
@@ -220,7 +218,7 @@ function ThreadCommandCenter({
     ? threadTabHref(thread.id, 'curriculum')
     : next
     ? nextReadiness === 'needs_material'
-      ? levelHref(thread.id, next.stage.id)
+      ? threadTabHref(thread.id, 'curriculum', next.stage.id)
       : lessonHref(thread.id, next.lesson.id)
     : threadTabHref(thread.id, 'curriculum')
   const nextLabel = !hasLessons
@@ -255,11 +253,40 @@ function ThreadCommandCenter({
   return (
     <section class="learn-workspace folio-learn thread-command-center vertical-thread">
       <header class="vertical-thread-spine">
-        <nav class="course-stage-context" aria-label="Breadcrumb">
-          <a href={routeHref('learn', 'paths')}>Threads</a>
-          <span aria-hidden="true">/</span>
-          <span>{thread.title}</span>
-        </nav>
+        <div class="vertical-thread-topline">
+          <nav class="course-stage-context" aria-label="Breadcrumb">
+            <a href={routeHref('learn', 'paths')}>Threads</a>
+            <span aria-hidden="true">/</span>
+            <span dir="auto">{thread.title}</span>
+          </nav>
+          <div class="vertical-thread-management">
+            {thread.status === 'paused' || thread.status === 'draft' ? (
+              <button
+                class="button secondary"
+                disabled={Boolean(working)}
+                onClick={() =>
+                  mutate('Activate Thread', `/learning/core/threads/${encodeURIComponent(thread.id)}/status`, {
+                    status: 'active',
+                  })
+                }
+              >
+                Activate
+              </button>
+            ) : thread.status === 'active' ? (
+              <button
+                class="button secondary"
+                disabled={Boolean(working)}
+                onClick={() =>
+                  mutate('Pause Thread', `/learning/core/threads/${encodeURIComponent(thread.id)}/status`, {
+                    status: 'paused',
+                  })
+                }
+              >
+                Pause
+              </button>
+            ) : null}
+          </div>
+        </div>
 
         <div class="vertical-thread-spine-grid">
           <div class="vertical-thread-identity">
@@ -268,10 +295,9 @@ function ThreadCommandCenter({
                 <i class="folio-tag-dot" aria-hidden="true" />
                 {statusLabel(thread.status)}
               </span>
-              <span class="folio-type-tag">{thread.thread_type || 'understand'}</span>
             </div>
-            <h1>{thread.title}</h1>
-            {thread.guiding_question && <p class="thread-guiding-lede">{thread.guiding_question}</p>}
+            <h1 dir="auto">{thread.title}</h1>
+            {thread.guiding_question && <p class="thread-guiding-lede" dir="auto">{thread.guiding_question}</p>}
           </div>
 
           <aside class="vertical-thread-position" aria-label="Current Thread position">
@@ -319,52 +345,21 @@ function ThreadCommandCenter({
               </span>
               <Icon name="chevron" size={14} />
             </a>
-            <p>Only direct lesson completion advances Levels. Projects and materials remain optional context.</p>
           </aside>
         </div>
 
-        <div class="vertical-thread-spine-footer">
-          <nav class="thread-tabs vertical-thread-tabs" aria-label="Thread sections">
-            {threadTabs.map((item) => (
-              <a
+        <nav class="thread-tabs vertical-thread-tabs" aria-label="Thread sections">
+          {threadTabs.map((item) => (
+            <a
               href={threadTabHref(thread.id, item.key)}
-                class={`thread-tab-link ${item.key === activeTab ? 'is-active' : ''}`}
-                aria-current={item.key === activeTab ? 'page' : undefined}
-                key={item.key}
-              >
-                <span>{item.label}</span>
-              </a>
-            ))}
-          </nav>
-
-          <div class="vertical-thread-management">
-            {thread.status === 'paused' || thread.status === 'draft' ? (
-              <button
-                class="button secondary"
-                disabled={Boolean(working)}
-                onClick={() =>
-                  mutate('Activate Thread', `/learning/core/threads/${encodeURIComponent(thread.id)}/status`, {
-                    status: 'active',
-                  })
-                }
-              >
-                Activate Thread
-              </button>
-            ) : thread.status === 'active' ? (
-              <button
-                class="button secondary"
-                disabled={Boolean(working)}
-                onClick={() =>
-                  mutate('Pause Thread', `/learning/core/threads/${encodeURIComponent(thread.id)}/status`, {
-                    status: 'paused',
-                  })
-                }
-              >
-                Pause Thread
-              </button>
-            ) : null}
-          </div>
-        </div>
+              class={`thread-tab-link ${item.key === activeTab ? 'is-active' : ''}`}
+              aria-current={item.key === activeTab ? 'page' : undefined}
+              key={item.key}
+            >
+              <span>{item.label}</span>
+            </a>
+          ))}
+        </nav>
 
         {message && (
           <p class="folio-status" role="status">
@@ -373,14 +368,7 @@ function ThreadCommandCenter({
         )}
       </header>
 
-      {activeTab === 'overview' && (
-        <ThreadOverview
-          path={path}
-          currentStage={currentStage}
-          study={[completedLessons, totalLessons]}
-          levels={[completedLevels, path.stages.length]}
-        />
-      )}
+      {activeTab === 'overview' && <ThreadOverview path={path} currentStage={currentStage} />}
 
       {activeTab === 'curriculum' && <ThreadCurriculum path={path} focusLevelId={focusLevelId} onChanged={onChanged} />}
 
@@ -391,117 +379,21 @@ function ThreadCommandCenter({
   )
 }
 
-function ThreadOverview({
-  path,
-  currentStage,
-  study,
-  levels,
-}: {
-  path: PathResponse
-  currentStage?: PathStage
-  study: number[]
-  levels: number[]
-}) {
-  const next = threadNextLesson(path)
-  const hasLessons = study[1] > 0
-  const readiness = next ? lessonReadiness(next.lesson) : null
+function ThreadOverview({ path, currentStage }: { path: PathResponse; currentStage?: PathStage }) {
   const materialTotals = threadMaterialTotals(path)
   const sources = threadSourceCount(path)
-  const nextLessonPosition = next ? next.stage.lessons.findIndex((lesson) => lesson.id === next.lesson.id) + 1 : 0
   return (
     <section class="vertical-thread-overview">
-      <header class="vertical-view-head">
-        <div>
-          <h2>Current move</h2>
-          <p>Continue one exact lesson, then recover the whole Level path without repeating the full curriculum.</p>
-        </div>
-        <span>{study[0]} of {study[1]} lessons complete</span>
-      </header>
-
-      <section class="vertical-overview-next" aria-labelledby="vertical-overview-next-title">
-        <div class="vertical-overview-next-copy">
-          <div class="vertical-overview-next-context">
-            <span>
-              {next ? `Level ${next.stage.position} — ${levelTitle(next.stage)}` : hasLessons ? 'Thread complete' : 'Thread setup'}
-            </span>
-            {readiness ? (
-              <span class={`lesson-readiness-pill state-${readiness}`}>{statusLabel(readiness)}</span>
-            ) : (
-              <span class={`folio-status-tag status-${hasLessons ? 'completed' : 'draft'}`}>
-                {hasLessons ? 'Completed' : 'Setup'}
-              </span>
-            )}
-          </div>
-          <h3 id="vertical-overview-next-title">
-            {next?.lesson.title || (hasLessons ? 'Every authored lesson is complete' : 'No lessons are authored yet')}
-          </h3>
-          <p>
-            {next?.lesson.why_learn ||
-              next?.lesson.description ||
-              (next
-                ? 'This lesson needs material before focused study can continue.'
-                : hasLessons
-                ? 'Use the curriculum as a reference or add another authored Level when the Thread needs to grow.'
-                 : 'Author the first Level and lesson before beginning focused study.')}
-          </p>
-          <div class="vertical-overview-next-meta">
-            {next?.lesson.estimated_minutes ? <span>{next.lesson.estimated_minutes} min</span> : null}
-            {next?.lesson.sources?.length ? (
-              <span>{next.lesson.sources.length} {next.lesson.sources.length === 1 ? 'source' : 'sources'} ready</span>
-            ) : next ? (
-              <span>No study material attached</span>
-            ) : null}
-          </div>
-        </div>
-
-        <aside class="vertical-overview-position" aria-label="Exact learning position">
-          <strong>{next ? `Lesson ${nextLessonPosition} of ${next.stage.lessons.length}` : 'Path complete'}</strong>
-          <span>{next ? `Level ${next.stage.position} · ${path.stages.length} authored Levels` : `${levels[0]} of ${levels[1]} Levels complete`}</span>
-        </aside>
-      </section>
-
-      <div class="vertical-thread-ledger" aria-label="Thread inventory across every owner scope">
-        <div>
-          <strong>{sources}</strong>
-          <span>attached sources</span>
-        </div>
-        <div>
-          <strong>{materialTotals.notes}</strong>
-          <span>notes</span>
-        </div>
-        <div>
-          <strong>{materialTotals.files}</strong>
-          <span>stored files</span>
-        </div>
-        <div>
-          <strong>{materialTotals.cards + materialTotals.drafts}</strong>
-          <span>recall items</span>
-        </div>
-      </div>
-
-      <div class="vertical-overview-progress">
-        <ProgressTrack
-          label="Study"
-          completed={study[0]}
-          total={study[1]}
-          unit="lessons"
-          value={percent(study[0], study[1])}
-        />
-        <ProgressTrack
-          label="Levels"
-          completed={levels[0]}
-          total={levels[1]}
-          unit="levels"
-          value={percent(levels[0], levels[1])}
-        />
+      <div class="vertical-thread-ledger" aria-label="Thread resources">
+        <span><strong>{sources}</strong> sources</span>
+        <span><strong>{materialTotals.notes}</strong> notes</span>
+        <span><strong>{materialTotals.files}</strong> files</span>
+        <span><strong>{materialTotals.cards + materialTotals.drafts}</strong> recall</span>
       </div>
 
       <section class="vertical-overview-roadmap" aria-labelledby="vertical-overview-roadmap-title">
         <header>
-          <div>
-            <h2 id="vertical-overview-roadmap-title">Level journey</h2>
-            <p>Current work is expanded elsewhere; this is the compact map of the complete Thread.</p>
-          </div>
+          <h2 id="vertical-overview-roadmap-title">Levels</h2>
         </header>
 
         <ol class="vertical-journey-list">
@@ -520,7 +412,7 @@ function ThreadOverview({
               <li class={isCurrent ? 'is-current' : ''} key={stage.id}>
                 <span class="vertical-journey-marker" aria-hidden="true">{stage.position}</span>
                 <div class="vertical-journey-copy">
-                  <a href={levelHref(path.thread.id, stage.id)}>
+                  <a href={threadTabHref(path.thread.id, 'curriculum', stage.id)}>
                     <strong>Level {stage.position} — {levelTitle(stage)}</strong>
                   </a>
                   {(stage.objective || stage.description) && <p>{stage.objective || stage.description}</p>}
@@ -1074,6 +966,10 @@ function StageView({
           <a href={routeHref('learn', 'paths')}>Threads</a>
           <span aria-hidden="true">/</span>
           <a href={threadTabHref(threadId, 'overview')}>{threadTitle}</a>
+          <span aria-hidden="true">/</span>
+          <a href={threadTabHref(threadId, 'curriculum', stage.id)}>Lessons</a>
+          <span aria-hidden="true">/</span>
+          <span>Level {stage.position}</span>
         </nav>
         <div class="course-stage-heading-line">
           <p class="folio-object-kicker">Level {stage.position}</p>
@@ -1250,7 +1146,7 @@ function LevelList({ threadId, stages, activeStage }: { threadId: string; stages
       <div class="course-level-list-grid">
         {stages.map((stage) => (
           <a
-            href={levelHref(threadId, stage.id)}
+            href={threadTabHref(threadId, 'curriculum', stage.id)}
             class={`course-level-card status-${stage.status} ${stage.id === activeStage?.id ? 'is-current' : ''}`}
             aria-current={stage.id === activeStage?.id ? 'page' : undefined}
             key={stage.id}
@@ -1338,7 +1234,7 @@ function ThreadMaterialLedger({
             </div>
             {levelMaterials.map((stage) => (
               <div class="learning-owned-level" key={stage.id}>
-                <a href={levelHref(path.thread.id, stage.id)}>
+                <a href={threadTabHref(path.thread.id, 'curriculum', stage.id)}>
                   <strong>{stage.title}</strong>
                 </a>
                 <span>
@@ -1959,6 +1855,7 @@ function LessonView({
   const readiness = lessonReadiness(lesson)
   const canStudy = stage.status === 'in_progress'
   const canComplete = readiness !== 'needs_material' && canStudy
+  const displayState = stage.status === 'locked' ? 'locked' : stage.status === 'available' ? 'level_not_started' : readiness
 
   const currentIndex = stage.lessons.findIndex((l) => l.id === lesson.id)
   const prevLesson = currentIndex > 0 ? stage.lessons[currentIndex - 1] : null
@@ -1999,109 +1896,90 @@ function LessonView({
 
   return (
     <article class="course-lesson-page">
-      <div class="course-lesson-top-nav">
-        <a class="folio-back-link" href={levelHref(threadId, stage.id)}>
-          <Icon name="back" size={14} />
-          <span>Back to Level {stage.position}</span>
-        </a>
-        {lesson.estimated_minutes && (
-          <span class="lesson-duration-pill">
-            <Icon name="clock" size={12} />
-            <span>{lesson.estimated_minutes} min</span>
-          </span>
-        )}
-      </div>
-
       <header class="course-lesson-header">
         <nav class="course-stage-context" aria-label="Breadcrumb">
           <a href={routeHref('learn', 'paths')}>Threads</a>
           <span aria-hidden="true">/</span>
           <a href={threadTabHref(threadId, 'overview')}>{threadTitle}</a>
           <span aria-hidden="true">/</span>
-          <a href={levelHref(threadId, stage.id)}>Level {stage.position}</a>
+          <a href={threadTabHref(threadId, 'curriculum', stage.id)}>Level {stage.position}</a>
         </nav>
         <div class="course-lesson-meta-bar">
-          <p class="folio-object-kicker">Lesson {String(lesson.position + 1).padStart(2, '0')}</p>
-          <span class={`course-lesson-status-pill state-${readiness}`}>
-            <Icon name={isCompleted ? 'check' : readiness === 'needs_material' ? 'source' : 'clock'} size={12} />
+          <div class="course-lesson-position">
+            <span>Lesson {currentIndex + 1} of {stage.lessons.length}</span>
+            {lesson.estimated_minutes && (
+              <span class="lesson-duration-pill">
+                <Icon name="clock" size={12} />
+                <span>{lesson.estimated_minutes} min</span>
+              </span>
+            )}
+          </div>
+          <span class={`course-lesson-status-pill state-${displayState}`}>
+            <Icon name={displayState === 'locked' ? 'lock' : isCompleted ? 'check' : displayState === 'needs_material' ? 'source' : 'clock'} size={12} />
             <span>
-              {isCompleted
+              {displayState === 'locked'
+                ? 'Locked'
+                : displayState === 'level_not_started'
+                ? 'Level not started'
+                : isCompleted
                 ? 'Completed'
-                : readiness === 'needs_material'
+                : displayState === 'needs_material'
                 ? 'Needs material'
-                : readiness === 'in_progress'
+                : displayState === 'in_progress'
                 ? 'In progress'
                 : 'Ready to study'}
             </span>
           </span>
         </div>
-        <h1>{lesson.title}</h1>
-        {(lesson.objective || lesson.description) && <p>{lesson.objective || lesson.description}</p>}
+        <h1 dir="auto">{cleanTitle(lesson.title)}</h1>
+        {(lesson.objective || lesson.description) && <p dir="auto">{lesson.objective || lesson.description}</p>}
       </header>
 
-      {stage.status === 'locked' && (
-        <section class="lesson-empty-state">
-          <h2>This Level is locked</h2>
-          <p>Complete the previous Level before starting this lesson.</p>
-        </section>
-      )}
-      {stage.status === 'available' && (
-        <section class="lesson-empty-state">
-          <h2>Start the Level first</h2>
-          <p>Return to the Level overview and start it to make this lesson actionable.</p>
-          <a class="button primary folio-primary" href={levelHref(threadId, stage.id)}>
-            Open Level
-          </a>
-        </section>
-      )}
-
-      {readiness === 'needs_material' && (
-        <section class="lesson-empty-state" aria-label="Study material unavailable">
-          <h2>No study material attached</h2>
-          <p>This lesson is not ready yet. Add authored lesson content or attach a source before completing it.</p>
-        </section>
-      )}
-
-      {(lesson.why_learn || lesson.why_now || lesson.takeaway) && (
-        <details class="lesson-learning-contract" aria-labelledby="lesson-learning-contract-title">
-          <summary class="lesson-contract-summary">
-            <div>
-              <p class="folio-object-kicker">Learning Contract</p>
-              <h2 id="lesson-learning-contract-title">What this lesson changes</h2>
+      {(prevLesson || nextLesson || canComplete) && (
+        <div class="course-lesson-action-bar" aria-label="Lesson actions">
+          <div class="course-lesson-nav">
+            {prevLesson && (
+              <a class="button secondary" href={lessonHref(threadId, prevLesson.id)} aria-label={`Previous lesson: ${prevLesson.title}`}>
+                <Icon name="back" size={14} />
+                <span><small>Previous</small><strong dir="auto">{cleanTitle(prevLesson.title)}</strong></span>
+              </a>
+            )}
+            {nextLesson && (
+              <a class="button secondary" href={lessonHref(threadId, nextLesson.id)} aria-label={`Next lesson: ${nextLesson.title}`}>
+                <span><small>Next</small><strong dir="auto">{cleanTitle(nextLesson.title)}</strong></span>
+                <Icon name="chevron" size={14} />
+              </a>
+            )}
+          </div>
+          {canComplete && (
+            <div class="course-lesson-actions">
+              {lesson.status === 'not_started' && canStudy ? (
+                <button class="button primary folio-primary" type="button" onClick={startLesson} disabled={saving}>
+                  Start lesson
+                </button>
+              ) : (
+                <button
+                  class={`button ${isCompleted ? 'secondary course-lesson-completed-btn' : 'primary folio-primary'}`}
+                  type="button"
+                  onClick={toggleComplete}
+                  disabled={saving}
+                >
+                  <Icon name="check" size={15} />
+                  <span>{saving ? 'Updating…' : isCompleted ? 'Completed · Reopen lesson' : 'Mark lesson complete'}</span>
+                </button>
+              )}
+              {error && <p class="learning-material-error" role="alert">{error}</p>}
             </div>
-          </summary>
-          <dl>
-            {lesson.why_learn && (
-              <div>
-                <dt>Why it matters</dt>
-                <dd>{lesson.why_learn}</dd>
-              </div>
-            )}
-            {lesson.why_now && (
-              <div>
-                <dt>Why now</dt>
-                <dd>{lesson.why_now}</dd>
-              </div>
-            )}
-            {lesson.takeaway && (
-              <div>
-                <dt>Key Takeaway</dt>
-                <dd>{lesson.takeaway}</dd>
-              </div>
-            )}
-          </dl>
-        </details>
+          )}
+        </div>
       )}
-
-      {lesson.content && <LessonContent content={lesson.content} />}
 
       {lesson.sources?.length ? <SourceSection sources={lesson.sources} /> : null}
 
       <details class="course-level-materials is-lesson-tools">
         <summary>
           <span>
-            <span class="folio-object-kicker">Learning tools</span>
-            <strong>Capture for this Lesson</strong>
+            <strong>Notes, files & recall</strong>
           </span>
           <small>
             {(lesson.notes?.length || 0) +
@@ -2122,134 +2000,44 @@ function LessonView({
         />
       </details>
 
-      <footer class="course-lesson-footer">
-        <div class="course-lesson-nav">
-          {prevLesson && (
-            <a class="button secondary" href={lessonHref(threadId, prevLesson.id)} title={prevLesson.title}>
-              <Icon name="back" size={14} />
-              <span>Prev: Lesson {String(prevLesson.position + 1).padStart(2, '0')}</span>
-            </a>
-          )}
-          {nextLesson && (
-            <a class="button secondary" href={lessonHref(threadId, nextLesson.id)} title={nextLesson.title}>
-              <span>Next: Lesson {String(nextLesson.position + 1).padStart(2, '0')}</span>
-              <Icon name="chevron" size={14} />
-            </a>
-          )}
-        </div>
-        <div class="course-lesson-actions">
-          {!canComplete && (
-            <p class="course-lesson-completion-note">
-              {!canStudy
-                ? 'Start this Level before updating the lesson.'
-                : 'Completion unlocks when study material is attached.'}
-            </p>
-          )}
-          {lesson.status === 'not_started' && canStudy && canComplete ? (
-            <button class="button primary folio-primary" type="button" onClick={startLesson} disabled={saving}>
-              Start lesson
-            </button>
-          ) : (
-            <button
-              class={`button ${isCompleted ? 'secondary course-lesson-completed-btn' : 'primary folio-primary'}`}
-              type="button"
-              onClick={toggleComplete}
-              disabled={saving || !canComplete}
-            >
-              <Icon name="check" size={15} />
-              <span>{saving ? 'Updating…' : isCompleted ? 'Completed ✓ · Reopen lesson' : 'Mark lesson complete'}</span>
-            </button>
-          )}
-          {error && <p class="learning-material-error" role="alert">{error}</p>}
-        </div>
-      </footer>
     </article>
   )
 }
 
-function LessonContent({ content }: { content: string }) {
-  const blocks = parseNoteBlocks(content)
-  return (
-    <details class="lesson-content">
-      <summary class="lesson-content-summary">
-        <div>
-          <p class="folio-object-kicker">Lesson Notes</p>
-          <h3>Authored guide & examples</h3>
-        </div>
-      </summary>
-      <div class="lesson-content-body">
-        {blocks.map((block, index) =>
-          block.kind === 'heading' ? (
-            block.level === 2 ? (
-              <h3 dir={block.direction} key={index}>
-                {block.text}
-              </h3>
-            ) : (
-              <h4 dir={block.direction} key={index}>
-                {block.text}
-              </h4>
-            )
-          ) : block.kind === 'quote' ? (
-            <blockquote dir={block.direction} key={index}>
-              {block.text}
-            </blockquote>
-          ) : block.kind === 'list' ? (
-            block.ordered ? (
-              <ol start={block.start} dir={block.direction} key={index}>
-                {block.items.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ol>
-            ) : (
-              <ul dir={block.direction} key={index}>
-                {block.items.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            )
-          ) : (
-            <p dir={block.direction} key={index}>
-              {block.text}
-            </p>
-          )
-        )}
-      </div>
-    </details>
-  )
-}
+function SourceSection({ sources, title = 'Study materials' }: { sources: PathSource[]; title?: string }) {
+  const preferredIndex = sources.findIndex((source) => source.role === 'primary')
+  const startIndex = preferredIndex >= 0 ? preferredIndex : 0
+  const startSource = sources[startIndex]
+  const remainingSources = sources.filter((_, index) => index !== startIndex)
 
-function SourceSection({ sources, title = 'For this lesson' }: { sources: PathSource[]; title?: string }) {
   return (
-    <section class="course-sources">
+    <section class="course-sources" aria-labelledby="course-sources-title">
       <div class="folio-section-head">
         <div>
-          <p class="folio-object-kicker">Study Material</p>
-          <h3>{title}</h3>
+          <h3 id="course-sources-title">{title}</h3>
         </div>
       </div>
-      {sources.length ? (
-        <ul class="course-sources-list">
-          {sources.map((source) => (
-            <li key={source.recommendation_id} class="course-source-card">
-              <div class="course-source-header">
-                <div class="course-source-tags">
-                  <span class="course-source-role-tag">{roleLabel(source.role)}</span>
-                  {source.branch_id && (
-                    <a class="folio-badge folio-badge-branch" href={`#/map/branch/${encodeURIComponent(source.branch_id)}`}>
-                      <span class="badge-format">Branch</span>
-                      <span>{source.branch_label || source.branch_id}</span>
-                    </a>
-                  )}
-                </div>
-                <strong class="course-source-title">{source.video_title || 'Untitled source'}</strong>
-                {source.expected_contribution && (
-                  <p class="course-source-rationale">{source.expected_contribution}</p>
-                )}
-              </div>
-              <SourceMaterialLauncher source={source} />
-            </li>
-          ))}
-        </ul>
+      {startSource ? (
+        <>
+          <div class="lesson-source-start">
+            <ul class="course-sources-list is-primary">
+              <SourceCard source={startSource} />
+            </ul>
+          </div>
+          {remainingSources.length > 0 && (
+            <details class="lesson-more-sources">
+              <summary>
+                <span>
+                  <strong>More materials</strong>
+                </span>
+                <span>{remainingSources.length}</span>
+              </summary>
+              <ul class="course-sources-list">
+                {remainingSources.map((source) => <SourceCard key={source.recommendation_id} source={source} />)}
+              </ul>
+            </details>
+          )}
+        </>
       ) : (
         <p class="folio-empty-line">Hermes has not curated material for this lesson yet.</p>
       )}
@@ -2257,82 +2045,54 @@ function SourceSection({ sources, title = 'For this lesson' }: { sources: PathSo
   )
 }
 
-const materialIcon = (kind: SourceMaterialKind) =>
-  kind === 'original' ? 'external' : kind === 'html' ? 'source' : kind === 'pdf' ? 'file' : 'spark'
-
-function MaterialDetails({ material }: { material: SourceMaterialOption }) {
-  if (!material.details.length) return null
+function SourceCard({ source }: { source: PathSource }) {
   return (
-    <span class="course-material-details" aria-label={`Material details: ${material.details.join(', ')}`}>
-      {material.details.map((detail) => (
-        <span key={detail}>{detail}</span>
-      ))}
-    </span>
+    <li class="course-source-card">
+      <div class="course-source-header">
+        <div class="course-source-tags">
+          <span class="course-source-role-tag">{roleLabel(source.role)}</span>
+          {source.branch_id && (
+            <a class="folio-badge folio-badge-branch" href={`#/map/branch/${encodeURIComponent(source.branch_id)}`}>
+              <span class="badge-format">Branch</span>
+              <span>{source.branch_label || source.branch_id}</span>
+            </a>
+          )}
+        </div>
+        <strong class="course-source-title" dir="auto">{cleanTitle(source.video_title) || 'Untitled source'}</strong>
+        {source.expected_contribution && <p class="course-source-rationale" dir="auto">{source.expected_contribution}</p>}
+      </div>
+      <SourceMaterialLauncher source={source} />
+    </li>
   )
 }
 
+const materialIcon = (kind: SourceMaterialKind) =>
+  kind === 'original' ? 'external' : kind === 'html' ? 'source' : kind === 'pdf' ? 'file' : 'spark'
+
 function SourceMaterialLauncher({ source }: { source: PathSource }) {
   const launcher = buildSourceMaterialLauncher(source)
-  if (!launcher) return <p class="course-material-unavailable">This source is attached, but it has no openable material yet.</p>
-  const { primary, alternatives, explicitlyRecommended } = launcher
+  if (!launcher) return <p class="course-material-unavailable">No openable material</p>
+  const materials = [launcher.primary, ...launcher.alternatives]
 
   return (
-    <div class="course-material-launcher" aria-label={`Ways to study ${source.video_title || 'this source'}`}>
-      <a
-        class={`course-material-primary material-${primary.kind}`}
-        href={primary.href}
-        target="_blank"
-        rel="noreferrer"
-        aria-label={`${explicitlyRecommended ? 'Open recommended material' : 'Start here'}: ${primary.label}. ${primary.purpose} Opens in a new tab.`}
-      >
-        <span class="course-material-primary-icon" aria-hidden="true">
-          <Icon name={materialIcon(primary.kind)} size={18} />
-        </span>
-        <span class="course-material-primary-copy">
-          <span class="course-material-primary-kicker">
-            {explicitlyRecommended ? 'Recommended start' : 'Start here'} · {primary.availability}
-          </span>
-          <strong>{primary.label}</strong>
-          <small>{primary.purpose}</small>
-          <MaterialDetails material={primary} />
-        </span>
-        <span class="course-material-primary-format" aria-hidden="true">
-          {primary.format}
-        </span>
-      </a>
-      {alternatives.length > 0 && (
-        <div class="course-material-alternatives">
-          <p>Also available</p>
-          <div class="course-material-option-list">
-            {alternatives.map((material) => (
-              <a
-                class={`course-material-option material-${material.kind}`}
-                href={material.href}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={`${material.label}. ${material.purpose} ${material.availability}. Opens in a new tab.`}
-                key={material.kind}
-              >
-                <span class="course-material-option-icon" aria-hidden="true">
-                  <Icon name={materialIcon(material.kind)} size={15} />
-                </span>
-                <span class="course-material-option-copy">
-                  <span>
-                    <strong>{material.format}</strong>
-                    <span>{material.label}</span>
-                  </span>
-                  <small>{material.purpose}</small>
-                  <MaterialDetails material={material} />
-                </span>
-                <span class="course-material-option-state">
-                  {material.availability}
-                  <Icon name="chevron" size={12} />
-                </span>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
+    <div class="course-material-launcher is-icon-only" aria-label={`Open formats for ${source.video_title || 'this source'}`}>
+      {materials.map((material, index) => {
+        const description = [material.label, material.purpose, ...material.details, material.availability].filter(Boolean).join('. ')
+        return (
+          <a
+            class={`course-material-icon-action material-${material.kind} ${index === 0 ? 'is-primary' : ''}`}
+            href={material.href}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`${index === 0 && launcher.explicitlyRecommended ? 'Recommended. ' : ''}${description}. Opens in a new tab.`}
+            title={`${material.format}: ${material.label}`}
+            key={material.kind}
+          >
+            <Icon name={materialIcon(material.kind)} size={16} />
+            <span class="visually-hidden">{material.format}</span>
+          </a>
+        )
+      })}
     </div>
   )
 }

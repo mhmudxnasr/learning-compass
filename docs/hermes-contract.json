@@ -34,6 +34,7 @@
       {"name": "rss-feed", "path": "productivity/rss-feed", "role": "feeds"},
       {"name": "agent-cli-delegation", "path": "workflow/agent-cli-delegation", "role": "explicit_agy_delegation"},
       {"name": "youtube-playlist-verification", "path": "workflow/youtube-playlist-verification", "role": "youtube_source_verification"},
+      {"name": "media-transcription-systems", "path": "media/media-transcription-systems", "role": "caption_first_timed_media_transcription"},
       {"name": "learning-thread-authoring", "path": "learning/learning-thread-authoring", "role": "thread_authoring"},
       {"name": "riyadh-salihin-al-badr", "path": "learning/riyadh-salihin-al-badr", "role": "riyadh_salihin_course_operations"},
       {"name": "progressive-learning-curriculum", "path": "learning/progressive-learning-curriculum", "role": "curriculum_design"},
@@ -73,17 +74,17 @@
       "compass_telegram": "docs/hermes-compass-prompt-budget.json"
     },
     "default_telegram": {
-      "max_system_prompt_bytes": 25602,
+      "max_system_prompt_bytes": 25723,
       "max_tool_schema_bytes": 24098,
-      "max_fixed_payload_bytes": 49700,
-      "max_skills_index_bytes": 2698,
+      "max_fixed_payload_bytes": 49821,
+      "max_skills_index_bytes": 2809,
       "exact_tools": 13
     },
     "compass_telegram": {
-      "max_system_prompt_bytes": 25831,
+      "max_system_prompt_bytes": 26070,
       "max_tool_schema_bytes": 24115,
-      "max_fixed_payload_bytes": 49946,
-      "max_skills_index_bytes": 2698,
+      "max_fixed_payload_bytes": 50185,
+      "max_skills_index_bytes": 2927,
       "exact_tools": 13
     },
     "memory_chars": {
@@ -91,9 +92,9 @@
       "USER.md": 1375
     },
     "loaded_skill_bytes": {
-      "learning-compass-operating-system": 8093,
-      "learning-compass-site-operator": 13095,
-      "ordinary_router_plus_operator": 21087
+      "learning-compass-operating-system": 8140,
+      "learning-compass-site-operator": 9859,
+      "ordinary_router_plus_operator": 17993
     },
     "read_slo_ms": {
       "filtered_capabilities_p95": 1000,
@@ -125,7 +126,8 @@
     "profile_automation": "automatic at confidence >= 0.8 with direct user statement or two evidence items; explicit assertion supersession requires direct contradiction or confidence >= 0.95 with three evidence items; all changes reversible",
     "notebooklm": "explicit feedback grounding or explicit Studio request only",
     "notebooklm_learning": "hard source-grounded quiz by default; concept-fit media only; indexed, pending, ready, and failed provider states use canonical agent receipts",
-    "visual_batches": "Visual Lite only: one canonical Arabic semantic HTML article plus A4 PDF printed from it; source acquisition is gated by a complete lite-visual-source-extraction/v1 receipt from extract_source.py; hash-verified cache, Readability/Playwright, YouTube captions/yt-dlp/Whisper, PyMuPDF/Tesseract, EPUB spine, Pandoc, and direct text are the owned adapters; Intent and Frontend Design reasoning; gapless checksum-bound source scopes; semantic HTML, source-specific CSS, native structures, and rare inline SVG only; no Visual Mind delegation, templates, presets, mind maps, raster/generated images, image agents, scripts, widgets, or mandatory pauses; exact checkpoint evidence, deterministic hash-bound validation, and atomic pair publication",
+    "visual_batches": "Visual Lite only: one canonical Arabic semantic HTML article plus A4 PDF printed from it; source acquisition is gated by a complete lite-visual-source-extraction/v1 receipt from extract_source.py; hash-verified cache, the accepted hash-bound riyadh-salihin-local-transcript/v1 receipt, Readability/Playwright, YouTube captions/yt-dlp plus no-caption-only audio transcription, PyMuPDF/Tesseract, EPUB spine, Pandoc, and direct text are the owned adapters; Riyadh local transcript ingestion verifies untouched transcript/audio hashes, receipt/chunk quality, monotonic segments, canonical media identity, and every repeated-passage family before explicit timestamp cleanup; YouTube audio is forbidden unless a complete inventory positively confirms zero manual and generated caption tracks; Intent and Frontend Design reasoning; gapless checksum-bound source scopes plus one visible exact-source edition preserving every normalized accepted source word once and in order; semantic HTML, source-specific CSS, native structures, and rare inline SVG only; no Visual Mind delegation, templates, presets, mind maps, raster/generated images, image agents, scripts, widgets, or mandatory pauses; v6 exact-source screen/print/PDF validation, exact checkpoint evidence, fresh aggregate batch audit, exact manifest/source/job binding, guarded ready-pair revision, canonical-state recovery, and atomic pair publication",
+    "timed_media_transcription": "published transcripts and manual/generated captions first; YouTube audio transcription only after positive zero-track inventory with no adapter reporting a caption; lookup uncertainty or an unusable published track blocks audio; accepted audio receipts preserve exact absence evidence, source/audio/transcript hashes, measured duration, timestamp coverage, model/prompt version, and quality checks",
     "recommendations": "explicit request only; feedback never creates a recommendation",
     "capture": "every new source is a captured Library record with its validated branch persisted atomically; Queue is separate and explicit",
     "personal_library": "typed books and media use canonical branch-verified records with editable personal state and append-only lineage; personal status never enters Queue or advances learning",
@@ -274,6 +276,12 @@
     "POST /agent/memory": {"owner": "learning-compass-self-evolution", "permission": "verified_skill_evolution_only"},
     "POST /artifacts": {"owner": "learning-compass-site-operator", "permission": "explicit_media_request"},
     "POST /artifacts/pairs": {"owner": "lite-visual", "permission": "validated_atomic_pair_only"},
+    "POST /artifacts/corpora": {"owner": "lite-visual", "permission": "exact_audited_corpus_stage_only"},
+    "GET /artifacts/corpora/:id": {"owner": "lite-visual", "permission": "exact_corpus_readback"},
+    "GET /artifacts/corpora/:id/pairs/:pairId": {"owner": "lite-visual", "permission": "exact_staged_pair_readback"},
+    "POST /artifacts/corpora/:id/activate": {"owner": "lite-visual", "permission": "complete_corpus_atomic_activation_only"},
+    "POST /artifacts/corpora/:id/abort": {"owner": "lite-visual", "permission": "exact_staging_corpus_abort_only"},
+    "POST /artifacts/corpora/:id/rollback": {"owner": "lite-visual", "permission": "exact_active_corpus_guarded_rollback_only"},
     "GET /recommendations/books": {"owner": "learning-compass-site-operator", "permission": "explicit_books_read"},
     "POST /recommendations/books/:id/chapters": {"owner": "learning-compass-site-operator", "permission": "explicit_book_chapter_metadata"},
     "POST /recommendations/books/:id/chapters/:chapterKey/complete": {"owner": "learning-compass-site-operator", "permission": "explicit_book_chapter_completion"},

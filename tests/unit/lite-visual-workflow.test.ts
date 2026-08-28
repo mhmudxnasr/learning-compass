@@ -19,7 +19,7 @@ test('Visual Lite declares exact evidence for every transition after source reso
   assert.deepEqual(validateLiteVisualCheckpointEvidence('author_html', { source_sha256: sha('a'), source_scope_sha256: sha('b'), word_count: 100, span_count: 3 }), [])
   assert.deepEqual(validateLiteVisualCheckpointEvidence('validate_pair', { html_sha256: sha('c'), pdf_sha256: sha('d') }), [])
   assert.deepEqual(validateLiteVisualCheckpointEvidence('render_pdf', { html_sha256: sha('c'), coverage_ledger_sha256: sha('d'), claim_count: 4, canonical_selector: 'article[data-canonical-content=true]' }), [])
-  assert.deepEqual(validateLiteVisualCheckpointEvidence('publish_pair', { validation_schema: 'lite-visual-validation/v5', validation_status: 'passed', receipt_sha256: sha('e') }), [])
+  assert.deepEqual(validateLiteVisualCheckpointEvidence('publish_pair', { validation_schema: 'lite-visual-validation/v6', validation_status: 'passed', receipt_sha256: sha('e') }), [])
   assert.deepEqual(validateLiteVisualCheckpointEvidence('verify_record', { pair_id: 'lv-source-v4', html_artifact_id: 'artifact-html', pdf_artifact_id: 'artifact-pdf' }), [])
 })
 

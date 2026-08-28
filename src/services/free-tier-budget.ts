@@ -1,17 +1,20 @@
-export const DAILY_READ_BUDGET = 4_000_000
-export const DAILY_WRITE_BUDGET = 70_000
+export const DAILY_READ_BUDGET = 5_000_000
+export const DAILY_WRITE_BUDGET = 100_000
 
 const readCost = (path: string) => {
   if (path === '/recommendations/list' || /^\/brain\/branches\/[^/]+\/items$/.test(path)) return 5_000
   if (/^\/learning\/core\/threads\/[^/]+\/path$/.test(path) || path === '/knowledge/graph' || path === '/learning/balance') return 5_000
-  return 2_500
+  return 10
 }
 
-const writeCost = (path: string) => path === '/artifacts/pairs' ? 500 : 25
+const corpusMutation = (path: string) => path === '/artifacts/corpora' || /^\/artifacts\/corpora\/[^/]+\/(?:activate|abort)$/.test(path)
+const writeCost = (path: string) => corpusMutation(path) ? 50 : path === '/artifacts/pairs' ? 4 : 2
+const mutationReadCost = (path: string) => corpusMutation(path) ? 100 : path === '/artifacts/pairs' ? 10 : 0
 
 export async function reserveFreeTierBudget(DB: D1Database, method: string, path: string) {
-  const read = ['GET', 'HEAD'].includes(method) ? readCost(path) : 0
-  const written = read ? 0 : writeCost(path)
+  const isRead = ['GET', 'HEAD'].includes(method)
+  const read = isRead ? readCost(path) : mutationReadCost(path)
+  const written = isRead ? 0 : writeCost(path)
   const result = await DB.prepare(`INSERT INTO free_tier_usage_budget(day_utc,estimated_rows_read,estimated_rows_written,read_requests,write_requests)
     VALUES (date('now'),?,?,?,?)
     ON CONFLICT(day_utc) DO UPDATE SET

@@ -9,4 +9,4 @@ This is a deliberately small Manifest V3 capture seam. It requests only `activeT
 3. Open the extension options and set the Learning Compass app origin.
 4. Use the toolbar button or page/selection context menu.
 
-The origin must already be reachable from the browser. If private API mode is enabled, the browser session must already have the authorized app access path; the extension never receives or persists `API_TOKEN`.
+The origin must already be reachable from the browser. Ordinary Learning Compass reads and writes are public; the extension never receives or persists an API credential or creates a browser unlock session.

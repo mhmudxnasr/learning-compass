@@ -129,11 +129,11 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
 
   return <div class="folio-home-workspace">
     <header class="folio-home-header">
-      <h1>Home</h1>
-      <button type="button" class="folio-button folio-button-primary" onClick={() => onCapture ? onCapture() : navigate(routeHref('library', 'catalog', 'all'), onNavigate)}>
-        <Icon name="capture" size={16}/>
-        Quick capture
-      </button>
+      <div>
+        <p class="folio-kicker">Working ledger</p>
+        <h1>Today</h1>
+      </div>
+      <p class="folio-home-intro">Resume the work already in motion. Everything else stays quiet until you ask for it.</p>
     </header>
 
     {resurfacingItem && <section class="folio-home-resurfacing" aria-labelledby="home-resurfacing-title">

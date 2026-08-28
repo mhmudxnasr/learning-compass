@@ -27,7 +27,7 @@ try {
     ['d1', 'migrations', 'apply', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir],
   ]) await run(args)
 
-  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8794', '--var', 'REQUIRE_API_AUTH:false', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true })
+  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8794', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true })
   for (let attempt = 0; attempt < 60; attempt++) {
     try { if ((await fetch('http://127.0.0.1:8794/health/live')).ok) break } catch {}
     if (attempt === 59) throw new Error('Worker did not start')

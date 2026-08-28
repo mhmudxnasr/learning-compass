@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -49,6 +50,57 @@ test('source router rejects a visibly truncated paywall instead of inventing com
     const result = spawnSync('python3', [extractor, input, '--kind', 'article', '--output', output, '--manifest', manifest, '--cache-dir', join(directory, 'cache')], { encoding: 'utf8' })
     assert.notEqual(result.status, 0)
     assert.equal(JSON.parse(readFileSync(manifest, 'utf8')).status, 'blocked')
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('verified local transcript cache is bound to current content, not only file metadata', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'lite-visual-verified-transcript-'))
+  try {
+    const input = join(directory, 'transcript.txt')
+    const transcriptReceipt = join(directory, 'transcript-receipt.json')
+    const output = join(directory, 'source.txt')
+    const manifest = join(directory, 'manifest.json')
+    const cache = join(directory, 'cache')
+    const mediaUrl = 'https://example.com/recording.mp3'
+    const source = `${Array.from({ length: 90 }, (_, index) => `كلمة${index}`).join(' ')}\n`
+    const transcriptSha = createHash('sha256').update(source.trim()).digest('hex')
+    writeFileSync(input, source)
+    writeFileSync(transcriptReceipt, JSON.stringify({
+      schema_version: 'riyadh-salihin-local-transcript/v1',
+      number: 1,
+      title: 'اختبار النسخة المحلية',
+      media_url: mediaUrl,
+      transcript_sha256: transcriptSha,
+      source_audio_sha256: 'a'.repeat(64),
+      source_duration_seconds: 90,
+      quality: { passed: true },
+      chunks: [{ quality: { passed: true } }],
+      segments: [{ start_seconds: 0, end_seconds: 90, text: source.trim() }],
+    }))
+    const args = [extractor, input, '--kind', 'audio', '--verified-transcript-receipt', transcriptReceipt, '--canonical-source', mediaUrl, '--strip-embedded-timestamps', '--output', output, '--manifest', manifest, '--cache-dir', cache]
+    const first = spawnSync('python3', args, { encoding: 'utf8' })
+    assert.equal(first.status, 0, first.stderr)
+    const receipt = JSON.parse(readFileSync(manifest, 'utf8'))
+    assert.equal(receipt.status, 'complete')
+    assert.equal(receipt.method, 'verified-local-transcript-receipt')
+    assert.equal(receipt.checks.transcript_hash_matches, true)
+
+    const initial = statSync(input, { bigint: true })
+    writeFileSync(input, source.replace('كلمة0', 'جملة0'))
+    const restore = spawnSync('python3', ['-c', `import os; os.utime(${JSON.stringify(input)}, ns=(${initial.atimeNs}, ${initial.mtimeNs}))`], { encoding: 'utf8' })
+    assert.equal(restore.status, 0, restore.stderr)
+    const restored = statSync(input, { bigint: true })
+    assert.equal(restored.size, initial.size)
+    assert.equal(restored.mtimeNs, initial.mtimeNs)
+
+    const tampered = spawnSync('python3', args, { encoding: 'utf8' })
+    assert.notEqual(tampered.status, 0)
+    const blocked = JSON.parse(readFileSync(manifest, 'utf8'))
+    assert.equal(blocked.status, 'blocked')
+    assert.equal(blocked.cache_hit, false)
+    assert.match(blocked.error, /does not match its receipt hash/)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
