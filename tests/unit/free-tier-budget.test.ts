@@ -1,6 +1,40 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DAILY_READ_BUDGET, DAILY_WRITE_BUDGET, reserveFreeTierBudget, secondsUntilUtcReset } from '../../src/services/free-tier-budget.ts'
+import {
+  CLOUDFLARE_FREE_READ_LIMIT,
+  CLOUDFLARE_FREE_WRITE_LIMIT,
+  DAILY_READ_BUDGET,
+  DAILY_WRITE_BUDGET,
+  describeFreeTierUsage,
+  getFreeTierBudgetPolicy,
+  reserveFreeTierBudget,
+  secondsUntilUtcReset,
+} from '../../src/services/free-tier-budget.ts'
+
+test('free-tier budget preserves the declared provider headroom', () => {
+  assert.equal(DAILY_READ_BUDGET, 4_000_000)
+  assert.equal(DAILY_WRITE_BUDGET, 70_000)
+  assert.equal(CLOUDFLARE_FREE_READ_LIMIT, 5_000_000)
+  assert.equal(CLOUDFLARE_FREE_WRITE_LIMIT, 100_000)
+  assert.deepEqual(getFreeTierBudgetPolicy(), {
+    ok: true,
+    reads: { budget: 4_000_000, cloudflare_limit: 5_000_000, headroom: 1_000_000, required_headroom: 1_000_000 },
+    writes: { budget: 70_000, cloudflare_limit: 100_000, headroom: 30_000, required_headroom: 30_000 },
+    blockers: [],
+  })
+  assert.deepEqual(getFreeTierBudgetPolicy(5_000_000, 100_000).blockers, [
+    'read_budget_missing_required_headroom',
+    'write_budget_missing_required_headroom',
+  ])
+})
+
+test('free-tier health evidence separates internal budgets, provider limits, and headroom', () => {
+  assert.deepEqual(describeFreeTierUsage({ estimated_rows_read: 12_345, estimated_rows_written: 67 }), {
+    reads: { estimated: 12_345, budget: 4_000_000, cloudflare_limit: 5_000_000, headroom: 1_000_000, required_headroom: 1_000_000 },
+    writes: { estimated: 67, budget: 70_000, cloudflare_limit: 100_000, headroom: 30_000, required_headroom: 30_000 },
+    policy: { ok: true, blockers: [] },
+  })
+})
 
 test('free-tier budget reserves conservative route costs atomically', async () => {
   let query = ''

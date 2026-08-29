@@ -1,5 +1,13 @@
 # Learning Compass — Current State
 
+## Current operational snapshot — 2026-08-29 (release truth reconciled, budget repair local)
+
+The machine-readable production observation is [`docs/release-snapshot.json`](docs/release-snapshot.json), refreshed with `npm run release:status -- --output docs/release-snapshot.json`. At `2026-08-29T04:38:03Z`, production was live and healthy with zero readiness blockers; Worker version `2fff478d-e866-476c-a7bc-ca6142ef1c0f` had been deployed at `2026-08-29T02:01:30.598Z`; all 70 repository migrations were applied with `0068_lite_visual_corpus_activation.sql` recorded at `2026-08-28 09:15:29`; all nine required release schema objects and bindings were present; and the signing-secret boundary passed. Verified recovery snapshot `backup_20260828T131356Z` covers 1,448 R2 objects and has a disposable-restore receipt. Corpus registration and activation remain untouched: zero corpora, zero targets, zero active-corpus pointers, and 452 backfilled pair rows.
+
+The live Worker still reports provider-maximum budgets of `5,000,000` reads and `100,000` writes, so the release snapshot correctly fails the headroom policy. This task branch restores the intended internal ceilings to `4,000,000` reads and `70,000` writes, exposes the provider limits and exact margins separately in `/health/free-tier-budget`, and makes the local release gate fail if either margin shrinks below `1,000,000` reads or `30,000` writes. The isolated application repair is verified locally but remains undeployed pending explicit emergency-deployment authorization. No migration, corpus registration, staging, upload, activation, rollback, or other production mutation occurred in this repair.
+
+This snapshot supersedes the operational claims in the 2026-08-28 release-candidate entry that `0068` was pending, the signing secret was absent, and no deployment or backup receipt had occurred. Its corpus-authorization hold remains active and unchanged.
+
 ## Current truth — 2026-08-28 (structural shell redesign, local)
 
 The five-root client now has three explicit architectural planes: a 108px navigation-only desktop rail, a 64px workspace command bar, and the working field. Search and capture no longer compete with root navigation. Root context and grouped workspace modes live in the command bar, so Books/Triage/Archive/Files and the other mode sets no longer render as detached secondary headers on desktop. Ordinary workspaces retain a centered 1280px field while Atlas remains intentionally edge-to-edge.
@@ -14,7 +22,7 @@ Settings → Preferences now presents built-in themes as separate Day and Night 
 
 Verification passes 372/373 unit tests with one existing skip, TypeScript, the full Worker-backed E2E suite, 19 focused post-fix theme/settings checks, `git diff --check`, and the production build at 117.38 KB gzip for the base client bundle. Bounded desktop/390px browser inspection confirms three theme groups, 21 semantic previews, 10 rendered contrast checks, preview-first source order, zero horizontal overflow or browser errors, and 44×44px mobile mode/color targets. No deployment or production mutation has occurred.
 
-## Current truth — 2026-08-28 (full-tree release preparation, hard stop)
+## Historical release-candidate truth — 2026-08-28 (full-tree release preparation, hard stop; superseded where noted above)
 
 The complete dirty working tree is being aligned as one release candidate. Ordinary Learning Compass reads and writes remain public at the transport layer; the dormant private-auth experiment is removed, `POST /auth/session` remains absent, and first-party clients contain no Learning Compass credential-file, header, or browser-session path. Telegram and external providers retain independent secrets. Durable job ownership uses exact job/workflow identity, worker identity, lease expiry, payload, and supersession rather than an auth-derived lease principal.
 

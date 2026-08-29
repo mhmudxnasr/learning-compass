@@ -157,6 +157,7 @@ for (const skillPath of ['workflow/learning-compass-site-operator', 'workflow/re
 assertNoRetiredClientAuth()
 assertNoRetiredReleaseDocsAuth()
 
+run('Free-tier budget headroom policy', 'npm', ['run', 'verify:budget'])
 run('Unit tests and TypeScript', 'npm', ['test'])
 run('Production build and bundle budget', 'npm', ['run', 'build'])
 run('Worker-backed responsive, PWA, offline, and public-boundary E2E', 'npm', ['run', 'test:e2e'])

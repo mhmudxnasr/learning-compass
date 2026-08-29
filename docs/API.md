@@ -16,7 +16,7 @@ Learning Compass API reads and writes do not require an API token or browser ses
 - `GET /knowledge/graph` — nodes and evidence-backed edges.
 - `GET /knowledge/blind-spots` — unmapped or unconsumed branches.
 - `GET /learning/health` — branch health.
-- `GET /health/free-tier-budget` — current UTC-day D1 reservation ledger. Dynamic requests stop with `429 daily_free_tier_budget_exhausted` at 4,000,000 estimated rows read or 70,000 estimated rows written, below Cloudflare's free limits.
+- `GET /health/free-tier-budget` — current UTC-day D1 reservation ledger. Dynamic requests stop with `429 daily_free_tier_budget_exhausted` at 4,000,000 estimated rows read or 70,000 estimated rows written. The response reports each internal `budget`, Cloudflare `cloudflare_limit`, exact `headroom`, `required_headroom`, and the executable policy result separately.
 - `GET /agent/system` — runtime, storage, recovery, and service inventory plus `data_quality`: five named completeness, validity, uniqueness, and lineage contracts with exact affected counts, coverage, and checked time.
 - `GET /learning/balance?window=30|90|365` — canonical map-balance read model combining attention share, explicit priority share, coverage, notes, SRS due cards, recall strength, branch depth, and unmapped-source warnings.
 - `POST /compass/evaluate` — dry-run server scoring for 3–24 candidates. The response also includes `frontier_shadow`: low-friction, source-grounded candidates with high mechanism match and low known-topic affinity, plus `exploration_shadow`. V2 exposes the winner's deterministic `candidate_set_diversity` and contextual-alignment receipt. Frontier results are shadow-only and never enter Queue or serving.

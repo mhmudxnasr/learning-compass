@@ -1,0 +1,132 @@
+{
+  "format": "learning-compass-release-status-v1",
+  "observed_at": "2026-08-29T04:38:03.172Z",
+  "source": {
+    "commit_sha": "56de17567baf7feb3a3534ea5c54ed1b120fbd47",
+    "branch": "codex/system-hardening-m0-20260829",
+    "dirty": true
+  },
+  "production": {
+    "origin": "https://recommendations-worker.mhmudnasr30.workers.dev",
+    "deployment": {
+      "version_id": "2fff478d-e866-476c-a7bc-ca6142ef1c0f",
+      "deployed_at": "2026-08-29T02:01:30.598265Z"
+    },
+    "migrations": {
+      "applied_count": 70,
+      "highest": {
+        "name": "0068_lite_visual_corpus_activation.sql",
+        "applied_at": "2026-08-28 09:15:29"
+      },
+      "pending_local": [],
+      "unexpected_remote": []
+    },
+    "schema": {
+      "expected_count": 9,
+      "present": [
+        {
+          "name": "idx_lite_visual_pairs_corpus_state",
+          "type": "index"
+        },
+        {
+          "name": "idx_lite_visual_pairs_recommendation_state",
+          "type": "index"
+        },
+        {
+          "name": "lite_visual_active_corpora",
+          "type": "table"
+        },
+        {
+          "name": "lite_visual_corpora",
+          "type": "table"
+        },
+        {
+          "name": "lite_visual_corpus_targets",
+          "type": "table"
+        },
+        {
+          "name": "lite_visual_pairs",
+          "type": "table"
+        },
+        {
+          "name": "trg_lite_visual_corpus_activation_guard",
+          "type": "trigger"
+        },
+        {
+          "name": "trg_lite_visual_corpus_rollback_guard",
+          "type": "trigger"
+        },
+        {
+          "name": "trg_lite_visual_staged_pair_guard",
+          "type": "trigger"
+        }
+      ],
+      "missing": []
+    },
+    "health": {
+      "live": {
+        "ok": true,
+        "status": "live",
+        "observed_at": "2026-08-29T04:38:00.567Z"
+      },
+      "readiness": {
+        "ok": true,
+        "status": "healthy",
+        "checked_at": "2026-08-29T04:38:00.586Z",
+        "blockers": [],
+        "bindings": {
+          "d1": true,
+          "r2": true,
+          "assets": true,
+          "ai": true,
+          "vectorize": true
+        },
+        "signing_secret_configured": true
+      }
+    },
+    "budget": {
+      "day_utc": "2026-08-29",
+      "reads": {
+        "estimated": 25970,
+        "budget": 5000000,
+        "cloudflare_limit": 5000000,
+        "headroom": 0,
+        "required_headroom": 1000000
+      },
+      "writes": {
+        "estimated": 12,
+        "budget": 100000,
+        "cloudflare_limit": 100000,
+        "headroom": 0,
+        "required_headroom": 30000
+      },
+      "updated_at": "2026-08-29 02:17:19"
+    },
+    "recovery": {
+      "latest_verified": {
+        "id": "backup_20260828T131356Z",
+        "status": "verified",
+        "storage_target": "local-systemd",
+        "d1_sha256": "2438b47f52c3d0b3cab779265072604ecd42c7817eba322845f927ac98495375",
+        "d1_bytes": 106510999,
+        "artifact_count": 1448,
+        "artifact_bytes": 155208175,
+        "created_at": "2026-08-28 13:22:08",
+        "restore_rehearsed_at": "2026-08-28 13:22:08"
+      }
+    },
+    "corpus": {
+      "corpora": 0,
+      "targets": 0,
+      "active_corpora": 0,
+      "pairs": 452
+    }
+  },
+  "policy": {
+    "ok": false,
+    "blockers": [
+      "read_budget_missing_required_headroom",
+      "write_budget_missing_required_headroom"
+    ]
+  }
+}

@@ -168,6 +168,8 @@ The checked-in development commands retain their loopback-only write-rate-limit 
 | `npm test` | Run unit tests and TypeScript checks |
 | `npm run build` | Create the production client bundle |
 | `npm run test:e2e` | Create a fresh temporary D1 database and test all root destinations, grouped modes, and responsive shell behavior in Chromium |
+| `npm run release:status` | Read production version, migration/schema parity, budget headroom, recovery, readiness, and corpus counts without mutating production |
+| `npm run verify:budget` | Fail unless the internal D1 budgets preserve the declared 1M-read/30K-write margins |
 | `npm run deploy` | Build and deploy with the repository Wrangler config |
 
 The E2E runner owns its temporary database, Wrangler process, browser, and cleanup. A local test pass therefore does not depend on an old `.wrangler` database.
@@ -321,6 +323,6 @@ npx wrangler deploy --config wrangler.toml
 
 Code deployment and data changes are separate operations. D1 or R2 data-only writes do not require a Worker deployment.
 
-Current deployed Worker version: `5ad589b7-d710-447e-b388-e3318b846847`. The deployed PWA shell cache is `learning-compass-shell-v45`.
+Current production release facts are recorded in [`docs/release-snapshot.json`](docs/release-snapshot.json) and can be refreshed with `npm run release:status -- --output docs/release-snapshot.json`. Do not maintain a second hand-edited Worker version or migration ledger here.
 
 The production Worker, R2 bucket, cache names, protocol name, cron name, and Hermes paths retain legacy identifiers for compatibility even though the product and repository are named Learning Compass.

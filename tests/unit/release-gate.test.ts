@@ -7,6 +7,8 @@ const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta
 test('the combined release gate is complete and local-only', () => {
   const scripts = JSON.parse(read('package.json')).scripts
   assert.equal(scripts['verify:release'], 'node scripts/verify-release.mjs')
+  assert.equal(scripts['verify:budget'], 'node scripts/verify-budget-policy.mjs')
+  assert.equal(scripts['release:status'], 'node scripts/release-status.mjs')
   assert.equal(scripts.deploy, 'node scripts/deploy-release.mjs')
 
   const gate = read('scripts/verify-release.mjs')
@@ -17,6 +19,7 @@ test('the combined release gate is complete and local-only', () => {
     "run('Hermes contracts and Telegram prompt budgets', 'npm', ['run', 'verify:hermes'])",
     "run('Fresh and idempotent migration rehearsal', 'npm', ['run', 'verify:migrations'])",
     "run('Agent control contract', 'npm', ['run', 'verify:agent-contract'])",
+    "run('Free-tier budget headroom policy', 'npm', ['run', 'verify:budget'])",
     'test_manager_routing_harness.py',
     'assertMirror(skillPath)',
     'assertNoRetiredClientAuth()',
@@ -33,6 +36,8 @@ test('the combined release gate is complete and local-only', () => {
   const deploy = read('scripts/deploy-release.mjs')
   assert.match(deploy, /npm', \['run', 'verify:release'\]/)
   assert.match(deploy, /\/health\/ready/)
+  assert.match(deploy, /\/health\/free-tier-budget/)
+  assert.match(deploy, /requireBudgetHeadroom\('Post-deploy'\)/)
   assert.match(deploy, /wrangler', 'deploy'/)
   assert.match(deploy, /verify-deploy\.sh/)
 })

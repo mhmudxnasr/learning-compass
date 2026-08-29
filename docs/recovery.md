@@ -50,11 +50,11 @@ This verifies the SQL bytes and migration inventory but intentionally reports th
 
 Before any production migration:
 
-1. inspect the remote migration ledger;
-2. require `0068_lite_visual_corpus_activation.sql` to be the sole pending migration—`0066` and `0067` are already applied and must not be replayed;
+1. run the read-only `npm run release:status` projection and inspect the remote migration ledger;
+2. require exact repository/remote migration parity before a code-only release; migrations `0066`, `0067`, and `0068_lite_visual_corpus_activation.sql` are already applied and must not be replayed;
 3. capture the current Worker version;
 4. complete and retain the full D1-plus-R2 snapshot and verified restore receipt; and
-5. record a D1 Time Travel bookmark immediately before applying `0068`.
+5. record a D1 Time Travel bookmark immediately before any future migration.
 
 The signed-v6 semantic-completeness and aggregate corpus-audit hold blocks corpus registration, staging, upload, activation, and rollback. It does not block an application-only deployment that performs no corpus mutation and passes the full code release, backup/restore, migration-parity, and readiness gates. Do not configure `ALLOW_UNAUTHENTICATED_LOCAL_WRITES` remotely.
 
