@@ -1,10 +1,10 @@
 {
   "format": "learning-compass-release-status-v1",
-  "observed_at": "2026-08-29T05:12:40.870Z",
+  "observed_at": "2026-08-29T05:23:40.504Z",
   "source": {
-    "commit_sha": "8ab73376ef9e48cd1c6a11e60d342c3542390c93",
+    "commit_sha": "d9a400c920d01315070cc0854c152675ef096254",
     "branch": "codex/deploy-everything-20260829",
-    "dirty": true
+    "dirty": false
   },
   "production": {
     "origin": "https://recommendations-worker.mhmudnasr30.workers.dev",
@@ -67,12 +67,12 @@
       "live": {
         "ok": true,
         "status": "live",
-        "observed_at": "2026-08-29T05:12:36.523Z"
+        "observed_at": "2026-08-29T05:23:36.329Z"
       },
       "readiness": {
         "ok": true,
         "status": "healthy",
-        "checked_at": "2026-08-29T05:12:36.506Z",
+        "checked_at": "2026-08-29T05:23:36.317Z",
         "blockers": [],
         "bindings": {
           "d1": true,
