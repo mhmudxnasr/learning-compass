@@ -2,15 +2,15 @@
   "id": "/",
   "name": "Learning Compass",
   "short_name": "Compass",
-  "description": "A private evidence studio for deliberate learning.",
+  "description": "A private knowledge workspace for deliberate learning.",
   "lang": "en",
   "dir": "ltr",
   "start_url": "/#/home",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
-  "background_color": "#faf8f3",
-  "theme_color": "#1b4332",
+  "background_color": "#0c0d10",
+  "theme_color": "#0c0d10",
   "categories": ["education", "productivity"],
   "launch_handler": {
     "client_mode": "navigate-existing"

@@ -358,6 +358,9 @@ for (const route of modeRoutes) {
   }
   if (await page.locator('.context-pane, .context-scrim, .navigation-sheet').count()) throw new Error(`${route.href}: rendered a redundant context/menu surface`)
   await page.locator(route.expected).waitFor({ state: 'attached', timeout: 15000 })
+  if (route.root === 'library' && route.mode === 'triage' && route.focus === 'queue' && !(await page.locator('.folio-queue-view-ledger').count())) {
+    throw new Error(`${route.href}: Queue did not open in its calm Ledger view by default`)
+  }
   const routeState = await page.evaluate(() => {
     const hash = location.hash.replace(/^#/, '')
     const [path, query = ''] = hash.split('?')
@@ -561,7 +564,7 @@ for (const route of modeRoutes) {
     return { ratio: (lighter + 0.05) / (darker + 0.05), foreground, background }
   })
   if (primaryActionContrast.ratio < 4.5) throw new Error(`Books primary action loses contrast in a custom dark theme: ${JSON.stringify(primaryActionContrast)}`)
-  await requestJson('/settings/appearance', { method: 'PUT', body: JSON.stringify({ theme: 'botanical', density: 'balanced', radius: 'soft', font_size: 'medium', reduced_motion: false, custom_palette: contrastPalette }) })
+  await requestJson('/settings/appearance', { method: 'PUT', body: JSON.stringify({ theme: 'continuum', density: 'balanced', radius: 'soft', font_size: 'medium', reduced_motion: false, custom_palette: contrastPalette }) })
   await page.goto(`${baseUrl}/#/learn/canon/behavioral-psychology`, { waitUntil: 'networkidle' })
   await page.locator('.canon-domain-detail').waitFor({ state: 'visible' })
   if (!page.url().includes('#/learn/canon/behavioral-psychology')) throw new Error('Canon domain did not preserve its canonical typed route')
@@ -665,6 +668,10 @@ for (const route of modeRoutes) {
       actionInk: getComputedStyle(root).getPropertyValue('--studio-action-ink').trim(),
     }
   })
+  if (await page.locator('.visual-preset-card').count() !== 8 || await page.locator('.visual-preset-preview').count() !== 8) throw new Error('complete workspace presets did not expose all eight art-directed semantic previews')
+  const presetDirections = await page.locator('.visual-preset-reference').allTextContents()
+  const expectedPresetDirections = ['Linear', 'Raycast', 'Superhuman', 'Readwise Reader', 'Notion', 'Craft', 'Arc', 'Are.na'].map((name) => `Inspired by ${name}`)
+  if (JSON.stringify(presetDirections) !== JSON.stringify(expectedPresetDirections)) throw new Error(`workspace presets lost their reference directions: ${presetDirections.join(', ')}`)
   await saveRadio('Density', 'Compact')
   const compactPreference = await renderedPreferences()
   await saveRadio('Density', 'Comfortable')
@@ -688,20 +695,20 @@ for (const route of modeRoutes) {
   const reducedPreference = await renderedPreferences()
   if (reducedPreference.reducedMotion !== 'true' || reducedPreference.transitionDuration > 0.001) throw new Error(`reduced motion is metadata-only: ${JSON.stringify(reducedPreference)}`)
   await page.locator('#theme-section > summary').click()
-  const midnightTheme = page.locator('.theme-preset-card').filter({ hasText: 'Midnight Observatory' })
+  const continuumTheme = page.locator('.theme-preset-card').filter({ hasText: 'Linear Graphite' })
   await Promise.all([
     page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok()),
-    midnightTheme.click(),
+    continuumTheme.click(),
   ])
-  const midnightPreference = await renderedPreferences()
-  if (midnightPreference.theme !== 'midnight' || midnightPreference.colorMode !== 'dark' || !midnightPreference.cypress || !midnightPreference.actionInk) throw new Error(`theme does not replace the global visual system: ${JSON.stringify(midnightPreference)}`)
+  const continuumPreference = await renderedPreferences()
+  if (continuumPreference.theme !== 'continuum' || continuumPreference.colorMode !== 'dark' || !continuumPreference.cypress || !continuumPreference.actionInk) throw new Error(`theme does not replace the global visual system: ${JSON.stringify(continuumPreference)}`)
   await page.reload({ waitUntil: 'networkidle' })
-  await page.waitForFunction(() => document.documentElement.dataset.theme === 'midnight' && document.documentElement.dataset.fontSize === 'large')
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'continuum' && document.documentElement.dataset.fontSize === 'large')
   const persistedPreference = await renderedPreferences()
   if (persistedPreference.reducedMotion !== 'true' || persistedPreference.radius !== 'round' || persistedPreference.density !== 'comfortable') throw new Error(`display preferences did not survive reload: ${JSON.stringify(persistedPreference)}`)
   await page.locator('#theme-section > summary').click()
   if (await page.locator('.theme-preset-group').count() !== 3 || !(await page.getByRole('heading', { name: 'Day palettes' }).isVisible()) || !(await page.getByRole('heading', { name: 'Night palettes' }).isVisible())) throw new Error('Themes did not group day, night, and custom systems')
-  if (await page.locator('.theme-semantic-preview').count() !== 21) throw new Error('theme choices did not render semantic studio previews')
+  if (await page.locator('.theme-preset-card .theme-semantic-preview, .theme-custom-card .theme-semantic-preview').count() !== 9) throw new Error('theme choices did not render semantic studio previews')
   const themeReadingOrder = await page.locator('.preferences-layout').evaluate((layout) => {
     const children = [...layout.children]
     return { preview: children.findIndex((node) => node.classList.contains('preferences-preview-rail')), main: children.findIndex((node) => node.classList.contains('preferences-main')) }
@@ -741,11 +748,25 @@ for (const route of modeRoutes) {
   })
   for (const [control, size] of Object.entries(mobileThemeTargets)) if (!size || size.width < 44 || size.height < 44) throw new Error(`mobile ${control} target is below 44px at normal text size: ${JSON.stringify(size)}`)
   await page.evaluate(() => document.documentElement.style.setProperty('--font-scale', '2'))
-  const mobileThemeOverflow = await page.evaluate(() => {
+  const mobileThemeLayout = await page.evaluate(() => {
     const pageNode = document.querySelector('.preferences-page')
-    return pageNode ? pageNode.scrollWidth - pageNode.clientWidth : 0
+    if (!pageNode) return { overflow: 0, offenders: [] }
+    const pageRect = pageNode.getBoundingClientRect()
+    const offenders = [...pageNode.querySelectorAll('*')]
+      .map((node) => {
+        const rect = node.getBoundingClientRect()
+        return {
+          element: `${node.tagName.toLowerCase()}${node.id ? `#${node.id}` : ''}${node.classList.length ? `.${[...node.classList].join('.')}` : ''}`,
+          right: Math.round(rect.right - pageRect.right),
+          ownOverflow: Math.round(node.scrollWidth - node.clientWidth),
+        }
+      })
+      .filter(({ right, ownOverflow }) => right > 2 || ownOverflow > 2)
+      .sort((left, right) => Math.max(right.right, right.ownOverflow) - Math.max(left.right, left.ownOverflow))
+      .slice(0, 8)
+    return { overflow: pageNode.scrollWidth - pageNode.clientWidth, offenders }
   })
-  if (mobileThemeOverflow > 2) throw new Error(`custom theme workshop overflows at mobile enlarged text: ${mobileThemeOverflow}px`)
+  if (mobileThemeLayout.overflow > 2) throw new Error(`custom theme workshop overflows at mobile enlarged text: ${JSON.stringify(mobileThemeLayout)}`)
   await page.evaluate(() => document.documentElement.style.removeProperty('--font-scale'))
   await page.setViewportSize({ width: 1440, height: 900 })
   const restoredBrandSave = page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok())
@@ -753,7 +774,7 @@ for (const route of modeRoutes) {
   await restoredBrandSave
   await Promise.all([
     page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok()),
-    page.locator('.theme-preset-card').filter({ hasText: 'Botanical Folio' }).click(),
+    page.locator('.theme-preset-card').filter({ hasText: 'Linear Graphite' }).click(),
   ])
   await saveRadio('Density', 'Balanced')
   await saveRadio('Corners', 'Soft')
@@ -959,7 +980,7 @@ const requestMaterialJson = (path, options = {}) => requestJson(path, { ...optio
 const materialThread = await requestMaterialJson('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Material launcher fixture', thread_type: 'understand', guiding_question: 'Which material should I open first?', definition_of_done: 'Open the recommended lesson material.', activate: true }) })
 const materialStage = await requestMaterialJson(`/learning/core/threads/${materialThread.id}/stages`, { method: 'POST', body: JSON.stringify({ title: 'Level 1 — Study', objective: 'Use the right rendition for the task.', position: 0 }) })
 const materialLesson = await requestMaterialJson(`/learning/core/threads/${materialThread.id}/stages/${materialStage.id}/lessons`, { method: 'POST', body: JSON.stringify({ title: 'Choose the right material', objective: 'Start with the guided companion and keep alternatives close.', position: 0, estimated_minutes: 18 }) })
-await requestMaterialJson(`/learning/core/threads/${materialThread.id}/stages/${materialStage.id}/lessons`, { method: 'POST', body: JSON.stringify({ title: 'Compare source formats', objective: 'Choose a format based on the learning task.', position: 1, estimated_minutes: 12 }) })
+const materialNextLesson = await requestMaterialJson(`/learning/core/threads/${materialThread.id}/stages/${materialStage.id}/lessons`, { method: 'POST', body: JSON.stringify({ title: 'Compare source formats', objective: 'Choose a format based on the learning task.', content: 'Compare the available formats against the task.', position: 1, estimated_minutes: 12 }) })
 await requestMaterialJson(`/learning/core/threads/${materialThread.id}/stages/${materialStage.id}/lessons`, { method: 'POST', body: JSON.stringify({ title: 'Record the useful distinction', objective: 'Retain the decision rule for future sources.', position: 2, estimated_minutes: 10 }) })
 const materialLessonNote = await requestMaterialJson('/notes', { method: 'POST', body: JSON.stringify({ title: 'Lesson-owned observation', lesson_id: materialLesson.id, sections: [{ section_key: 'body', label: 'Notes', content: 'This belongs only to the lesson.', direction: 'auto' }] }) })
 const materialLessonCard = await requestMaterialJson('/learning/srs/create', { method: 'POST', body: JSON.stringify({ lesson_id: materialLesson.id, question: 'أي نطاق يملك البطاقة دي؟', answer: 'الدرس المحدد نفسه.' }) })
@@ -1029,6 +1050,9 @@ await page.goto(`${baseUrl}/#/learn/t/${materialThread.id}/l/${materialLesson.id
 if (!(await page.locator('.lesson-source-start .course-material-icon-action.is-primary').isVisible()) || await page.locator('.lesson-source-start .course-material-icon-action').count() !== 4) throw new Error('Lesson launcher lost its compact format actions on mobile')
 if (await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth) > 2) throw new Error('Lesson material launcher introduced mobile horizontal overflow')
 await page.setViewportSize({ width: 1440, height: 900 })
+await page.getByRole('button', { name: 'Mark lesson complete' }).click()
+await page.waitForURL((url) => url.hash === `#/learn/t/${materialThread.id}/l/${materialNextLesson.id}`)
+await page.getByRole('heading', { level: 1, name: 'Compare source formats' }).waitFor({ state: 'visible' })
 for (const artifact of [materialHtml, materialPdf, materialLessonFile]) {
   const cleanup = await fetch(`${baseUrl}/artifacts/${artifact.id}`, { method: 'DELETE', headers: { 'x-real-ip': 'e2e-learning-materials' } })
   if (!cleanup.ok) throw new Error(`material launcher fixture cleanup failed for ${artifact.id}`)
@@ -1082,6 +1106,12 @@ if (profileBody.includes('Priority topics configured.')) throw new Error('profil
 if (profileBody.includes('{"malformed":')) throw new Error('profile page exposed raw JSON in its normal view')
 if (await page.locator('.profile-tag-list').count() < 1) throw new Error('profile page did not render visual topic tags')
 if (await page.locator('.profile-settings-page .profile-record').count() < 1) throw new Error('profile records did not render')
+const homeCompletionThread = await requestJson('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Home completion fixture', thread_type: 'practice', guiding_question: 'Can Home close one lesson without losing context?', definition_of_done: 'Complete both lessons directly.', activate: true }) })
+const homeCompletionStage = await requestJson(`/learning/core/threads/${homeCompletionThread.id}/stages`, { method: 'POST', body: JSON.stringify({ title: 'Level 1 — Home flow', objective: 'Keep completion inside the current desk.', position: 0 }) })
+const homeCompletionLesson = await requestJson(`/learning/core/threads/${homeCompletionThread.id}/stages/${homeCompletionStage.id}/lessons`, { method: 'POST', body: JSON.stringify({ title: 'Finish this lesson from Home', content: 'A complete lesson body makes direct completion available.', position: 0 }) })
+const homeCompletionNextLesson = await requestJson(`/learning/core/threads/${homeCompletionThread.id}/stages/${homeCompletionStage.id}/lessons`, { method: 'POST', body: JSON.stringify({ title: 'Continue from Home', content: 'The next lesson should replace the completed turn without navigation.', position: 1 }) })
+await requestJson(`/learning/core/threads/${homeCompletionThread.id}/stages/${homeCompletionStage.id}/start`, { method: 'POST' })
+await requestJson(`/learning/core/threads/${homeCompletionThread.id}/lessons/${homeCompletionLesson.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'in_progress' }) })
 const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards, momentum, balance] = await Promise.all([
   fetch(`${baseUrl}/settings`).then((response) => response.json()),
   fetch(`${baseUrl}/manifest.json`).then((response) => response.json()),
@@ -1162,6 +1192,17 @@ if (await page.locator('.folio-home-focus').count() !== 1) throw new Error('Home
 const homeThreadTurns = page.locator('.folio-home-thread-list .folio-home-thread-lesson')
 await homeThreadTurns.first().waitFor({ state: 'visible', timeout: 15000 })
 if (await homeThreadTurns.count() !== momentum.active_threads.length) throw new Error(`Home must show exactly one current turn from every Thread (${await homeThreadTurns.count()}/${momentum.active_threads.length})`)
+const homeCompletionTurn = homeThreadTurns.filter({ hasText: 'Home completion fixture' })
+const homeFinishButton = homeCompletionTurn.getByRole('button', { name: 'Finish lesson: Finish this lesson from Home' })
+await homeFinishButton.waitFor({ state: 'visible' })
+const homeFinishResponse = page.waitForResponse((response) => response.url().endsWith(`/learning/core/threads/${homeCompletionThread.id}/lessons/${homeCompletionLesson.id}`) && response.request().method() === 'PATCH')
+await homeFinishButton.click()
+if (!(await homeFinishResponse).ok()) throw new Error('Home lesson completion mutation failed')
+await homeCompletionTurn.getByRole('button', { name: 'Finished: Finish this lesson from Home' }).waitFor({ state: 'visible' })
+await homeCompletionTurn.getByText('Continue from Home', { exact: true }).waitFor({ state: 'visible', timeout: 15000 })
+if (!page.url().includes('#/home')) throw new Error('Home lesson completion navigated away from Home')
+const homeCompletionPath = await requestJson(`/learning/core/threads/${homeCompletionThread.id}/path`)
+if (homeCompletionPath.stages[0].lessons.find((lesson) => lesson.id === homeCompletionLesson.id)?.status !== 'completed' || homeCompletionPath.stages[0].lessons.find((lesson) => lesson.id === homeCompletionNextLesson.id)?.status !== 'not_started') throw new Error('Home lesson completion did not preserve direct ordered progression')
 
 await page.goto(`${baseUrl}/#/library?mode=assets&focus=files`, { waitUntil: 'networkidle' })
 if (artifacts.artifacts.length === 0) {

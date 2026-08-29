@@ -52,8 +52,8 @@ export function QueueView({ data, handlers }: { data: LibraryRecord; handlers: L
   const items = Array.isArray(data.items) ? data.items : []
   const cap = Number(data.cap || 5)
   const [viewMode, setViewMode] = useState<'gallery' | 'ledger'>(() => {
-    if (typeof window === 'undefined') return 'gallery'
-    return window.localStorage.getItem('learning-compass.queue-view') === 'ledger' ? 'ledger' : 'gallery'
+    if (typeof window === 'undefined') return 'ledger'
+    return window.localStorage.getItem('learning-compass.queue-view') === 'gallery' ? 'gallery' : 'ledger'
   })
   const resolvedContext = data.delivery_context?.context || {}
   const [effort, setEffort] = useState('')

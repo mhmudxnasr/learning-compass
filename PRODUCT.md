@@ -34,15 +34,16 @@ A zero-noise, purpose-first personal knowledge ledger. Unlike generic read-it-la
 - **Personal Data Studio**: Settings → Data & recovery visualizes real type, status, recent-edit, and branch distributions; searches and filters the complete ledger; and exposes every mutable personal field inline. It reports counts, never an opaque engagement or “AI quality” score.
 - **Queue Limits**: Maximum 5 active queued/in-progress commitments.
 - **Personal State Is Not Commitment**: Planned, in-progress, finished, paused, and stopped media stay outside Queue unless a separate explicit source-triage action commits learning work.
-- **Direct Lesson Progression**: Completing lessons is the sole progression signal for Levels and Threads.
+- **Direct Lesson Progression**: Completing lessons is the sole progression signal for Levels and Threads. A current lesson can be finished directly from Home without leaving the learning desk; Home confirms the write, animates the completed turn away, and replaces it with the next ordered lesson. Completion from a typed lesson route opens the next ordered lesson automatically when one remains.
 - **Passive Access**: Opening sources, books, or companions is passive. Only Queue or Compass starts a tracked session.
 - **Reading Companions**: Lite Visual generates bilingual/Arabic-first HTML+PDF pairs with verified depth gates.
 
-## Brand Commitments
+## Brand commitments
 
-- **Visual World**: Botanical Folio / Evidence Ledger — green-and-cream palette with strict WCAG AA contrast.
+- **Visual World**: Continuum, a soft graphite knowledge console with a persistent desktop rail, restrained violet working signals, smooth short motion, and selectable day/night systems. Its eight complete workspace presets are original, reference-grounded interpretations of Linear, Raycast, Superhuman, Readwise Reader, Notion, Craft, Arc, and Are.na. Each owns a visibly separate palette, font system, reading rhythm, density, text scale, and corner geometry instead of merely recoloring the same card system. Home leads with the lessons whose turn it is, keeps the active Queue source visible, and places Original/HTML/PDF/NotebookLM controls beside the work they open. Library, Learn, Map, Settings, typed objects, inspectors, and dialogs share the same page horizon, ledger rhythm, control treatment, and semantic depth; route-specific workflows never fall back to a stock dashboard or a separate visual theme.
 - **Tone**: Brutally honest, direct, English-first operational interface. Zero emojis by default.
-- **Anti-Pattern Ban**: Strictly zero AI slop (no arbitrary side-tab stripes, no layout-thrashing animations, no chunky borders).
+- **Arabic and RTL**: Clear Arabic type, correct direction, and comfortable reading rhythm are required. Religious ornament is not part of the product shell.
+- **Anti-Pattern Ban**: No arbitrary side-tab stripes, layout-thrashing animations, chunky borders, stock dashboard grids, or decorative gradients.
 
 ## Evidence on Hand
 

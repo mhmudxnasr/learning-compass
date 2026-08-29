@@ -49,7 +49,7 @@ export function Icon({ name, size = 20, class: classProp, className }: { name: I
 }
 
 /**
- * The bespoke folio mark is a compass rose drawn as a botanical sprig.
+ * The compact Compass mark combines an orbit and directional needle.
  * The paired wordmark sets only the text; no tile sits behind the icon.
  */
 export function BrandMark({ size = 28 }: { size?: number }) {

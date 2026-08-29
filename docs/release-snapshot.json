@@ -1,10 +1,10 @@
 {
   "format": "learning-compass-release-status-v1",
-  "observed_at": "2026-08-29T04:59:43.788Z",
+  "observed_at": "2026-08-29T05:12:40.870Z",
   "source": {
-    "commit_sha": "982d6606366a1c0ee9cbb09332eda5af98dd4cdc",
-    "branch": "codex/system-hardening-m0-20260829",
-    "dirty": false
+    "commit_sha": "8ab73376ef9e48cd1c6a11e60d342c3542390c93",
+    "branch": "codex/deploy-everything-20260829",
+    "dirty": true
   },
   "production": {
     "origin": "https://recommendations-worker.mhmudnasr30.workers.dev",
@@ -67,12 +67,12 @@
       "live": {
         "ok": true,
         "status": "live",
-        "observed_at": "2026-08-29T04:59:41.038Z"
+        "observed_at": "2026-08-29T05:12:36.523Z"
       },
       "readiness": {
         "ok": true,
         "status": "healthy",
-        "checked_at": "2026-08-29T04:59:41.056Z",
+        "checked_at": "2026-08-29T05:12:36.506Z",
         "blockers": [],
         "bindings": {
           "d1": true,
@@ -87,20 +87,20 @@
     "budget": {
       "day_utc": "2026-08-29",
       "reads": {
-        "estimated": 26040,
+        "estimated": 41360,
         "budget": 4000000,
         "cloudflare_limit": 5000000,
         "headroom": 1000000,
         "required_headroom": 1000000
       },
       "writes": {
-        "estimated": 16,
+        "estimated": 40,
         "budget": 70000,
         "cloudflare_limit": 100000,
         "headroom": 30000,
         "required_headroom": 30000
       },
-      "updated_at": "2026-08-29 04:59:16"
+      "updated_at": "2026-08-29 05:10:31"
     },
     "recovery": {
       "latest_verified": {
