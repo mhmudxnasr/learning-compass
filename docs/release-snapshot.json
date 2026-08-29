@@ -1,16 +1,16 @@
 {
   "format": "learning-compass-release-status-v1",
-  "observed_at": "2026-08-29T04:38:03.172Z",
+  "observed_at": "2026-08-29T04:59:43.788Z",
   "source": {
-    "commit_sha": "56de17567baf7feb3a3534ea5c54ed1b120fbd47",
+    "commit_sha": "982d6606366a1c0ee9cbb09332eda5af98dd4cdc",
     "branch": "codex/system-hardening-m0-20260829",
-    "dirty": true
+    "dirty": false
   },
   "production": {
     "origin": "https://recommendations-worker.mhmudnasr30.workers.dev",
     "deployment": {
-      "version_id": "2fff478d-e866-476c-a7bc-ca6142ef1c0f",
-      "deployed_at": "2026-08-29T02:01:30.598265Z"
+      "version_id": "bb94b160-48ed-46d6-989a-555c435e98e5",
+      "deployed_at": "2026-08-29T04:59:04.15632Z"
     },
     "migrations": {
       "applied_count": 70,
@@ -67,12 +67,12 @@
       "live": {
         "ok": true,
         "status": "live",
-        "observed_at": "2026-08-29T04:38:00.567Z"
+        "observed_at": "2026-08-29T04:59:41.038Z"
       },
       "readiness": {
         "ok": true,
         "status": "healthy",
-        "checked_at": "2026-08-29T04:38:00.586Z",
+        "checked_at": "2026-08-29T04:59:41.056Z",
         "blockers": [],
         "bindings": {
           "d1": true,
@@ -87,20 +87,20 @@
     "budget": {
       "day_utc": "2026-08-29",
       "reads": {
-        "estimated": 25970,
-        "budget": 5000000,
+        "estimated": 26040,
+        "budget": 4000000,
         "cloudflare_limit": 5000000,
-        "headroom": 0,
+        "headroom": 1000000,
         "required_headroom": 1000000
       },
       "writes": {
-        "estimated": 12,
-        "budget": 100000,
+        "estimated": 16,
+        "budget": 70000,
         "cloudflare_limit": 100000,
-        "headroom": 0,
+        "headroom": 30000,
         "required_headroom": 30000
       },
-      "updated_at": "2026-08-29 02:17:19"
+      "updated_at": "2026-08-29 04:59:16"
     },
     "recovery": {
       "latest_verified": {
@@ -123,10 +123,7 @@
     }
   },
   "policy": {
-    "ok": false,
-    "blockers": [
-      "read_budget_missing_required_headroom",
-      "write_budget_missing_required_headroom"
-    ]
+    "ok": true,
+    "blockers": []
   }
 }
