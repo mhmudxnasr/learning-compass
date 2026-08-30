@@ -91,6 +91,7 @@ The visual references are functional. Linear informs shell precision and list de
 * Original, HTML, PDF, and NotebookLM appear as compact icon-and-label controls beside the lesson or source they belong to. Their labels remain complete for assistive technology.
 * Resurfacing and RSS stay visible below active work. They never compete with the next lesson in the first reading pass.
 * Library, Learn, Map, and Settings use the same page horizon, semantic controls, continuous ledgers, and surface-depth rules as Home. Root-specific workflows keep their own information architecture without introducing a second visual product.
+* Settings → Learning profile behaves as an inspectable personal model, not a raw data report. A profile map anchors the desktop; identity and health share one horizon; the five-rule charter leads; canonical fields, editing, learned signals, and eight evidence ledgers progressively disclose their detail. Compact layouts convert the profile map to a horizontal strip without changing reading order.
 * Queue opens as a ranked Ledger by default. Gallery remains a saved alternate view, while both presentations preserve the same source order, branch identity, materials, and tracked Start/Resume boundary.
 * Typed object views, the inspector, Capture, Search, and other dialogs use the same Canvas, Surface, Inspector, Seam, and Coral roles as their owning workspace.
 * At 940px and below, the rail becomes a sticky utility bar and five-item bottom dock. Content moves to one column without changing task order.

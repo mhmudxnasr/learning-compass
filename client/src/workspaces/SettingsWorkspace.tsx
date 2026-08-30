@@ -280,15 +280,14 @@ function ProfileOverview({ profile }: { profile: ProfileRecord }) {
   ]
   return <section class="profile-overview profile-section" aria-labelledby="profile-overview-heading">
     <div class="section-head">
-      <div><h2 id="profile-overview-heading">What shapes your learning</h2><p class="section-description">A readable summary of the preferences that influence curation, sequencing, and feedback.</p></div>
-      <span>Editable below</span>
+      <div><span class="profile-section-kicker">Profile charter</span><h2 id="profile-overview-heading">What shapes your learning</h2><p class="section-description">The five rules Learning Compass uses before it selects, sequences, or explains anything.</p></div>
+      <span>{cards.length} foundations</span>
     </div>
     <div class="profile-overview-grid">
-      {cards.map((card) => <article class="profile-overview-card" key={card.label}>
-        <div class="profile-overview-card-head"><strong>{card.label}</strong><span>Preference</span></div>
-        <p class="profile-overview-description">{card.description}</p>
-        <ReadableValue value={safeProfileValue(card.value, card.structured)} compact />
-      </article>)}
+      {cards.map((card, index) => <details class="profile-overview-card" key={card.label} open={index < 2}>
+        <summary><span class="profile-overview-index">0{index + 1}</span><span class="profile-overview-card-head"><strong>{card.label}</strong><small>{card.description}</small></span><span class="profile-overview-action">Read</span></summary>
+        <div class="profile-overview-body"><ReadableValue value={safeProfileValue(card.value, card.structured)} compact /></div>
+      </details>)}
     </div>
   </section>
 }
@@ -333,15 +332,15 @@ function ProfileSignals({ assertions }: { assertions: ProfileRecord[] }) {
 }
 
 function ProfileFieldList({ profile }: { profile: ProfileRecord }) {
-  return <section class="profile-section profile-fields-section"><div class="section-head"><div><h2>Your learning preferences</h2><p class="section-description">These are the canonical inputs you can review and change.</p></div><span>Profile fields</span></div><div class="profile-fields">{profileFields.map((field) => {
+  return <section id="profile-fields" class="profile-section profile-fields-section"><div class="section-head"><div><span class="profile-section-kicker">Canonical inputs</span><h2>Your learning preferences</h2><p class="section-description">The source fields behind the profile charter. Open only the field you need to inspect.</p></div><span>{profileFields.length} fields</span></div><div class="profile-fields">{profileFields.map((field) => {
     const value = profile[field.readKey || field.apiKey]
     const parsed = field.structured && typeof value === 'string' ? (() => { try { return { value: JSON.parse(value), valid: true } } catch { return { value: null, valid: false } } })() : { value, valid: true }
-    return <article class="profile-field" key={field.key}><div class="profile-field-head"><span><strong>{field.label}</strong><small>{field.description}</small></span></div>{parsed.valid ? <ReadableValue value={parsed.value} /> : <p class="profile-empty">Needs review in the profile editor.</p>}</article>
+    return <details class="profile-field" key={field.key}><summary><span><strong>{field.label}</strong><small>{field.description}</small></span><em>Inspect</em></summary><div class="profile-field-body">{parsed.valid ? <ReadableValue value={parsed.value} /> : <p class="profile-empty">Needs review in the profile editor.</p>}</div></details>
   })}</div></section>
 }
 
 function ProfileRecordList({ items, empty, title, getTitle, getMeta, getDetail }: { items: any[]; empty: string; title: string; getTitle: (item: any) => string; getMeta: (item: any) => string; getDetail?: (item: any) => unknown }) {
-  return <section class="profile-record-section"><div class="section-head"><h2>{title}</h2><span>{items.length} recorded</span></div>{items.length ? <div class="profile-record-list">{items.slice(0, 24).map((item, index) => <article class="profile-record" key={String(item.id || item.label || item.name || index)}><div class="profile-record-title"><strong>{getTitle(item)}</strong><small>{getMeta(item)}</small></div><p>{readableText(getDetail ? getDetail(item) : item.description || item.reason || item.why || item.notes || '')}</p></article>)}</div> : <p class="profile-empty">{empty}</p>}</section>
+  return <details class="profile-record-section"><summary><span><strong>{title}</strong><small>{items.length ? `${items.length} recorded` : empty}</small></span><em>Open ledger</em></summary><div class="profile-record-body">{items.length ? <div class="profile-record-list">{items.slice(0, 24).map((item, index) => <article class="profile-record" key={String(item.id || item.label || item.name || index)}><div class="profile-record-title"><strong>{getTitle(item)}</strong><small>{getMeta(item)}</small></div><p>{readableText(getDetail ? getDetail(item) : item.description || item.reason || item.why || item.notes || '')}</p></article>)}</div> : <p class="profile-empty">{empty}</p>}</div></details>
 }
 
 function ProfileEditor({ profile, onSaved }: { profile: ProfileRecord; onSaved: () => void }) {
@@ -363,7 +362,7 @@ function ProfileEditor({ profile, onSaved }: { profile: ProfileRecord; onSaved: 
     try { await api('/brain/profile', { method: 'POST', body: JSON.stringify(payload) }); setStatus('Profile saved.'); onSaved() }
     catch (error: any) { setStatus(error?.message || 'Profile could not be saved.') }
   }
-  return <details id="profile-editor" class="profile-editor" open={open} onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}><summary>Edit your learning profile</summary><p>Update the preferences that shape recommendations. Structured values remain readable here, while legacy values stay editable without exposing raw JSON in the normal view.</p>{open && <><div class="profile-editor-fields">{profileFields.map((field) => <label key={field.key}>{field.label}<span>{field.description}</span><textarea value={draft[field.key] || ''} onInput={(event) => setDraft((current) => ({ ...current, [field.key]: (event.target as HTMLTextAreaElement).value }))} /></label>)}</div><div class="row-actions"><button type="button" class="button secondary" onClick={() => setDraft(initial)}>Reset</button><button type="button" class="button primary" onClick={save}>Save profile</button></div>{status && <output class="settings-status" aria-live="polite">{status}</output>}</>}</details>
+  return <details id="profile-editor" class="profile-editor" open={open} onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}><summary><span><strong>Edit profile</strong><small>Change the canonical inputs Learning Compass uses.</small></span><em>{open ? 'Close editor' : 'Open editor'}</em></summary>{open && <div class="profile-editor-body"><p>Update only what has changed. Structured fields accept their existing JSON shape; ordinary text remains ordinary text.</p><div class="profile-editor-fields">{profileFields.map((field) => <label key={field.key}>{field.label}<span>{field.description}</span><textarea value={draft[field.key] || ''} onInput={(event) => setDraft((current) => ({ ...current, [field.key]: (event.target as HTMLTextAreaElement).value }))} /></label>)}</div><div class="row-actions"><button type="button" class="button secondary" onClick={() => setDraft(initial)}>Reset changes</button><button type="button" class="button primary" onClick={save}>Save profile</button></div>{status && <output class="settings-status" aria-live="polite">{status}</output>}</div>}</details>
 }
 
 function ProfileView() {
@@ -376,13 +375,15 @@ function ProfileView() {
   const assertions = data.profile_assertions || []
   const context = readableText(person.identity_json || person.identity || '')
   return <div class="settings-page profile-settings-page">
-    <section class="model-header"><div class="model-header-main"><div class="model-identity"><span class="model-avatar" aria-hidden="true">{String(person.name || 'L').slice(0, 1).toUpperCase()}</span><div class="model-identity-copy"><span class="eyebrow">Settings / Learning profile</span><h1>{person.name || 'Your learning profile'}</h1><p class="model-context">{context === 'Not recorded' ? 'This profile helps Learning Compass choose, filter, and sequence learning material for you.' : context}</p></div></div><div class="model-header-actions"><button type="button" class="button primary" onClick={() => { const editor = document.getElementById('profile-editor'); if (editor instanceof HTMLDetailsElement) { editor.open = true; editor.scrollIntoView({ behavior: 'smooth', block: 'start' }) } }}>Edit profile</button><details class="model-technical"><summary>Model details</summary><span>{data.model_version || 'profile_v2'}</span></details></div></div></section>
-    <div class="profile-health-strip"><div><strong>{labelize(health.status || 'unknown')}</strong><span>profile health</span></div><div><strong>{health.active || assertions.length || 0}</strong><span>active preferences</span></div><div><strong>{health.hypotheses || 0}</strong><span>needs your review</span></div><div><strong>{data.infrastructure_stats?.pending_proposals_count || 0}</strong><span>changes waiting for approval</span></div></div>
-    <ProfileOverview profile={person} />
+    <section class="model-header"><div class="model-header-main"><div class="model-identity"><span class="model-avatar" aria-hidden="true">{String(person.name || 'L').slice(0, 1).toUpperCase()}</span><div class="model-identity-copy"><span class="eyebrow">Personal model</span><h1>{person.name || 'Your learning profile'}</h1><p class="model-context">{context === 'Not recorded' ? 'This profile helps Learning Compass choose, filter, and sequence learning material for you.' : context}</p></div></div><div class="model-header-actions"><button type="button" class="button primary" onClick={() => { const editor = document.getElementById('profile-editor'); if (editor instanceof HTMLDetailsElement) { editor.open = true; editor.scrollIntoView({ behavior: 'smooth', block: 'start' }) } }}>Edit profile</button><details class="model-technical"><summary>Model details</summary><span>{data.model_version || 'profile_v2'}</span></details></div></div><div class="profile-health-strip"><div><strong>{labelize(health.status || 'unknown')}</strong><span>Profile health</span></div><div><strong>{health.active || assertions.length || 0}</strong><span>Active signals</span></div><div><strong>{health.hypotheses || 0}</strong><span>Needs review</span></div><div><strong>{data.infrastructure_stats?.pending_proposals_count || 0}</strong><span>Pending changes</span></div></div></section>
+    <div class="profile-layout">
+      <aside class="profile-index" aria-label="Learning profile sections"><span class="profile-index-label">Profile map</span><nav><a href="#profile-charter" onClick={(event) => jumpToPreference(event, 'profile-charter')}>Charter</a><a href="#profile-fields" onClick={(event) => jumpToPreference(event, 'profile-fields')}>Canonical fields</a><a href="#profile-editor" onClick={(event) => jumpToPreference(event, 'profile-editor')}>Edit profile</a><a href="#profile-signals" onClick={(event) => jumpToPreference(event, 'profile-signals')}>Learned signals</a><a href="#profile-ledgers" onClick={(event) => jumpToPreference(event, 'profile-ledgers')}>Evidence ledgers</a></nav><p>This page explains what the system believes, why it matters, and where the evidence came from.</p></aside>
+      <div class="profile-canvas">
+    <div id="profile-charter"><ProfileOverview profile={person} /></div>
     <ProfileFieldList profile={person} />
     <ProfileEditor profile={person} onSaved={profile.reload} />
-    {assertions.length ? <ProfileSignals assertions={assertions} /> : <Empty title="No learned signals yet" body="Evidence-backed preferences will appear here as you capture, consume, and reflect." />}
-    <div class="profile-record-columns">
+    <section id="profile-signals" class="profile-signals-section"><div class="section-head"><div><span class="profile-section-kicker">Evidence model</span><h2>Learned signals</h2><p class="section-description">Preferences inferred from direct feedback and completed learning history.</p></div><span>{assertions.length} signals</span></div>{assertions.length ? <ProfileSignals assertions={assertions} /> : <Empty title="No learned signals yet" body="Evidence-backed preferences will appear here as you capture, consume, and reflect." />}</section>
+    <section id="profile-ledgers" class="profile-ledgers"><div class="section-head"><div><span class="profile-section-kicker">Supporting evidence</span><h2>Profile ledgers</h2><p class="section-description">Open a ledger when you need the underlying history; closed ledgers stay quiet.</p></div><span>8 ledgers</span></div><div class="profile-record-columns">
       <ProfileRecordList title="Priorities" items={data.priorities || []} empty="No priorities recorded." getTitle={(item) => item.label || item.branch_id || 'Priority'} getMeta={(item) => item.rank ? `Rank ${item.rank}` : ''} />
       <ProfileRecordList title="Mastered knowledge" items={data.mastered || []} empty="No mastered topics recorded." getTitle={(item) => item.label || item.name || item.id || 'Mastered topic'} getMeta={(item) => item.kind || ''} />
       <ProfileRecordList title="Exclusions" items={data.blacklist || []} empty="No exclusions recorded." getTitle={(item) => [item.name, item.work].filter(Boolean).join(' · ') || 'Exclusion'} getMeta={(item) => item.severity == null ? '' : `Severity ${item.severity}`} />
@@ -391,6 +392,8 @@ function ProfileView() {
       <ProfileRecordList title="Creator history" items={data.creator_trust || []} empty="No creator history available." getTitle={(item) => item.creator || 'Creator'} getMeta={(item) => `${item.total || 0} consumed · ${item.average_score || '—'} avg`} />
       <ProfileRecordList title="Recent reflections" items={data.reflections || []} empty="No written reflections recorded." getTitle={(item) => item.video_title || 'Reflection'} getMeta={(item) => item.completed_at ? formatDate(item.completed_at) : ''} />
       <ProfileRecordList title="Recent ratings" items={data.rating_history || []} empty="No ratings recorded." getTitle={(item) => item.video_title || 'Rated source'} getMeta={(item) => item.user_score == null ? item.user_rating || '' : `${item.user_score}/10`} />
+    </div></section>
+      </div>
     </div>
   </div>
 }
