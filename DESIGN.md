@@ -95,6 +95,7 @@ Learning Compass is a quiet, editorial evidence ledger and botanical study studi
 - Grouped modes live in the desktop command bar with one restrained active rule. Subordinate filters stay in the working field only where the active mode needs them; compact layouts return the modes to equal-width inline controls.
 - Home is a master-detail workbench, not a card dashboard: current source and Queue share the decision row; Current rotation and incoming publications share the supporting row; seams define hierarchy without four floating boxes.
 - Map Review preserves the branch index beside a readable dossier on normal laptops. Signals and decisions move beneath the dossier instead of forcing a cramped third permanent rail.
+- Settings → Learning profile behaves as an inspectable personal model, not a raw data report. A profile map anchors the desktop; the identity, health, and pending-state receipt share one hero; the five-rule charter leads; canonical fields, editing, learned signals, and eight evidence ledgers progressively disclose their detail. Compact layouts convert the profile map to a horizontal strip and keep the same reading order.
 - Below 940px, the root rail becomes a branded sticky utility bar and five-item bottom dock. Root modes use equal-width grids sized to their actual count, including a single four-column Library row at phone widths.
 
 ## Colors

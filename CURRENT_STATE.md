@@ -1,5 +1,9 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-08-30 (Learning profile redesign, local)
+
+Settings → Learning profile is rebuilt as an inspectable personal model. Identity, context, model actions, profile health, active signals, review count, and pending changes now form one coherent header; a persistent desktop profile map anchors the page. The five-rule profile charter leads with progressive detail, canonical source fields become individually inspectable, editing has a dedicated work surface, learned signals use a searchable evidence ledger, and the eight historical collections are closed ledgers instead of an always-expanded wall of records. Phone and tablet layouts preserve the same hierarchy through a horizontal section strip and single-column disclosures. Preferences are unchanged.
+
 ## Current truth — 2026-08-28 (structural shell redesign, local)
 
 The five-root client now has three explicit architectural planes: a 108px navigation-only desktop rail, a 64px workspace command bar, and the working field. Search and capture no longer compete with root navigation. Root context and grouped workspace modes live in the command bar, so Books/Triage/Archive/Files and the other mode sets no longer render as detached secondary headers on desktop. Ordinary workspaces retain a centered 1280px field while Atlas remains intentionally edge-to-edge.

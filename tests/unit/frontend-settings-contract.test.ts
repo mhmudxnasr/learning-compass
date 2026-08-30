@@ -86,3 +86,16 @@ test('custom theme workshop audits rendered tokens and keeps transfer tools prog
   assert.match(studioCss, /\.preferences-main \.custom-color-input-group input\[type="color"\][\s\S]*width: 44px;[\s\S]*height: 44px;/)
   assert.doesNotMatch(studioCss, /\.preferences-main \.theme-preset-desc[\s\S]{0,240}-webkit-line-clamp: 4/)
 })
+
+test('Learning profile is an indexed model with progressively disclosed evidence', () => {
+  assert.match(settingsSource, /class="profile-layout"/)
+  assert.match(settingsSource, /class="profile-index"/)
+  assert.match(settingsSource, /id="profile-charter"/)
+  assert.match(settingsSource, /id="profile-signals"/)
+  assert.match(settingsSource, /id="profile-ledgers"/)
+  assert.match(settingsSource, /<details class="profile-overview-card"/)
+  assert.match(settingsSource, /<details class="profile-field"/)
+  assert.match(settingsSource, /<details class="profile-record-section"/)
+  assert.match(studioCss, /\.profile-layout \{[\s\S]*grid-template-columns: 210px minmax\(0, 1fr\);/)
+  assert.match(studioCss, /@media \(max-width: 980px\)[\s\S]*\.profile-index nav \{[\s\S]*display: flex;/)
+})
