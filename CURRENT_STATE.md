@@ -4,6 +4,8 @@
 
 Settings → Learning profile is rebuilt as an inspectable personal model. Identity, context, model actions, profile health, active signals, review count, and pending changes now form one coherent header; a persistent desktop profile map anchors the page. The five-rule profile charter leads with progressive detail, canonical source fields become individually inspectable, editing has a dedicated work surface, learned signals use a searchable evidence ledger, and the eight historical collections are closed ledgers instead of an always-expanded wall of records. Phone and tablet layouts preserve the same hierarchy through a horizontal section strip and single-column disclosures. Preferences are unchanged by this redesign.
 
+The default Hermes Telegram prompt contract now records the synchronized 28-skill index at its observed 2,896-byte ceiling. System, tool-schema, fixed-payload, memory, duplicate, and exact tool-hash gates remain unchanged; the Compass profile remains within its existing 2,927-byte ceiling.
+
 ## Current truth — 2026-08-29 (premium editorial Continuum and generator brief, local)
 
 Continuum now defaults to a warm editorial light system derived from the supplied reference: `#fcfaf6` shell, `#fefdfb` surface, `#e55a42` coral action, crisp black ink, a dark persistent rail, soft hairline seams, and restrained paper elevation. The direction applies across Home, Library, Learn, Map, Settings, dialogs, inspectors, forms, workspace modes, and the mobile dock. Decisive actions use a solid coral pill treatment; `Surprise me` renders at 145×42px on desktop with bold black type and expands safely on phone layouts. The other seven premium-reference presets remain separate visual systems, while Continuum's reference changes from Linear to Attio.
