@@ -95,18 +95,18 @@ app.post('/enhance/why', async (c) => {
 
 const THEME_KEYS = ['brand', 'shell', 'surface', 'highlight', 'accent', 'ink', 'rail', 'seam', 'due', 'danger', 'map'] as const
 const SURPRISE_DIRECTIONS = [
-  'Near-black and white monochrome: almost no color, stark ink, paper-white surfaces, and one barely-there status color.',
-  'High-chroma color collision: vivid cobalt, vermilion, acid lime, electric violet, or hot pink, balanced by disciplined neutrals.',
-  'Swiss International / Bauhaus poster logic: strict neutrals, one primary color, one geometric accent, and uncompromising contrast.',
-  'Brutalist editorial web: black, white, raw gray, one alarming signal color, hard seams, and no softness.',
-  'Luxury fashion editorial: ink, bone, parchment, tobacco, oxblood, or metallic-like muted accents with restrained contrast.',
-  'Late-90s web palette reinterpreted for modern accessibility: saturated cyan, purple, blue, or orange with clean neutral surfaces.',
-  'Bloomberg-like information density and Financial Times-like print warmth: editorial paper, dark ink, restrained signal colors.',
-  'Stripe / Linear / Notion-inspired product calm: precise neutral surfaces with one unexpected luminous accent, without copying their branding.',
-  'Night-only astronomical laboratory: deep black or navy, luminous text, one ultraviolet or cyan signal, and quiet secondary tones.',
-  'Botanical field guide pushed to an extreme: moss, lichen, clay, pollen, or poisonous green, with deliberately unusual pairings.',
-  'Desert mineral / oxidized metal: sand, rust, copper, slate, turquoise, or salt-white, with strong daylight and night reversals.',
-  'Pop-art / album-cover energy: unexpected complementary colors, bold contrast, and a playful but still readable system.',
+  'Warm editorial product studio: ivory paper, black ink, one decisive coral action, soft seams, and tactile lifted surfaces.',
+  'Precision command workspace: near-black chrome, luminous cool-white text, one disciplined violet signal, and compact tonal depth.',
+  'High-velocity navy workspace: midnight blue planes, electric sky actions, sharp hierarchy, and restrained status colors.',
+  'Reader-first publishing desk: parchment, burnt orange, espresso ink, and a low-fatigue long-form surface system.',
+  'Modern monochrome notebook: paper white, charcoal hierarchy, soft gray controls, and one deliberately quiet accent.',
+  'Crafted journal studio: cream, clay, oxblood, and warm brown with generous editorial separation.',
+  'Spatial lavender workspace: pale lilac chrome, saturated violet focus, ink-dark navigation, and friendly soft surfaces.',
+  'Archival gallery index: white and warm gray, cobalt links, blunt seams, and almost no decorative color.',
+  'Luxury cultural journal: bone, tobacco, burgundy, and black with confident typography and restrained contrast.',
+  'Mineral research desk: salt white, slate, oxidized copper, and muted turquoise with calm scientific clarity.',
+  'Swiss product editorial: disciplined neutrals, one primary red, exact rules, and crisp information hierarchy.',
+  'Contemporary coastal utility: chalk, deep marine, sea-glass teal, and one warm signal with clean product restraint.',
 ] as const
 const themePalette = (value: any) => {
   if (Array.isArray(value)) value = Object.fromEntries(THEME_KEYS.map((key, index) => [key, value[index]]))
@@ -141,7 +141,7 @@ const hasAccessibleThemeInk = (palette: Record<string, string>) =>
 app.post('/theme-variants', async (c) => {
   const body = await c.req.json<{ current?: Record<string, string>; mode?: 'day' | 'night' }>().catch(() => ({} as { current?: Record<string, string>; mode?: 'day' | 'night' }))
   const direction = SURPRISE_DIRECTIONS[Math.floor(Math.random() * SURPRISE_DIRECTIONS.length)]
-  const prompt = `Create a genuinely surprising, production-ready paired theme for Learning Compass. This is a deliberate visual lottery: do not make a safe variation of the current palette. Random art direction for this run: ${direction} Return ONLY valid JSON with exactly two objects, day and night. Each object must contain exactly these keys: ${THEME_KEYS.join(', ')}. Every value must be a six-digit uppercase HEX code matching ^#[0-9A-F]{6}$. Day and night must feel like the same art direction under different lighting, but they must be materially different from each other and from the current palette. Explore the named direction aggressively: black-and-white is allowed, extreme color is allowed, and unusual combinations are preferred. Draw inspiration from recognizable traditions such as Swiss posters, Bauhaus, brutalist web, luxury editorial, Bloomberg/Financial Times information design, Stripe/Linear/Notion product calm, album covers, and late-90s web palettes, but do not copy any website's exact branding, logo, layout, or proprietary palette. Avoid default green, generic SaaS blue, beige-and-green safety, muddy near-duplicates, gradients, and neon unless the selected direction explicitly calls for it. Keep ink readable on shell and surface at WCAG AA contrast (4.5:1 minimum), keep due and danger distinct, and keep map muted but visibly separate from brand. Current mode: ${body.mode || 'day'}. Current palette JSON: ${JSON.stringify(body.current || {})}. Output JSON only; no markdown, comments, explanation, or extra keys.`
+  const prompt = `Act as the senior product art director for a premium 2026 learning workspace. Create one production-ready paired theme for Learning Compass from this direction: ${direction} The result should feel authored, contemporary, tactile, and expensive—not like a random color generator or a generic SaaS dashboard. Return ONLY valid JSON with exactly two objects, day and night. Each object must contain exactly these keys: ${THEME_KEYS.join(', ')}. Every value must be a six-digit uppercase HEX code matching ^#[0-9A-F]{6}$. Day and night must be recognizably the same visual world under different lighting while remaining materially different from each other and from the current palette. Use a disciplined neutral foundation, one confident primary working signal, clear surface elevation, and mature functional colors. Draw high-level inspiration from premium product and editorial systems such as Attio, Linear, Raycast, Superhuman, Readwise Reader, Notion, Craft, Arc, Are.na, Swiss publishing, and independent cultural journals, but do not copy any website's exact branding, logo, layout, or proprietary palette. Reject generic SaaS blue, muddy near-duplicates, gratuitous neon, gradients, glassmorphism soup, and timid low-contrast accents. Keep ink readable on shell and surface at WCAG AA contrast (4.5:1 minimum), keep due and danger distinct, and keep map muted but visibly separate from brand. Current mode: ${body.mode || 'day'}. Current palette JSON: ${JSON.stringify(body.current || {})}. Output JSON only; no markdown, comments, explanation, or extra keys.`
   const result = await geminiThemeAi(c.env, prompt)
   if (!result) return c.json({ error: 'Gemini theme generation is unavailable.', model: 'gemini-3.1-flash-lite-preview' }, 503)
   try {

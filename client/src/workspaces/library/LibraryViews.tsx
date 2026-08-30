@@ -52,8 +52,8 @@ export function QueueView({ data, handlers }: { data: LibraryRecord; handlers: L
   const items = Array.isArray(data.items) ? data.items : []
   const cap = Number(data.cap || 5)
   const [viewMode, setViewMode] = useState<'gallery' | 'ledger'>(() => {
-    if (typeof window === 'undefined') return 'gallery'
-    return window.localStorage.getItem('learning-compass.queue-view') === 'ledger' ? 'ledger' : 'gallery'
+    if (typeof window === 'undefined') return 'ledger'
+    return window.localStorage.getItem('learning-compass.queue-view') === 'gallery' ? 'gallery' : 'ledger'
   })
   const resolvedContext = data.delivery_context?.context || {}
   const [effort, setEffort] = useState('')
@@ -131,6 +131,13 @@ export function QueueView({ data, handlers }: { data: LibraryRecord; handlers: L
   </div>
 }
 
+const PRESET_FEEDS = [
+  { title: 'Simon Willison', url: 'https://simonwillison.net/atom/everything/', branch: 'systems-thinking', desc: 'Practical AI dev & CLI tools' },
+  { title: 'Latent.Space', url: 'https://www.latent.space/feed', branch: 'systems-thinking', desc: 'AI engineering & tools' },
+  { title: 'Ars Technica Tech Lab', url: 'https://feeds.arstechnica.com/arstechnica/technology-lab', branch: 'systems-thinking', desc: 'Broader tech & deep dives' },
+  { title: 'The Verge AI', url: 'https://www.theverge.com/rss/ai-artificial-intelligence/index.xml', branch: 'systems-thinking', desc: 'AI hardware & product news' },
+]
+
 export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
   const [feedUrl, setFeedUrl] = useState('')
   const [feedBranchId, setFeedBranchId] = useState('')
@@ -138,14 +145,23 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
   const [feedEntries, setFeedEntries] = useState<LibraryRecord[]>([])
   const [entriesTotal, setEntriesTotal] = useState(0)
   const [loadingEntries, setLoadingEntries] = useState(false)
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-  const [confirmClearId, setConfirmClearId] = useState<string | null>(null)
-  const [showManageFeeds, setShowManageFeeds] = useState(false)
-  const branchDeck = useData<{ existing?: LibraryRecord[] }>(showManageFeeds ? '/brain/branch-deck' : undefined)
+  const [confirmAction, setConfirmAction] = useState<{ type: 'clear' | 'delete-feed' | 'delete-entry'; id: string; target?: LibraryRecord } | null>(null)
+  const [showSubscribePanel, setShowSubscribePanel] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'inbox' | 'queued' | 'consumed' | 'excluded'>('all')
+
+  const branchDeck = useData<{ existing?: LibraryRecord[] }>('/brain/branch-deck')
   const branchOptions = useMemo(() => (branchDeck.data?.existing || []).filter((branch) => String(branch.status || '').toLowerCase() !== 'pruned'), [branchDeck.data?.existing])
 
   const feeds = Array.isArray(data.feeds) ? data.feeds : []
   const totalEntries = useMemo(() => feeds.reduce((sum: number, f: LibraryRecord) => sum + Number(f.entry_count || 0), 0), [feeds])
+
+  useEffect(() => {
+    if (!feedBranchId && branchOptions.length > 0) {
+      const defaultBranch = branchOptions.find((b) => String(b.id) === 'systems-thinking') || branchOptions[0]
+      if (defaultBranch) setFeedBranchId(String(defaultBranch.id))
+    }
+  }, [branchOptions, feedBranchId])
 
   useEffect(() => {
     let active = true
@@ -174,8 +190,15 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
     if (feedUrl.trim() && feedBranchId && handlers.onAddFeed) {
       handlers.onAddFeed(feedUrl.trim(), feedBranchId)
       setFeedUrl('')
-      setFeedBranchId('')
+      setShowSubscribePanel(false)
     }
+  }
+
+  const applyPreset = (preset: typeof PRESET_FEEDS[0]) => {
+    setFeedUrl(preset.url)
+    const matchingBranch = branchOptions.find((b) => String(b.id) === preset.branch)
+    if (matchingBranch) setFeedBranchId(String(matchingBranch.id))
+    setShowSubscribePanel(true)
   }
 
   const isAllFeeds = selectedFeedId === 'all'
@@ -186,23 +209,76 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
     ? handlers.busyId === 'sync-feeds'
     : Boolean(selectedFeed && (handlers.busyId === 'sync-feeds' || handlers.busyId === `sync:${selectedFeed.id}`))
 
+  const isSubscribedUrl = (url: string) => feeds.some((f: LibraryRecord) => f.feed_url === url || f.site_url === url)
+
+  // Status and search filtering
+  const filteredEntries = useMemo(() => {
+    return feedEntries.filter((item: LibraryRecord) => {
+      const isQueued = item.learning_state === 'in_progress' || (item.status === 'active' && !['captured', 'inbox'].includes(String(item.learning_state || 'captured')))
+      const isConsumed = item.status === 'consumed'
+      const isExcluded = item.status === 'rejected' || item.learning_state === 'excluded'
+      const isInbox = !isQueued && !isConsumed && !isExcluded
+
+      if (statusFilter === 'inbox' && !isInbox) return false
+      if (statusFilter === 'queued' && !isQueued) return false
+      if (statusFilter === 'consumed' && !isConsumed) return false
+      if (statusFilter === 'excluded' && !isExcluded) return false
+
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim()
+        const titleMatch = String(item.video_title || item.title || '').toLowerCase().includes(query)
+        const reasonMatch = String(item.why_this || item.reason || '').toLowerCase().includes(query)
+        const feedTitleMatch = String(item.feed_title || '').toLowerCase().includes(query)
+        if (!titleMatch && !reasonMatch && !feedTitleMatch) return false
+      }
+
+      return true
+    })
+  }, [feedEntries, statusFilter, searchQuery])
+
+  const countsByStatus = useMemo(() => {
+    let inbox = 0, queued = 0, consumed = 0, excluded = 0
+    for (const item of feedEntries) {
+      const isQueued = item.learning_state === 'in_progress' || (item.status === 'active' && !['captured', 'inbox'].includes(String(item.learning_state || 'captured')))
+      const isConsumed = item.status === 'consumed'
+      const isExcluded = item.status === 'rejected' || item.learning_state === 'excluded'
+      if (isQueued) queued++
+      else if (isConsumed) consumed++
+      else if (isExcluded) excluded++
+      else inbox++
+    }
+    return { all: feedEntries.length, inbox, queued, consumed, excluded }
+  }, [feedEntries])
+
   return (
     <div class="folio-library-view folio-feeds-view">
       <div class="folio-view-intro">
         <div>
           <p class="folio-kicker">Incoming external publications</p>
           <h1>RSS Feeds</h1>
-          <p>Subscribe to RSS/Atom feeds, check for new material, and decide from the unified source ledger.</p>
+          <p>Articles stream directly into your Library as captured sources. Triage them into your Queue or exclude them.</p>
         </div>
         <div class="folio-view-intro-actions">
+          {handlers.onSyncFeeds && (
+            <button
+              type="button"
+              class={`folio-button${handlers.busyId === 'sync-feeds' ? ' is-loading' : ''}`}
+              onClick={() => handlers.onSyncFeeds?.()}
+              disabled={handlers.busyId === 'sync-feeds'}
+              title="Check all subscribed feeds for new articles"
+            >
+              <Icon name="sync" size={14} class={handlers.busyId === 'sync-feeds' ? 'folio-icon-spin' : ''}/>
+              <span>{handlers.busyId === 'sync-feeds' ? 'Checking all…' : 'Check all feeds'}</span>
+            </button>
+          )}
           <button
             type="button"
-            class={`folio-button${showManageFeeds ? ' folio-button-primary' : ''}`}
-            onClick={() => setShowManageFeeds((prev) => !prev)}
-            title={showManageFeeds ? 'Hide feed subscriptions' : 'Subscribe to a feed or manage feeds'}
+            class={`folio-button${showSubscribePanel ? ' folio-button-primary' : ''}`}
+            onClick={() => setShowSubscribePanel((prev) => !prev)}
+            title={showSubscribePanel ? 'Close subscribe panel' : 'Subscribe to a new web feed'}
           >
-            <Icon name="rss" size={15}/>
-            {showManageFeeds ? 'Hide subscriptions' : 'Manage feeds'}
+            <Icon name="rss" size={14}/>
+            <span>{showSubscribePanel ? 'Close' : '+ Add feed'}</span>
           </button>
           <span class="folio-count-readout">
             <strong>{feeds.length}</strong>
@@ -211,26 +287,22 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
         </div>
       </div>
 
-      {showManageFeeds && (
-        <>
+      {showSubscribePanel && (
+        <section class="folio-shelf folio-feed-subscribe-shelf" aria-labelledby="subscribe-feed-heading">
           <form class="folio-intake-form folio-feed-subscribe-form" onSubmit={submitSubscribe}>
             <div class="folio-section-heading">
               <div>
-                <h2>Subscribe to a feed</h2>
-                <p>Imported articles remain captured records; they never bypass deliberate commitment.</p>
+                <h2 id="subscribe-feed-heading">Subscribe to a Web Feed</h2>
+                <p>Imported articles remain un-queued captured records until you choose to queue them.</p>
               </div>
-              {handlers.onSyncFeeds && (
-                <button
-                  type="button"
-                  class="folio-button"
-                  onClick={() => handlers.onSyncFeeds?.()}
-                  disabled={handlers.busyId === 'sync-feeds'}
-                  title="Check all subscribed feeds for new articles"
-                >
-                  <Icon name="sync" size={15} class={handlers.busyId === 'sync-feeds' ? 'folio-icon-spin' : ''}/>
-                  {handlers.busyId === 'sync-feeds' ? 'Checking…' : 'Check all feeds'}
-                </button>
-              )}
+              <button
+                type="button"
+                class="folio-button folio-btn-quiet-trash"
+                onClick={() => setShowSubscribePanel(false)}
+                title="Cancel subscription"
+              >
+                Cancel
+              </button>
             </div>
             <div class="folio-feed-form-row">
               <input
@@ -240,6 +312,7 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                 placeholder="https://example.com/feed.xml or atom/everything/"
                 required
                 aria-label="Feed URL"
+                autoFocus
               />
               <select
                 value={feedBranchId}
@@ -249,7 +322,11 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                 disabled={branchDeck.loading || !branchOptions.length}
               >
                 <option value="">{branchDeck.loading ? 'Loading branches…' : branchOptions.length ? 'Choose default branch' : 'No active branches available'}</option>
-                {branchOptions.map((branch) => <option key={String(branch.id)} value={String(branch.id)}>{branch.label}{branch.category_label ? ` · ${branch.category_label}` : ''}</option>)}
+                {branchOptions.map((branch) => (
+                  <option key={String(branch.id)} value={String(branch.id)}>
+                    {branch.label}{branch.category_label ? ` · ${branch.category_label}` : ''}
+                  </option>
+                ))}
               </select>
               <button
                 type="submit"
@@ -259,123 +336,68 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                 {handlers.busyId === 'add-feed' ? 'Subscribing…' : 'Subscribe'}
               </button>
             </div>
-            <p class="folio-feed-branch-help">New source records inherit this reviewed branch. If an article already exists under another reviewed branch, its canonical mapping is preserved.</p>
-            {branchDeck.error && <p class="folio-inline-warning" role="alert">Branches could not be loaded. Retry before subscribing.</p>}
-          </form>
 
-          {feeds.length ? (
-            <section class="folio-shelf folio-feeds-shelf" aria-labelledby="feeds-shelf-title">
-              <div class="folio-section-heading">
-                <div>
-                  <h2 id="feeds-shelf-title">Subscribed Feeds</h2>
-                  <p>Select a feed to view and triage its imported articles.</p>
-                </div>
-                <span class="folio-badge-count">{feeds.length}</span>
-              </div>
-
-              <div class="folio-feeds-list" role="list">
-                {feeds.map((feed: LibraryRecord) => {
-                  const isSelected = String(feed.id) === selectedFeedId
-                  const isBusy = handlers.busyId === `sync:${feed.id}` || handlers.busyId === `delete:${feed.id}`
+            {/* Suggested presets */}
+            <div class="folio-feed-presets-row">
+              <span class="folio-feed-presets-label">Suggested practical feeds:</span>
+              <div class="folio-feed-preset-chips">
+                {PRESET_FEEDS.map((preset) => {
+                  const alreadySubscribed = isSubscribedUrl(preset.url)
                   return (
-                    <article class={`folio-record folio-feed-record${isSelected ? ' is-selected' : ''}`} key={feed.id} role="listitem">
-                      <div class="folio-record-main">
-                        <RecordMeta>
-                          {feed.entry_count || 0} {(feed.entry_count || 0) === 1 ? 'entry' : 'entries'} · Last checked {feed.last_checked_at ? formatDate(feed.last_checked_at) : 'never'}
-                        </RecordMeta>
-                        <div class="folio-feed-title-row">
-                          <button
-                            type="button"
-                            class="folio-feed-select-btn"
-                            onClick={() => setSelectedFeedId(String(feed.id))}
-                            title={`View articles from ${feed.title || feed.feed_url}`}
-                          >
-                            <strong>{feed.title || feed.feed_url}</strong>
-                          </button>
-                          {feed.site_url && (
-                            <a
-                              class="folio-feed-external-link"
-                              href={feed.site_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              title="Visit publisher website"
-                            >
-                              <Icon name="external" size={14}/>
-                            </a>
-                          )}
-                        </div>
-                        <p class="folio-record-note">{feed.feed_url}</p>
-                        {feed.branch_label && <a class="folio-badge folio-badge-branch folio-feed-branch-pill" href={`#/map/branch/${encodeURIComponent(String(feed.branch_id))}`}><span class="badge-format">Default branch</span><span>{feed.branch_label}</span></a>}
-
-                        <div class="folio-row-actions">
-                          <button
-                            type="button"
-                            class={`folio-button${isSelected ? ' folio-button-primary' : ''}`}
-                            onClick={() => setSelectedFeedId(String(feed.id))}
-                          >
-                            {isSelected ? 'Viewing entries' : 'View entries'}
-                          </button>
-                          {handlers.onSyncFeed && (
-                            <button
-                              type="button"
-                              class="folio-button"
-                              onClick={() => handlers.onSyncFeed?.(String(feed.id))}
-                              disabled={isBusy}
-                              title="Check this feed for new articles"
-                            >
-                              <Icon name="sync" size={14} class={handlers.busyId === `sync:${feed.id}` ? 'folio-icon-spin' : ''}/>
-                              {handlers.busyId === `sync:${feed.id}` ? 'Checking…' : 'Check now'}
-                            </button>
-                          )}
-                          {confirmDeleteId === feed.id ? (
-                            <div class="folio-inline-confirm">
-                              <span class="folio-confirm-label">Unsubscribe?</span>
-                              <button
-                                type="button"
-                                class="folio-file-admin-btn folio-btn-danger folio-btn-confirm-yes"
-                                onClick={() => {
-                                  setConfirmDeleteId(null)
-                                  handlers.onDeleteFeed?.(feed)
-                                }}
-                                disabled={isBusy}
-                              >
-                                Yes
-                              </button>
-                              <button
-                                type="button"
-                                class="folio-file-admin-btn folio-btn-confirm-no"
-                                onClick={() => setConfirmDeleteId(null)}
-                              >
-                                No
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              class="folio-button"
-                              onClick={() => setConfirmDeleteId(String(feed.id))}
-                              disabled={isBusy}
-                              title="Unsubscribe from feed"
-                            >
-                              Unsubscribe
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </article>
+                    <button
+                      key={preset.url}
+                      type="button"
+                      class={`folio-feed-preset-chip${alreadySubscribed ? ' is-subscribed' : ''}`}
+                      onClick={() => !alreadySubscribed && applyPreset(preset)}
+                      disabled={alreadySubscribed}
+                      title={alreadySubscribed ? 'Already subscribed' : preset.desc}
+                    >
+                      <span>{alreadySubscribed ? '✓' : '+'}</span>
+                      <strong>{preset.title}</strong>
+                    </button>
                   )
                 })}
               </div>
-            </section>
-          ) : null}
-        </>
+            </div>
+
+            <p class="folio-feed-branch-help">New source records inherit this reviewed branch. If an article already exists under another reviewed branch, its canonical mapping is preserved.</p>
+            {branchDeck.error && <p class="folio-inline-warning" role="alert">Branches could not be loaded. Retry before subscribing.</p>}
+          </form>
+        </section>
       )}
 
-      {!feeds.length && !showManageFeeds && (
-        <ViewEmpty
-          title="No feed subscriptions"
-          body="Subscribe to high-quality RSS or Atom feeds to receive developer, tool, and essay updates for triage."
-        />
+      {!feeds.length && !showSubscribePanel && (
+        <div class="folio-feed-empty-state">
+          <Icon name="rss" size={36}/>
+          <h3>No Web Feeds Subscribed</h3>
+          <p>Subscribe to practical RSS or Atom feeds to receive developer, tool, and essay updates for triage into your Learning Queue.</p>
+          <div class="folio-feed-presets-container">
+            <span class="folio-feed-presets-label">One-click practical feeds:</span>
+            <div class="folio-feed-preset-chips">
+              {PRESET_FEEDS.map((preset) => (
+                <button
+                  key={preset.url}
+                  type="button"
+                  class="folio-feed-preset-chip"
+                  onClick={() => applyPreset(preset)}
+                  title={preset.desc}
+                >
+                  <span>+</span>
+                  <strong>{preset.title}</strong>
+                  <small>{preset.desc}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+          <button
+            type="button"
+            class="folio-button folio-button-primary"
+            onClick={() => setShowSubscribePanel(true)}
+          >
+            <Icon name="rss" size={14}/>
+            <span>Add Custom Feed</span>
+          </button>
+        </div>
       )}
 
       {feeds.length > 0 && (
@@ -435,12 +457,12 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
         </div>
       )}
 
-      {selectedFeed && (
+      {feeds.length > 0 && selectedFeed && (
         <section class="folio-shelf folio-feed-entries-shelf" aria-labelledby="feed-entries-title">
           <div class="folio-feed-stream-banner">
             <div class="folio-feed-banner-info">
               <div class="folio-feed-banner-top">
-                <span class="folio-object-kicker">{isAllFeeds ? 'Unified Feed Stream' : 'Active Feed Stream'}</span>
+                <span class="folio-object-kicker">{isAllFeeds ? 'Unified Feed Stream' : 'Subscribed Feed Stream'}</span>
                 {!isAllFeeds && selectedFeed.site_url && (
                   <a
                     class="folio-feed-site-badge"
@@ -476,10 +498,16 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                   </>
                 )}
               </div>
-              {!isAllFeeds && selectedFeed.branch_label && <a class="folio-badge folio-badge-branch folio-feed-branch-pill" href={`#/map/branch/${encodeURIComponent(String(selectedFeed.branch_id))}`}><span class="badge-format">Default branch</span><span>{selectedFeed.branch_label}</span></a>}
+              {!isAllFeeds && selectedFeed.branch_label && (
+                <a class="folio-badge folio-badge-branch folio-feed-branch-pill" href={`#/map/branch/${encodeURIComponent(String(selectedFeed.branch_id))}`}>
+                  <span class="badge-format">Default branch</span>
+                  <span>{selectedFeed.branch_label}</span>
+                </a>
+              )}
             </div>
 
             <div class="folio-feed-banner-actions">
+              {/* Sync action */}
               {isAllFeeds ? (
                 handlers.onSyncFeeds && (
                   <button
@@ -508,8 +536,48 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                 )
               )}
 
+              {/* Unsubscribe action (for single feed) */}
+              {!isAllFeeds && handlers.onDeleteFeed && (
+                confirmAction?.type === 'delete-feed' && confirmAction.id === String(selectedFeed.id) ? (
+                  <div class="folio-feed-confirm-box">
+                    <span class="folio-feed-confirm-text">Unsubscribe from “{selectedFeed.title || 'this feed'}”?</span>
+                    <button
+                      type="button"
+                      class="folio-feed-btn folio-feed-btn-danger"
+                      onClick={() => {
+                        setConfirmAction(null)
+                        handlers.onDeleteFeed?.(selectedFeed)
+                        setSelectedFeedId('all')
+                      }}
+                      disabled={handlers.busyId === `delete:${selectedFeed.id}`}
+                    >
+                      Yes, unsubscribe
+                    </button>
+                    <button
+                      type="button"
+                      class="folio-feed-btn folio-feed-btn-cancel"
+                      onClick={() => setConfirmAction(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    class="folio-feed-btn folio-feed-btn-clear"
+                    onClick={() => setConfirmAction({ type: 'delete-feed', id: String(selectedFeed.id) })}
+                    disabled={handlers.busyId === `delete:${selectedFeed.id}`}
+                    title="Unsubscribe from this feed"
+                  >
+                    <Icon name="trash" size={13}/>
+                    <span>Unsubscribe</span>
+                  </button>
+                )
+              )}
+
+              {/* Clear articles action */}
               {handlers.onClearFeedEntries && feedEntries.length > 0 && (
-                confirmClearId === (isAllFeeds ? 'all' : String(selectedFeed.id)) ? (
+                confirmAction?.type === 'clear' && confirmAction.id === (isAllFeeds ? 'all' : String(selectedFeed.id)) ? (
                   <div class="folio-feed-confirm-box">
                     <span class="folio-feed-confirm-text">Clear all {entriesTotal} articles{isAllFeeds ? ' across all feeds' : ''}?</span>
                     <button
@@ -517,7 +585,7 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                       class="folio-feed-btn folio-feed-btn-danger"
                       onClick={() => {
                         const targetId = isAllFeeds ? 'all' : String(selectedFeed.id)
-                        setConfirmClearId(null)
+                        setConfirmAction(null)
                         handlers.onClearFeedEntries?.(targetId)
                         setFeedEntries([])
                         setEntriesTotal(0)
@@ -529,7 +597,7 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                     <button
                       type="button"
                       class="folio-feed-btn folio-feed-btn-cancel"
-                      onClick={() => setConfirmClearId(null)}
+                      onClick={() => setConfirmAction(null)}
                     >
                       Cancel
                     </button>
@@ -538,12 +606,12 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                   <button
                     type="button"
                     class="folio-feed-btn folio-feed-btn-clear"
-                    onClick={() => setConfirmClearId(isAllFeeds ? 'all' : String(selectedFeed.id))}
+                    onClick={() => setConfirmAction({ type: 'clear', id: isAllFeeds ? 'all' : String(selectedFeed.id) })}
                     disabled={handlers.busyId === 'clear-feed-entries'}
                     title={isAllFeeds ? 'Clear all imported articles across all feeds' : 'Clear imported articles for this feed'}
                   >
-                    <Icon name="trash" size={14}/>
-                    <span>{isAllFeeds ? 'Clear all feeds' : 'Clear articles'}</span>
+                    <Icon name="trash" size={13}/>
+                    <span>{isAllFeeds ? 'Clear all' : 'Clear articles'}</span>
                   </button>
                 )
               )}
@@ -555,14 +623,87 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
             </div>
           </div>
 
+          {/* Stream Filter & Search Row */}
+          <div class="folio-feed-filter-bar">
+            <div class="folio-feed-status-tabs" role="tablist" aria-label="Filter articles by status">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={statusFilter === 'all'}
+                class={`folio-feed-status-tab${statusFilter === 'all' ? ' is-active' : ''}`}
+                onClick={() => setStatusFilter('all')}
+              >
+                All <span class="folio-feed-tab-count">({countsByStatus.all})</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={statusFilter === 'inbox'}
+                class={`folio-feed-status-tab${statusFilter === 'inbox' ? ' is-active' : ''}`}
+                onClick={() => setStatusFilter('inbox')}
+              >
+                Inbox <span class="folio-feed-tab-count">({countsByStatus.inbox})</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={statusFilter === 'queued'}
+                class={`folio-feed-status-tab${statusFilter === 'queued' ? ' is-active' : ''}`}
+                onClick={() => setStatusFilter('queued')}
+              >
+                In Queue <span class="folio-feed-tab-count">({countsByStatus.queued})</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={statusFilter === 'consumed'}
+                class={`folio-feed-status-tab${statusFilter === 'consumed' ? ' is-active' : ''}`}
+                onClick={() => setStatusFilter('consumed')}
+              >
+                Consumed <span class="folio-feed-tab-count">({countsByStatus.consumed})</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={statusFilter === 'excluded'}
+                class={`folio-feed-status-tab${statusFilter === 'excluded' ? ' is-active' : ''}`}
+                onClick={() => setStatusFilter('excluded')}
+              >
+                Excluded <span class="folio-feed-tab-count">({countsByStatus.excluded})</span>
+              </button>
+            </div>
+
+            <div class="folio-feed-search-box">
+              <Icon name="search" size={14} class="folio-feed-search-icon"/>
+              <input
+                type="text"
+                class="folio-feed-search-input"
+                placeholder="Filter articles in stream…"
+                value={searchQuery}
+                onInput={(e) => setSearchQuery((e.currentTarget as HTMLInputElement).value)}
+                aria-label="Filter stream articles"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  class="folio-feed-search-clear"
+                  onClick={() => setSearchQuery('')}
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
           {loadingEntries ? (
             <div class="folio-shelf-loading">
               <Icon name="sync" size={16} class="folio-icon-spin"/>
               <span>Loading feed articles…</span>
             </div>
-          ) : feedEntries.length ? (
+          ) : filteredEntries.length ? (
             <div class="folio-record-list" aria-label={`Articles from ${selectedFeed.title || selectedFeed.feed_url}`}>
-              {feedEntries.map((item: LibraryRecord) => {
+              {filteredEntries.map((item: LibraryRecord) => {
                 const href = sourceLink(item)
                 const isQueued = item.learning_state === 'in_progress' || (item.status === 'active' && !['captured', 'inbox'].includes(String(item.learning_state || 'captured')))
                 const isConsumed = item.status === 'consumed'
@@ -574,11 +715,16 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                   <article class="folio-record" key={item.id}>
                     <div class="folio-record-main">
                       <RecordMeta>
-                        RSS · {selectedFeed.title || 'Feed'} · {formatDate(item.published_at || item.created_at || item.feed_imported_at)}
+                        RSS · {item.feed_title || selectedFeed.title || 'Feed'} · {formatDate(item.published_at || item.created_at || item.feed_imported_at)}
                       </RecordMeta>
                       <RowTitle item={item} onInspect={handlers.onInspect}/>
                       <p class="folio-record-reason">{formatReason(item)}</p>
-                      {item.branch_label && <a class="folio-badge folio-badge-branch folio-feed-branch-pill" href={`#/map/branch/${encodeURIComponent(String(item.branch_id))}`}><span class="badge-format">Branch</span><span>{item.branch_label}</span></a>}
+                      {item.branch_label && (
+                        <a class="folio-badge folio-badge-branch folio-feed-branch-pill" href={`#/map/branch/${encodeURIComponent(String(item.branch_id))}`}>
+                          <span class="badge-format">Branch</span>
+                          <span>{item.branch_label}</span>
+                        </a>
+                      )}
 
                       <div class="folio-row-actions">
                         {isInbox && (
@@ -586,7 +732,10 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                             <button
                               type="button"
                               class="folio-button folio-button-primary"
-                              onClick={() => handlers.onQueue(item)}
+                              onClick={() => {
+                                handlers.onQueue(item)
+                                setFeedEntries((prev) => prev.map((e) => e.id === item.id ? { ...e, learning_state: 'in_progress', status: 'active' } : e))
+                              }}
                               disabled={handlers.busyId === item.id}
                             >
                               Queue
@@ -594,7 +743,10 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                             <button
                               type="button"
                               class="folio-button"
-                              onClick={() => handlers.onExclude(item)}
+                              onClick={() => {
+                                handlers.onExclude(item)
+                                setFeedEntries((prev) => prev.map((e) => e.id === item.id ? { ...e, learning_state: 'excluded', status: 'rejected' } : e))
+                              }}
                               disabled={handlers.busyId === item.id}
                             >
                               Exclude
@@ -602,23 +754,37 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                           </>
                         )}
                         {isQueued && (
-                          <a class="folio-button folio-button-primary" href={objectHref('source', String(item.id))}>
+                          <a class="folio-button folio-button-primary" href="#/library?mode=queue" title="View in Learning Queue">
                             In Queue
                           </a>
                         )}
                         {isConsumed && (
-                          <span class="folio-record-note">
-                            Consumed
+                          <span class="folio-feed-status-pill is-consumed">
+                            Consumed {item.user_rating && item.user_rating !== 'unset' ? `(${item.user_rating}/10)` : ''}
                           </span>
                         )}
                         {isExcluded && (
-                          <span class="folio-record-note">
-                            Excluded
-                          </span>
+                          <>
+                            <span class="folio-feed-status-pill is-excluded">
+                              Excluded
+                            </span>
+                            <button
+                              type="button"
+                              class="folio-button"
+                              onClick={() => {
+                                handlers.onQueue(item)
+                                setFeedEntries((prev) => prev.map((e) => e.id === item.id ? { ...e, learning_state: 'in_progress', status: 'active' } : e))
+                              }}
+                              disabled={handlers.busyId === item.id}
+                            >
+                              Re-queue
+                            </button>
+                          </>
                         )}
                         {href && (
                           <a class="folio-button" href={href} target="_blank" rel="noreferrer">
-                            Open source
+                            <Icon name="external" size={12}/>
+                            <span>Open source</span>
                           </a>
                         )}
                         <a class="folio-button" href={objectHref('source', String(item.id))}>Record</a>
@@ -627,7 +793,7 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                             type="button"
                             class="folio-button folio-btn-quiet-trash"
                             onClick={() => {
-                              handlers.onDeleteFeedEntry?.(String(selectedFeed.id), item)
+                              handlers.onDeleteFeedEntry?.(String(item.feed_id || selectedFeed.id), item)
                               setFeedEntries((prev) => prev.filter((e) => e.id !== item.id))
                               setEntriesTotal((prev) => Math.max(0, prev - 1))
                             }}
@@ -661,6 +827,22 @@ export function FeedsView({ data, handlers }: { data: LibraryRecord; handlers: L
                   </article>
                 )
               })}
+            </div>
+          ) : feedEntries.length ? (
+            <div class="folio-feed-empty-state">
+              <Icon name="search" size={28}/>
+              <h3>No matching articles</h3>
+              <p>No articles matched your current status filter ("{statusFilter}") or search query "{searchQuery}".</p>
+              <button
+                type="button"
+                class="folio-button"
+                onClick={() => {
+                  setStatusFilter('all')
+                  setSearchQuery('')
+                }}
+              >
+                Reset filters
+              </button>
             </div>
           ) : (
             <div class="folio-feed-empty-state">

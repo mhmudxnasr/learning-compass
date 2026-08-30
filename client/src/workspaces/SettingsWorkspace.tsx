@@ -7,7 +7,7 @@ import { OperationalHealthPanel } from './OperationalHealthPanel'
 import { NotificationSettings } from './NotificationSettings'
 import { useData } from '../app/useData'
 import { useRoute } from '../app/router'
-import { THEME_PRESETS, FONT_PRESETS, THEME_VARIANTS, TYPOGRAPHY_LIMITS, applyTheme, applyFont, applyDisplayPreferences, applyTypography, auditThemeContrast, computeThemeVariables, getSavedTheme, getSavedFontId, getSavedCustomFont, getSavedCustomPalette, getSavedDisplayPreferences, getSavedTypography, getSavedThemePair, saveThemePair, extractColorsFromText, normalizeColor, normalizeCustomFont, type CustomPalette, type CustomFont, type DisplayPreferences, type TypographyPreferences, type ThemePair, type ThemeMode, DEFAULT_CUSTOM_PALETTE, DEFAULT_CUSTOM_FONT, DEFAULT_TYPOGRAPHY } from '../theme'
+import { THEME_PRESETS, FONT_PRESETS, THEME_VARIANTS, VISUAL_PRESETS, TYPOGRAPHY_LIMITS, applyTheme, applyFont, applyDisplayPreferences, applyTypography, auditThemeContrast, computeThemeVariables, paletteFromThemePreset, getSavedTheme, getSavedFontId, getSavedCustomFont, getSavedCustomPalette, getSavedDisplayPreferences, getSavedTypography, getSavedThemePair, saveThemePair, extractColorsFromText, normalizeColor, normalizeCustomFont, type CustomPalette, type CustomFont, type DisplayPreferences, type TypographyPreferences, type ThemePair, type ThemeMode, type FontPreset, type VisualPreset, DEFAULT_CUSTOM_PALETTE, DEFAULT_CUSTOM_FONT, DEFAULT_TYPOGRAPHY } from '../theme'
 import { PersonalDataStudio } from './settings/PersonalDataStudio'
 
 export type SettingsView = 'profile' | 'preferences' | 'data' | 'system'
@@ -139,16 +139,6 @@ const TYPOGRAPHY_CONTROLS: Array<{
   { key: 'readingMeasure', label: 'Reading width', description: 'Comfortable maximum line length', step: 1, suffix: 'ch' },
 ]
 
-type VisualPreset = {
-  id: string
-  name: string
-  description: string
-  theme: string
-  font: string
-  typography: TypographyPreferences
-  display: Pick<DisplayPreferences, 'density' | 'radius' | 'fontSize'>
-}
-
 type ThemeBundle = {
   name: string
   modes: ThemePair
@@ -163,45 +153,6 @@ type ThemeBundle = {
     responsiveViewport?: 'auto'
   }
 }
-
-const VISUAL_PRESETS: VisualPreset[] = [
-  {
-    id: 'focused',
-    name: 'Focused study',
-    description: 'Crisp sans text, generous sizing, and a calm paper surface.',
-    theme: 'botanical',
-    font: 'plex',
-    typography: { ...DEFAULT_TYPOGRAPHY, baseSize: 17, lineHeight: 1.62, readingMeasure: 70 },
-    display: { density: 'balanced', radius: 'soft', fontSize: 'large' },
-  },
-  {
-    id: 'quiet-reading',
-    name: 'Quiet reading',
-    description: 'A warm editorial palette with softer serif-led reading rhythm.',
-    theme: 'sepia',
-    font: 'editorial',
-    typography: { ...DEFAULT_TYPOGRAPHY, baseSize: 18, bodyWeight: 450, headingWeight: 650, lineHeight: 1.72, displayScale: 1.05, readingMeasure: 66 },
-    display: { density: 'comfortable', radius: 'soft', fontSize: 'large' },
-  },
-  {
-    id: 'night-lab',
-    name: 'Night lab',
-    description: 'Dark, high-focus contrast with compact data-friendly controls.',
-    theme: 'midnight',
-    font: 'system',
-    typography: { ...DEFAULT_TYPOGRAPHY, baseSize: 16, bodyWeight: 450, headingWeight: 650, lineHeight: 1.58, readingMeasure: 68 },
-    display: { density: 'compact', radius: 'sharp', fontSize: 'medium' },
-  },
-  {
-    id: 'clear-desk',
-    name: 'Clear desk',
-    description: 'Neutral, fast, and spacious when you want the interface to disappear.',
-    theme: 'indigo',
-    font: 'system',
-    typography: { ...DEFAULT_TYPOGRAPHY, baseSize: 16, lineHeight: 1.6, readingMeasure: 72 },
-    display: { density: 'balanced', radius: 'round', fontSize: 'medium' },
-  },
-]
 
 type ProfileField = { key: string; apiKey: string; readKey?: string; label: string; description: string; structured: boolean }
 
@@ -479,7 +430,13 @@ function ThemeContextPreview() {
   </section>
 }
 
-function ThemeSemanticPreview({ palette, mode }: { palette: CustomPalette; mode: ThemeMode }) {
+function ThemeSemanticPreview({ palette, mode, font, radius = 'soft', density = 'balanced' }: {
+  palette: CustomPalette
+  mode: ThemeMode
+  font?: FontPreset
+  radius?: DisplayPreferences['radius']
+  density?: DisplayPreferences['density']
+}) {
   const variables = computeThemeVariables(palette, mode)
   const previewStyle = {
     '--theme-mini-rail': variables['--studio-rail'],
@@ -492,12 +449,17 @@ function ThemeSemanticPreview({ palette, mode }: { palette: CustomPalette; mode:
     '--theme-mini-action-ink': variables['--studio-action-ink'],
     '--theme-mini-highlight': variables['--studio-lichen'],
     '--theme-mini-seam': variables['--studio-seam'],
+    '--theme-mini-font-ui': font?.ui || 'var(--font-ui)',
+    '--theme-mini-font-display': font?.display || 'var(--font-display)',
+    '--theme-mini-radius': radius === 'sharp' ? '2px' : radius === 'round' ? '14px' : '7px',
+    '--theme-mini-gap': density === 'compact' ? '5px' : density === 'comfortable' ? '9px' : '7px',
+    '--theme-mini-padding': density === 'compact' ? '7px' : density === 'comfortable' ? '11px' : '9px',
   }
-  return <span class="theme-semantic-preview" style={previewStyle as any} aria-hidden="true">
+  return <span class={`theme-semantic-preview${font ? ' visual-preset-preview' : ''}`} style={previewStyle as any} aria-hidden="true">
     <span class="theme-semantic-rail"><i /><i class="active" /><i /></span>
     <span class="theme-semantic-canvas">
-      <span class="theme-semantic-toolbar"><i /><b /></span>
-      <span class="theme-semantic-ledger"><strong /><em /><small /></span>
+      <span class="theme-semantic-toolbar"><i>{font ? 'Today' : ''}</i><b>{font ? 'Add' : ''}</b></span>
+      <span class="theme-semantic-ledger"><strong>{font ? 'Next lesson' : ''}</strong><em>{font ? 'Current Thread' : ''}</em><small>{font ? 'Ready' : ''}</small></span>
       <span class="theme-semantic-signal" />
     </span>
   </span>
@@ -555,7 +517,7 @@ function PreferencesView() {
     if (!resolved) return
     const currentTheme = (resolved.appearance as any)?.theme || theme
     const rawPalette = (resolved.appearance as any)?.custom_palette
-    const currentPalette = rawPalette ? { ...customPalette, ...rawPalette, ink: rawPalette.ink && rawPalette.ink !== rawPalette.accent ? rawPalette.ink : (rawPalette.brand || customPalette.ink), map: rawPalette.map || '#3f6e4e' } : customPalette
+    const currentPalette = rawPalette ? { ...customPalette, ...rawPalette, ink: rawPalette.ink && rawPalette.ink !== rawPalette.accent ? rawPalette.ink : (rawPalette.brand || customPalette.ink), map: rawPalette.map || '#337f8c' } : customPalette
     setTheme(currentTheme)
     if ((resolved.appearance as any)?.custom_palette) {
       setCustomPalette(currentPalette)
@@ -910,7 +872,7 @@ function PreferencesView() {
       seam: seam || customPalette.seam,
       due: due || customPalette.due,
       danger: danger || customPalette.danger,
-      map: map || customPalette.map || '#3f6e4e',
+      map: map || customPalette.map || '#337f8c',
     }
     setCustomPalette(nextPalette)
     setTheme('custom')
@@ -923,15 +885,15 @@ function PreferencesView() {
   const copyThemePrompt = async () => {
     const paletteBrief = Object.entries(customPalette).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`).join(', ')
     const effectiveCustomFont = normalizeCustomFont(customFont)
-    const prompt = `Act as an award-winning visual designer for Learning Compass, a calm Botanical Folio / Evidence Ledger learning workspace. Create a fresh, genuinely distinctive theme from this brief: ${paletteBrief || 'no colors selected yet'}. Every run must invent a different creative direction and independently choose either DAY or NIGHT mode. Explore unusual but coherent combinations: editorial paper, mineral, ink, botanical, astronomical, lacquer, desert, coastal, or another strong art direction. Keep the palette intentional, restrained, and production-ready; no muddy near-duplicates, accidental brown swaps, generic SaaS blue, gradients, or neon unless the concept truly requires it. Preserve WCAG AA contrast (4.5:1 minimum) for ink on shell/surface and make rail, seams, due, danger, and map unmistakable.
-
-OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code per line, with no labels, no bullets, no markdown fences, no prose, no mode name, and no extra blank lines. The order is: brand, shell, surface, highlight, accent, ink, rail, seam, due, danger, map. Each line must match ^#[0-9A-F]{6}$; return exactly 11 lines and nothing else.`
     const fullPrompt = [
-      'Act as an award-winning visual designer for Learning Compass. Create a complete visual system, not only a color palette.',
+      'Act as the senior product art director for Learning Compass, a premium 2026 learning workspace. Redesign the complete product system—not only its color palette and not only this Preferences screen.',
+      'Creative direction: warm off-white editorial planes, lifted paper-white surfaces, crisp black ink, one confident coral primary action, generous pill geometry for decisive actions, thin architectural seams, calm whitespace, and highly legible information hierarchy. The result should feel human-crafted, tactile, current, and quietly expensive.',
+      'Use premium product and editorial references such as Attio, Framer, Linear, Raycast, Superhuman, Readwise Reader, Notion, Craft, Arc, and Are.na as quality bars, while creating an original Learning Compass system. Do not copy proprietary layouts, logos, illustrations, or exact brand palettes.',
       `Current visual system: palette ${paletteBrief || 'none'}; font preset ${font}; UI/body stack ${effectiveCustomFont.ui}; display/headings stack ${effectiveCustomFont.display}; reading/long-form stack ${effectiveCustomFont.reading}; mono/code-and-evidence stack ${effectiveCustomFont.mono}.`,
       `Global typography settings: ${typography.baseSize}px base size; body weight ${typography.bodyWeight}; heading weight ${typography.headingWeight}; line height ${typography.lineHeight}; letter spacing ${typography.letterSpacing}em; display scale ${typography.displayScale}x; reading width ${typography.readingMeasure}ch. Global interface settings: ${density} density, ${radius} radius, ${fontSize} font size, reduced motion ${reducedMotion}. Responsive scaling is automatic: +8% from 1440px and +14% from 1920px; mobile stays at the selected size.`,
-      'Return a complete visual system that the Learning Compass importer can apply globally across Home, Library, Learn, Map, and Settings. The font field selects the active font system; when font is custom, all four customFont stacks must be populated and usable. The typography object controls the whole site, not only this settings preview. Use web-loadable font families or robust fallbacks; never return undefined or blank stacks. For Arabic, include Noto Sans Arabic or Noto Naskh Arabic. Berkeley Mono is local-only and must include IBM Plex Mono, JetBrains Mono, or ui-monospace as fallback. Preserve the Botanical Folio / Evidence Ledger identity, WCAG AA contrast, and a 45–75ch reading measure. Return only valid JSON with no markdown or prose.',
-      'Schema: {"name":"short name","modes":{"day":{11 color keys},"night":{11 color keys}},"appearance":{"font":"plex|system|editorial|terminal|custom","customFont":{"ui":"font stack for body and interface","display":"font stack for headings","reading":"font stack for long-form reading","mono":"font stack for code metadata and evidence"},"typography":{"baseSize":16,"bodyWeight":400,"headingWeight":600,"lineHeight":1.55,"letterSpacing":0,"displayScale":1,"readingMeasure":68},"density":"comfortable|balanced|compact","radius":"sharp|soft|round","fontSize":"small|medium|large","reducedMotion":false,"responsiveViewport":"auto"}}. Use uppercase #RRGGBB values for brand, shell, surface, highlight, accent, ink, rail, seam, due, danger, and map in both modes.'
+      'Apply the direction coherently to the persistent rail, command bar, page horizons, workspace modes, filters, reading surfaces, ledgers, cards, forms, dialogs, inspectors, maps, empty states, and the mobile bottom dock across Home, Library, Learn, Map, and Settings. Primary actions should be unmistakable; secondary controls should remain quiet. Preserve semantic hierarchy and actual workflows rather than turning the product into a marketing landing page.',
+      'Reject generic dashboard card grids, excessive glass effects, decorative gradients, neon-on-black clichés, interchangeable rounded rectangles, tiny low-contrast metadata, and motion without meaning. Keep WCAG AA contrast, 44px mobile targets, RTL-safe geometry, clear Arabic fallbacks, a 45–75ch reading measure, and reduced-motion support. Use web-loadable font families or robust fallbacks; never return blank stacks. For Arabic, include Noto Sans Arabic or Noto Naskh Arabic. Berkeley Mono is local-only and must include IBM Plex Mono, JetBrains Mono, or ui-monospace as fallback.',
+      'Return only valid JSON with no markdown or prose. Schema: {"name":"short name","modes":{"day":{11 color keys},"night":{11 color keys}},"appearance":{"font":"studio|plex|inter|editorial|newsreader|jakarta|system|terminal|custom","customFont":{"ui":"font stack for body and interface","display":"font stack for headings","reading":"font stack for long-form reading","mono":"font stack for code metadata and evidence"},"typography":{"baseSize":17,"bodyWeight":400,"headingWeight":650,"lineHeight":1.62,"letterSpacing":-0.008,"displayScale":1.05,"readingMeasure":70},"density":"comfortable|balanced|compact","radius":"sharp|soft|round","fontSize":"small|medium|large","reducedMotion":false,"responsiveViewport":"auto"}}. Use uppercase #RRGGBB values for brand, shell, surface, highlight, accent, ink, rail, seam, due, danger, and map in both modes.'
     ].join('\n')
     try {
       await navigator.clipboard.writeText(fullPrompt)
@@ -1006,7 +968,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
 
     <section class="visual-presets-section" aria-labelledby="visual-presets-title" id="visual-presets-heading">
       <div class="section-head">
-        <div><span class="preference-section-number">01 · Workspace style</span><h2 id="visual-presets-title">Start with a complete workspace</h2><p class="section-description">One choice sets the color, type, spacing, and shape together. Fine-tune anything below.</p></div>
+        <div><span class="preference-section-number">01 · Workspace style</span><h2 id="visual-presets-title">Choose a distinct visual world</h2><p class="section-description">Eight premium-product references, rebuilt for Learning Compass. One choice sets color, type, spacing, and shape across the whole site.</p></div>
         <button type="button" class="btn-surprise" onClick={surpriseMe} disabled={variantGenerating}>{variantGenerating ? 'Creating a style…' : 'Surprise me'}</button>
       </div>
       <div class="visual-presets-grid">
@@ -1015,8 +977,8 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
           const fontPreset = FONT_PRESETS.find((item) => item.id === preset.font)
           const isActive = activePreset?.id === preset.id
           return <button type="button" class={`visual-preset-card${isActive ? ' active' : ''}`} aria-pressed={isActive} key={preset.id} onClick={() => applyVisualPreset(preset)}>
-            <span class="visual-preset-swatch" aria-hidden="true">{themePreset?.swatches.map((color) => <i key={color} style={{ background: color }} />)}</span>
-            <span class="visual-preset-copy"><strong>{preset.name}</strong><small>{preset.description}</small><em>{fontPreset?.name} · {preset.typography.baseSize}px · {preset.display.fontSize}</em></span>
+            {themePreset ? <ThemeSemanticPreview palette={paletteFromThemePreset(themePreset)} mode={themePreset.mode} font={fontPreset} radius={preset.display.radius} density={preset.display.density} /> : null}
+            <span class="visual-preset-copy"><span class="visual-preset-reference">{preset.inspiration}</span><strong>{preset.name}</strong><small>{preset.description}</small><span class="visual-preset-spec">{fontPreset?.name} · {preset.typography.baseSize}px · {preset.display.density}</span></span>
           </button>
         })}
       </div>
@@ -1057,7 +1019,7 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
           <div class="theme-presets-grid" role="group" aria-label={group.title}>
             {THEME_PRESETS.filter((preset) => preset.mode === group.mode).map((preset) => {
               const isSelected = theme === preset.id
-              const palette: CustomPalette = { brand: preset.swatches[0], shell: preset.swatches[1], highlight: preset.swatches[2], accent: preset.swatches[3], ink: preset.ink }
+              const palette = paletteFromThemePreset(preset)
               return <button
                 key={preset.id}
                 type="button"

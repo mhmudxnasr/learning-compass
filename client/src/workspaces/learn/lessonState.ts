@@ -10,3 +10,12 @@ export function lessonReadiness(lesson: { status?: string | null; content?: stri
   if (lesson.status === 'in_progress') return 'in_progress'
   return 'ready'
 }
+
+export function findNextThreadLesson<T extends { id: string }>(
+  stages: ReadonlyArray<{ lessons: ReadonlyArray<T> }>,
+  currentLessonId: string,
+): T | null {
+  const lessons = stages.flatMap((stage) => stage.lessons)
+  const currentIndex = lessons.findIndex((lesson) => lesson.id === currentLessonId)
+  return currentIndex >= 0 ? lessons[currentIndex + 1] || null : null
+}

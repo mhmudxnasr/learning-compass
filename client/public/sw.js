@@ -1,4 +1,4 @@
-const CACHE = 'learning-compass-shell-v46'
+const CACHE = 'learning-compass-shell-v51'
 const DATA_CACHE = 'learning-compass-data-v5'
 const ARTIFACT_CACHE = 'learning-compass-html-artifacts-v2'
 const CORE_ASSETS = ['/manifest.json', '/icon.svg', '/icons/compass-192.png', '/icons/compass-512.png', '/icons/compass-maskable-512.png']

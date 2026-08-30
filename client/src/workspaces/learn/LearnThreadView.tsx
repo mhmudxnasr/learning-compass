@@ -5,7 +5,7 @@ import { routeHref } from '../../app/router'
 import { Empty, ErrorState, Loading } from '../../components/States'
 import { Icon } from '../../components/Icon'
 import { useData } from '../../app/useData'
-import { artifactHref, cardHref, cleanTitle, lessonHref, lessonReadiness, noteHref, percent, roleLabel, statusLabel } from './helpers'
+import { artifactHref, cardHref, cleanTitle, findNextThreadLesson, lessonHref, lessonReadiness, noteHref, percent, roleLabel, statusLabel } from './helpers'
 import { buildSourceMaterialLauncher, SourceMaterialKind } from './sourceMaterials'
 import { NoteRecord, PathArtifact, PathResponse, PathSource, PathStage, RecallCard, RecallDraft, ThreadLesson, ThreadProject } from './types'
 import { ThreadAuthoring } from './ThreadAuthoring'
@@ -60,6 +60,7 @@ export function LearnThreadView({
             stage={activeStage!}
             threadId={threadId}
             threadTitle={path.data.thread.title}
+            followingLesson={findNextThreadLesson(stages, activeLesson.id)}
             onChanged={path.reload}
           />
         ) : activeStage ? (
@@ -1841,12 +1842,14 @@ function LessonView({
   stage,
   threadId,
   threadTitle,
+  followingLesson,
   onChanged,
 }: {
   lesson: ThreadLesson
   stage: PathStage
   threadId: string
   threadTitle: string
+  followingLesson: ThreadLesson | null
   onChanged: () => void
 }) {
   const [saving, setSaving] = useState(false)
@@ -1871,6 +1874,9 @@ function LessonView({
         body: JSON.stringify({ status: nextStatus }),
       })
       onChanged()
+      if (nextStatus === 'completed' && followingLesson) {
+        location.hash = lessonHref(threadId, followingLesson.id).slice(1)
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Lesson update failed.')
     } finally {

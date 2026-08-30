@@ -321,6 +321,6 @@ npx wrangler deploy --config wrangler.toml
 
 Code deployment and data changes are separate operations. D1 or R2 data-only writes do not require a Worker deployment.
 
-Current deployed Worker version: `5ad589b7-d710-447e-b388-e3318b846847`. The deployed PWA shell cache is `learning-compass-shell-v45`.
+Current deployed Worker version: `2fff478d-e866-476c-a7bc-ca6142ef1c0f`. Rollback version: `065dc99c-a54c-43d9-a239-6c08395b78cc`. The deployed PWA shell cache is `learning-compass-shell-v49`.
 
 The production Worker, R2 bucket, cache names, protocol name, cron name, and Hermes paths retain legacy identifiers for compatibility even though the product and repository are named Learning Compass.

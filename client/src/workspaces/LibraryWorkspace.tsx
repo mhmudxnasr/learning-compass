@@ -307,7 +307,6 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
   }
 
   const deleteFeed = async (feed: LibraryRecord) => {
-    if (!window.confirm(`Unsubscribe from “${feed.title || feed.feed_url}”? Imported articles will remain in your library.`)) return
     setWorking(`delete:${feed.id}`)
     setNotice('')
     try {
@@ -337,7 +336,6 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
   }
 
   const clearFeedEntries = async (feedId: string) => {
-    if (!window.confirm('Remove all imported articles for this feed?')) return
     setWorking('clear-feed-entries')
     setNotice('')
     try {
