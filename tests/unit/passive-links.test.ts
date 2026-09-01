@@ -22,6 +22,7 @@ test('Home source and file links remain passive and hand tracked starts to Queue
 
 test('Home shows an expanded resurfacing item first and renders no empty shelf', () => {
   assert.ok(home.indexOf('{resurfacingItem && <section class="folio-home-resurfacing"') < home.indexOf('<section class="folio-home-focus"'))
+  assert.match(home, /class="folio-resurfacing-record-link" href=\{canonicalObjectHref\('library', 'source', resurfacingItem\.recommendation_id\)\}/)
   assert.doesNotMatch(home, /Nothing is due today/)
   assert.doesNotMatch(home, /<details[^>]*folio-home-resurfacing/)
 })

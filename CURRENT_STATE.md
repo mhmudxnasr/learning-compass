@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-01 (resurfacing source dossier link, local)
+
+The Daily resurfacing card on Home now opens the unified source dossier for its exact recommendation id from the title or card surface. Branch, Original/HTML/PDF, Star, Reviewed, Snooze, and Dismiss remain independent controls and keep their existing behavior. The destination continues to expose source access, branch context, recall, feedback and outcome, files, and notes.
+
+Verification passes all 380 unit tests, TypeScript, the 117.71 KB gzip production build, the complete Worker-backed E2E suite across five roots / 16 mode states / typed objects / Android and mobile shells, and `git diff --check`. This remains local only; no deployment or production mutation occurred.
+
 ## Current truth — 2026-08-28 (structural shell redesign, local)
 
 The five-root client now has three explicit architectural planes: a 108px navigation-only desktop rail, a 64px workspace command bar, and the working field. Search and capture no longer compete with root navigation. Root context and grouped workspace modes live in the command bar, so Books/Triage/Archive/Files and the other mode sets no longer render as detached secondary headers on desktop. Ordinary workspaces retain a centered 1280px field while Atlas remains intentionally edge-to-edge.

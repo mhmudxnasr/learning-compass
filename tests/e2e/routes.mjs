@@ -1152,6 +1152,40 @@ if (balance.branches?.[0]?.id) {
   await page.goto(`${baseUrl}/#/map/branch/${branchId}`, { waitUntil: 'networkidle' })
   if (await page.locator('.object-inspector').count() !== 1 || !(await page.locator('.inspector-route').innerText()).includes(`/map/branch/${balance.branches[0].id}`)) throw new Error('typed map branch route did not open its inspector plumbing')
 }
+const resurfacingNavigationSource = await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/e2e-resurfacing-record', title: 'E2E resurfacing source record', branch_id: 'fixture-branch-id' }) })
+const resurfacingRoutePattern = /\/brain\/resurfacing\?limit=5$/
+const resurfacingPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', extraHTTPHeaders: { 'x-real-ip': 'e2e-resurfacing-browser' } })
+await resurfacingPage.route(resurfacingRoutePattern, async (route) => {
+  if (route.request().method() !== 'GET') return route.continue()
+  return route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ item: {
+      recommendation_id: resurfacingNavigationSource.id,
+      title: 'E2E resurfacing source record',
+      creator: 'E2E fixture',
+      content_type: 'article',
+      source_url: 'https://example.com/e2e-resurfacing-record',
+      due_at: '2026-09-01',
+      starred: false,
+      branch: { id: 'fixture-branch-id', label: 'Readable fixture branch' },
+      domain: { id: 'cat-mind', label: 'Mind' },
+      companions: {},
+      presentation: { id: 'e2e-resurfacing-presentation' },
+    } }),
+  })
+})
+await resurfacingPage.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
+await resurfacingPage.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout: 15000 })
+const resurfacingRecordLink = resurfacingPage.getByRole('link', { name: 'Open source record: E2E resurfacing source record' })
+await resurfacingRecordLink.waitFor({ state: 'visible', timeout: 15000 })
+if ((await resurfacingRecordLink.getAttribute('href')) !== `#/library/source/${encodeURIComponent(resurfacingNavigationSource.id)}`) throw new Error('Home resurfacing card did not target the matching source id')
+await resurfacingPage.locator('.folio-home-resurfacing').click({ position: { x: 24, y: 24 } })
+await resurfacingPage.locator('.folio-object-view').waitFor({ state: 'visible', timeout: 15000 })
+if (!resurfacingPage.url().includes(`#/library/source/${encodeURIComponent(resurfacingNavigationSource.id)}`)) throw new Error('Home resurfacing card did not preserve the source identity in its destination')
+for (const heading of ['Source access', 'Branch', 'Active recall', 'Feedback & outcome', 'Files']) {
+  if (!(await resurfacingPage.getByRole('heading', { name: heading }).isVisible())) throw new Error(`Home resurfacing card destination is missing ${heading}`)
+}
+await resurfacingPage.close()
 await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
 await page.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout: 15000 })
 const homeBody = await page.locator('.workspace-canvas').innerText()

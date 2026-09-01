@@ -147,7 +147,7 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
       <article class="folio-resurfacing-card">
         <div class="folio-resurfacing-copy">
           <a class="folio-badge folio-badge-branch" href={`#/map/branch/${encodeURIComponent(resurfacingItem.branch.id)}`} title="Open branch dossier"><span class="badge-format">Branch</span><span>{resurfacingItem.branch.label}</span></a>
-          <h3>{resurfacingItem.title}</h3>
+          <h3><a class="folio-resurfacing-record-link" href={canonicalObjectHref('library', 'source', resurfacingItem.recommendation_id)} aria-label={`Open source record: ${resurfacingItem.title}`}>{resurfacingItem.title}</a></h3>
           <p class="folio-record-meta">{[resurfacingItem.creator, resurfacingItem.content_type ? labelize(resurfacingItem.content_type) : null, `Due ${formatDate(resurfacingItem.due_at)}`, resurfacingItem.domain.label].filter(Boolean).join(' · ')}</p>
           <div class="folio-resurfacing-links" aria-label="Passive source links">
             {resurfacingItem.source_url && <a class="folio-quick-link" href={resurfacingItem.source_url} target="_blank" rel="noreferrer">Original</a>}

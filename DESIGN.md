@@ -74,7 +74,7 @@ components:
 
 # Design System: Botanical Folio
 
-Resurfacing uses one quiet Memory Shelf card on Home with a canonical branch pill and explicit Star, Reviewed, Snooze, and Dismiss controls. Note distillation stays inside the reader as progressive disclosure. Meaningful links show relation type, explanation, counterpart Unit, source anchor, and branch identity. Contradictions live under Learn → Practice; frontier states remain restrained Map signals rather than a new root destination.
+Resurfacing uses one quiet Memory Shelf card on Home with a canonical branch pill and explicit Star, Reviewed, Snooze, and Dismiss controls. Its source title and card body open the unified source dossier, while its branch, companion, and review controls keep their own destinations and actions. Note distillation stays inside the reader as progressive disclosure. Meaningful links show relation type, explanation, counterpart Unit, source anchor, and branch identity. Contradictions live under Learn → Practice; frontier states remain restrained Map signals rather than a new root destination.
 
 ## Overview
 
