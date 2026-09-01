@@ -1,10 +1,14 @@
 # Learning Compass — Current State
 
-## Current truth — 2026-09-01 (read-only Hardcover history in Books, release candidate)
+## Current truth — 2026-09-01 (read-only Hardcover history in Books, deployed)
 
 Library → Books now composes the existing D1 Hardcover mirror into My Books without calling the import route or creating personal-ledger records. An explicit `recommendation_id` or one unambiguous normalized title/primary-author match displays once with Hardcover's reading status; unmatched mirror titles remain visibly sourced from Hardcover, open their external book page, and expose no internal branch, dossier, chapter, pin, or reading-state action. The canonical editable `books[]` contract, verified-branch intake, Queue exclusion, and explicit branch-gated `/hardcover/import` path remain unchanged. The installed PWA shell advances to `learning-compass-shell-v54` so cached clients cannot retain the previous Books projection.
 
-This application-only release candidate is layered on the currently deployed resurfacing-card release. Its guarded verification and deployment receipt will replace this paragraph after release; it performs no migration, Hardcover import, corpus operation, or product-data mutation.
+The guarded application release passed quality, 491/491 unit tests, TypeScript, all six isolated Worker/D1 integration programs, the production build at 133.26 KB gzip for base JavaScript and 102.34 KB gzip for CSS, full Worker/browser E2E, clean and idempotent rehearsal across 75 migrations, both Hermes prompt contracts with 30 synchronized checks and 145 owned routes, 32/32 agent-control tests, 37/37 deterministic manager-routing tests, both 46/46 installed site-client suites, and the final tracked-diff check.
+
+Fresh recovery snapshot `backup_20260901T054625Z` contains a 107,258,536-byte D1 export with SHA-256 `805074d0d959926123497366f1c125484b7801bd6cadd853ce21fd5226d90734` and 1,448 checksum-verified R2 objects totaling 155,208,175 bytes. Its rehearsal restored 677 recommendations, 80 notes, 1,448 artifacts, four Threads, and 34 recall cards with SQLite integrity `ok` and zero foreign-key violations.
+
+Worker version `0fec3f5b-9d48-4c90-a6c2-0b6a663cadad` is deployed at 100%; application rollback is `767bc906-32df-4450-b6d3-9980e71e4e84`. Pre- and post-deploy readiness passed with zero blockers, and the canonical live smoke suite passed. Live `GET /recommendations/books` returns 36 canonical records plus the separate 45-book Hardcover mirror; client composition reconciles seven identities into 74 visible books with 32 saved, six reading, and 36 finished. The deployed service worker exposes shell v54. No migration, Hardcover import, corpus operation, product-data write, or R2 content write occurred; only the required verified recovery receipt was recorded in D1 before deployment.
 
 ## Current truth — 2026-09-01 (resurfacing source dossier link, deployed)
 
