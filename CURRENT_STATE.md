@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-01 (resurfacing source dossier link, release candidate)
+
+The Daily resurfacing card on Home opens the unified source dossier for its exact recommendation id from the title or card surface. Branch, Original/HTML/PDF, Star, Reviewed, Snooze, and Dismiss remain independent controls with their existing behavior. The destination retains source access, branch context, recall, feedback and outcome, files, and notes. The installed PWA shell advances to `learning-compass-shell-v53` so an installed client cannot retain the superseded Home interaction.
+
+This is an application-only release candidate with no schema, D1, R2, corpus, or target-set mutation. Its exact verification and deployment receipt will replace this paragraph after the guarded release completes.
+
 ## Current truth — 2026-09-01 (integrated learning workflows and production hardening, deployed)
 
 The deployed release consolidates the complete 2026-08-31 learning-workflow work into the repository and production branch: durable share-intake review, revisioned source anchors, non-destructive recall repair, verified offline packs, advisory source health and guarded replacement, Library-first Thread material organization, exact-Lesson material requests, and continuous next-Lesson navigation. The existing migrations through `0073_source_annotation_revisions.sql` remain the production schema truth; this application release did not reapply migrations or mutate the corpus.

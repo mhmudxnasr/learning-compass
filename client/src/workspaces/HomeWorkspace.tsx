@@ -330,7 +330,15 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
                     <span class="badge-format">Branch</span>
                     <span>{resurfacingItem.branch.label}</span>
                   </a>
-                  <h3>{resurfacingItem.title}</h3>
+                  <h3>
+                    <a
+                      class="folio-resurfacing-record-link"
+                      href={canonicalObjectHref('library', 'source', resurfacingItem.recommendation_id)}
+                      aria-label={`Open source record: ${resurfacingItem.title}`}
+                    >
+                      {resurfacingItem.title}
+                    </a>
+                  </h3>
                   <p class="folio-record-meta">
                     {[
                       resurfacingItem.creator,
