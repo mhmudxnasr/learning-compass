@@ -34,6 +34,7 @@ import canonApi from './api/canon'
 import annotationsApi from './api/annotations'
 import { DAILY_READ_BUDGET, DAILY_WRITE_BUDGET, reserveFreeTierBudget, secondsUntilUtcReset } from './services/free-tier-budget'
 import { DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, mutationReservationDisposition } from './services/mutation-recovery'
+import { classifyShareIntake, consumeShareIntake, createShareIntake, extractSharedSourceUrl, loadPendingShareIntakes, loadShareIntake, resolveShareIntake, ShareIntakeError } from './services/share-intakes'
 
 const app = new Hono<{ Bindings: Bindings; Variables: { requestId: string } }>()
 const PUBLIC_LEARNING_UPDATE_PATH = '/updates/learning-materials'
@@ -340,7 +341,7 @@ app.get('/manifest.json', async (c) => {
 
 app.get('/sw.js', async (c) => {
   const assetUrl = new URL(c.req.url)
-  assetUrl.searchParams.set('release', 'shell-v44-data-v5')
+  assetUrl.searchParams.set('release', 'shell-v52-data-v5-packs-v1')
   const asset = await c.env.ASSETS.fetch(assetUrl.toString())
   const headers = new Headers(asset.headers)
   headers.set('Content-Type', 'application/javascript; charset=utf-8')
@@ -349,7 +350,46 @@ app.get('/sw.js', async (c) => {
   return new Response(asset.body, { status: asset.status, headers })
 })
 
-// Share target — receives URLs shared from mobile/desktop and preserves failed input.
+app.get('/api/share-intakes/pending', async (c) => {
+  const intakes = await loadPendingShareIntakes(c.env.DB, Number(c.req.query('limit') || 10))
+  return c.json({ intakes })
+})
+
+app.get('/api/share-intakes/:id', async (c) => {
+  const intake = await loadShareIntake(c.env.DB, c.req.param('id'))
+  return intake ? c.json({ intake }) : c.json({ error: 'share_intake_not_found' }, 404)
+})
+
+app.post('/api/share-intakes/:id/resolve', async (c) => {
+  try {
+    const body = await c.req.json<any>().catch(() => ({}))
+    const intake = await resolveShareIntake(c.env.DB, c.req.param('id'), body.kind)
+    return c.json({ ok: true, intake })
+  } catch (error) {
+    if (error instanceof ShareIntakeError) return c.json({ error: error.code, message: error.message }, error.status as 400 | 404 | 409)
+    throw error
+  }
+})
+
+app.post('/api/share-intakes/:id/consume', async (c) => {
+  try {
+    const body = await c.req.json<any>().catch(() => ({}))
+    const intake = await consumeShareIntake(c.env.DB, c.req.param('id'), {
+      recommendationId: body.recommendation_id,
+      annotationId: body.annotation_id,
+    })
+    return c.json({ ok: true, intake })
+  } catch (error) {
+    if (error instanceof ShareIntakeError) return c.json({ error: error.code, message: error.message }, error.status as 400 | 404 | 409)
+    throw error
+  }
+})
+
+// Share target — persist the POST body before redirecting. Ordinary shares stay
+// pending until the required branch-reviewed Capture succeeds; selected text
+// stays pending until its exact source annotation has been saved. When prose
+// and a URL arrive together, persist `review` and let the learner choose which
+// of those two paths the share intended instead of guessing from Android data.
 app.post('/api/share-target', async (c) => {
   let candidate = ''
   try {
@@ -357,15 +397,20 @@ app.post('/api/share-target', async (c) => {
     const title = form.get('title')?.toString()?.trim()
     const text = form.get('text')?.toString()?.trim()
     const url = form.get('url')?.toString()?.trim()
-    candidate = url || text || ''
-    if (!candidate || candidate.length > 10000) return c.redirect('/#/home?action=capture&share=invalid', 303)
-    const derivedTitle = title || (isValidUrl(String(candidate)) ? candidate.split('/').pop()?.replace(/-/g, ' ') : candidate.slice(0, 100)) || 'Shared item'
-    const result = await createCapture(c.env.DB, { source: candidate, title: derivedTitle })
-    return c.redirect(`/#/library/source/${encodeURIComponent(result.id)}?from=home&share=${result.duplicate ? 'existing' : 'saved'}`, 303)
+    const sourceUrl = isValidUrl(url) ? url : extractSharedSourceUrl(text)
+    candidate = sourceUrl || text || ''
+    if (!candidate || candidate.length > 10000 || (title?.length || 0) > 500 || (text?.length || 0) > 10000 || (url?.length || 0) > 2048) {
+      return c.redirect('/#/home?action=capture&share=invalid', 303)
+    }
+    const kind = classifyShareIntake(text, sourceUrl)
+    const intake = await createShareIntake(c.env.DB, { kind, title, text, sourceUrl })
+    if (!intake) throw new Error('share intake insert was not readable')
+    const query = new URLSearchParams({ action: kind === 'review' ? 'review-share' : 'capture', share_intake: intake.id })
+    return c.redirect(`/#/home?${query.toString()}`, 303)
   } catch (error) {
     console.error(JSON.stringify({ ts: new Date().toISOString(), level: 'error', msg: 'share_target_capture_failed', error: safeErrorMessage(error) }))
-    const query = new URLSearchParams({ action: 'capture', share: 'retry', ...(candidate ? { capture: candidate } : {}) })
-    return c.redirect(`/#/home?${query.toString()}`, 303)
+    c.header('Retry-After', '5')
+    return c.text('Learning Compass could not save this shared item. Return to the source and share it again.', 503)
   }
 })
 

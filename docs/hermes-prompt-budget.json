@@ -4,7 +4,7 @@
   "max_system_prompt_bytes": 25723,
   "max_tool_schema_bytes": 24098,
   "max_fixed_payload_bytes": 49821,
-  "max_skills_index_bytes": 2809,
+  "max_skills_index_bytes": 2927,
   "expected_tools": [
     "memory",
     "patch",
@@ -20,7 +20,7 @@
     "web_search",
     "write_file"
   ],
-  "tool_schema_sha256": "c6c3a27912e51ea1718a81bde173b46393b3a64f1c1be8ec14b6f1f5bf8cdd3f",
+  "tool_schema_sha256": "81d80dd0fd8054a3e324a535d24b71683508dec5670a9aec7e5e8838b4f30a22",
   "require_memory_readable": true,
   "require_memory_within_limits": true,
   "require_memory_tail_loaded": true,

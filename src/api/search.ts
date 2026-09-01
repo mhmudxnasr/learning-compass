@@ -2,6 +2,10 @@ import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
 
 const app = new Hono<{ Bindings: Bindings }>()
+const validAnnotationOwnershipJoins = `JOIN recommendations r ON r.id=a.recommendation_id AND r.deleted_at IS NULL AND lower(COALESCE(r.status,''))!='deleted'
+      JOIN recommendation_meta m ON m.recommendation_id=r.id AND m.branch_id=a.branch_id
+      JOIN tree_nodes b ON b.id=m.branch_id AND b.type IN ('branch','leaf') AND lower(COALESCE(b.status,''))!='pruned'
+      JOIN tree_nodes d ON d.id=b.super_category AND d.type='category' AND lower(COALESCE(d.status,''))!='pruned'`
 
 // Evidence retrieval is deliberately separate from broad search. Hermes gets a
 // source quote plus its durable locator and downstream learning objects, so a
@@ -10,16 +14,23 @@ const app = new Hono<{ Bindings: Bindings }>()
 app.get('/evidence', async (c) => {
   const q = (c.req.query('q') || '').trim()
   if (q.length < 2) return c.json({ error: 'q must contain at least two characters' }, 400)
+  if (q.length > 200) return c.json({ error: 'q must contain at most 200 characters' }, 400)
   const limit = Math.max(1, Math.min(Number(c.req.query('limit') || 24), 100))
-  const conditions = ["a.status='active'", '(a.quote LIKE ? OR a.context_before LIKE ? OR a.context_after LIKE ?)']
-  const bindings: unknown[] = [`%${q}%`, `%${q}%`, `%${q}%`]
+  const like = `%${q.replace(/([\\%_])/g, '\\$1')}%`
+  const conditions = ["a.status='active'", "(a.quote LIKE ? ESCAPE '\\' OR a.context_before LIKE ? ESCAPE '\\' OR a.context_after LIKE ? ESCAPE '\\')"]
+  const bindings: unknown[] = [like, like, like]
   const recommendationId = (c.req.query('recommendation_id') || '').trim()
   const threadId = (c.req.query('thread_id') || '').trim()
+  const branchId = (c.req.query('branch_id') || '').trim()
   if (recommendationId) { conditions.push('a.recommendation_id=?'); bindings.push(recommendationId) }
   if (threadId) { conditions.push('a.thread_id=?'); bindings.push(threadId) }
+  if (branchId) { conditions.push('a.branch_id=?'); bindings.push(branchId) }
   try {
-    const rows = await c.env.DB.prepare(`SELECT a.id,a.recommendation_id,a.artifact_id,a.thread_id,a.branch_id,a.locator_type,a.selector_json,a.quote,a.context_before,a.context_after,a.language,a.source_checksum,a.created_at,r.video_title AS source_title
-      FROM source_annotations a LEFT JOIN recommendations r ON r.id=a.recommendation_id
+    const rows = await c.env.DB.prepare(`SELECT a.id,a.recommendation_id,a.artifact_id,a.thread_id,a.branch_id,a.locator_type,a.selector_json,a.quote,a.context_before,a.context_after,a.language,a.source_checksum,a.created_at,
+      r.video_title AS source_title,r.video_url AS source_url,b.label AS branch_label,t.title AS thread_title
+      FROM source_annotations a
+      ${validAnnotationOwnershipJoins}
+      LEFT JOIN learning_threads t ON t.id=a.thread_id
       WHERE ${conditions.join(' AND ')} ORDER BY a.created_at DESC LIMIT ?`).bind(...bindings, limit).all<any>()
     const annotations = (rows.results || []).map((row: any) => {
       let selector = {}
@@ -67,7 +78,9 @@ app.get('/', async (c) => {
       DB.prepare(`SELECT id,filename,media_type,created_at FROM artifacts WHERE COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged' AND (filename LIKE ? OR metadata_json LIKE ?) ORDER BY created_at DESC LIMIT 8`).bind(like,like).all<any>(),
       DB.prepare(`SELECT assertion_key,category,value_json,confidence FROM profile_assertions WHERE assertion_key LIKE ? OR value_json LIKE ? ORDER BY confidence DESC LIMIT 8`).bind(like,like).all<any>(),
       DB.prepare(`SELECT id,memory_key,memory_kind,value_json,confidence FROM hermes_memory WHERE status IN ('active','approved') AND (memory_key LIKE ? OR value_json LIKE ?) ORDER BY confidence DESC,updated_at DESC LIMIT 8`).bind(like,like).all<any>(),
-      DB.prepare(`SELECT id,recommendation_id,locator_type,quote,language,created_at FROM source_annotations WHERE status='active' AND (quote LIKE ? OR context_before LIKE ? OR context_after LIKE ?) ORDER BY created_at DESC LIMIT 12`).bind(like,like,like).all<any>(),
+      DB.prepare(`SELECT a.id,a.recommendation_id,a.locator_type,a.selector_json,a.quote,a.context_before,a.context_after,a.language,a.source_checksum,a.created_at,r.video_title source_title,r.video_url source_url
+        FROM source_annotations a ${validAnnotationOwnershipJoins}
+        WHERE a.status='active' AND (a.quote LIKE ? OR a.context_before LIKE ? OR a.context_after LIKE ?) ORDER BY a.created_at DESC LIMIT 12`).bind(like,like,like).all<any>(),
     ])
 
     const recIds: string[] = []
@@ -95,7 +108,8 @@ app.get('/', async (c) => {
       fromIndex(indexedIds.note, 'SELECT id,title,kind,recommendation_id FROM notes WHERE id IN ($ids)'),
       fromIndex(indexedIds.assertion, 'SELECT assertion_key,category,value_json,confidence FROM profile_assertions WHERE assertion_key IN ($ids)'),
       fromIndex(indexedIds.memory, "SELECT id,memory_key,memory_kind,value_json,confidence FROM hermes_memory WHERE id IN ($ids) AND status IN ('active','approved')"),
-      fromIndex(indexedIds.annotation, 'SELECT id,recommendation_id,locator_type,quote,language,created_at FROM source_annotations WHERE id IN ($ids) AND status=\'active\''),
+      fromIndex(indexedIds.annotation, `SELECT a.id,a.recommendation_id,a.locator_type,a.selector_json,a.quote,a.context_before,a.context_after,a.language,a.source_checksum,a.created_at,r.video_title source_title,r.video_url source_url
+        FROM source_annotations a ${validAnnotationOwnershipJoins} WHERE a.id IN ($ids) AND a.status='active'`),
     ])
     const merge = (direct: any[], indexed: any[], key: string) => [...indexed, ...direct.filter((item) => !indexed.some((match) => match[key] === item[key]))]
 
@@ -112,7 +126,12 @@ app.get('/', async (c) => {
         artifacts: artifacts.results || [],
         assertions: merge(assertions.results || [], indexedAssertions, 'assertion_key'),
         memories: merge(memories.results || [], indexedMemories, 'id'),
-        annotations: merge(annotations.results || [], indexedAnnotations, 'id'),
+        annotations: merge(annotations.results || [], indexedAnnotations, 'id').map((row: any) => {
+          let selector = {}
+          try { selector = JSON.parse(row.selector_json || '{}') } catch { /* keep empty */ }
+          const { selector_json: _selectorJson, ...annotation } = row
+          return { ...annotation, selector }
+        }),
       },
     })
   } catch {
@@ -132,7 +151,9 @@ app.get('/', async (c) => {
       DB.prepare(`SELECT id,filename,media_type,created_at FROM artifacts WHERE COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged' AND (filename LIKE ? OR metadata_json LIKE ?) ORDER BY created_at DESC LIMIT 8`).bind(like,like).all<any>(),
       DB.prepare(`SELECT assertion_key,category,value_json,confidence FROM profile_assertions WHERE assertion_key LIKE ? OR value_json LIKE ? ORDER BY confidence DESC LIMIT 8`).bind(like,like).all<any>(),
       DB.prepare(`SELECT id,memory_key,memory_kind,value_json,confidence FROM hermes_memory WHERE status IN ('active','approved') AND (memory_key LIKE ? OR value_json LIKE ?) ORDER BY confidence DESC,updated_at DESC LIMIT 8`).bind(like,like).all<any>(),
-      DB.prepare(`SELECT id,recommendation_id,locator_type,quote,language,created_at FROM source_annotations WHERE status='active' AND (quote LIKE ? OR context_before LIKE ? OR context_after LIKE ?) ORDER BY created_at DESC LIMIT 12`).bind(like,like,like).all<any>(),
+      DB.prepare(`SELECT a.id,a.recommendation_id,a.locator_type,a.selector_json,a.quote,a.context_before,a.context_after,a.language,a.source_checksum,a.created_at,r.video_title source_title,r.video_url source_url
+        FROM source_annotations a ${validAnnotationOwnershipJoins}
+        WHERE a.status='active' AND (a.quote LIKE ? OR a.context_before LIKE ? OR a.context_after LIKE ?) ORDER BY a.created_at DESC LIMIT 12`).bind(like,like,like).all<any>(),
     ])
     return c.json({
       q,
@@ -147,7 +168,12 @@ app.get('/', async (c) => {
         artifacts: artifacts.results || [],
         assertions: assertions.results || [],
         memories: memories.results || [],
-        annotations: annotations.results || [],
+        annotations: (annotations.results || []).map((row: any) => {
+          let selector = {}
+          try { selector = JSON.parse(row.selector_json || '{}') } catch { /* keep empty */ }
+          const { selector_json: _selectorJson, ...annotation } = row
+          return { ...annotation, selector }
+        }),
       },
     })
   }

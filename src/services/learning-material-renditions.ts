@@ -43,6 +43,8 @@ function newestFirst(a: LearningArtifactRow, b: LearningArtifactRow) {
 }
 
 function publishable(metadata: Record<string, unknown>) {
+  const publicationState = String(metadata.publication_state || '').trim().toLowerCase()
+  if (publicationState === 'staged' || publicationState === 'superseded') return false
   const contract = String(metadata.workflow_contract || '')
   if (!contract) return true
   return contract !== 'lite-visual-linear/v4' || metadata.generator === 'lite-visual' && metadata.publication_state === 'ready' && metadata.validation_status === 'passed' && metadata.asset_policy === 'code-only'

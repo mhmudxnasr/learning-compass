@@ -22,7 +22,7 @@ app.get('/briefing', async (c) => {
       const today = new Date().toISOString().split('T')[0]
       const [next, due, total, active, consumed, todayLog, streak, growth, recent] = await Promise.all([
         firstOr(DB.prepare("SELECT id, video_title, creator, content_type, video_url, why_this, status, user_rating, consumed_date, created_at FROM recommendations WHERE status = 'active' AND COALESCE(content_type, '') != 'book' ORDER BY created_at DESC LIMIT 1")),
-        firstOr(DB.prepare("SELECT COUNT(*) as c FROM srs_cards WHERE due_at <= date('now')"), { c: 0 }),
+        firstOr(DB.prepare("SELECT COUNT(*) as c FROM srs_cards WHERE repair_status='active' AND due_at <= date('now')"), { c: 0 }),
         firstOr(DB.prepare('SELECT COUNT(*) as c FROM recommendations'), { c: 0 }),
         firstOr(DB.prepare("SELECT COUNT(*) as c FROM recommendations WHERE status = 'active' AND COALESCE(content_type, '') != 'book'"), { c: 0 }),
         firstOr(DB.prepare("SELECT COUNT(*) as c FROM recommendations WHERE status = 'consumed'"), { c: 0 }),

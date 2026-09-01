@@ -34,15 +34,22 @@ A zero-noise, purpose-first personal knowledge ledger. Unlike generic read-it-la
 - **Personal Data Studio**: Settings → Data & recovery visualizes real type, status, recent-edit, and branch distributions; searches and filters the complete ledger; and exposes every mutable personal field inline. It reports counts, never an opaque engagement or “AI quality” score.
 - **Queue Limits**: Maximum 5 active queued/in-progress commitments.
 - **Personal State Is Not Commitment**: Planned, in-progress, finished, paused, and stopped media stay outside Queue unless a separate explicit source-triage action commits learning work.
-- **Direct Lesson Progression**: Completing lessons is the sole progression signal for Levels and Threads.
+- **Direct Lesson Progression**: Completing lessons is the sole progression signal for Levels and Threads. A current lesson can be finished directly from Home without leaving the learning desk; Home confirms the write, animates the completed turn away, and replaces it with the next ordered lesson. Completion from a typed lesson route opens the next ordered lesson automatically when one remains.
 - **Passive Access**: Opening sources, books, or companions is passive. Only Queue or Compass starts a tracked session.
 - **Reading Companions**: Lite Visual generates bilingual/Arabic-first HTML+PDF pairs with verified depth gates.
+- **Complete Source Anchors**: A selected passage becomes a durable source-, branch-, and optionally Thread-owned quote with context, typed locator, language, and checksum. Search can retrieve the exact passage and linked derivations. Saving an anchor creates nothing else; note, typed Unit, and Arabic recall-card creation are three separate learner actions with provenance validation.
+- **Explicit Share Intent**: Android/web shares are persisted before redirect. A URL plus prose opens one durable choice between capturing the whole source and saving the prose as an exact selected passage; no description is silently classified as an anchor, and closing the app leaves the unresolved or unfinished share recoverable.
+- **Recall Needs Repair**: Cards with at least three unacknowledged lapses and learner-paused cards enter a transparent repair queue with source context, history, and nearby comparisons. Wording edits preserve FSRS state, semantic edits reset scheduling, and pause/retire/restore/reset actions preserve review history and never affect lesson progression. Manual split creates one new learner-authored card at a time and leaves the original untouched.
+- **Explicit Offline Packs**: Keep offline applies to one Queue/source, chapter, whole book, current Thread, or current Level. Only complete ready, validation-passed HTML+PDF artifacts from the same pair are eligible; Original and NotebookLM remain online-only. Version, measured size, eviction/partial state, update availability, storage failure, refresh, and removal are visible.
+- **Advisory Source Health**: The Original URL has a persisted check and replacement ledger. Restricted or unknown checks explicitly warn about false positives; scheduled refresh is bounded to Queue, the active lesson, and the Current Book. Queue can be filtered by current health status, and a verdict is current only while its checked URL matches the canonical URL. A URL changes only after candidate verification and a second explicit replace action bound to the same observed current URL, with prior identity and lineage preserved; personal-data edits and ISBN upserts cannot bypass that guard.
+- **Thread Material Organizer**: Thread Resources searches branch-owned Library sources first and attaches, edits, reorders, or removes exact Level/Lesson placements by role and expected contribution. Find material is available only by explicit action for an empty current-Level lesson; it returns one reviewable exact-lesson Compass pick or an abstention and never auto-attaches, enters Queue, starts a session, or advances progression.
 
-## Brand Commitments
+## Brand commitments
 
-- **Visual World**: Botanical Folio / Evidence Ledger — green-and-cream palette with strict WCAG AA contrast.
+- **Visual World**: Continuum, a warm editorial knowledge workspace with a persistent dark desktop rail, paper-like planes, confident coral working signals, smooth short motion, and selectable day/night systems. Its eight complete workspace presets are original, reference-grounded interpretations of Attio, Raycast, Superhuman, Readwise Reader, Notion, Craft, Arc, and Are.na. Each owns a visibly separate palette, font system, reading rhythm, density, text scale, and corner geometry instead of merely recoloring the same card system. Home leads with the lessons whose turn it is, keeps the active Queue source visible, and places Original/HTML/PDF/NotebookLM controls beside the work they open. Library, Learn, Map, Settings, typed objects, inspectors, and dialogs share the same page horizon, ledger rhythm, control treatment, and semantic depth; route-specific workflows never fall back to a stock dashboard or a separate visual theme.
 - **Tone**: Brutally honest, direct, English-first operational interface. Zero emojis by default.
-- **Anti-Pattern Ban**: Strictly zero AI slop (no arbitrary side-tab stripes, no layout-thrashing animations, no chunky borders).
+- **Arabic and RTL**: Clear Arabic type, correct direction, and comfortable reading rhythm are required. Religious ornament is not part of the product shell.
+- **Anti-Pattern Ban**: No arbitrary side-tab stripes, layout-thrashing animations, chunky borders, stock dashboard grids, or decorative gradients.
 
 ## Evidence on Hand
 
@@ -59,6 +66,7 @@ A zero-noise, purpose-first personal knowledge ledger. Unlike generic read-it-la
 4. **Pedagogical Depth**: Real source grounding over generic summaries.
 5. **Calm Density**: High informational density organized by clean typography and hairline seams.
 6. **Correctable History**: Personal data remains searchable, portable, and editable without breaking canonical identity or erasing its mutation lineage.
+7. **Explicit Derivation**: Evidence, notes, Learning Units, recall cards, material placement, Queue commitment, session start, and lesson completion remain separate user-visible decisions.
 
 ## Accessibility & Inclusion
 

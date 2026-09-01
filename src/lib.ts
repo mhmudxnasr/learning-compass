@@ -146,9 +146,23 @@ export function normalizeUrlForDedup(url: string): string {
   let u = url.trim().replace(/\/$/, '')
   u = u.replace(/[?&](utm_[^=]+=[^&]*|fbclid=[^&]*|ref=[^&]*|feature=[^&]*|si=[^&]*|t=[^&]*)(&|$)/g, '$2')
   u = u.replace(/[?&]$/, '')
+  u = u.replace(/\/$/, '')
   try {
     const host = new URL(u).hostname.toLowerCase().replace(/^www\./, '')
     if (host === 'youtube.com' || host === 'youtu.be') u = normalizeYouTubeUrl(u)
   } catch { /* URL validation happens at the route boundary. */ }
   return u
+}
+
+/**
+ * Canonical URL identity for evidence and share receipts. Tracking noise and
+ * in-page fragments do not change which source owns a passage.
+ */
+export function normalizeSourceUrlIdentity(url: string): string {
+  const normalized = normalizeUrlForDedup(url)
+  try {
+    const parsed = new URL(normalized)
+    parsed.hash = ''
+    return normalizeUrlForDedup(parsed.toString())
+  } catch { return normalized }
 }

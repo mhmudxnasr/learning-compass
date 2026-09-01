@@ -49,7 +49,7 @@ const agentRead = (path: string, requestEnv: any = env) => agentApp.request(`htt
 
 test('agent capability catalog is structured, filterable, and safety-aware', () => {
   const catalog = buildCapabilityCatalog(sample)
-  assert.equal(AGENT_CONTRACT_VERSION, '2026-08-26')
+  assert.equal(AGENT_CONTRACT_VERSION, '2026-08-31')
   assert.equal(AGENT_PROTOCOL, 'learning-compass-agent-http/2')
   assert.equal(catalog.length, sample.length)
   assert.deepEqual(buildCapabilityCatalog(sample, { domain: 'capture', intent: 'update' }).map((item) => item.path), ['/capture/:id/triage'])
@@ -257,10 +257,44 @@ test('lesson source attachment replaces required roles but accumulates optional 
   const capabilities = readFileSync(new URL('../../src/services/agent-capabilities.ts', import.meta.url), 'utf8')
   assert.match(learningCore, /valid non-pruned branch_id required/)
   assert.match(learningCore, /learning_state='captured' THEN 'attached'/)
-  assert.match(learningCore, /branch_id=excluded\.branch_id/)
+  assert.doesNotMatch(learningCore, /branch_id=excluded\.branch_id/)
   assert.match(learningCore, /DELETE FROM thread_lesson_sources WHERE lesson_id=\? AND role=\? AND recommendation_id<>\? AND \?!='optional'/)
   assert.match(capabilities, /'POST \/learning\/core\/threads\/:id\/lessons\/:lessonId\/sources'/)
-  assert.match(capabilities, /\['recommendation_id', 'role', 'branch_id'\]/)
+  assert.match(capabilities, /\['recommendation_id', 'expected_contribution'\]/)
+})
+
+test('Thread material organizer capabilities are Library-first, exact-scope, and canonically verified', () => {
+  const routes = [
+    ['POST', '/learning/core/threads/:id/sources', 'Attach at Thread.'],
+    ['PATCH', '/learning/core/threads/:id/sources/:sourceId', 'Edit Thread placement.'],
+    ['POST', '/learning/core/threads/:id/stages/:stageId/sources', 'Attach at Level.'],
+    ['PATCH', '/learning/core/threads/:id/stages/:stageId/sources/:sourceId', 'Edit Level placement.'],
+    ['DELETE', '/learning/core/threads/:id/stages/:stageId/sources/:sourceId', 'Remove Level placement.'],
+    ['POST', '/learning/core/threads/:id/lessons/:lessonId/sources', 'Attach at lesson.'],
+    ['PATCH', '/learning/core/threads/:id/lessons/:lessonId/sources/:sourceId', 'Edit lesson placement.'],
+    ['DELETE', '/learning/core/threads/:id/lessons/:lessonId/sources/:sourceId', 'Remove lesson placement.'],
+    ['POST', '/learning/core/threads/:id/lessons/:lessonId/material-request', 'Find material.'],
+  ] as const satisfies readonly CapabilityTuple[]
+  const catalog = buildCapabilityCatalog(routes)
+  const [threadAttach, threadEdit, levelAttach, levelEdit, levelRemove, lessonAttach, lessonEdit, lessonRemove, findMaterial] = catalog
+  for (const capability of [threadEdit, levelAttach, levelEdit, levelRemove, lessonAttach, lessonEdit, lessonRemove]) {
+    assert.equal(capability.verification_path, '/learning/core/threads/:id/path')
+  }
+  assert.deepEqual((threadAttach.request_body_schema as any).required, ['recommendation_id', 'expected_contribution'])
+  assert.deepEqual((levelAttach.request_body_schema as any).required, ['recommendation_id', 'expected_contribution'])
+  assert.deepEqual((lessonAttach.request_body_schema as any).required, ['recommendation_id', 'expected_contribution'])
+  for (const capability of [threadAttach, threadEdit, levelAttach, lessonAttach, levelEdit, lessonEdit]) {
+    const contribution = (capability.request_body_schema as any).properties.expected_contribution
+    assert.equal(contribution.type, 'string')
+    assert.equal(contribution.minLength, 1)
+    assert.equal(contribution.pattern, '\\S')
+  }
+  assert.deepEqual((lessonEdit.request_body_schema as any).properties.role.enum, ['primary', 'case', 'challenge', 'reference', 'optional'])
+  assert.deepEqual((threadEdit.request_body_schema as any).properties.role.enum, ['primary', 'supporting', 'counterevidence', 'reference'])
+  assert.ok((levelEdit.request_body_schema as any).properties.expected_contribution)
+  assert.equal((lessonAttach.request_body_schema as any).properties.expected_source_url.format, 'uri')
+  assert.equal(findMaterial.verification_path, '/learning/core/threads/:id/lessons/:lessonId/material-request')
+  assert.equal((findMaterial.request_body_schema as any).properties.idempotency_key.maxLength, 160)
 })
 
 test('NotebookLM learning routes expose typed plans and canonical receipt readback', () => {

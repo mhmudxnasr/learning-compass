@@ -1,5 +1,5 @@
-import { deriveDedupKey, isValidUrl } from '../lib.js'
-import { loadSettings } from './settings.js'
+import { deriveDedupKey, isValidUrl, normalizeUrlForDedup } from '../lib.ts'
+import { loadSettings } from './settings.ts'
 
 export type CaptureArtifact = {
   id: string
@@ -21,14 +21,24 @@ export async function createCapture(
   const source = input.source.trim()
   const sourceIsUrl = /^https?:\/\//i.test(source) && isValidUrl(source)
   const artifact = input.artifact || null
-  const url = sourceIsUrl ? source : artifact ? `artifact://${artifact.id}` : `text://capture/${crypto.randomUUID()}`
+  const url = sourceIsUrl ? normalizeUrlForDedup(source) : artifact ? `artifact://${artifact.id}` : `text://capture/${crypto.randomUUID()}`
   const contentType = /youtube\.com|youtu\.be/.test(source) ? 'video'
     : artifact?.media_type === 'application/pdf' || /\.pdf(?:$|\?)/i.test(source) ? 'paper'
       : artifact?.media_type?.includes('html') ? 'article' : sourceIsUrl ? 'article' : 'other'
   const title = input.title?.trim() || (sourceIsUrl ? new URL(source).hostname.replace(/^www\./, '') : source.slice(0, 100))
   const initialLearningState = input.initialLearningState || 'captured'
   const dedup = deriveDedupKey({ video_url: url, video_title: title, content_type: contentType })
-  const existing = await DB.prepare(`SELECT r.id,r.status,m.branch_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.dedup_key=?`).bind(dedup).first<{ id: string; status: string; branch_id: string | null }>()
+  let existing = await DB.prepare(`SELECT r.id,r.status,m.branch_id FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.dedup_key=?`).bind(dedup).first<{ id: string; status: string; branch_id: string | null }>()
+  if (!existing && sourceIsUrl) {
+    existing = await DB.prepare(`SELECT r.id,r.status,m.branch_id
+      FROM source_url_replacements history
+      JOIN recommendations r ON r.id=history.recommendation_id
+      LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
+      WHERE (history.previous_dedup_key=? OR history.previous_url=?)
+        AND r.deleted_at IS NULL AND COALESCE(r.status,'')!='deleted'
+      ORDER BY history.replaced_at DESC,history.id DESC LIMIT 1`)
+      .bind(dedup, url).first<{ id: string; status: string; branch_id: string | null }>()
+  }
 
   if (existing) {
     if (input.branch && existing.branch_id && existing.branch_id !== input.branch.id) {

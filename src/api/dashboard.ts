@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
 import { loadHermesBrief } from '../services/agent-briefing'
 import { selectHomeLessonTurns } from '../services/home-threads'
+import { selectLearningSourceRenditions } from '../services/learning-material-renditions'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -19,7 +20,7 @@ app.get('/briefing', async (c) => {
          LEFT JOIN tree_nodes n ON n.id=m.branch_id
          WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')
         ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 50`).all<any>(),
-      DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE due_at<=date('now')`).first<any>(),
+      DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE repair_status='active' AND due_at<=date('now')`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND m.learning_state='captured'`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM feedback_proposals WHERE status='pending'`).first<any>(),
       DB.prepare(`SELECT COUNT(*) count FROM srs_drafts WHERE status='draft'`).first<any>(),
@@ -73,12 +74,30 @@ app.get('/briefing', async (c) => {
         return { ...thread, current_stage: { ...stage, lessons: visibleLessons } }
       })
       if (visibleLessonIds.length) {
-        const lessonSources = await DB.prepare(`SELECT ls.*,r.creator,r.content_type FROM thread_lesson_sources ls JOIN recommendations r ON r.id=ls.recommendation_id WHERE ls.lesson_id IN (${visibleLessonIds.map(() => '?').join(',')}) ORDER BY ls.lesson_id,ls.position`).bind(...visibleLessonIds).all<any>()
+        const lessonSources = await DB.prepare(`SELECT ls.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url
+          FROM thread_lesson_sources ls
+          JOIN recommendations r ON r.id=ls.recommendation_id
+          WHERE ls.lesson_id IN (${visibleLessonIds.map(() => '?').join(',')})
+          ORDER BY ls.lesson_id,ls.position`).bind(...visibleLessonIds).all<any>()
+        const sourceRows = lessonSources.results || []
+        const sourceIds = [...new Set(sourceRows.map((source: any) => String(source.recommendation_id)).filter(Boolean))]
+        const sourceArtifacts = sourceIds.length
+          ? await DB.prepare(`SELECT id,filename,media_type,size_bytes,created_at,metadata_json
+            FROM artifacts
+            WHERE json_extract(metadata_json,'$.recommendation_id') IN (${sourceIds.map(() => '?').join(',')})
+              AND COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged'
+            ORDER BY created_at DESC`).bind(...sourceIds).all<any>()
+          : { results: [] as any[] }
+        const sourceRenditions = selectLearningSourceRenditions(sourceArtifacts.results || [])
+        const sourceWithMaterials = sourceRows.map((source: any) => {
+          const artifacts = sourceRenditions.get(String(source.recommendation_id)) || {}
+          return { ...source, artifacts }
+        })
         homeThreads = homeThreads.map((thread: any) => ({
           ...thread,
           current_stage: thread.current_stage ? {
             ...thread.current_stage,
-            lessons: thread.current_stage.lessons.map((lesson: any) => ({ ...lesson, sources: (lessonSources.results || []).filter((source: any) => source.lesson_id === lesson.id) })),
+            lessons: thread.current_stage.lessons.map((lesson: any) => ({ ...lesson, sources: sourceWithMaterials.filter((source: any) => source.lesson_id === lesson.id) })),
           } : null,
         }))
       }
@@ -138,9 +157,14 @@ app.get('/briefing', async (c) => {
         : { title: 'Your pattern is still forming', body: 'Complete and rate two sources to reveal your strongest learning format.', evidence: 'Needs two rated completions', target: 'curate.queue' }
 
     const nextAction = hermesBrief.next_action
+    const activeRenditions = selectLearningSourceRenditions(artifacts)
+    const homeActiveItems = activeItems.map((item: any) => ({
+      ...item,
+      artifacts: activeRenditions.get(String(item.id)) || {},
+    }))
 
     return c.json({
-      active_items: activeItems,
+      active_items: homeActiveItems,
       artifacts,
       due_reviews: due?.count || 0,
       inbox_count: inbox?.count || 0,
@@ -157,7 +181,7 @@ app.get('/briefing', async (c) => {
       next_action: nextAction.kind,
       next_action_detail: nextAction,
       hermes_brief: hermesBrief,
-      next_item: activeItems[0] || null,
+      next_item: homeActiveItems[0] || null,
       queue_count: activeItems.length,
       recent: recent.results || [],
       recent_signal: latestSignal?.summary || null,

@@ -75,6 +75,11 @@ expectedMigrations.push('0065_reconcile_personal_book_states.sql')
 expectedMigrations.push('0066_hermes_memory_live_key.sql')
 expectedMigrations.push('0067_portable_search_and_lineage_repair.sql')
 expectedMigrations.push('0068_lite_visual_corpus_activation.sql')
+expectedMigrations.push('0069_recall_repair.sql')
+expectedMigrations.push('0070_source_health.sql')
+expectedMigrations.push('0071_thread_material_organizer.sql')
+expectedMigrations.push('0072_share_intakes.sql')
+expectedMigrations.push('0073_source_annotation_revisions.sql')
 if (migrationNames.length !== expectedMigrations.length || expectedMigrations.some((name, index) => migrationNames[index] !== name)) throw new Error(`Migration order drift: expected ${expectedMigrations.join(', ')}, found ${migrationNames.join(', ')}`)
 
 const checks = [

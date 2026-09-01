@@ -108,7 +108,12 @@ app.patch('/personal/:id', async (c) => {
   try {
     const body = await c.req.json<PersonalLibraryInput>()
     const result = await updatePersonalLibraryItem(c.env.DB, c.req.param('id'), body)
-    if (!result.ok) return c.json({ error: result.error, ...('recommendation_id' in result ? { recommendation_id: result.recommendation_id } : {}) }, result.status as 400 | 404 | 409)
+    if (!result.ok) return c.json({
+      error: result.error,
+      ...('message' in result ? { message: result.message } : {}),
+      ...('recommendation_id' in result ? { recommendation_id: result.recommendation_id } : {}),
+      ...('replacement_endpoint' in result ? { replacement_endpoint: result.replacement_endpoint } : {}),
+    }, result.status as 400 | 404 | 409)
     return c.json({ ok: true, item: result.item })
   } catch (error) {
     return c.json(safeError('Personal item could not be updated')(error), 500)
@@ -259,7 +264,7 @@ app.delete('/feeds/:id', async (c) => {
 
 app.post('/:id/triage', async (c) => {
   const body: { action?: 'queue' | 'exclude' | 'dequeue'; thread_id?: string; override_queue_cap?: boolean; reason?: string } = await c.req.json().catch(() => ({}))
-  const item = await c.env.DB.prepare(`SELECT r.id,r.video_url,r.video_title,r.content_type,r.status,r.deleted_at,m.learning_state,m.branch_id,n.id branch_exists,n.label branch_label,n.status branch_status
+  const item = await c.env.DB.prepare(`SELECT r.id,r.video_url,r.video_title,r.content_type,r.why_this,r.status,r.deleted_at,m.learning_state,m.branch_id,n.id branch_exists,n.label branch_label,n.status branch_status
     FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
     LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE r.id=?`).bind(c.req.param('id')).first<any>()
   if (!item) return c.json({ error: 'not found' }, 404)
@@ -317,14 +322,56 @@ app.post('/:id/triage', async (c) => {
   const active = await c.env.DB.prepare(`SELECT COUNT(*) c FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')`).first<{ c: number }>()
   const decision = queueDecision(active?.c || 0, body.override_queue_cap === true)
   if (!decision.allowed) return c.json({ error: 'queue_full', ...decision }, 409)
-  const result = await c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,updated_at)
+  const expectedContribution = String(item.why_this || '').trim().slice(0, 1000)
+    || `Queued as supporting material for this Thread: ${String(item.video_title || item.id).trim().slice(0, 900)}.`
+  const threadEligibility = thread ? `AND EXISTS (
+      SELECT 1 FROM learning_threads placement_thread
+      JOIN recommendation_meta placement_meta ON placement_meta.recommendation_id=?
+      JOIN recommendations placement_source ON placement_source.id=placement_meta.recommendation_id
+        AND placement_source.deleted_at IS NULL AND placement_source.status='active'
+      JOIN tree_nodes placement_branch ON placement_branch.id=placement_meta.branch_id
+        AND placement_branch.type IN ('branch','leaf') AND lower(COALESCE(placement_branch.status,''))!='pruned'
+      JOIN tree_nodes placement_domain ON placement_domain.id=placement_branch.super_category
+        AND placement_domain.type='category' AND lower(COALESCE(placement_domain.status,''))!='pruned'
+      WHERE placement_thread.id=? AND placement_thread.superseded_at IS NULL
+        AND placement_thread.status NOT IN ('verified','abandoned')
+    )` : ''
+  const queueStatement = c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,updated_at)
     SELECT ?,'queued',datetime('now')
-    WHERE ?=1 OR (SELECT COUNT(*) FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress'))<5
-    ON CONFLICT(recommendation_id) DO UPDATE SET learning_state='queued',updated_at=datetime('now')`).bind(c.req.param('id'), body.override_queue_cap === true ? 1 : 0).run()
-  if (!result.meta.changes) return c.json({ error: 'queue_full', ...queueDecision(5, false) }, 409)
-  if (thread) {
-    await c.env.DB.prepare(`INSERT INTO thread_sources (thread_id,recommendation_id,role,status) VALUES (?,?,'supporting','active') ON CONFLICT(thread_id,recommendation_id) DO UPDATE SET status='active',updated_at=datetime('now')`).bind(thread.id,c.req.param('id')).run()
-  }
+    WHERE (?=1 OR (SELECT COUNT(*) FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress'))<5)
+      ${threadEligibility}
+    ON CONFLICT(recommendation_id) DO UPDATE SET learning_state='queued',updated_at=datetime('now')`).bind(
+      c.req.param('id'), body.override_queue_cap === true ? 1 : 0,
+      ...(thread ? [c.req.param('id'), thread.id] : []),
+    )
+  const committed = thread
+    ? await c.env.DB.batch([
+      queueStatement,
+      c.env.DB.prepare(`INSERT INTO thread_sources (thread_id,recommendation_id,role,expected_contribution,position,status)
+        SELECT placement_thread.id,placement_meta.recommendation_id,'supporting',?,
+          COALESCE((SELECT MAX(existing.position)+1 FROM thread_sources existing WHERE existing.thread_id=placement_thread.id AND existing.status!='removed'),0),'active'
+        FROM learning_threads placement_thread
+        JOIN recommendation_meta placement_meta ON placement_meta.recommendation_id=? AND placement_meta.learning_state='queued'
+        JOIN recommendations placement_source ON placement_source.id=placement_meta.recommendation_id
+          AND placement_source.deleted_at IS NULL AND placement_source.status='active'
+        JOIN tree_nodes placement_branch ON placement_branch.id=placement_meta.branch_id
+          AND placement_branch.type IN ('branch','leaf') AND lower(COALESCE(placement_branch.status,''))!='pruned'
+        JOIN tree_nodes placement_domain ON placement_domain.id=placement_branch.super_category
+          AND placement_domain.type='category' AND lower(COALESCE(placement_domain.status,''))!='pruned'
+        WHERE placement_thread.id=? AND placement_thread.superseded_at IS NULL
+          AND placement_thread.status NOT IN ('verified','abandoned')
+        ON CONFLICT(thread_id,recommendation_id) DO UPDATE SET
+          status='active',
+          position=CASE WHEN thread_sources.status='removed' THEN excluded.position ELSE thread_sources.position END,
+          expected_contribution=CASE
+            WHEN TRIM(COALESCE(thread_sources.expected_contribution,''))='' THEN excluded.expected_contribution
+            ELSE thread_sources.expected_contribution
+          END,
+          updated_at=datetime('now')`).bind(expectedContribution, c.req.param('id'), thread.id),
+    ])
+    : [await queueStatement.run()]
+  if (!committed[0]?.meta.changes) return c.json({ error: 'queue_full_or_source_ownership_changed', message: 'Queue capacity, source ownership, or the selected Thread changed. Reload and try again.', ...queueDecision(5, false) }, 409)
+  if (thread && committed[1]?.meta.changes !== 1) return c.json({ error: 'thread_source_attachment_conflict', message: 'The Queue commitment was saved, but the Thread placement could not be verified. Reload the source before retrying.' }, 409)
   return c.json({ ok: true, state: 'queued', ...(thread ? { thread_id: thread.id } : {}), ...decision })
 })
 
@@ -455,7 +502,7 @@ app.get('/:id/record', async (c) => {
          AND COALESCE(json_extract(a.metadata_json,'$.publication_state'),'ready')!='staged'
       ORDER BY a.created_at DESC`).bind(recommendationId,recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT id,question,answer,topic,status,unit_id,thread_id,provenance_json,created_at FROM srs_drafts WHERE recommendation_id=? ORDER BY created_at DESC`).bind(recommendationId).all<any>(),
-    c.env.DB.prepare(`SELECT id,question,answer,topic,due_at,repetitions,interval_days,ease_factor,unit_id,thread_id,scheduler_version FROM srs_cards WHERE recommendation_id=? ORDER BY due_at`).bind(recommendationId).all<any>(),
+    c.env.DB.prepare(`SELECT id,question,answer,topic,due_at,repetitions,interval_days,ease_factor,unit_id,thread_id,scheduler_version,repair_status,paused_at,retired_at FROM srs_cards WHERE recommendation_id=? ORDER BY due_at`).bind(recommendationId).all<any>(),
     c.env.DB.prepare(`SELECT * FROM recommendation_outcomes WHERE recommendation_id=?`).bind(recommendationId).first<any>(),
     c.env.DB.prepare(`SELECT id,memory_key,memory_kind,value_json,confidence,source,status,evidence_json,updated_at FROM hermes_memory WHERE evidence_json LIKE ? ORDER BY updated_at DESC`).bind(`%${recommendationId}%`).all<any>(),
     c.env.DB.prepare(`SELECT id,status,change_type,target_label,current_json,proposed_json,evidence,reasoning,confidence,created_at,applied_at FROM feedback_proposals WHERE recommendation_id=? ORDER BY created_at DESC`).bind(recommendationId).all<any>(),
@@ -514,7 +561,7 @@ app.get('/:id/record', async (c) => {
   const htmlArtifact = selectedCompanions.html || directLegacyArtifacts.find((artifact: any) => /html/.test(String(artifact.media_type || '')) || String(artifact.filename || '').toLowerCase().endsWith('.html')) || null
   const pdfArtifact = selectedCompanions.pdf || directLegacyArtifacts.find((artifact: any) => /pdf/.test(String(artifact.media_type || '')) || String(artifact.filename || '').toLowerCase().endsWith('.pdf')) || null
   const cardCount = cardRows.length
-  const dueCount = cardRows.filter((card: any) => card.due_at && String(card.due_at) <= today).length
+  const dueCount = cardRows.filter((card: any) => card.repair_status === 'active' && card.due_at && String(card.due_at) <= today).length
   const branchVerified = Boolean(item.verified_branch_id) && String(item.verified_branch_status || '').toLowerCase() !== 'pruned'
   const branchLabel = branchVerified ? item.verified_branch_label : String(item.branch || '').trim() || null
   const branchId = branchVerified ? item.verified_branch_id : null

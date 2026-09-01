@@ -354,6 +354,16 @@ export async function updatePersonalLibraryItem(DB: D1Database, recommendationId
 
   const stored = await DB.prepare('SELECT video_url FROM recommendations WHERE id=?').bind(recommendationId).first<{ video_url: string }>()
   const url = item.url || (/^personal:\/\//.test(String(stored?.video_url || '')) ? stored!.video_url : `personal://library/${item.item_type}/${recommendationId}`)
+  if (String(stored?.video_url || '') !== url && normalizeUrlForDedup(String(stored?.video_url || '')) !== normalizeUrlForDedup(url)) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: 'source_url_replacement_required',
+      message: 'Canonical link changes require a verified guarded source replacement; the other personal fields were not changed.',
+      recommendation_id: recommendationId,
+      replacement_endpoint: `/recommendations/${recommendationId}/source-url`,
+    }
+  }
   const dedupKey = personalLibraryDedupKey({ ...item, url: item.url })
   const collision = await DB.prepare(`SELECT id FROM recommendations WHERE dedup_key=? AND id!=? AND deleted_at IS NULL AND COALESCE(status,'')!='deleted'`).bind(dedupKey, recommendationId).first<{ id: string }>()
   if (collision) return { ok: false as const, status: 409, error: 'personal_item_identity_conflict', recommendation_id: collision.id }
@@ -365,13 +375,12 @@ export async function updatePersonalLibraryItem(DB: D1Database, recommendationId
     source: 'personal_library',
     branch_mapping_confidence: 'high',
     branch_mapping_source: 'user_personal_library_edit',
-    preferred_source_url: item.url || null,
     ...(item.item_type === 'book' ? { book_reading_state: bookStateFromPersonalState(item.state), ...(item.state === 'in_progress' ? {} : { book_primary: 0 }) } : {}),
   }
   const eventId = `personal-library-updated:${recommendationId}:${crypto.randomUUID()}`
   await DB.batch([
-    DB.prepare(`UPDATE recommendations SET video_title=?,creator=?,video_url=?,branch=?,user_rating=?,user_score=?,dedup_key=?,updated_at=datetime('now') WHERE id=?`)
-      .bind(item.title, item.creator || null, url, branch.label, item.rating_label, item.rating, dedupKey, recommendationId),
+    DB.prepare(`UPDATE recommendations SET video_title=?,creator=?,branch=?,user_rating=?,user_score=?,dedup_key=?,updated_at=datetime('now') WHERE id=?`)
+      .bind(item.title, item.creator || null, branch.label, item.rating_label, item.rating, dedupKey, recommendationId),
     DB.prepare(`UPDATE recommendation_meta SET branch_id=?,tags_json=?,source_metadata_json=json_patch(COALESCE(source_metadata_json,'{}'),?),updated_at=datetime('now') WHERE recommendation_id=?`)
       .bind(branch.id, JSON.stringify(item.tags), JSON.stringify(metadata), recommendationId),
     DB.prepare(`UPDATE recommendation_outcomes SET branch_id=? WHERE recommendation_id=?`).bind(branch.id, recommendationId),

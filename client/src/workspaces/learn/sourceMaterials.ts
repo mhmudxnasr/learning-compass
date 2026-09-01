@@ -114,7 +114,7 @@ function sourceMaterialOptions(source: PathSource): SourceMaterialOption[] {
     kind: 'original',
     format: 'Original',
     href: source.video_url,
-    label: 'Open the original source',
+    label: 'Open the original source · online only',
     purpose: originalPurpose(source.content_type),
     availability: 'Linked',
     details: source.content_type ? [source.content_type] : [],
@@ -143,7 +143,7 @@ function sourceMaterialOptions(source: PathSource): SourceMaterialOption[] {
       kind: 'notebooklm',
       format: 'NotebookLM',
       href: source.notebook_url,
-      label: 'Open NotebookLM',
+      label: 'Open NotebookLM · online only',
       ...notebookState,
     })
   }

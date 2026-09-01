@@ -1,5 +1,5 @@
 import { formatDate as apiFormatDate, labelize } from '../../api'
-export { hasLessonStudyMaterial, lessonReadiness } from './lessonState'
+export { findNextThreadLesson, hasLessonStudyMaterial, lessonReadiness } from './lessonState'
 export type { LessonReadiness } from './lessonState'
 
 export { labelize }

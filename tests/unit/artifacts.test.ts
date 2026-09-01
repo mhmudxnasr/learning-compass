@@ -350,6 +350,63 @@ test('served HTML remains readable but sandboxed, while active XML is forced to 
   assert.equal(svgResponse.headers.get('x-content-type-options'), 'nosniff')
 })
 
+test('verified pair responses expose exact artifact identity and byte size for offline validation', async () => {
+  const body = '%PDF-1.7\npair body\n%%EOF'
+  const response = await artifactsApp.request('https://compass.test/pdf-id', {}, {
+    DB: new ArtifactDatabase({
+      id: 'pdf-id',
+      filename: 'companion.pdf',
+      media_type: 'application/pdf',
+      r2_key: 'pdf-key',
+      size_bytes: new TextEncoder().encode(body).byteLength,
+      metadata_json: JSON.stringify({
+        pair_id: 'pair-1',
+        role: 'pdf',
+        publication_state: 'ready',
+        validation_status: 'passed',
+      }),
+    }),
+    ARTIFACTS: { get: async () => r2Object(body) },
+  } as any)
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('x-learning-compass-artifact-id'), 'pdf-id')
+  assert.equal(response.headers.get('x-learning-compass-size-bytes'), String(new TextEncoder().encode(body).byteLength))
+  assert.equal(response.headers.get('x-learning-compass-pair-id'), 'pair-1')
+  assert.equal(response.headers.get('x-learning-compass-pair-role'), 'pdf')
+  assert.equal(response.headers.get('x-learning-compass-publication-state'), 'ready')
+  assert.equal(response.headers.get('x-learning-compass-validation-status'), 'passed')
+  assert.equal((await response.blob()).size, Number(response.headers.get('x-learning-compass-size-bytes')))
+
+  const htmlBody = '<!doctype html><p>pair body</p>'
+  const htmlRow = {
+    id: 'html-id',
+    filename: 'companion.html',
+    media_type: 'text/html; charset=utf-8',
+    r2_key: 'html-key',
+    size_bytes: new TextEncoder().encode(htmlBody).byteLength,
+    metadata_json: JSON.stringify({
+      pair_id: 'pair-1',
+      role: 'html',
+      publication_state: 'ready',
+      validation_status: 'passed',
+    }),
+  }
+  const redirect = await artifactsApp.request('https://compass.test/html-id/view', {}, {
+    DB: new ArtifactDatabase(htmlRow),
+    ARTIFACTS: { get: async () => r2Object(htmlBody) },
+  } as any)
+  assert.equal(redirect.status, 302)
+  assert.equal(redirect.headers.get('location'), '/artifacts/html-id')
+  const raw = await artifactsApp.request('https://compass.test/html-id', {}, {
+    DB: new ArtifactDatabase(htmlRow),
+    ARTIFACTS: { get: async () => r2Object(htmlBody) },
+  } as any)
+  assert.equal(raw.headers.get('x-learning-compass-artifact-id'), 'html-id')
+  assert.equal(raw.headers.get('x-learning-compass-size-bytes'), String(new TextEncoder().encode(htmlBody).byteLength))
+  assert.equal(raw.headers.get('x-learning-compass-pair-role'), 'html')
+  assert.equal(await raw.text(), htmlBody)
+})
+
 async function atomicPairForm() {
   const { htmlText, pdfText, source } = atomicPairFixture()
   const htmlBytes = new TextEncoder().encode(htmlText).buffer

@@ -68,6 +68,7 @@ export function chapterMetadataFromArtifact(metadata: Row, requestedKey: string,
 
 export function normalizeBookChapters(chapterRows: Row[] = [], artifactRows: Row[] = []): BookChapter[] {
   const chapters = new Map<string, BookChapter>()
+  const chapterArtifacts = new Map<string, Row[]>()
 
   const ensureChapter = (row: Row) => {
     if (isSyntheticWholeBookChapter(row)) return null
@@ -106,7 +107,7 @@ export function normalizeBookChapters(chapterRows: Row[] = [], artifactRows: Row
 
   for (const artifact of artifactRows) {
     const metadata = parseObject(artifact.metadata_json ?? artifact.metadata)
-    if (String(metadata.publication_state || '').trim().toLowerCase() === 'staged') continue
+    if (['staged', 'superseded'].includes(String(metadata.publication_state || '').trim().toLowerCase())) continue
     if (!metadata.chapter_key || isSyntheticWholeBookChapter(metadata)) continue
     const role = String(metadata.role || '').toLowerCase()
     if (role !== 'html' && role !== 'pdf') continue
@@ -119,8 +120,37 @@ export function normalizeBookChapters(chapterRows: Row[] = [], artifactRows: Row
       media_type: artifact.media_type,
       quality_assurance: artifact.quality_assurance,
       created_at: artifact.created_at,
+      metadata,
+      metadata_json: artifact.metadata_json,
     }
-    if (!chapter[role] || artifactIsNewer(candidate, chapter[role])) chapter[role] = candidate
+    chapterArtifacts.set(chapter.key, [...(chapterArtifacts.get(chapter.key) || []), candidate])
+  }
+
+  for (const chapter of chapters.values()) {
+    const artifacts = chapterArtifacts.get(chapter.key) || []
+    const pairs = new Map<string, Row[]>()
+    const legacy: Row[] = []
+    for (const artifact of artifacts) {
+      const pairId = String(artifact.metadata?.pair_id || '').trim()
+      if (pairId) pairs.set(pairId, [...(pairs.get(pairId) || []), artifact])
+      else legacy.push(artifact)
+    }
+    const completePairs = [...pairs.values()]
+      .filter((pair) => pair.some((artifact) => artifact.metadata?.role === 'html') && pair.some((artifact) => artifact.metadata?.role === 'pdf'))
+      .sort((left, right) => {
+        const newestLeft = [...left].sort((a, b) => artifactIsNewer(a, b) ? -1 : artifactIsNewer(b, a) ? 1 : 0)[0]
+        const newestRight = [...right].sort((a, b) => artifactIsNewer(a, b) ? -1 : artifactIsNewer(b, a) ? 1 : 0)[0]
+        return artifactIsNewer(newestLeft, newestRight) ? -1 : artifactIsNewer(newestRight, newestLeft) ? 1 : 0
+      })
+    if (completePairs[0]) {
+      chapter.html = completePairs[0].find((artifact) => artifact.metadata?.role === 'html') || null
+      chapter.pdf = completePairs[0].find((artifact) => artifact.metadata?.role === 'pdf') || null
+      continue
+    }
+    for (const artifact of legacy) {
+      const role = String(artifact.metadata?.role || '').toLowerCase()
+      if ((role === 'html' || role === 'pdf') && (!chapter[role] || artifactIsNewer(artifact, chapter[role]))) chapter[role] = artifact
+    }
   }
 
   return [...chapters.values()].sort((left, right) => {

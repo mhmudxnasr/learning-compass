@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { Bindings, safeError } from '../lib'
+import { Bindings, normalizeUrlForDedup, safeError, safeErrorMessage } from '../lib'
 import { completedLearningStatus, deriveLevelStatus, deriveThreadStatus, recordLearningEvent } from '../services/learning-core'
 import { selectLearningSourceRenditions } from '../services/learning-material-renditions'
 import { loadNotebookLearningStates, summarizeNotebookLearningState } from '../services/notebooklm-learning'
@@ -8,6 +8,7 @@ import { chunkForD1 } from '../services/d1-query.ts'
 import { loadIntegrityHealth } from '../services/operational-health'
 import { cached, invalidate } from '../cache'
 import { loadContradictionRelations, loadNormalizedUnitRelations } from '../services/cross-branch-bridges'
+import { loadSourceAnnotationEvidence, SourceAnnotationEvidenceError, type SourceAnnotationEvidence } from '../services/source-annotation-evidence'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const makeId = (prefix: string) => `${prefix}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`
@@ -18,6 +19,228 @@ const COMPLETED_STORAGE_STATUS = 'verified'
 const completedStage = completedLearningStatus
 const publicStatus = (status: unknown) => completedStage(status) || status === 'ready_to_verify' ? 'completed' : status
 const publicThread = (thread: any) => ({ ...thread, status: publicStatus(thread.status), evidence_requirements_json: undefined })
+const lessonMaterialRoles = new Set(['primary', 'case', 'challenge', 'reference', 'optional'])
+const stageMaterialRoleAliases: Record<string, string> = {
+  primary: 'foundation',
+  case: 'case',
+  challenge: 'counterevidence',
+  reference: 'reference',
+  optional: 'companion',
+  foundation: 'foundation',
+  counterevidence: 'counterevidence',
+  companion: 'companion',
+}
+const publicStageMaterialRoles: Record<string, string> = {
+  foundation: 'primary',
+  case: 'case',
+  counterevidence: 'challenge',
+  reference: 'reference',
+  companion: 'optional',
+}
+const materialRequestJobType = 'compass_lesson_material'
+const activeMaterialRequestStatuses = ['pending', 'running', 'retry']
+
+const boundedPosition = (value: unknown, fallback = 0) => {
+  const position = Number(value)
+  return Number.isFinite(position) ? Math.min(100000, Math.max(0, Math.trunc(position))) : fallback
+}
+
+type MaterialPlacementTable = 'thread_sources' | 'learning_path_sources' | 'thread_lesson_sources'
+
+const materialPlacementScope: Record<MaterialPlacementTable, string> = {
+  thread_sources: 'thread_id',
+  learning_path_sources: 'stage_id',
+  thread_lesson_sources: 'lesson_id',
+}
+
+const activePlacementClause = (table: MaterialPlacementTable) => table === 'thread_sources' ? " AND status!='removed'" : ''
+const canonicalSourceOwnershipFor = (recommendationExpression: string) => `EXISTS (
+  SELECT 1 FROM recommendation_meta guard_meta
+  JOIN recommendations guard_source ON guard_source.id=guard_meta.recommendation_id
+    AND guard_source.deleted_at IS NULL AND COALESCE(guard_source.status,'active') IN ('active','consumed')
+  JOIN tree_nodes guard_branch ON guard_branch.id=guard_meta.branch_id
+    AND guard_branch.type IN ('branch','leaf') AND lower(COALESCE(guard_branch.status,''))!='pruned'
+  JOIN tree_nodes guard_domain ON guard_domain.id=guard_branch.super_category
+    AND guard_domain.type='category' AND lower(COALESCE(guard_domain.status,''))!='pruned'
+  WHERE guard_meta.recommendation_id=${recommendationExpression}
+)`
+const canonicalSourceOwnershipGuard = canonicalSourceOwnershipFor('?')
+
+type MaterialPlacementMutationGuard = {
+  clause: string
+  bindings: unknown[]
+}
+
+type MaterialPlacementSnapshot = {
+  scopeId: string
+  recommendationId: string
+  role: string
+  position: number
+  expectedContribution: string | null
+  required?: number
+  status?: string
+}
+
+function combineMaterialPlacementGuards(...guards: Array<MaterialPlacementMutationGuard | null>): MaterialPlacementMutationGuard {
+  const active = guards.filter((guard): guard is MaterialPlacementMutationGuard => Boolean(guard))
+  return {
+    clause: active.map((guard) => `(${guard.clause})`).join(' AND '),
+    bindings: active.flatMap((guard) => guard.bindings),
+  }
+}
+
+const materialPlacementInsertGuard = (
+  table: MaterialPlacementTable,
+  scopeId: string,
+  recommendationId: string,
+): MaterialPlacementMutationGuard => ({
+  clause: `NOT EXISTS (SELECT 1 FROM ${table} target WHERE target.${materialPlacementScope[table]}=? AND target.recommendation_id=?) AND ${canonicalSourceOwnershipGuard}`,
+  bindings: [scopeId, recommendationId, recommendationId],
+})
+
+const canonicalBranchMutationGuard = (recommendationId: string, branchId: string): MaterialPlacementMutationGuard => ({
+  clause: 'EXISTS (SELECT 1 FROM recommendation_meta guard_branch_owner WHERE guard_branch_owner.recommendation_id=? AND guard_branch_owner.branch_id=?)',
+  bindings: [recommendationId, branchId],
+})
+
+const expectedSourceUrlMutationGuard = (recommendationId: string, expectedSourceUrl: string | null): MaterialPlacementMutationGuard | null => expectedSourceUrl ? ({
+  clause: 'EXISTS (SELECT 1 FROM recommendations guard_url WHERE guard_url.id=? AND guard_url.video_url=?)',
+  bindings: [recommendationId, expectedSourceUrl],
+}) : null
+
+function materialPlacementTargetGuard(
+  table: MaterialPlacementTable,
+  snapshot: MaterialPlacementSnapshot,
+  requireCanonicalOwnership = true,
+): MaterialPlacementMutationGuard {
+  const scope = materialPlacementScope[table]
+  const clauses = [
+    `target.${scope}=?`,
+    'target.recommendation_id=?',
+    'target.role=?',
+    'target.position=?',
+    'target.expected_contribution IS ?',
+  ]
+  const bindings: unknown[] = [
+    snapshot.scopeId,
+    snapshot.recommendationId,
+    snapshot.role,
+    snapshot.position,
+    snapshot.expectedContribution,
+  ]
+  if (table === 'learning_path_sources') {
+    clauses.push('target.required=?')
+    bindings.push(Number(snapshot.required || 0))
+  }
+  if (table === 'thread_sources') {
+    clauses.push('target.status=?')
+    bindings.push(snapshot.status || 'active')
+  }
+  if (requireCanonicalOwnership) clauses.push(canonicalSourceOwnershipFor('target.recommendation_id'))
+  return {
+    clause: `EXISTS (SELECT 1 FROM ${table} target WHERE ${clauses.join(' AND ')})`,
+    bindings,
+  }
+}
+
+async function requestedPlacementPosition(
+  DB: D1Database,
+  table: MaterialPlacementTable,
+  scopeId: string,
+  requested: unknown,
+  current?: number | null,
+) {
+  if (requested !== undefined) return boundedPosition(requested)
+  if (current != null) return boundedPosition(current)
+  const scope = materialPlacementScope[table]
+  const row = await DB.prepare(`SELECT COALESCE(MAX(position),-1)+1 position FROM ${table} WHERE ${scope}=?${activePlacementClause(table)}`)
+    .bind(scopeId).first<any>()
+  return boundedPosition(row?.position)
+}
+
+function movePlacementStatements(
+  DB: D1Database,
+  table: MaterialPlacementTable,
+  scopeId: string,
+  recommendationId: string,
+  from: number | null,
+  to: number,
+  mutationGuard?: string | MaterialPlacementMutationGuard,
+) {
+  const scope = materialPlacementScope[table]
+  const active = activePlacementClause(table)
+  const guardClause = typeof mutationGuard === 'string'
+    ? canonicalSourceOwnershipGuard
+    : mutationGuard?.clause
+  const guardBindings = typeof mutationGuard === 'string'
+    ? [mutationGuard]
+    : mutationGuard?.bindings || []
+  const guard = guardClause ? ` AND ${guardClause}` : ''
+  const bind = (sql: string, args: unknown[]) => DB.prepare(sql).bind(...args, ...guardBindings)
+  if (from == null) return [bind(`UPDATE ${table} SET position=position+1 WHERE ${scope}=? AND recommendation_id<>? AND position>=?${active}${guard}`, [scopeId, recommendationId, to])]
+  if (to < from) return [bind(`UPDATE ${table} SET position=position+1 WHERE ${scope}=? AND recommendation_id<>? AND position>=? AND position<?${active}${guard}`, [scopeId, recommendationId, to, from])]
+  if (to > from) return [bind(`UPDATE ${table} SET position=position-1 WHERE ${scope}=? AND recommendation_id<>? AND position>? AND position<=?${active}${guard}`, [scopeId, recommendationId, from, to])]
+  return []
+}
+
+const parseJsonObject = (value: unknown) => {
+  try {
+    const parsed = JSON.parse(String(value || '{}'))
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch { return {} }
+}
+
+const sourceBranch = (source: any) => ({
+  id: source.branch_id,
+  label: source.branch_label,
+  status: source.branch_status,
+  super_category: source.branch_domain_id,
+  domain_label: source.branch_domain_label,
+})
+
+async function loadPersistedLibrarySource(DB: D1Database, recommendationId: string) {
+  return DB.prepare(`SELECT r.id,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,r.status,
+      m.learning_state,m.branch_id,b.label branch_label,b.status branch_status,
+      d.id branch_domain_id,d.label branch_domain_label,d.status branch_domain_status,
+      h.status source_health_status,h.last_checked_at source_health_checked_at,h.http_status source_health_http_status,
+      h.final_url source_health_final_url,h.error_code source_health_error_code
+    FROM recommendations r
+    JOIN recommendation_meta m ON m.recommendation_id=r.id
+    JOIN tree_nodes b ON b.id=m.branch_id AND b.type IN ('branch','leaf') AND lower(COALESCE(b.status,''))!='pruned'
+    JOIN tree_nodes d ON d.id=b.super_category AND d.type='category' AND lower(COALESCE(d.status,''))!='pruned'
+    LEFT JOIN source_health h ON h.recommendation_id=r.id AND h.checked_url=r.video_url
+    WHERE r.id=? AND r.deleted_at IS NULL AND COALESCE(r.status,'active') IN ('active','consumed')`).bind(recommendationId).first<any>()
+}
+
+const projectMaterialRequest = (job: any) => {
+  if (!job) return null
+  const result: any = parseJsonObject(job.result_json)
+  const declaredOutcome = String(result.outcome || '')
+  const validReady = declaredOutcome === 'ready' && ['pick_id', 'recommendation_id', 'title', 'source_url', 'expected_contribution', 'branch_id'].every((field) => clean(result[field], field === 'source_url' ? 2000 : 1000))
+  const validAbstention = declaredOutcome === 'abstained' && Boolean(clean(result.reason, 2000))
+  const outcome = validReady ? 'ready' : validAbstention ? 'abstained' : null
+  return {
+    job_id: job.id,
+    status: job.status,
+    outcome,
+    requested_at: job.created_at,
+    updated_at: job.updated_at,
+    attempts: Number(job.attempts || 0),
+    error: job.error ? safeErrorMessage(job.error) : null,
+    result_valid: job.status === 'completed' ? Boolean(outcome) : null,
+    result: job.status === 'completed' ? {
+      outcome,
+      pick_id: clean(result.pick_id, 120) || null,
+      recommendation_id: clean(result.recommendation_id, 120) || null,
+      title: clean(result.title, 500) || null,
+      creator: clean(result.creator, 500) || null,
+      source_url: clean(result.source_url, 2000) || null,
+      expected_contribution: clean(result.expected_contribution, 1000) || null,
+      branch_id: clean(result.branch_id, 120) || null,
+      reason: clean(result.reason, 2000) || null,
+    } : null,
+  }
+}
 
 const keepSupersededThreadsReadOnly = async (c: any, next: () => Promise<void>) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) return next()
@@ -99,16 +322,18 @@ app.get('/hub', async (c) => {
 app.get('/threads/:id/path', async (c) => {
   const thread = await c.env.DB.prepare(`SELECT * FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!thread) return c.json({ error: 'thread not found' }, 404)
-  const [stages, items, sources, lessons, lessonSources, projects, materials] = await Promise.all([
+  const [stages, items, stageSources, lessons, lessonSources, threadSources, projects, materials] = await Promise.all([
     c.env.DB.prepare(`SELECT * FROM learning_path_stages WHERE thread_id=? ORDER BY position`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT i.* FROM learning_path_items i JOIN learning_path_stages s ON s.id=i.stage_id WHERE s.thread_id=? ORDER BY s.position,i.position`).bind(thread.id).all<any>(),
-    c.env.DB.prepare(`SELECT ps.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state,m.branch_id,COALESCE(n.label,r.branch) branch_label,n.status branch_status FROM learning_path_sources ps JOIN learning_path_stages s ON s.id=ps.stage_id JOIN recommendations r ON r.id=ps.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE s.thread_id=? ORDER BY s.position,ps.position`).bind(thread.id).all<any>(),
+    c.env.DB.prepare(`SELECT ps.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state,m.branch_id,COALESCE(n.label,r.branch) branch_label,n.status branch_status,n.super_category branch_domain_id,d.label branch_domain_label,h.status source_health_status,h.last_checked_at source_health_checked_at,h.http_status source_health_http_status,h.final_url source_health_final_url,h.error_code source_health_error_code FROM learning_path_sources ps JOIN learning_path_stages s ON s.id=ps.stage_id JOIN recommendations r ON r.id=ps.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id LEFT JOIN tree_nodes d ON d.id=n.super_category LEFT JOIN source_health h ON h.recommendation_id=r.id AND h.checked_url=r.video_url WHERE s.thread_id=? ORDER BY s.position,ps.position,ps.recommendation_id`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT * FROM thread_lessons WHERE thread_id=? ORDER BY stage_id,position`).bind(thread.id).all<any>(),
-    c.env.DB.prepare(`SELECT ls.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state,m.branch_id,COALESCE(n.label,r.branch) branch_label,n.status branch_status FROM thread_lesson_sources ls JOIN thread_lessons l ON l.id=ls.lesson_id JOIN recommendations r ON r.id=ls.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id WHERE l.thread_id=? ORDER BY l.stage_id,l.position,ls.position`).bind(thread.id).all<any>(),
+    c.env.DB.prepare(`SELECT ls.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state,m.branch_id,COALESCE(n.label,r.branch) branch_label,n.status branch_status,n.super_category branch_domain_id,d.label branch_domain_label,h.status source_health_status,h.last_checked_at source_health_checked_at,h.http_status source_health_http_status,h.final_url source_health_final_url,h.error_code source_health_error_code FROM thread_lesson_sources ls JOIN thread_lessons l ON l.id=ls.lesson_id JOIN recommendations r ON r.id=ls.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id LEFT JOIN tree_nodes d ON d.id=n.super_category LEFT JOIN source_health h ON h.recommendation_id=r.id AND h.checked_url=r.video_url WHERE l.thread_id=? ORDER BY l.stage_id,l.position,ls.position,ls.recommendation_id`).bind(thread.id).all<any>(),
+    c.env.DB.prepare(`SELECT ts.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,m.learning_state,m.branch_id,COALESCE(n.label,r.branch) branch_label,n.status branch_status,n.super_category branch_domain_id,d.label branch_domain_label,h.status source_health_status,h.last_checked_at source_health_checked_at,h.http_status source_health_http_status,h.final_url source_health_final_url,h.error_code source_health_error_code FROM thread_sources ts JOIN recommendations r ON r.id=ts.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes n ON n.id=m.branch_id LEFT JOIN tree_nodes d ON d.id=n.super_category LEFT JOIN source_health h ON h.recommendation_id=r.id AND h.checked_url=r.video_url WHERE ts.thread_id=? AND ts.status!='removed' ORDER BY ts.position,ts.recommendation_id`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT * FROM thread_projects WHERE thread_id=? ORDER BY CASE WHEN type='level' THEN 0 ELSE 1 END,created_at`).bind(thread.id).all<any>(),
     loadThreadLearningMaterials(c.env.DB, thread.id),
   ])
-  const recIds = [...new Set([...(sources.results || []), ...(lessonSources.results || [])].map((s: any) => s.recommendation_id).filter(Boolean))]
+  const allPlacedSources = [...(threadSources.results || []), ...(stageSources.results || []), ...(lessonSources.results || [])]
+  const recIds = [...new Set(allPlacedSources.map((source: any) => source.recommendation_id).filter(Boolean))]
   let artifactsByRec = new Map<string, { html?: any; pdf?: any }>()
   let notebookLearningByRec = new Map<string, any>()
   if (recIds.length) {
@@ -117,7 +342,7 @@ app.get('/threads/:id/path', async (c) => {
         const artifactMatches = batch.map(() => '?').join(',')
         return c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,created_at,metadata_json FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${artifactMatches}) AND COALESCE(json_extract(metadata_json,'$.scope'),'')!='book' ORDER BY rowid DESC`).bind(...batch).all<any>()
       })),
-      loadNotebookLearningStates(c.env.DB, [...(sources.results || []), ...(lessonSources.results || [])]),
+      loadNotebookLearningStates(c.env.DB, allPlacedSources),
     ])
     artifactsByRec = selectLearningSourceRenditions(artifactBatches.flatMap((batch) => batch.results || []))
     notebookLearningByRec = notebookStates
@@ -126,13 +351,14 @@ app.get('/threads/:id/path', async (c) => {
     const notebookState = notebookLearningByRec.get(source.recommendation_id)
     return {
       ...source,
+      ...(source.stage_id ? { role: publicStageMaterialRoles[source.role] || source.role, storage_role: source.role } : {}),
       artifacts: artifactsByRec.get(source.recommendation_id) || {},
       ...(source.notebook_url ? { notebook_learning: notebookState ? summarizeNotebookLearningState(notebookState) : null } : {}),
     }
   }
   const stageRows = (stages.results || []).map((stage: any) => {
     const stageItems = (items.results || []).filter((item: any) => item.stage_id === stage.id)
-    const stageSources = (sources.results || []).filter((source: any) => source.stage_id === stage.id).map(attachLearningMaterials)
+    const scopedStageSources = (stageSources.results || []).filter((source: any) => source.stage_id === stage.id).map(attachLearningMaterials)
     const stageLessons = (lessons.results || []).filter((lesson: any) => lesson.stage_id === stage.id).map((lesson: any) => ({ ...lesson, sources: (lessonSources.results || []).filter((source: any) => source.lesson_id === lesson.id).map(attachLearningMaterials), notes: materials.lessons.get(lesson.id)?.notes || [], files: materials.lessons.get(lesson.id)?.files || [], cards: materials.lessons.get(lesson.id)?.cards || [], recall_drafts: materials.lessons.get(lesson.id)?.drafts || [] }))
     const stageProjects = (projects.results || []).filter((project: any) => project.stage_id === stage.id)
     const completedLessons = stageLessons.filter((lesson: any) => lesson.status === 'completed').length
@@ -146,7 +372,7 @@ app.get('/threads/:id/path', async (c) => {
       items: stageItems,
       lessons: stageLessons,
       projects: stageProjects,
-      sources: stageSources,
+      sources: scopedStageSources,
       notes: materials.levels.get(stage.id)?.notes || [],
       files: materials.levels.get(stage.id)?.files || [],
       cards: materials.levels.get(stage.id)?.cards || [],
@@ -156,7 +382,95 @@ app.get('/threads/:id/path', async (c) => {
     }
   })
   const current = stageRows.find((stage: any) => ['available','in_progress'].includes(stage.status)) || stageRows.find((stage: any) => stage.status === 'locked') || stageRows[stageRows.length - 1] || null
-  return c.json({ thread: publicThread(thread), stages: stageRows, projects: projects.results || [], current_stage: current, notes: materials.thread.notes, files: materials.thread.files, cards: materials.thread.cards, recall_drafts: materials.thread.drafts })
+  return c.json({ thread: publicThread(thread), sources: (threadSources.results || []).map(attachLearningMaterials), stages: stageRows, projects: projects.results || [], current_stage: current, notes: materials.thread.notes, files: materials.thread.files, cards: materials.thread.cards, recall_drafts: materials.thread.drafts })
+})
+
+app.get('/threads/:id/material-sources', async (c) => {
+  const thread = await c.env.DB.prepare(`SELECT id,title FROM learning_threads WHERE id=? AND superseded_at IS NULL`).bind(c.req.param('id')).first<any>()
+  if (!thread) return c.json({ error: 'thread not found' }, 404)
+  const query = clean(c.req.query('q'), 200)
+  const recommendationId = clean(c.req.query('recommendation_id'), 120)
+  const expectedSourceUrl = clean(c.req.query('expected_source_url'), 2000)
+  const requestedLimit = Number(c.req.query('limit') || 30)
+  const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? Math.trunc(requestedLimit) : 30, 1), 50)
+  const whereSearch = query
+    ? `AND (r.video_title LIKE ? OR COALESCE(r.creator,'') LIKE ? OR COALESCE(r.why_this,'') LIKE ? OR b.label LIKE ? OR d.label LIKE ?)`
+    : ''
+  const searchBindings = query ? Array(5).fill(`%${query}%`) : []
+  const whereRecommendation = recommendationId ? 'AND r.id=?' : ''
+  const rows = await c.env.DB.prepare(`SELECT r.id,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,r.why_this,r.verified,r.status,r.updated_at,
+      m.learning_state,m.branch_id,b.label branch_label,b.status branch_status,
+      d.id branch_domain_id,d.label branch_domain_label,d.status branch_domain_status,
+      h.status source_health_status,h.last_checked_at source_health_checked_at,h.http_status source_health_http_status,
+      h.final_url source_health_final_url,h.error_code source_health_error_code
+    FROM recommendations r
+    JOIN recommendation_meta m ON m.recommendation_id=r.id
+    JOIN tree_nodes b ON b.id=m.branch_id AND b.type IN ('branch','leaf') AND lower(COALESCE(b.status,''))!='pruned'
+    JOIN tree_nodes d ON d.id=b.super_category AND d.type='category' AND lower(COALESCE(d.status,''))!='pruned'
+    LEFT JOIN source_health h ON h.recommendation_id=r.id AND h.checked_url=r.video_url
+    WHERE r.deleted_at IS NULL AND COALESCE(r.status,'active') IN ('active','consumed') ${whereRecommendation} ${whereSearch}
+    ORDER BY CASE COALESCE(m.learning_state,'captured') WHEN 'attached' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'queued' THEN 2 WHEN 'captured' THEN 3 ELSE 4 END,
+      CASE r.status WHEN 'active' THEN 0 ELSE 1 END,COALESCE(r.updated_at,r.created_at) DESC,r.id
+    LIMIT ?`).bind(...(recommendationId ? [recommendationId] : []), ...searchBindings, limit).all<any>()
+  const matchedRows = (rows.results || []).filter((row: any) => !expectedSourceUrl || normalizeUrlForDedup(String(row.video_url || '')) === normalizeUrlForDedup(expectedSourceUrl))
+  const recommendationIds = matchedRows.map((row: any) => String(row.id))
+  let artifactsByRecommendation = new Map<string, { html?: any; pdf?: any }>()
+  if (recommendationIds.length) {
+    const artifactBatches = await Promise.all(chunkForD1(recommendationIds).map((batch) => c.env.DB.prepare(`SELECT id,filename,media_type,size_bytes,created_at,metadata_json
+      FROM artifacts
+      WHERE json_extract(metadata_json,'$.recommendation_id') IN (${batch.map(() => '?').join(',')})
+        AND COALESCE(json_extract(metadata_json,'$.scope'),'')!='book'
+        AND COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged'
+      ORDER BY created_at DESC,id DESC`).bind(...batch).all<any>()))
+    artifactsByRecommendation = selectLearningSourceRenditions(artifactBatches.flatMap((batch) => batch.results || []))
+  }
+  const placements = recommendationIds.length
+    ? await c.env.DB.prepare(`SELECT ts.recommendation_id,'thread' scope,ts.thread_id scope_id,t.title scope_title,ts.role,ts.expected_contribution,ts.position
+        FROM thread_sources ts JOIN learning_threads t ON t.id=ts.thread_id
+        WHERE ts.thread_id=? AND ts.status!='removed'
+      UNION ALL
+      SELECT ps.recommendation_id,'level' scope,ps.stage_id scope_id,s.title scope_title,ps.role,ps.expected_contribution,ps.position
+        FROM learning_path_sources ps JOIN learning_path_stages s ON s.id=ps.stage_id
+        WHERE s.thread_id=?
+      UNION ALL
+      SELECT ls.recommendation_id,'lesson' scope,ls.lesson_id scope_id,l.title scope_title,ls.role,ls.expected_contribution,ls.position
+        FROM thread_lesson_sources ls JOIN thread_lessons l ON l.id=ls.lesson_id
+        WHERE l.thread_id=?
+      ORDER BY scope,position,recommendation_id`).bind(thread.id, thread.id, thread.id).all<any>()
+    : { results: [] }
+  const placementsByRecommendation = new Map<string, any[]>()
+  for (const placement of placements.results || []) {
+    if (!recommendationIds.includes(String(placement.recommendation_id))) continue
+    const normalized = placement.scope === 'level'
+      ? { ...placement, role: publicStageMaterialRoles[placement.role] || placement.role, storage_role: placement.role }
+      : placement
+    placementsByRecommendation.set(String(placement.recommendation_id), [...(placementsByRecommendation.get(String(placement.recommendation_id)) || []), normalized])
+  }
+  return c.json({
+    thread: { id: thread.id, title: thread.title },
+    query,
+    sources: matchedRows.map((row: any) => ({
+      id: row.id,
+      title: row.video_title,
+      creator: row.creator,
+      content_type: row.content_type,
+      source_url: row.video_url,
+      notebook_url: row.notebook_url,
+      why_this: row.why_this,
+      status: row.status,
+      learning_state: row.learning_state,
+      branch: sourceBranch(row),
+      health: row.source_health_status ? {
+        status: row.source_health_status,
+        checked_at: row.source_health_checked_at,
+        http_status: row.source_health_http_status,
+        final_url: row.source_health_final_url,
+        error_code: row.source_health_error_code,
+      } : null,
+      artifacts: artifactsByRecommendation.get(String(row.id)) || {},
+      placements: placementsByRecommendation.get(String(row.id)) || [],
+    })),
+  })
 })
 
 app.post('/threads/:id/stages/:stageId/lessons', async (c) => {
@@ -206,25 +520,211 @@ app.patch('/threads/:id/lessons/:lessonId', async (c) => {
 
 app.post('/threads/:id/lessons/:lessonId/sources', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}))
+  const recommendationId = clean(body.recommendation_id, 120)
+  const expectedContribution = clean(body.expected_contribution, 1000)
+  if (!expectedContribution) return c.json({ error: 'expected_contribution_required', message: 'Explain the nonblank expected contribution for this exact Lesson placement.' }, 400)
   const lesson = await c.env.DB.prepare(`SELECT id,stage_id FROM thread_lessons WHERE id=? AND thread_id=?`).bind(c.req.param('lessonId'), c.req.param('id')).first<any>()
-  const source = await c.env.DB.prepare(`SELECT id FROM recommendations WHERE id=?`).bind(body.recommendation_id).first()
-  const branch = body.branch_id
-    ? await c.env.DB.prepare(`SELECT id,label,status FROM tree_nodes WHERE id=? AND type IN ('branch','leaf')`).bind(body.branch_id).first<any>()
-    : null
-  if (!lesson || !source) return c.json({ error: 'lesson and source required' }, 400)
-  if (!branch || branch.status === 'pruned') return c.json({ error: 'valid non-pruned branch_id required' }, 400)
-  const role = ['primary','case','challenge','reference','optional'].includes(body.role) ? body.role : 'primary'
-  await c.env.DB.batch([
-    c.env.DB.prepare(`DELETE FROM thread_lesson_sources WHERE lesson_id=? AND role=? AND recommendation_id<>? AND ?!='optional'`).bind(c.req.param('lessonId'), role, body.recommendation_id, role),
-    c.env.DB.prepare(`INSERT OR REPLACE INTO thread_lesson_sources (lesson_id,recommendation_id,role,position) VALUES (?,?,?,?)`).bind(c.req.param('lessonId'), body.recommendation_id, role, Math.max(0, Number(body.position || 0))),
-    c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,learning_state,branch_id,source_metadata_json,updated_at)
-      VALUES (?,'attached',?,'{}',datetime('now'))
-      ON CONFLICT(recommendation_id) DO UPDATE SET
-        branch_id=excluded.branch_id,
-        learning_state=CASE WHEN recommendation_meta.learning_state='captured' THEN 'attached' ELSE recommendation_meta.learning_state END,
-        updated_at=datetime('now')`).bind(body.recommendation_id, branch.id),
+  if (!lesson) return c.json({ error: 'lesson not found' }, 404)
+  const source = recommendationId ? await loadPersistedLibrarySource(c.env.DB, recommendationId) : null
+  if (!source) return c.json({ error: 'persisted valid non-pruned branch_id required, with a valid domain' }, 409)
+  const expectedSourceUrl = clean(body.expected_source_url, 2000)
+  if (expectedSourceUrl && normalizeUrlForDedup(expectedSourceUrl) !== normalizeUrlForDedup(String(source.video_url || ''))) {
+    return c.json({ error: 'lesson_material_source_changed', message: 'The Library source URL no longer matches the reviewed material result. Review or request material again before attaching it.' }, 409)
+  }
+  const expectedCurrentSourceUrl = expectedSourceUrl ? String(source.video_url || '') : null
+  if (body.branch_id != null && clean(body.branch_id, 120) !== source.branch_id) return c.json({ error: 'source_branch_precondition_failed', branch: sourceBranch(source) }, 409)
+  const requestedRole = clean(body.role, 30)
+  if (requestedRole && !lessonMaterialRoles.has(requestedRole)) return c.json({ error: 'role must be primary, case, challenge, reference, or optional' }, 400)
+  const role = requestedRole || 'primary'
+  const existingPlacement = await c.env.DB.prepare(`SELECT role,position,expected_contribution FROM thread_lesson_sources WHERE lesson_id=? AND recommendation_id=?`).bind(lesson.id, recommendationId).first<any>()
+  const position = await requestedPlacementPosition(c.env.DB, 'thread_lesson_sources', lesson.id, body.position, existingPlacement?.position)
+  const placementGuard = combineMaterialPlacementGuards(
+    existingPlacement ? materialPlacementTargetGuard('thread_lesson_sources', {
+      scopeId: lesson.id,
+      recommendationId,
+      role: existingPlacement.role,
+      position: Number(existingPlacement.position || 0),
+      expectedContribution: existingPlacement.expected_contribution == null ? null : String(existingPlacement.expected_contribution),
+    }) : materialPlacementInsertGuard('thread_lesson_sources', lesson.id, recommendationId),
+    canonicalBranchMutationGuard(recommendationId, source.branch_id),
+    expectedSourceUrlMutationGuard(recommendationId, expectedCurrentSourceUrl),
+  )
+  const replaced = role === 'optional' ? [] : ((await c.env.DB.prepare(`SELECT recommendation_id FROM thread_lesson_sources WHERE lesson_id=? AND role=? AND recommendation_id<>? ORDER BY position`).bind(lesson.id, role, recommendationId).all<any>()).results || []).map((row: any) => row.recommendation_id)
+  const targetMutation = existingPlacement
+    ? c.env.DB.prepare(`UPDATE thread_lesson_sources SET role=?,position=?,expected_contribution=?,updated_at=datetime('now') WHERE lesson_id=? AND recommendation_id=? AND ${placementGuard.clause}`).bind(role, position, expectedContribution, lesson.id, recommendationId, ...placementGuard.bindings)
+    : c.env.DB.prepare(`INSERT INTO thread_lesson_sources (lesson_id,recommendation_id,role,position,expected_contribution,updated_at)
+      SELECT ?,m.recommendation_id,?,?,?,datetime('now')
+      FROM recommendation_meta m
+      JOIN recommendations r ON r.id=m.recommendation_id AND r.deleted_at IS NULL AND COALESCE(r.status,'active') IN ('active','consumed')
+      JOIN tree_nodes b ON b.id=m.branch_id AND b.type IN ('branch','leaf') AND lower(COALESCE(b.status,''))!='pruned'
+      JOIN tree_nodes d ON d.id=b.super_category AND d.type='category' AND lower(COALESCE(d.status,''))!='pruned'
+      WHERE m.recommendation_id=? AND ${placementGuard.clause}`).bind(lesson.id, role, position, expectedContribution, recommendationId, ...placementGuard.bindings)
+  const attachment = await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM thread_lesson_sources WHERE lesson_id=? AND role=? AND recommendation_id<>? AND ?!='optional' AND ${placementGuard.clause}`).bind(lesson.id, role, recommendationId, role, ...placementGuard.bindings),
+    ...movePlacementStatements(c.env.DB, 'thread_lesson_sources', lesson.id, recommendationId, existingPlacement == null ? null : Number(existingPlacement.position || 0), position, placementGuard),
+    c.env.DB.prepare(`UPDATE recommendation_meta
+      SET learning_state=CASE WHEN learning_state='captured' THEN 'attached' ELSE learning_state END,updated_at=datetime('now')
+      WHERE recommendation_id=? AND ${placementGuard.clause}`).bind(recommendationId, ...placementGuard.bindings),
+    targetMutation,
   ])
-  return c.json({ ok: true, lesson_id: lesson.id, recommendation_id: body.recommendation_id, role, branch }, 201)
+  if (attachment[attachment.length - 1]?.meta.changes !== 1) {
+    const currentSource = await loadPersistedLibrarySource(c.env.DB, recommendationId)
+    if (expectedCurrentSourceUrl && currentSource && String(currentSource.video_url || '') !== expectedCurrentSourceUrl) {
+      return c.json({ error: 'lesson_material_source_changed', message: 'The Library source URL changed before attachment. Review or request material again before attaching it.' }, 409)
+    }
+    if (!currentSource || currentSource.branch_id !== source.branch_id) return c.json({ error: 'source_ownership_changed', message: 'The source no longer has the observed valid canonical branch and domain ownership. Reload Thread Resources and try again.' }, 409)
+    return c.json({ error: 'source_placement_conflict', message: 'This Lesson placement changed while it was being attached. Reload Thread Resources and try again.' }, 409)
+  }
+  const committedSource = await loadPersistedLibrarySource(c.env.DB, recommendationId)
+  return c.json({ ok: true, scope: 'lesson', lesson_id: lesson.id, recommendation_id: recommendationId, role, expected_contribution: expectedContribution, position, branch: committedSource ? sourceBranch(committedSource) : null, replaced_recommendation_ids: replaced }, 201)
+})
+
+app.patch('/threads/:id/lessons/:lessonId/sources/:sourceId', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  if (!['role', 'position', 'expected_contribution'].some((key) => Object.prototype.hasOwnProperty.call(body, key))) return c.json({ error: 'role, position, or expected_contribution required' }, 400)
+  const placement = await c.env.DB.prepare(`SELECT ls.* FROM thread_lesson_sources ls JOIN thread_lessons l ON l.id=ls.lesson_id WHERE ls.lesson_id=? AND ls.recommendation_id=? AND l.thread_id=?`).bind(c.req.param('lessonId'), c.req.param('sourceId'), c.req.param('id')).first<any>()
+  if (!placement) return c.json({ error: 'lesson source not found' }, 404)
+  const source = await loadPersistedLibrarySource(c.env.DB, c.req.param('sourceId'))
+  if (!source) return c.json({ error: 'persisted valid non-pruned branch_id required, with a valid domain' }, 409)
+  const requestedRole = body.role === undefined ? placement.role : clean(body.role, 30)
+  if (!lessonMaterialRoles.has(requestedRole)) return c.json({ error: 'role must be primary, case, challenge, reference, or optional' }, 400)
+  const position = body.position === undefined ? Number(placement.position || 0) : boundedPosition(body.position)
+  const expectedContribution = body.expected_contribution === undefined ? placement.expected_contribution : clean(body.expected_contribution, 1000)
+  if (!clean(expectedContribution, 1000)) return c.json({ error: 'expected_contribution_required', message: 'Explain the nonblank expected contribution for this exact Lesson placement.' }, 400)
+  const targetGuard = materialPlacementTargetGuard('thread_lesson_sources', {
+    scopeId: placement.lesson_id,
+    recommendationId: placement.recommendation_id,
+    role: placement.role,
+    position: Number(placement.position || 0),
+    expectedContribution: placement.expected_contribution == null ? null : String(placement.expected_contribution),
+  })
+  const replaced = requestedRole === 'optional' ? [] : ((await c.env.DB.prepare(`SELECT recommendation_id FROM thread_lesson_sources WHERE lesson_id=? AND role=? AND recommendation_id<>? ORDER BY position`).bind(placement.lesson_id, requestedRole, placement.recommendation_id).all<any>()).results || []).map((row: any) => row.recommendation_id)
+  const mutation = await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM thread_lesson_sources WHERE lesson_id=? AND role=? AND recommendation_id<>? AND ?!='optional' AND ${targetGuard.clause}`).bind(placement.lesson_id, requestedRole, placement.recommendation_id, requestedRole, ...targetGuard.bindings),
+    ...movePlacementStatements(c.env.DB, 'thread_lesson_sources', placement.lesson_id, placement.recommendation_id, Number(placement.position || 0), position, targetGuard),
+    c.env.DB.prepare(`UPDATE thread_lesson_sources SET role=?,position=?,expected_contribution=?,updated_at=datetime('now') WHERE lesson_id=? AND recommendation_id=? AND ${targetGuard.clause}`).bind(requestedRole, position, expectedContribution, placement.lesson_id, placement.recommendation_id, ...targetGuard.bindings),
+  ])
+  if (mutation[mutation.length - 1]?.meta.changes !== 1) return c.json({ error: 'source_placement_conflict', message: 'This source placement or its canonical ownership changed. Reload Thread Resources and try again.' }, 409)
+  const committedSource = await loadPersistedLibrarySource(c.env.DB, placement.recommendation_id)
+  return c.json({ ok: true, scope: 'lesson', lesson_id: placement.lesson_id, recommendation_id: placement.recommendation_id, role: requestedRole, position, expected_contribution: expectedContribution, branch: committedSource ? sourceBranch(committedSource) : null, replaced_recommendation_ids: replaced })
+})
+
+app.delete('/threads/:id/lessons/:lessonId/sources/:sourceId', async (c) => {
+  const placement = await c.env.DB.prepare(`SELECT ls.role,ls.position,ls.expected_contribution FROM thread_lesson_sources ls JOIN thread_lessons l ON l.id=ls.lesson_id WHERE ls.lesson_id=? AND ls.recommendation_id=? AND l.thread_id=?`).bind(c.req.param('lessonId'), c.req.param('sourceId'), c.req.param('id')).first<any>()
+  if (!placement) return c.json({ error: 'lesson source not found' }, 404)
+  const targetGuard = materialPlacementTargetGuard('thread_lesson_sources', {
+    scopeId: c.req.param('lessonId'),
+    recommendationId: c.req.param('sourceId'),
+    role: placement.role,
+    position: Number(placement.position || 0),
+    expectedContribution: placement.expected_contribution == null ? null : String(placement.expected_contribution),
+  }, false)
+  const mutation = await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE thread_lesson_sources SET position=position-1 WHERE lesson_id=? AND recommendation_id<>? AND position>? AND ${targetGuard.clause}`).bind(c.req.param('lessonId'), c.req.param('sourceId'), Number(placement.position || 0), ...targetGuard.bindings),
+    c.env.DB.prepare(`DELETE FROM thread_lesson_sources WHERE lesson_id=? AND recommendation_id=? AND ${targetGuard.clause}`).bind(c.req.param('lessonId'), c.req.param('sourceId'), ...targetGuard.bindings),
+  ])
+  if (mutation[mutation.length - 1]?.meta.changes !== 1) return c.json({ error: 'source_placement_conflict', message: 'This source placement changed or was already removed. Reload Thread Resources and try again.' }, 409)
+  return c.json({ ok: true, scope: 'lesson', lesson_id: c.req.param('lessonId'), recommendation_id: c.req.param('sourceId'), removed: true })
+})
+
+app.get('/threads/:id/lessons/:lessonId/material-request', async (c) => {
+  const lesson = await c.env.DB.prepare(`SELECT id FROM thread_lessons WHERE id=? AND thread_id=?`).bind(c.req.param('lessonId'), c.req.param('id')).first()
+  if (!lesson) return c.json({ error: 'lesson not found' }, 404)
+  const job = await c.env.DB.prepare(`SELECT id,status,result_json,error,attempts,created_at,updated_at FROM agent_jobs
+    WHERE job_type=? AND json_extract(payload_json,'$.thread_id')=? AND json_extract(payload_json,'$.lesson_id')=?
+    ORDER BY created_at DESC,id DESC LIMIT 1`).bind(materialRequestJobType, c.req.param('id'), c.req.param('lessonId')).first<any>()
+  return c.json({ request: projectMaterialRequest(job) })
+})
+
+app.post('/threads/:id/lessons/:lessonId/material-request', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  const target = await c.env.DB.prepare(`SELECT l.id lesson_id,l.position lesson_position,l.title lesson_title,l.description lesson_description,l.objective lesson_objective,l.why_learn,l.why_now lesson_why_now,l.takeaway,l.status lesson_status,l.content,l.updated_at lesson_updated_at,
+      s.id stage_id,s.position stage_position,s.title stage_title,s.objective stage_objective,s.description stage_description,s.status stage_status,
+      t.id thread_id,t.title thread_title,t.thread_type,t.guiding_question,t.why_now thread_why_now,t.definition_of_done,t.status thread_status
+    FROM thread_lessons l JOIN learning_path_stages s ON s.id=l.stage_id JOIN learning_threads t ON t.id=l.thread_id
+    WHERE l.id=? AND l.thread_id=? AND t.superseded_at IS NULL`).bind(c.req.param('lessonId'), c.req.param('id')).first<any>()
+  if (!target) return c.json({ error: 'lesson not found' }, 404)
+  if (!['available', 'in_progress'].includes(String(target.stage_status)) || target.lesson_status === 'completed' || clean(target.content, 12000)) {
+    return c.json({ error: 'lesson_material_not_actionable', message: 'Find material is available only for an incomplete current-Level lesson without authored lesson content.' }, 409)
+  }
+  const attached: any = await c.env.DB.prepare(`SELECT COUNT(*) count FROM thread_lesson_sources WHERE lesson_id=?`).bind(target.lesson_id).first()
+  if (Number(attached?.count || 0) > 0) return c.json({ error: 'lesson_already_has_material', message: 'Search or edit the attached Library material before requesting new research.' }, 409)
+
+  const suppliedKey = clean(c.req.header('idempotency-key') || body.idempotency_key, 160)
+  const idempotencyKey = suppliedKey
+    ? `compass-lesson-material:${target.lesson_id}:${suppliedKey}`
+    : `compass-lesson-material:${target.thread_id}:${target.lesson_id}:${target.lesson_updated_at || 'initial'}`
+  const sameRequest = await c.env.DB.prepare(`SELECT id,status,result_json,error,attempts,created_at,updated_at FROM agent_jobs WHERE idempotency_key=? LIMIT 1`).bind(idempotencyKey).first<any>()
+  if (sameRequest) return c.json({ ok: true, reused: true, request: projectMaterialRequest(sameRequest) }, activeMaterialRequestStatuses.includes(sameRequest.status) ? 202 : 200)
+  const activeRequest = await c.env.DB.prepare(`SELECT id,status,result_json,error,attempts,created_at,updated_at FROM agent_jobs
+    WHERE job_type=? AND json_extract(payload_json,'$.thread_id')=? AND json_extract(payload_json,'$.lesson_id')=? AND status IN ('pending','running','retry')
+    ORDER BY created_at DESC,id DESC LIMIT 1`).bind(materialRequestJobType, target.thread_id, target.lesson_id).first<any>()
+  if (activeRequest) return c.json({ ok: true, reused: true, request: projectMaterialRequest(activeRequest) }, 202)
+
+  const contextRows = await c.env.DB.prepare(`SELECT placed.scope,placed.scope_id,placed.recommendation_id,placed.role,placed.expected_contribution,
+      b.id branch_id,b.label branch_label,b.status branch_status,d.id branch_domain_id,d.label branch_domain_label
+    FROM (
+      SELECT 'thread' scope,ts.thread_id scope_id,ts.recommendation_id,ts.role,ts.expected_contribution FROM thread_sources ts WHERE ts.thread_id=? AND ts.status!='removed'
+      UNION ALL
+      SELECT 'level' scope,ps.stage_id scope_id,ps.recommendation_id,ps.role,ps.expected_contribution FROM learning_path_sources ps JOIN learning_path_stages s ON s.id=ps.stage_id WHERE s.thread_id=?
+      UNION ALL
+      SELECT 'lesson' scope,ls.lesson_id scope_id,ls.recommendation_id,ls.role,ls.expected_contribution FROM thread_lesson_sources ls JOIN thread_lessons l ON l.id=ls.lesson_id WHERE l.thread_id=?
+    ) placed
+    JOIN recommendation_meta m ON m.recommendation_id=placed.recommendation_id
+    JOIN tree_nodes b ON b.id=m.branch_id AND b.type IN ('branch','leaf') AND lower(COALESCE(b.status,''))!='pruned'
+    JOIN tree_nodes d ON d.id=b.super_category AND d.type='category' AND lower(COALESCE(d.status,''))!='pruned'
+    ORDER BY CASE placed.scope WHEN 'lesson' THEN 0 WHEN 'level' THEN 1 ELSE 2 END,placed.scope_id`).bind(target.thread_id, target.thread_id, target.thread_id).all<any>()
+  const branchOwners = new Map<string, any>()
+  for (const row of contextRows.results || []) branchOwners.set(String(row.branch_id), { id: row.branch_id, label: row.branch_label, status: row.branch_status, super_category: row.branch_domain_id, domain_label: row.branch_domain_label })
+  const requestedAt = new Date().toISOString()
+  const jobId = makeId('job')
+  const payload = {
+    workflow_contract: 'compass-lesson-material/v1',
+    intent: 'find_material_for_lesson',
+    requested_at: requestedAt,
+    requested_by: 'user',
+    thread_id: target.thread_id,
+    stage_id: target.stage_id,
+    lesson_id: target.lesson_id,
+    target_lesson_id: target.lesson_id,
+    objective: [target.stage_title, target.lesson_title, target.lesson_objective, target.lesson_description, target.why_learn, target.takeaway].filter(Boolean).join(' — '),
+    thread: { id: target.thread_id, title: target.thread_title, thread_type: target.thread_type, guiding_question: target.guiding_question, why_now: target.thread_why_now, definition_of_done: target.definition_of_done, status: publicStatus(target.thread_status) },
+    level: { id: target.stage_id, position: target.stage_position, title: target.stage_title, objective: target.stage_objective, description: target.stage_description, status: publicStatus(target.stage_status) },
+    lesson: { id: target.lesson_id, position: target.lesson_position, title: target.lesson_title, objective: target.lesson_objective, description: target.lesson_description, why_learn: target.why_learn, why_now: target.lesson_why_now, takeaway: target.takeaway, status: target.lesson_status },
+    branch_context: {
+      branch_required: true,
+      domain_required: true,
+      canonical_owners: [...branchOwners.values()],
+      placed_sources: (contextRows.results || []).map((row: any) => ({ scope: row.scope, scope_id: row.scope_id, recommendation_id: row.recommendation_id, role: row.scope === 'level' ? publicStageMaterialRoles[row.role] || row.role : row.role, expected_contribution: row.expected_contribution, branch_id: row.branch_id, super_category: row.branch_domain_id })),
+      rule: 'Every candidate must use its persisted verified non-pruned branch and domain; never infer ownership from a free-text label.',
+    },
+    library_first: { method: 'GET', endpoint: `/learning/core/threads/${encodeURIComponent(target.thread_id)}/material-sources`, rule: 'Search existing Library sources before researching the web.' },
+    compass: {
+      context_endpoint: `/compass/context?thread_id=${encodeURIComponent(target.thread_id)}`,
+      submit_endpoint: '/compass/picks',
+      read_endpoint: '/compass/pick/:id',
+      input: { thread_id: target.thread_id, intent: 'deepen_thread', strategy: 'fit', target_lesson_id: target.lesson_id, workflow_contract: 'compass-lesson-material/v1', material_request_id: jobId },
+      candidate_rule: 'All candidates must set target_lesson_id to the exact lesson and satisfy the Compass candidate, reachability, evidence, coverage, and branch contracts.',
+    },
+    completion_contract: {
+      allowed_outcomes: ['ready', 'abstained'],
+      ready_requires: ['pick_id', 'recommendation_id', 'title', 'source_url', 'expected_contribution', 'branch_id'],
+      abstention_requires: ['reason'],
+      may_abstain: true,
+      attach_policy: 'explicit_user_action_only',
+      queue_policy: 'never',
+      start_policy: 'never',
+      progression_policy: 'direct_lesson_completion_only',
+    },
+  }
+  const inserted = await c.env.DB.prepare(`INSERT INTO agent_jobs (id,job_type,status,payload_json,idempotency_key,trigger_kind,workflow_step,created_at,updated_at)
+    VALUES (?,?,'pending',?,?,?,'research_library_first',?,?) ON CONFLICT(idempotency_key) DO NOTHING`).bind(jobId, materialRequestJobType, JSON.stringify(payload), idempotencyKey, 'explicit_user_action', requestedAt, requestedAt).run()
+  if (!inserted.meta.changes) {
+    const racedRequest = await c.env.DB.prepare(`SELECT id,status,result_json,error,attempts,created_at,updated_at FROM agent_jobs WHERE idempotency_key=? LIMIT 1`).bind(idempotencyKey).first<any>()
+    return c.json({ ok: true, reused: true, request: projectMaterialRequest(racedRequest) }, 202)
+  }
+  const request = { id: jobId, status: 'pending', result_json: null, error: null, attempts: 0, created_at: requestedAt, updated_at: requestedAt }
+  return c.json({ ok: true, reused: false, request: projectMaterialRequest(request) }, 202)
 })
 
 app.patch('/threads/:id/projects/:projectId', async (c) => {
@@ -296,14 +796,110 @@ app.patch('/threads/:id/stages/:stageId/items/:itemId', async (c) => {
 
 app.post('/threads/:id/stages/:stageId/sources', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}))
-  const [stage, source] = await Promise.all([
-    c.env.DB.prepare(`SELECT id FROM learning_path_stages WHERE id=? AND thread_id=?`).bind(c.req.param('stageId'), c.req.param('id')).first(),
-    c.env.DB.prepare(`SELECT id FROM recommendations WHERE id=? AND deleted_at IS NULL`).bind(clean(body.recommendation_id, 120)).first(),
+  const recommendationId = clean(body.recommendation_id, 120)
+  const expectedContribution = clean(body.expected_contribution, 1000)
+  if (!expectedContribution) return c.json({ error: 'expected_contribution_required', message: 'Explain the nonblank expected contribution for this exact Level placement.' }, 400)
+  const stage = await c.env.DB.prepare(`SELECT id FROM learning_path_stages WHERE id=? AND thread_id=?`).bind(c.req.param('stageId'), c.req.param('id')).first()
+  if (!stage) return c.json({ error: 'level not found' }, 404)
+  const source = recommendationId ? await loadPersistedLibrarySource(c.env.DB, recommendationId) : null
+  if (!source) return c.json({ error: 'persisted valid non-pruned branch_id required, with a valid domain' }, 409)
+  if (body.branch_id != null && clean(body.branch_id, 120) !== source.branch_id) return c.json({ error: 'source_branch_precondition_failed', branch: sourceBranch(source) }, 409)
+  const requestedRole = clean(body.role, 30) || 'reference'
+  const storageRole = stageMaterialRoleAliases[requestedRole]
+  if (!storageRole) return c.json({ error: 'role must be primary, case, challenge, reference, or optional' }, 400)
+  const role = publicStageMaterialRoles[storageRole]
+  const existingPlacement = await c.env.DB.prepare(`SELECT role,required,position,expected_contribution FROM learning_path_sources WHERE stage_id=? AND recommendation_id=?`).bind(c.req.param('stageId'), recommendationId).first<any>()
+  const position = await requestedPlacementPosition(c.env.DB, 'learning_path_sources', c.req.param('stageId'), body.position, existingPlacement?.position)
+  const placementGuard = combineMaterialPlacementGuards(
+    existingPlacement ? materialPlacementTargetGuard('learning_path_sources', {
+      scopeId: c.req.param('stageId'),
+      recommendationId,
+      role: existingPlacement.role,
+      position: Number(existingPlacement.position || 0),
+      expectedContribution: existingPlacement.expected_contribution == null ? null : String(existingPlacement.expected_contribution),
+      required: Number(existingPlacement.required || 0),
+    }) : materialPlacementInsertGuard('learning_path_sources', c.req.param('stageId'), recommendationId),
+    canonicalBranchMutationGuard(recommendationId, source.branch_id),
+  )
+  const replaced = role === 'optional' ? [] : ((await c.env.DB.prepare(`SELECT recommendation_id FROM learning_path_sources WHERE stage_id=? AND role=? AND recommendation_id<>? ORDER BY position`).bind(c.req.param('stageId'), storageRole, recommendationId).all<any>()).results || []).map((row: any) => row.recommendation_id)
+  const required = role === 'optional' ? 0 : body.required === true ? 1 : 0
+  const targetMutation = existingPlacement
+    ? c.env.DB.prepare(`UPDATE learning_path_sources SET role=?,required=?,expected_contribution=?,position=? WHERE stage_id=? AND recommendation_id=? AND ${placementGuard.clause}`).bind(storageRole, required, expectedContribution, position, c.req.param('stageId'), recommendationId, ...placementGuard.bindings)
+    : c.env.DB.prepare(`INSERT INTO learning_path_sources (stage_id,recommendation_id,role,required,expected_contribution,position)
+      SELECT ?,m.recommendation_id,?,?,?,?
+      FROM recommendation_meta m
+      JOIN recommendations r ON r.id=m.recommendation_id AND r.deleted_at IS NULL AND COALESCE(r.status,'active') IN ('active','consumed')
+      JOIN tree_nodes b ON b.id=m.branch_id AND b.type IN ('branch','leaf') AND lower(COALESCE(b.status,''))!='pruned'
+      JOIN tree_nodes d ON d.id=b.super_category AND d.type='category' AND lower(COALESCE(d.status,''))!='pruned'
+      WHERE m.recommendation_id=? AND ${placementGuard.clause}`).bind(c.req.param('stageId'), storageRole, required, expectedContribution, position, recommendationId, ...placementGuard.bindings)
+  const attachment = await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM learning_path_sources WHERE stage_id=? AND role=? AND recommendation_id<>? AND ?!='companion' AND ${placementGuard.clause}`).bind(c.req.param('stageId'), storageRole, recommendationId, storageRole, ...placementGuard.bindings),
+    ...movePlacementStatements(c.env.DB, 'learning_path_sources', c.req.param('stageId'), recommendationId, existingPlacement == null ? null : Number(existingPlacement.position || 0), position, placementGuard),
+    c.env.DB.prepare(`UPDATE recommendation_meta
+      SET learning_state=CASE WHEN learning_state='captured' THEN 'attached' ELSE learning_state END,updated_at=datetime('now')
+      WHERE recommendation_id=? AND ${placementGuard.clause}`).bind(recommendationId, ...placementGuard.bindings),
+    targetMutation,
   ])
-  if (!stage || !source) return c.json({ error: 'stage or source not found' }, 404)
-  const role = ['foundation','case','companion','counterevidence','reference'].includes(body.role) ? body.role : 'reference'
-  await c.env.DB.prepare(`INSERT INTO learning_path_sources (stage_id,recommendation_id,role,required,expected_contribution,position) VALUES (?,?,?,?,?,?) ON CONFLICT(stage_id,recommendation_id) DO UPDATE SET role=excluded.role,required=excluded.required,expected_contribution=excluded.expected_contribution,position=excluded.position`).bind(c.req.param('stageId'), clean(body.recommendation_id, 120), role, body.required === true ? 1 : 0, clean(body.expected_contribution, 1000) || null, Math.max(0, Number(body.position || 0))).run()
-  return c.json({ ok: true })
+  if (attachment[attachment.length - 1]?.meta.changes !== 1) {
+    const currentSource = await loadPersistedLibrarySource(c.env.DB, recommendationId)
+    if (!currentSource || currentSource.branch_id !== source.branch_id) return c.json({ error: 'source_ownership_changed', message: 'The source no longer has the observed valid canonical branch and domain ownership. Reload Thread Resources and try again.' }, 409)
+    return c.json({ error: 'source_placement_conflict', message: 'This Level placement changed while it was being attached. Reload Thread Resources and try again.' }, 409)
+  }
+  const committedSource = await loadPersistedLibrarySource(c.env.DB, recommendationId)
+  return c.json({ ok: true, scope: 'level', stage_id: c.req.param('stageId'), recommendation_id: recommendationId, role, storage_role: storageRole, required: Boolean(required), expected_contribution: expectedContribution, position, branch: committedSource ? sourceBranch(committedSource) : null, replaced_recommendation_ids: replaced })
+})
+
+app.patch('/threads/:id/stages/:stageId/sources/:sourceId', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  if (!['role', 'position', 'expected_contribution', 'required'].some((key) => Object.prototype.hasOwnProperty.call(body, key))) return c.json({ error: 'role, position, expected_contribution, or required required' }, 400)
+  const placement = await c.env.DB.prepare(`SELECT ps.* FROM learning_path_sources ps JOIN learning_path_stages s ON s.id=ps.stage_id WHERE ps.stage_id=? AND ps.recommendation_id=? AND s.thread_id=?`).bind(c.req.param('stageId'), c.req.param('sourceId'), c.req.param('id')).first<any>()
+  if (!placement) return c.json({ error: 'level source not found' }, 404)
+  const source = await loadPersistedLibrarySource(c.env.DB, c.req.param('sourceId'))
+  if (!source) return c.json({ error: 'persisted valid non-pruned branch_id required, with a valid domain' }, 409)
+  const requestedRole = body.role === undefined ? publicStageMaterialRoles[placement.role] || placement.role : clean(body.role, 30)
+  const storageRole = stageMaterialRoleAliases[requestedRole]
+  if (!storageRole) return c.json({ error: 'role must be primary, case, challenge, reference, or optional' }, 400)
+  const role = publicStageMaterialRoles[storageRole]
+  const position = body.position === undefined ? Number(placement.position || 0) : boundedPosition(body.position)
+  const expectedContribution = body.expected_contribution === undefined ? placement.expected_contribution : clean(body.expected_contribution, 1000)
+  if (!clean(expectedContribution, 1000)) return c.json({ error: 'expected_contribution_required', message: 'Explain the nonblank expected contribution for this exact Level placement.' }, 400)
+  const required = role === 'optional' ? 0 : body.required === undefined ? Number(placement.required || 0) : body.required === true ? 1 : 0
+  const targetGuard = materialPlacementTargetGuard('learning_path_sources', {
+    scopeId: placement.stage_id,
+    recommendationId: placement.recommendation_id,
+    role: placement.role,
+    position: Number(placement.position || 0),
+    expectedContribution: placement.expected_contribution == null ? null : String(placement.expected_contribution),
+    required: Number(placement.required || 0),
+  })
+  const replaced = role === 'optional' ? [] : ((await c.env.DB.prepare(`SELECT recommendation_id FROM learning_path_sources WHERE stage_id=? AND role=? AND recommendation_id<>? ORDER BY position`).bind(placement.stage_id, storageRole, placement.recommendation_id).all<any>()).results || []).map((row: any) => row.recommendation_id)
+  const mutation = await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM learning_path_sources WHERE stage_id=? AND role=? AND recommendation_id<>? AND ?!='companion' AND ${targetGuard.clause}`).bind(placement.stage_id, storageRole, placement.recommendation_id, storageRole, ...targetGuard.bindings),
+    ...movePlacementStatements(c.env.DB, 'learning_path_sources', placement.stage_id, placement.recommendation_id, Number(placement.position || 0), position, targetGuard),
+    c.env.DB.prepare(`UPDATE learning_path_sources SET role=?,required=?,expected_contribution=?,position=? WHERE stage_id=? AND recommendation_id=? AND ${targetGuard.clause}`).bind(storageRole, required, expectedContribution, position, placement.stage_id, placement.recommendation_id, ...targetGuard.bindings),
+  ])
+  if (mutation[mutation.length - 1]?.meta.changes !== 1) return c.json({ error: 'source_placement_conflict', message: 'This source placement or its canonical ownership changed. Reload Thread Resources and try again.' }, 409)
+  const committedSource = await loadPersistedLibrarySource(c.env.DB, placement.recommendation_id)
+  return c.json({ ok: true, scope: 'level', stage_id: placement.stage_id, recommendation_id: placement.recommendation_id, role, storage_role: storageRole, required: Boolean(required), expected_contribution: expectedContribution, position, branch: committedSource ? sourceBranch(committedSource) : null, replaced_recommendation_ids: replaced })
+})
+
+app.delete('/threads/:id/stages/:stageId/sources/:sourceId', async (c) => {
+  const placement = await c.env.DB.prepare(`SELECT ps.role,ps.required,ps.position,ps.expected_contribution FROM learning_path_sources ps JOIN learning_path_stages s ON s.id=ps.stage_id WHERE ps.stage_id=? AND ps.recommendation_id=? AND s.thread_id=?`).bind(c.req.param('stageId'), c.req.param('sourceId'), c.req.param('id')).first<any>()
+  if (!placement) return c.json({ error: 'level source not found' }, 404)
+  const targetGuard = materialPlacementTargetGuard('learning_path_sources', {
+    scopeId: c.req.param('stageId'),
+    recommendationId: c.req.param('sourceId'),
+    role: placement.role,
+    position: Number(placement.position || 0),
+    expectedContribution: placement.expected_contribution == null ? null : String(placement.expected_contribution),
+    required: Number(placement.required || 0),
+  }, false)
+  const mutation = await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE learning_path_sources SET position=position-1 WHERE stage_id=? AND recommendation_id<>? AND position>? AND ${targetGuard.clause}`).bind(c.req.param('stageId'), c.req.param('sourceId'), Number(placement.position || 0), ...targetGuard.bindings),
+    c.env.DB.prepare(`DELETE FROM learning_path_sources WHERE stage_id=? AND recommendation_id=? AND ${targetGuard.clause}`).bind(c.req.param('stageId'), c.req.param('sourceId'), ...targetGuard.bindings),
+  ])
+  if (mutation[mutation.length - 1]?.meta.changes !== 1) return c.json({ error: 'source_placement_conflict', message: 'This source placement changed or was already removed. Reload Thread Resources and try again.' }, 409)
+  return c.json({ ok: true, scope: 'level', stage_id: c.req.param('stageId'), recommendation_id: c.req.param('sourceId'), removed: true })
 })
 
 app.post('/threads', async (c) => {
@@ -324,7 +920,7 @@ app.get('/threads/:id', async (c) => {
   const thread = await c.env.DB.prepare(`SELECT * FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!thread) return c.json({ error: 'thread not found' }, 404)
   const [sources, units, relations] = await Promise.all([
-    c.env.DB.prepare(`SELECT ts.*,r.video_title,r.creator,r.content_type,r.video_url,m.learning_state FROM thread_sources ts JOIN recommendations r ON r.id=ts.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE ts.thread_id=? AND ts.status!='removed' ORDER BY ts.position,r.created_at`).bind(thread.id).all<any>(),
+    c.env.DB.prepare(`SELECT ts.*,r.video_title,r.creator,r.content_type,r.video_url,m.learning_state FROM thread_sources ts JOIN recommendations r ON r.id=ts.recommendation_id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE ts.thread_id=? AND ts.status!='removed' ORDER BY ts.position,ts.recommendation_id`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT u.*,tu.role,tu.importance FROM thread_units tu JOIN learning_units u ON u.id=tu.unit_id WHERE tu.thread_id=? ORDER BY tu.position,u.updated_at DESC`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT ur.* FROM unit_relations ur WHERE ur.source_unit_id IN (SELECT unit_id FROM thread_units WHERE thread_id=?) OR ur.target_unit_id IN (SELECT unit_id FROM thread_units WHERE thread_id=?) ORDER BY ur.created_at DESC`).bind(thread.id,thread.id).all<any>(),
   ])
@@ -335,7 +931,7 @@ app.get('/threads/:id/export', async (c) => {
   const thread = await c.env.DB.prepare(`SELECT * FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first<any>()
   if (!thread) return c.json({ error: 'thread not found' }, 404)
   const [sources, units, anchors] = await Promise.all([
-    c.env.DB.prepare(`SELECT r.video_title,r.creator,r.video_url,ts.role FROM thread_sources ts JOIN recommendations r ON r.id=ts.recommendation_id WHERE ts.thread_id=? AND ts.status!='removed' ORDER BY ts.position`).bind(thread.id).all<any>(),
+    c.env.DB.prepare(`SELECT r.video_title,r.creator,r.video_url,ts.role FROM thread_sources ts JOIN recommendations r ON r.id=ts.recommendation_id WHERE ts.thread_id=? AND ts.status!='removed' ORDER BY ts.position,ts.recommendation_id`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT u.* FROM thread_units tu JOIN learning_units u ON u.id=tu.unit_id WHERE tu.thread_id=? ORDER BY tu.position,u.updated_at`).bind(thread.id).all<any>(),
     c.env.DB.prepare(`SELECT a.* FROM unit_anchors a WHERE a.unit_id IN (SELECT unit_id FROM thread_units WHERE thread_id=?) ORDER BY a.created_at`).bind(thread.id).all<any>(),
   ])
@@ -353,7 +949,7 @@ app.get('/weekly', async (c) => {
     c.env.DB.prepare(`SELECT id,title,thread_type,status,updated_at FROM learning_threads WHERE status IN ('active','paused') ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,updated_at`).all<any>(),
     c.env.DB.prepare(`SELECT id,title,status,updated_at FROM learning_threads WHERE status IN ('active','paused') AND updated_at<datetime('now','-7 days') ORDER BY updated_at`).all<any>(),
     c.env.DB.prepare(`SELECT cr.id,cr.state,cr.requested_at,r.video_title FROM consolidation_runs cr JOIN recommendations r ON r.id=cr.recommendation_id WHERE cr.state NOT IN ('closed','waived') ORDER BY cr.requested_at`).all<any>(),
-    c.env.DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE due_at<=date('now')`).first<any>(),
+    c.env.DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE repair_status='active' AND due_at<=date('now')`).first<any>(),
     c.env.DB.prepare(`SELECT COUNT(*) count FROM learning_threads WHERE status='verified' AND verified_at>=datetime('now','-30 days')`).first<any>(),
   ])
   return c.json({ open_threads: threads.results || [], stale_threads: stale.results || [], open_cognitive_loops: loops.results || [], due_recall: Number(due?.count || 0), completed_threads_30d: Number(completed?.count || 0), actions: ['continue','narrow','pause','synthesize','abandon'] })
@@ -414,21 +1010,100 @@ app.post('/threads/:id/status', async (c) => {
 app.post('/threads/:id/sources', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}))
   const recommendationId = clean(body.recommendation_id, 120)
+  const expectedContribution = clean(body.expected_contribution, 1000)
+  if (!expectedContribution) return c.json({ error: 'expected_contribution_required', message: 'Explain the nonblank expected contribution for this Thread placement.' }, 400)
   const role = ['primary', 'supporting', 'counterevidence', 'reference'].includes(body.role) ? body.role : 'supporting'
   const [thread, source] = await Promise.all([
     c.env.DB.prepare(`SELECT id FROM learning_threads WHERE id=?`).bind(c.req.param('id')).first(),
-    c.env.DB.prepare(`SELECT id FROM recommendations WHERE id=? AND deleted_at IS NULL`).bind(recommendationId).first(),
+    recommendationId ? loadPersistedLibrarySource(c.env.DB, recommendationId) : null,
   ])
-  if (!thread || !source) return c.json({ error: 'thread or source not found' }, 404)
-  await c.env.DB.prepare(`INSERT INTO thread_sources (thread_id,recommendation_id,role,expected_contribution,position,status) VALUES (?,?,?,?,?,'active') ON CONFLICT(thread_id,recommendation_id) DO UPDATE SET role=excluded.role,expected_contribution=excluded.expected_contribution,position=excluded.position,status='active',updated_at=datetime('now')`).bind(c.req.param('id'), recommendationId, role, clean(body.expected_contribution, 1000) || null, Number(body.position || 0)).run()
-  return c.json({ ok: true })
+  if (!thread) return c.json({ error: 'thread not found' }, 404)
+  if (!source) return c.json({ error: 'persisted valid non-pruned branch_id required, with a valid domain' }, 409)
+  if (body.branch_id != null && clean(body.branch_id, 120) !== source.branch_id) return c.json({ error: 'source_branch_precondition_failed', branch: sourceBranch(source) }, 409)
+  const existingPlacement = await c.env.DB.prepare(`SELECT role,expected_contribution,position,status FROM thread_sources WHERE thread_id=? AND recommendation_id=?`).bind(c.req.param('id'), recommendationId).first<any>()
+  const currentPosition = existingPlacement && existingPlacement.status !== 'removed' ? Number(existingPlacement.position || 0) : null
+  const position = await requestedPlacementPosition(c.env.DB, 'thread_sources', c.req.param('id'), body.position, currentPosition)
+  const placementGuard = combineMaterialPlacementGuards(
+    existingPlacement ? materialPlacementTargetGuard('thread_sources', {
+      scopeId: c.req.param('id'),
+      recommendationId,
+      role: existingPlacement.role,
+      position: Number(existingPlacement.position || 0),
+      expectedContribution: existingPlacement.expected_contribution == null ? null : String(existingPlacement.expected_contribution),
+      status: existingPlacement.status,
+    }) : materialPlacementInsertGuard('thread_sources', c.req.param('id'), recommendationId),
+    canonicalBranchMutationGuard(recommendationId, source.branch_id),
+  )
+  const targetMutation = existingPlacement
+    ? c.env.DB.prepare(`UPDATE thread_sources SET role=?,expected_contribution=?,position=?,status='active',updated_at=datetime('now') WHERE thread_id=? AND recommendation_id=? AND ${placementGuard.clause}`).bind(role, expectedContribution, position, c.req.param('id'), recommendationId, ...placementGuard.bindings)
+    : c.env.DB.prepare(`INSERT INTO thread_sources (thread_id,recommendation_id,role,expected_contribution,position,status)
+      SELECT ?,m.recommendation_id,?,?,?,'active'
+      FROM recommendation_meta m
+      JOIN recommendations r ON r.id=m.recommendation_id AND r.deleted_at IS NULL AND COALESCE(r.status,'active') IN ('active','consumed')
+      JOIN tree_nodes b ON b.id=m.branch_id AND b.type IN ('branch','leaf') AND lower(COALESCE(b.status,''))!='pruned'
+      JOIN tree_nodes d ON d.id=b.super_category AND d.type='category' AND lower(COALESCE(d.status,''))!='pruned'
+      WHERE m.recommendation_id=? AND ${placementGuard.clause}`).bind(c.req.param('id'), role, expectedContribution, position, recommendationId, ...placementGuard.bindings)
+  const attachment = await c.env.DB.batch([
+    ...movePlacementStatements(c.env.DB, 'thread_sources', c.req.param('id'), recommendationId, currentPosition, position, placementGuard),
+    targetMutation,
+  ])
+  if (attachment[attachment.length - 1]?.meta.changes !== 1) {
+    const currentSource = await loadPersistedLibrarySource(c.env.DB, recommendationId)
+    if (!currentSource || currentSource.branch_id !== source.branch_id) return c.json({ error: 'source_ownership_changed', message: 'The source no longer has the observed valid canonical branch and domain ownership. Reload Thread Resources and try again.' }, 409)
+    return c.json({ error: 'source_placement_conflict', message: 'This Thread placement changed while it was being attached. Reload Thread Resources and try again.' }, 409)
+  }
+  const committedSource = await loadPersistedLibrarySource(c.env.DB, recommendationId)
+  return c.json({ ok: true, scope: 'thread', thread_id: c.req.param('id'), recommendation_id: recommendationId, role, expected_contribution: expectedContribution, position, branch: committedSource ? sourceBranch(committedSource) : null })
+})
+
+app.patch('/threads/:id/sources/:sourceId', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}))
+  if (!['role', 'position', 'expected_contribution'].some((key) => Object.prototype.hasOwnProperty.call(body, key))) return c.json({ error: 'role, position, or expected_contribution required' }, 400)
+  const placement = await c.env.DB.prepare(`SELECT * FROM thread_sources WHERE thread_id=? AND recommendation_id=? AND status!='removed'`).bind(c.req.param('id'), c.req.param('sourceId')).first<any>()
+  if (!placement) return c.json({ error: 'thread source not found' }, 404)
+  const source = await loadPersistedLibrarySource(c.env.DB, c.req.param('sourceId'))
+  if (!source) return c.json({ error: 'persisted valid non-pruned branch_id required, with a valid domain' }, 409)
+  const role = body.role === undefined ? placement.role : clean(body.role, 30)
+  if (!['primary', 'supporting', 'counterevidence', 'reference'].includes(role)) return c.json({ error: 'role must be primary, supporting, counterevidence, or reference' }, 400)
+  const position = await requestedPlacementPosition(c.env.DB, 'thread_sources', c.req.param('id'), body.position, Number(placement.position || 0))
+  const expectedContribution = body.expected_contribution === undefined ? placement.expected_contribution : clean(body.expected_contribution, 1000)
+  if (!clean(expectedContribution, 1000)) return c.json({ error: 'expected_contribution_required', message: 'Explain the nonblank expected contribution for this Thread placement.' }, 400)
+  const targetGuard = materialPlacementTargetGuard('thread_sources', {
+    scopeId: placement.thread_id,
+    recommendationId: placement.recommendation_id,
+    role: placement.role,
+    position: Number(placement.position || 0),
+    expectedContribution: placement.expected_contribution == null ? null : String(placement.expected_contribution),
+    status: placement.status,
+  })
+  const mutation = await c.env.DB.batch([
+    ...movePlacementStatements(c.env.DB, 'thread_sources', c.req.param('id'), c.req.param('sourceId'), Number(placement.position || 0), position, targetGuard),
+    c.env.DB.prepare(`UPDATE thread_sources SET role=?,expected_contribution=?,position=?,updated_at=datetime('now') WHERE thread_id=? AND recommendation_id=? AND status!='removed' AND ${targetGuard.clause}`).bind(role, expectedContribution, position, c.req.param('id'), c.req.param('sourceId'), ...targetGuard.bindings),
+  ])
+  if (mutation[mutation.length - 1]?.meta.changes !== 1) return c.json({ error: 'source_placement_conflict', message: 'This source placement or its canonical ownership changed. Reload Thread Resources and try again.' }, 409)
+  const committedSource = await loadPersistedLibrarySource(c.env.DB, placement.recommendation_id)
+  return c.json({ ok: true, scope: 'thread', thread_id: c.req.param('id'), recommendation_id: c.req.param('sourceId'), role, expected_contribution: expectedContribution, position, branch: committedSource ? sourceBranch(committedSource) : null })
 })
 
 app.delete('/threads/:id/sources/:sourceId', async (c) => {
   const stagedTarget = await c.env.DB.prepare(`SELECT t.corpus_id FROM lite_visual_corpus_targets t JOIN lite_visual_corpora c ON c.id=t.corpus_id WHERE c.thread_id=? AND t.recommendation_id=? AND c.state='staging' LIMIT 1`).bind(c.req.param('id'), c.req.param('sourceId')).first<any>()
   if (stagedTarget) return c.json({ error: 'source_is_bound_to_staged_lite_visual_corpus', corpus_id: stagedTarget.corpus_id }, 409)
-  await c.env.DB.prepare(`UPDATE thread_sources SET status='removed',updated_at=datetime('now') WHERE thread_id=? AND recommendation_id=?`).bind(c.req.param('id'), c.req.param('sourceId')).run()
-  return c.json({ ok: true })
+  const placement = await c.env.DB.prepare(`SELECT role,position,expected_contribution,status FROM thread_sources WHERE thread_id=? AND recommendation_id=? AND status!='removed'`).bind(c.req.param('id'), c.req.param('sourceId')).first<any>()
+  if (!placement) return c.json({ error: 'thread source not found' }, 404)
+  const targetGuard = materialPlacementTargetGuard('thread_sources', {
+    scopeId: c.req.param('id'),
+    recommendationId: c.req.param('sourceId'),
+    role: placement.role,
+    position: Number(placement.position || 0),
+    expectedContribution: placement.expected_contribution == null ? null : String(placement.expected_contribution),
+    status: placement.status,
+  }, false)
+  const mutation = await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE thread_sources SET position=position-1 WHERE thread_id=? AND recommendation_id<>? AND status!='removed' AND position>? AND ${targetGuard.clause}`).bind(c.req.param('id'), c.req.param('sourceId'), Number(placement.position || 0), ...targetGuard.bindings),
+    c.env.DB.prepare(`UPDATE thread_sources SET status='removed',updated_at=datetime('now') WHERE thread_id=? AND recommendation_id=? AND status!='removed' AND ${targetGuard.clause}`).bind(c.req.param('id'), c.req.param('sourceId'), ...targetGuard.bindings),
+  ])
+  if (mutation[mutation.length - 1]?.meta.changes !== 1) return c.json({ error: 'source_placement_conflict', message: 'This source placement changed or was already removed. Reload Thread Resources and try again.' }, 409)
+  return c.json({ ok: true, scope: 'thread', thread_id: c.req.param('id'), recommendation_id: c.req.param('sourceId'), removed: true })
 })
 
 app.delete('/threads/:id', async (c) => {
@@ -498,28 +1173,49 @@ app.post('/units', async (c) => {
     if (['claim', 'method', 'counterclaim'].includes(type) && !anchors.length) return c.json({ error: 'claims, methods, and counterclaims require a source anchor' }, 400)
     const id = clean(body.id, 120) || makeId('unit')
     const recommendationId = clean(body.recommendation_id, 120) || null
+    const requestedThreadId = clean(body.thread_id, 120) || null
     const semanticKey = clean(body.semantic_key, 240) || null
     const noteId = clean(body.note_id, 120) || null
     if (noteId) {
       const note = await c.env.DB.prepare(`SELECT id,recommendation_id FROM notes WHERE id=?`).bind(noteId).first<any>()
       if (!note || (recommendationId && note.recommendation_id && note.recommendation_id !== recommendationId)) return c.json({ error: 'note does not own this learning unit' }, 409)
     }
-    const annotationIds = [...new Set(anchors.map((anchor: any) => clean(anchor.annotation_id, 120)).filter(Boolean))]
+    const annotationIds = [...new Set<string>(anchors.map((anchor: any) => clean(anchor.annotation_id, 120)).filter((value: string) => Boolean(value)))]
+    const annotationEvidence = new Map<string, SourceAnnotationEvidence>()
     if (annotationIds.length) {
-      const rows = await c.env.DB.prepare(`SELECT id,recommendation_id FROM source_annotations WHERE id IN (${annotationIds.map(() => '?').join(',')}) AND status='active'`).bind(...annotationIds).all<any>()
-      const found = rows.results || []
-      if (found.length !== annotationIds.length || found.some((row: any) => recommendationId && row.recommendation_id !== recommendationId)) return c.json({ error: 'annotation does not belong to the source or is unavailable' }, 409)
+      if (!recommendationId) return c.json({ error: 'annotation_source_required', message: 'Anchored Units require their canonical recommendation_id.' }, 400)
+      try {
+        const found = await Promise.all(annotationIds.map((annotationId) => loadSourceAnnotationEvidence(c.env.DB, annotationId, {
+          recommendationId,
+          threadId: requestedThreadId,
+        })))
+        for (const evidence of found) annotationEvidence.set(evidence.id, evidence)
+      } catch (error) {
+        if (error instanceof SourceAnnotationEvidenceError) return c.json({ error: error.code, message: error.message }, error.status)
+        throw error
+      }
     }
-    const statements: D1PreparedStatement[] = [c.env.DB.prepare(`INSERT INTO learning_units (id,unit_type,statement,user_synthesis,stance,confidence,recommendation_id,source_artifact_id,source_revision_checksum,created_by,status,semantic_key,note_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id, type, statement, clean(body.user_synthesis, 12000) || null, ['accept','question','reject','uncertain'].includes(body.stance) ? body.stance : 'uncertain', Math.max(0, Math.min(1, Number(body.confidence ?? .5))), recommendationId, clean(body.source_artifact_id, 120) || null, clean(body.source_revision_checksum, 160) || null, body.created_by === 'extractor' ? 'extractor' : 'user', body.status === 'accepted' ? 'accepted' : 'draft', semanticKey, noteId)]
+    const soleAnnotationEvidence = annotationEvidence.size === 1 ? [...annotationEvidence.values()][0] : null
+    const statements: D1PreparedStatement[] = [c.env.DB.prepare(`INSERT INTO learning_units (id,unit_type,statement,user_synthesis,stance,confidence,recommendation_id,source_artifact_id,source_revision_checksum,created_by,status,semantic_key,note_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id, type, statement, clean(body.user_synthesis, 12000) || null, ['accept','question','reject','uncertain'].includes(body.stance) ? body.stance : 'uncertain', Math.max(0, Math.min(1, Number(body.confidence ?? .5))), recommendationId, soleAnnotationEvidence?.artifact_id || clean(body.source_artifact_id, 120) || null, soleAnnotationEvidence?.source_checksum || clean(body.source_revision_checksum, 160) || null, body.created_by === 'extractor' ? 'extractor' : 'user', body.status === 'accepted' ? 'accepted' : 'draft', semanticKey, noteId)]
     for (const anchor of anchors) {
-      if (!recommendationId || !clean(anchor.locator, 1000)) return c.json({ error: 'each anchor requires recommendation_id and locator' }, 400)
-      const anchorType = ['page','timestamp','section','quote','url_fragment','user_observation'].includes(anchor.anchor_type) ? anchor.anchor_type : 'section'
-      statements.push(c.env.DB.prepare(`INSERT INTO unit_anchors (id,unit_id,recommendation_id,artifact_id,annotation_id,anchor_type,locator,excerpt,checksum) VALUES (?,?,?,?,?,?,?,?,?)`).bind(makeId('anchor'), id, recommendationId, clean(anchor.artifact_id, 120) || null, clean(anchor.annotation_id, 120) || null, anchorType, clean(anchor.locator, 1000), clean(anchor.excerpt, 4000) || null, clean(anchor.checksum, 160) || null))
+      const annotationId = clean(anchor.annotation_id, 120)
+      const evidence = annotationId ? annotationEvidence.get(annotationId) : null
+      if (!recommendationId || (!evidence && !clean(anchor.locator, 1000))) return c.json({ error: 'each anchor requires recommendation_id and either an authoritative annotation_id or locator' }, 400)
+      const anchorType = evidence?.anchor_type || (['page','timestamp','section','quote','url_fragment','user_observation'].includes(anchor.anchor_type) ? anchor.anchor_type : 'section')
+      statements.push(c.env.DB.prepare(`INSERT INTO unit_anchors (id,unit_id,recommendation_id,artifact_id,annotation_id,anchor_type,locator,excerpt,checksum) VALUES (?,?,?,?,?,?,?,?,?)`).bind(
+        makeId('anchor'), id, recommendationId,
+        evidence?.artifact_id || clean(anchor.artifact_id, 120) || null,
+        evidence?.id || annotationId || null,
+        anchorType,
+        evidence?.locator || clean(anchor.locator, 1000),
+        evidence?.quote || clean(anchor.excerpt, 4000) || null,
+        evidence?.source_checksum || clean(anchor.checksum, 160) || null,
+      ))
     }
-    if (body.thread_id) statements.push(c.env.DB.prepare(`INSERT INTO thread_units (thread_id,unit_id,role,importance,position) VALUES (?,?,?,?,?)`).bind(body.thread_id, id, ['core','supporting','counterevidence','application'].includes(body.role) ? body.role : 'supporting', Math.max(0, Math.min(1, Number(body.importance ?? .5))), Number(body.position || 0)))
+    if (requestedThreadId) statements.push(c.env.DB.prepare(`INSERT INTO thread_units (thread_id,unit_id,role,importance,position) VALUES (?,?,?,?,?)`).bind(requestedThreadId, id, ['core','supporting','counterevidence','application'].includes(body.role) ? body.role : 'supporting', Math.max(0, Math.min(1, Number(body.importance ?? .5))), Number(body.position || 0)))
     statements.push(c.env.DB.prepare(`INSERT INTO learning_unit_revisions (unit_id,actor_type,next_json,reason) VALUES (?,?,?,?)`).bind(id, body.created_by === 'extractor' ? 'agent' : 'user', JSON.stringify({ type, statement, user_synthesis: body.user_synthesis || null }), 'created'))
     await c.env.DB.batch(statements)
-    await recordLearningEvent(c.env.DB, { eventType: 'unit_created', actorType: body.created_by === 'extractor' ? 'agent' : 'user', evidenceWeight: body.created_by === 'extractor' ? 0 : .5, idempotencyKey: `unit-created:${id}`, threadId: body.thread_id || null, recommendationId, unitId: id })
+    await recordLearningEvent(c.env.DB, { eventType: 'unit_created', actorType: body.created_by === 'extractor' ? 'agent' : 'user', evidenceWeight: body.created_by === 'extractor' ? 0 : .5, idempotencyKey: `unit-created:${id}`, threadId: requestedThreadId, recommendationId, unitId: id })
     return c.json({ ok: true, id }, 201)
   } catch (error) { return c.json(safeError('Learning unit creation failed')(error), 500) }
 })

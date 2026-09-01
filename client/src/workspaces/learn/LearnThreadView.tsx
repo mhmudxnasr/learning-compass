@@ -1,13 +1,30 @@
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { uploadArtifact } from '../../app/upload'
 import { routeHref } from '../../app/router'
 import { Empty, ErrorState, Loading } from '../../components/States'
 import { Icon } from '../../components/Icon'
+import { OfflinePackControl } from '../../components/OfflinePackControl'
+import { SourceHealthControl } from '../../components/SourceHealthControl'
+import { offlineDataResource, offlinePairResources, type OfflinePackResource } from '../../offlinePacks'
 import { useData } from '../../app/useData'
-import { artifactHref, cardHref, cleanTitle, lessonHref, lessonReadiness, noteHref, percent, roleLabel, statusLabel } from './helpers'
+import { artifactHref, cardHref, cleanTitle, findNextThreadLesson, lessonHref, lessonReadiness, noteHref, percent, roleLabel, statusLabel } from './helpers'
 import { buildSourceMaterialLauncher, SourceMaterialKind } from './sourceMaterials'
-import { NoteRecord, PathArtifact, PathResponse, PathSource, PathStage, RecallCard, RecallDraft, ThreadLesson, ThreadProject } from './types'
+import {
+  MaterialRequest,
+  MaterialRequestResponse,
+  MaterialSourceSearchItem,
+  MaterialSourceSearchResponse,
+  NoteRecord,
+  PathArtifact,
+  PathResponse,
+  PathSource,
+  PathStage,
+  RecallCard,
+  RecallDraft,
+  ThreadLesson,
+  ThreadProject,
+} from './types'
 import { ThreadAuthoring } from './ThreadAuthoring'
 
 export function LearnThreadView({
@@ -60,6 +77,7 @@ export function LearnThreadView({
             stage={activeStage!}
             threadId={threadId}
             threadTitle={path.data.thread.title}
+            followingLesson={findNextThreadLesson(stages, activeLesson.id)}
             onChanged={path.reload}
           />
         ) : activeStage ? (
@@ -167,8 +185,207 @@ function threadSourceCount(path: PathResponse) {
       total +
       stage.sources.length +
       stage.lessons.reduce((lessonTotal, lesson) => lessonTotal + (lesson.sources?.length || 0), 0),
-    0,
+    path.sources.length,
   )
+}
+
+function sourceOfflineResources(source: PathSource): OfflinePackResource[] {
+  return offlinePairResources(
+    source.artifacts?.html,
+    source.artifacts?.pdf,
+    `source:${source.recommendation_id}`,
+  )
+}
+
+function verifiedCompanionHref(source: PathSource) {
+  return sourceOfflineResources(source).find((resource) => resource.role === 'html')?.url || null
+}
+
+function levelSources(stage: PathStage) {
+  return [
+    ...stage.sources,
+    ...stage.lessons.flatMap((lesson) => lesson.sources || []),
+  ]
+}
+
+function offlinePathArtifactSnapshot(artifact?: PathArtifact) {
+  if (!artifact?.id) return undefined
+  const metadata = artifact.metadata || (() => {
+    try { return JSON.parse(String(artifact.metadata_json || '{}')) as Record<string, unknown> } catch { return {} }
+  })()
+  return {
+    id: artifact.id,
+    filename: artifact.filename,
+    media_type: artifact.media_type,
+    size_bytes: artifact.size_bytes,
+    created_at: artifact.created_at,
+    metadata: {
+      pair_id: metadata.pair_id,
+      role: metadata.role,
+      publication_state: metadata.publication_state,
+      validation_status: metadata.validation_status,
+      revision: metadata.revision,
+      receipt_sha256: metadata.receipt_sha256,
+      validation_receipt_sha256: metadata.validation_receipt_sha256,
+      source_title: metadata.source_title,
+    },
+  }
+}
+
+function offlinePathSourceSnapshot(source: PathSource): PathSource {
+  const verifiedPair = offlinePairResources(
+    source.artifacts?.html,
+    source.artifacts?.pdf,
+    `source:${source.recommendation_id}`,
+  )
+  return {
+    recommendation_id: source.recommendation_id,
+    stage_id: source.stage_id,
+    lesson_id: source.lesson_id,
+    role: source.role,
+    storage_role: source.storage_role,
+    required: source.required,
+    expected_contribution: source.expected_contribution,
+    position: source.position,
+    video_title: source.video_title,
+    creator: source.creator,
+    content_type: source.content_type,
+    video_url: source.video_url,
+    notebook_url: source.notebook_url,
+    learning_state: source.learning_state,
+    branch_id: source.branch_id,
+    branch_label: source.branch_label,
+    branch_status: source.branch_status,
+    branch_domain_id: source.branch_domain_id,
+    branch_domain_label: source.branch_domain_label,
+    source_health_status: source.source_health_status,
+    source_health_checked_at: source.source_health_checked_at,
+    source_health_http_status: source.source_health_http_status,
+    source_health_final_url: source.source_health_final_url,
+    source_health_error_code: source.source_health_error_code,
+    artifacts: verifiedPair.length === 2 ? {
+      html: offlinePathArtifactSnapshot(source.artifacts?.html),
+      pdf: offlinePathArtifactSnapshot(source.artifacts?.pdf),
+    } : {},
+  }
+}
+
+function offlineThreadPathSnapshot(path: PathResponse): PathResponse & { offline_snapshot: true } {
+  const stages = path.stages.map((stage) => ({
+    id: stage.id,
+    thread_id: stage.thread_id,
+    position: stage.position,
+    title: stage.title,
+    objective: stage.objective,
+    description: stage.description,
+    status: stage.status,
+    items: stage.items.map((item) => ({
+      id: item.id,
+      stage_id: item.stage_id,
+      item_type: item.item_type,
+      title: item.title,
+      description: item.description,
+      required: item.required,
+      status: item.status,
+      position: item.position,
+    })),
+    lessons: stage.lessons.map((lesson) => ({
+      id: lesson.id,
+      stage_id: lesson.stage_id,
+      position: lesson.position,
+      title: lesson.title,
+      description: lesson.description,
+      objective: lesson.objective,
+      estimated_minutes: lesson.estimated_minutes,
+      status: lesson.status,
+      why_learn: lesson.why_learn,
+      why_now: lesson.why_now,
+      takeaway: lesson.takeaway,
+      sources: (lesson.sources || []).map(offlinePathSourceSnapshot),
+      notes: [],
+      files: [],
+      cards: [],
+      recall_drafts: [],
+    })),
+    projects: stage.projects.map((project) => ({
+      id: project.id,
+      thread_id: project.thread_id,
+      stage_id: project.stage_id,
+      lesson_id: project.lesson_id,
+      type: project.type,
+      title: project.title,
+      description: project.description,
+      objective: project.objective,
+      status: project.status,
+    })),
+    sources: stage.sources.map(offlinePathSourceSnapshot),
+    notes: [],
+    files: [],
+    cards: [],
+    recall_drafts: [],
+    progress: stage.progress,
+    next_action: stage.next_action,
+  }))
+  return {
+    offline_snapshot: true,
+    thread: {
+      id: path.thread.id,
+      title: path.thread.title,
+      thread_type: path.thread.thread_type,
+      guiding_question: path.thread.guiding_question,
+      why_now: path.thread.why_now,
+      definition_of_done: path.thread.definition_of_done,
+      status: path.thread.status,
+      superseded_by_type: path.thread.superseded_by_type,
+      superseded_by_id: path.thread.superseded_by_id,
+      superseded_at: path.thread.superseded_at,
+      updated_at: path.thread.updated_at,
+    },
+    sources: path.sources.map(offlinePathSourceSnapshot),
+    stages,
+    current_stage: stages.find((stage) => stage.id === path.current_stage?.id) || null,
+    projects: path.projects.map((project) => ({
+      id: project.id,
+      thread_id: project.thread_id,
+      stage_id: project.stage_id,
+      lesson_id: project.lesson_id,
+      type: project.type,
+      title: project.title,
+      description: project.description,
+      objective: project.objective,
+      status: project.status,
+    })),
+    notes: [],
+    files: [],
+    cards: [],
+    recall_drafts: [],
+  }
+}
+
+function threadOfflinePackResources(path: PathResponse): OfflinePackResource[] {
+  const pairResources = [
+    ...path.sources,
+    ...path.stages.flatMap(levelSources),
+  ].flatMap(sourceOfflineResources)
+  return [
+    ...pairResources,
+    offlineDataResource(
+      `/learning/core/threads/${encodeURIComponent(path.thread.id)}/path`,
+      `thread:${path.thread.id}`,
+      offlineThreadPathSnapshot(path),
+    ),
+  ]
+}
+
+function levelOfflinePackResources(path: PathResponse, stage: PathStage): OfflinePackResource[] {
+  return [
+    ...levelSources(stage).flatMap(sourceOfflineResources),
+    offlineDataResource(
+      `/learning/core/threads/${encodeURIComponent(path.thread.id)}/path`,
+      `level:${stage.id}`,
+      offlineThreadPathSnapshot(path),
+    ),
+  ]
 }
 
 function lessonActionLabel(lesson: ThreadLesson) {
@@ -1423,6 +1640,7 @@ function ThreadMaterialsJourney({ path, onChanged }: { path: PathResponse; onCha
   const totalRecall = totals.cards + totals.drafts
   const materialOwnerCount = new Set(items.map((item) => item.owner.key)).size
   const visibleFilteredOwners = filteredOwners.slice(0, visibleOwnerCount)
+  const currentPackStage = path.current_stage || path.stages.find((stage) => ['available', 'in_progress'].includes(stage.status)) || null
 
   return (
     <section class="vertical-materials">
@@ -1433,6 +1651,27 @@ function ThreadMaterialsJourney({ path, onChanged }: { path: PathResponse; onCha
         </div>
         <span>{items.length} items across {materialOwnerCount} owners</span>
       </header>
+
+      <div class="thread-offline-packs" aria-label="Offline study packs">
+        <OfflinePackControl
+          packId={`thread:${path.thread.id}`}
+          title={`${path.thread.title} Thread`}
+          scope="thread"
+          resources={threadOfflinePackResources(path)}
+          compact
+        />
+        {currentPackStage ? (
+          <OfflinePackControl
+            packId={`level:${currentPackStage.id}`}
+            title={currentPackStage.title}
+            scope="level"
+            resources={levelOfflinePackResources(path, currentPackStage)}
+            compact
+          />
+        ) : null}
+      </div>
+
+      <ThreadSourceOrganizer path={path} onChanged={onChanged} />
 
       <div class="vertical-materials-summary" aria-label="Material counts across every owner scope">
         <div><strong>{totals.notes}</strong><span>Notes</span></div>
@@ -1623,6 +1862,402 @@ function ThreadMaterialsJourney({ path, onChanged }: { path: PathResponse; onCha
         />
       </details>
     </section>
+  )
+}
+
+type OrganizerScope = 'thread' | 'level' | 'lesson'
+
+interface OrganizerPlacement {
+  key: string
+  scope: OrganizerScope
+  scopeId: string
+  scopeTitle: string
+  source: PathSource
+}
+
+const lessonSourceRoles = ['primary', 'case', 'challenge', 'reference', 'optional'] as const
+const threadSourceRoles = ['primary', 'supporting', 'counterevidence', 'reference'] as const
+
+function organizerPlacements(path: PathResponse): OrganizerPlacement[] {
+  return [
+    ...path.sources.map((source) => ({
+      key: `thread:${path.thread.id}:${source.recommendation_id}`,
+      scope: 'thread' as const,
+      scopeId: path.thread.id,
+      scopeTitle: path.thread.title,
+      source,
+    })),
+    ...path.stages.flatMap((stage) => [
+      ...stage.sources.map((source) => ({
+        key: `level:${stage.id}:${source.recommendation_id}`,
+        scope: 'level' as const,
+        scopeId: stage.id,
+        scopeTitle: stage.title,
+        source,
+      })),
+      ...stage.lessons.flatMap((lesson) => (lesson.sources || []).map((source) => ({
+        key: `lesson:${lesson.id}:${source.recommendation_id}`,
+        scope: 'lesson' as const,
+        scopeId: lesson.id,
+        scopeTitle: lesson.title,
+        source,
+      }))),
+    ]),
+  ]
+}
+
+function placementEndpoint(threadId: string, placement: OrganizerPlacement) {
+  const base = `/learning/core/threads/${encodeURIComponent(threadId)}`
+  if (placement.scope === 'thread') return `${base}/sources/${encodeURIComponent(placement.source.recommendation_id)}`
+  if (placement.scope === 'level') return `${base}/stages/${encodeURIComponent(placement.scopeId)}/sources/${encodeURIComponent(placement.source.recommendation_id)}`
+  return `${base}/lessons/${encodeURIComponent(placement.scopeId)}/sources/${encodeURIComponent(placement.source.recommendation_id)}`
+}
+
+function placementCollectionEndpoint(threadId: string, scope: OrganizerScope, scopeId: string) {
+  const base = `/learning/core/threads/${encodeURIComponent(threadId)}`
+  if (scope === 'thread') return `${base}/sources`
+  if (scope === 'level') return `${base}/stages/${encodeURIComponent(scopeId)}/sources`
+  return `${base}/lessons/${encodeURIComponent(scopeId)}/sources`
+}
+
+function ThreadSourceOrganizer({ path, onChanged }: { path: PathResponse; onChanged: () => void }) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<MaterialSourceSearchItem[]>([])
+  const [selectedSourceId, setSelectedSourceId] = useState('')
+  const [target, setTarget] = useState('')
+  const [role, setRole] = useState<(typeof lessonSourceRoles)[number]>('primary')
+  const [contribution, setContribution] = useState('')
+  const [position, setPosition] = useState('')
+  const [searching, setSearching] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const searchSequence = useRef(0)
+  const placements = organizerPlacements(path)
+  const selectedSource = results.find((source) => source.id === selectedSourceId) || null
+  const targets = path.stages.flatMap((stage) => [
+    { value: `level:${stage.id}`, scope: 'level' as const, id: stage.id, label: `Level ${stage.position} — ${levelTitle(stage)}` },
+    ...stage.lessons.map((lesson, index) => ({
+      value: `lesson:${lesson.id}`,
+      scope: 'lesson' as const,
+      id: lesson.id,
+      label: `Lesson ${stage.position}.${index + 1} — ${lesson.title}`,
+    })),
+  ])
+
+  const searchLibrary = async (searchQuery = query) => {
+    const request = ++searchSequence.current
+    setSearching(true)
+    setError('')
+    try {
+      const response = await api<MaterialSourceSearchResponse>(
+        `/learning/core/threads/${encodeURIComponent(path.thread.id)}/material-sources?q=${encodeURIComponent(searchQuery.trim())}&limit=30`,
+      )
+      if (request !== searchSequence.current) return
+      setResults(response.sources || [])
+      setSelectedSourceId((current) => response.sources?.some((source) => source.id === current) ? current : '')
+    } catch (reason) {
+      if (request !== searchSequence.current) return
+      setError(reason instanceof Error ? reason.message : 'Library sources could not be loaded.')
+    } finally {
+      if (request === searchSequence.current) setSearching(false)
+    }
+  }
+
+  useEffect(() => {
+    setQuery('')
+    setSelectedSourceId('')
+    setTarget('')
+    void searchLibrary('')
+    return () => { searchSequence.current += 1 }
+  }, [path.thread.id])
+
+  const submitSearch = (event: Event) => {
+    event.preventDefault()
+    void searchLibrary()
+  }
+
+  const attach = async (event: Event) => {
+    event.preventDefault()
+    const chosenTarget = targets.find((candidate) => candidate.value === target)
+    if (!selectedSource || !chosenTarget || !contribution.trim()) return
+    const collision = role === 'optional' ? null : placements.find((placement) =>
+      placement.scope === chosenTarget.scope &&
+      placement.scopeId === chosenTarget.id &&
+      placement.source.role === role &&
+      placement.source.recommendation_id !== selectedSource.id,
+    )
+    if (collision && !window.confirm(`Replace ${cleanTitle(collision.source.video_title) || 'the current source'} in the ${role} role for ${chosenTarget.label}?`)) return
+    setSaving(true)
+    setError('')
+    setMessage('')
+    try {
+      const response = await api<{ replaced_recommendation_ids?: string[] }>(
+        placementCollectionEndpoint(path.thread.id, chosenTarget.scope, chosenTarget.id),
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            recommendation_id: selectedSource.id,
+            branch_id: selectedSource.branch.id,
+            role,
+            expected_contribution: contribution.trim(),
+            ...(position.trim() ? { position: Math.max(0, Number(position) || 0) } : {}),
+          }),
+        },
+      )
+      const replaced = response.replaced_recommendation_ids?.length || 0
+      setMessage(replaced ? `Source attached. ${replaced} previous ${role} placement replaced.` : 'Source attached to the exact owner.')
+      onChanged()
+      await searchLibrary()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Source could not be attached.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section class="thread-source-organizer" aria-labelledby="thread-source-organizer-title">
+      <header>
+        <div>
+          <span class="folio-object-kicker">Source organizer</span>
+          <h3 id="thread-source-organizer-title">Place saved sources exactly</h3>
+          <p>Search the Library first, then attach one source to one Level or Lesson. Nothing is queued or started.</p>
+        </div>
+        <span>{placements.length} direct placements</span>
+      </header>
+
+      <div class="thread-source-organizer-grid">
+        <section class="thread-source-search" aria-label="Search saved Library sources">
+          <form onSubmit={submitSearch}>
+            <label>
+              <span>Search the Library</span>
+              <span class="vertical-materials-search-field">
+                <Icon name="search" size={15} />
+                <input
+                  type="search"
+                  value={query}
+                  onInput={(event) => setQuery((event.currentTarget as HTMLInputElement).value)}
+                  placeholder="Title, creator, reason, branch, or domain"
+                />
+              </span>
+            </label>
+            <button class="folio-button" disabled={searching}>{searching ? 'Searching…' : 'Search Library'}</button>
+          </form>
+
+          <div class="thread-source-search-results" aria-live="polite">
+            {results.length ? results.map((source) => {
+              const selected = source.id === selectedSourceId
+              const pairReady = offlinePairResources(source.artifacts?.html, source.artifacts?.pdf, source.id).length === 2
+              return (
+                <button
+                  type="button"
+                  class={selected ? 'is-selected' : ''}
+                  aria-pressed={selected}
+                  onClick={() => {
+                    setSelectedSourceId(source.id)
+                    setContribution(source.why_this || '')
+                  }}
+                  key={source.id}
+                >
+                  <span>
+                    <strong dir="auto">{cleanTitle(source.title) || 'Untitled source'}</strong>
+                    <small>{source.creator || source.content_type || 'Saved Library source'}</small>
+                  </span>
+                  <span class="thread-source-result-meta">
+                    <span>{source.branch.label || source.branch.id}</span>
+                    <span>{source.branch.domain_label || source.branch.super_category}</span>
+                    {pairReady ? <span>Verified companion</span> : null}
+                    {source.health?.status ? <span>Original: {statusLabel(source.health.status)}</span> : null}
+                  </span>
+                  {source.placements.length ? <small>{source.placements.length} existing placement{source.placements.length === 1 ? '' : 's'}</small> : null}
+                </button>
+              )
+            }) : (
+              <p>{searching ? 'Searching saved sources…' : 'No saved Library sources match this search.'}</p>
+            )}
+          </div>
+        </section>
+
+        <form class="thread-source-attach" onSubmit={attach}>
+          <h4>Attach selected source</h4>
+          <p>{selectedSource ? cleanTitle(selectedSource.title) : 'Select a saved source from the Library results.'}</p>
+          <label>
+            <span>Exact owner</span>
+            <select value={target} onChange={(event) => setTarget((event.currentTarget as HTMLSelectElement).value)} required>
+              <option value="">Choose a Level or Lesson</option>
+              {targets.map((candidate) => <option value={candidate.value} key={candidate.value}>{candidate.label}</option>)}
+            </select>
+          </label>
+          <div class="thread-source-attach-row">
+            <label>
+              <span>Role</span>
+              <select value={role} onChange={(event) => setRole((event.currentTarget as HTMLSelectElement).value as typeof role)}>
+                {lessonSourceRoles.map((value) => <option value={value} key={value}>{roleLabel(value)}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Position</span>
+              <input type="number" min="0" step="1" value={position} placeholder="End" onInput={(event) => setPosition((event.currentTarget as HTMLInputElement).value)} />
+            </label>
+          </div>
+          <label>
+            <span>Expected contribution</span>
+            <textarea
+              value={contribution}
+              onInput={(event) => setContribution((event.currentTarget as HTMLTextAreaElement).value)}
+              placeholder="What should this source contribute to this exact Level or Lesson?"
+              required
+            />
+          </label>
+          <button class="folio-button folio-button-primary" disabled={saving || !selectedSource || !target || !contribution.trim()}>
+            {saving ? 'Attaching…' : 'Attach to this owner'}
+          </button>
+          <small>Primary, case, challenge, and reference are single slots. Optional sources can coexist.</small>
+        </form>
+      </div>
+
+      {message && <p class="folio-status" role="status">{message}</p>}
+      {error && <p class="learning-material-error" role="alert">{error}</p>}
+
+      <details class="thread-source-placements" open>
+        <summary>
+          <span><strong>Direct source placements</strong><small>Thread, Level, and Lesson ownership</small></span>
+          <span>{placements.length}</span>
+        </summary>
+        {placements.length ? (
+          <div>
+            {placements.map((placement) => (
+              <SourcePlacementEditor
+                key={placement.key}
+                threadId={path.thread.id}
+                placement={placement}
+                placements={placements}
+                onChanged={() => {
+                  onChanged()
+                  void searchLibrary()
+                }}
+              />
+            ))}
+          </div>
+        ) : <p class="folio-empty-line">No sources are directly placed in this Thread yet.</p>}
+      </details>
+    </section>
+  )
+}
+
+function SourcePlacementEditor({
+  threadId,
+  placement,
+  placements,
+  onChanged,
+}: {
+  threadId: string
+  placement: OrganizerPlacement
+  placements: OrganizerPlacement[]
+  onChanged: () => void
+}) {
+  const availableRoles = placement.scope === 'thread' ? threadSourceRoles : lessonSourceRoles
+  const initialRole = availableRoles.includes((placement.source.role || '') as never)
+    ? String(placement.source.role)
+    : availableRoles[0]
+  const [role, setRole] = useState(initialRole)
+  const [contribution, setContribution] = useState(placement.source.expected_contribution || '')
+  const [position, setPosition] = useState(String(placement.source.position || 0))
+  const [working, setWorking] = useState<'save' | 'remove' | null>(null)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    setRole(availableRoles.includes((placement.source.role || '') as never) ? String(placement.source.role) : availableRoles[0])
+    setContribution(placement.source.expected_contribution || '')
+    setPosition(String(placement.source.position || 0))
+  }, [placement.source.role, placement.source.expected_contribution, placement.source.position])
+
+  const save = async (event: Event) => {
+    event.preventDefault()
+    const expectedContribution = contribution.trim()
+    if (!expectedContribution) {
+      setError('Explain the expected contribution before saving this placement.')
+      return
+    }
+    const collision = role === 'optional' ? null : placements.find((candidate) =>
+      candidate.key !== placement.key &&
+      candidate.scope === placement.scope &&
+      candidate.scopeId === placement.scopeId &&
+      candidate.source.role === role,
+    )
+    if (collision && !window.confirm(`Replace ${cleanTitle(collision.source.video_title) || 'the current source'} in the ${role} role?`)) return
+    setWorking('save')
+    setError('')
+    setMessage('')
+    try {
+      const endpoint = placementEndpoint(threadId, placement)
+      const response = await api<{ replaced_recommendation_ids?: string[] }>(endpoint, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          role,
+          expected_contribution: expectedContribution,
+          position: Math.max(0, Number(position) || 0),
+        }),
+      })
+      setMessage(response.replaced_recommendation_ids?.length ? 'Placement saved; the previous role holder was replaced.' : 'Placement saved.')
+      onChanged()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Placement could not be saved.')
+    } finally {
+      setWorking(null)
+    }
+  }
+
+  const remove = async () => {
+    if (!window.confirm(`Remove ${cleanTitle(placement.source.video_title) || 'this source'} from ${placement.scopeTitle}? The Library source will be kept.`)) return
+    setWorking('remove')
+    setError('')
+    setMessage('')
+    try {
+      await api(placementEndpoint(threadId, placement), { method: 'DELETE' })
+      onChanged()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Placement could not be removed.')
+    } finally {
+      setWorking(null)
+    }
+  }
+
+  return (
+    <form class="thread-source-placement" onSubmit={save}>
+      <div class="thread-source-placement-heading">
+        <span class={`learning-owner-pill owner-${placement.scope}`}>{placement.scope}</span>
+        <span>
+          <strong dir="auto">{cleanTitle(placement.source.video_title) || 'Untitled source'}</strong>
+          <small>{placement.scopeTitle}</small>
+        </span>
+        {placement.source.video_url ? <a href={placement.source.video_url} target="_blank" rel="noreferrer">Original · online only</a> : null}
+      </div>
+      <div class="thread-source-placement-fields">
+        <label>
+          <span>Role</span>
+          <select value={role} onChange={(event) => setRole((event.currentTarget as HTMLSelectElement).value)}>
+            {availableRoles.map((value) => <option value={value} key={value}>{roleLabel(value)}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Position</span>
+          <input type="number" min="0" step="1" value={position} onInput={(event) => setPosition((event.currentTarget as HTMLInputElement).value)} />
+        </label>
+        <label class="thread-source-placement-contribution">
+          <span>Expected contribution</span>
+          <input value={contribution} onInput={(event) => setContribution((event.currentTarget as HTMLInputElement).value)} placeholder="Why it belongs here" required />
+        </label>
+      </div>
+      <div class="thread-source-placement-actions">
+        <button class="folio-button" disabled={working !== null || !contribution.trim()}>{working === 'save' ? 'Saving…' : 'Save placement'}</button>
+        <button class="folio-button is-danger" type="button" onClick={remove} disabled={working !== null}>{working === 'remove' ? 'Removing…' : 'Remove placement'}</button>
+        {message && <small role="status">{message}</small>}
+        {error && <small class="learning-material-error" role="alert">{error}</small>}
+      </div>
+    </form>
   )
 }
 
@@ -1836,17 +2471,175 @@ function MaterialColumn({
   )
 }
 
+function FindLessonMaterial({
+  threadId,
+  lesson,
+  onChanged,
+}: {
+  threadId: string
+  lesson: ThreadLesson
+  onChanged: () => void
+}) {
+  const [request, setRequest] = useState<MaterialRequest | null>(null)
+  const [persistedMatch, setPersistedMatch] = useState<MaterialSourceSearchItem | null>(null)
+  const [working, setWorking] = useState<'load' | 'request' | 'attach' | null>('load')
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const requestSequence = useRef(0)
+
+  const load = async () => {
+    const sequence = ++requestSequence.current
+    setWorking('load')
+    setError('')
+    try {
+      const response = await api<MaterialRequestResponse>(
+        `/learning/core/threads/${encodeURIComponent(threadId)}/lessons/${encodeURIComponent(lesson.id)}/material-request`,
+      )
+      if (sequence === requestSequence.current) setRequest(response.request)
+    } catch (reason) {
+      if (sequence === requestSequence.current) setError(reason instanceof Error ? reason.message : 'Material request status could not be loaded.')
+    } finally {
+      if (sequence === requestSequence.current) setWorking(null)
+    }
+  }
+
+  useEffect(() => {
+    setRequest(null)
+    setPersistedMatch(null)
+    setMessage('')
+    void load()
+    return () => { requestSequence.current += 1 }
+  }, [threadId, lesson.id])
+
+  useEffect(() => {
+    const result = request?.status === 'completed' && request.outcome === 'ready' ? request.result : null
+    if (!result?.recommendation_id) {
+      setPersistedMatch(null)
+      return
+    }
+    let cancelled = false
+    void api<MaterialSourceSearchResponse>(
+      `/learning/core/threads/${encodeURIComponent(threadId)}/material-sources?recommendation_id=${encodeURIComponent(result.recommendation_id)}&expected_source_url=${encodeURIComponent(result.source_url || '')}&limit=1`,
+    ).then((response) => {
+      if (cancelled) return
+      setPersistedMatch(response.sources.find((source) => source.id === result.recommendation_id) || null)
+    }).catch(() => {
+      if (!cancelled) setPersistedMatch(null)
+    })
+    return () => { cancelled = true }
+  }, [threadId, request?.job_id, request?.status, request?.outcome, request?.result?.recommendation_id, request?.result?.source_url])
+
+  const createRequest = async () => {
+    setWorking('request')
+    setError('')
+    setMessage('')
+    try {
+      const response = await api<MaterialRequestResponse>(
+        `/learning/core/threads/${encodeURIComponent(threadId)}/lessons/${encodeURIComponent(lesson.id)}/material-request`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ idempotency_key: `learner-${lesson.id}-${Date.now()}` }),
+        },
+      )
+      setRequest(response.request)
+      setMessage(response.reused ? 'The existing request is still the canonical request for this lesson.' : 'Research request created. It cannot attach or start anything.')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Material request could not be created.')
+    } finally {
+      setWorking(null)
+    }
+  }
+
+  const attachPersistedMatch = async () => {
+    if (!persistedMatch || request?.result?.outcome !== 'ready') return
+    setWorking('attach')
+    setError('')
+    setMessage('')
+    try {
+      await api(`/learning/core/threads/${encodeURIComponent(threadId)}/lessons/${encodeURIComponent(lesson.id)}/sources`, {
+        method: 'POST',
+        body: JSON.stringify({
+          recommendation_id: persistedMatch.id,
+          branch_id: persistedMatch.branch.id,
+          role: 'primary',
+          expected_contribution: request.result.expected_contribution,
+          expected_source_url: request.result.source_url,
+        }),
+      })
+      setMessage('Saved Library source attached. The lesson remains unstarted.')
+      onChanged()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'The saved source could not be attached.')
+    } finally {
+      setWorking(null)
+    }
+  }
+
+  const active = request && ['pending', 'running', 'retry'].includes(request.status)
+  const ready = request?.status === 'completed' && request.outcome === 'ready' && request.result
+  const abstained = request?.status === 'completed' && request.outcome === 'abstained' && request.result
+
+  return (
+    <section class="lesson-material-request" aria-labelledby={`lesson-material-request-${lesson.id}`}>
+      <div>
+        <span class="folio-object-kicker">Material gap</span>
+        <h3 id={`lesson-material-request-${lesson.id}`}>Find material for this lesson</h3>
+        <p>This explicit request researches one source for this exact lesson. It never attaches, queues, starts, or advances learning.</p>
+      </div>
+      {!request ? (
+        <button class="folio-button folio-button-primary" type="button" onClick={createRequest} disabled={working !== null}>
+          {working === 'request' ? 'Requesting…' : 'Find material for this lesson'}
+        </button>
+      ) : (
+        <div class="lesson-material-request-state">
+          <span class={`folio-status-tag status-${request.status}`}>{statusLabel(request.status)}</span>
+          {request.updated_at ? <small>Updated {new Date(request.updated_at).toLocaleString()}</small> : null}
+          {active ? <button class="folio-button" type="button" onClick={load} disabled={working !== null}>{working === 'load' ? 'Refreshing…' : 'Refresh status'}</button> : null}
+        </div>
+      )}
+      {ready ? (
+        <article class="lesson-material-ready">
+          <span class="folio-status-tag status-ready">Ready for review</span>
+          <h4 dir="auto">{ready.title}</h4>
+          {ready.creator ? <p>{ready.creator}</p> : null}
+          {ready.expected_contribution ? <p dir="auto">{ready.expected_contribution}</p> : null}
+          <div>
+            {ready.source_url ? <a class="folio-button" href={ready.source_url} target="_blank" rel="noreferrer">Review source · online only</a> : null}
+            {persistedMatch ? (
+              <button class="folio-button folio-button-primary" type="button" onClick={attachPersistedMatch} disabled={working !== null}>
+                {working === 'attach' ? 'Attaching…' : 'Attach saved Library source'}
+              </button>
+            ) : null}
+          </div>
+          <small>
+            {persistedMatch
+              ? 'This exact URL already exists in the Library. Attaching it is a separate explicit action.'
+              : 'Review only. Attach is unavailable unless this exact reviewed URL still belongs to the saved Library source; request material again if its URL changed.'}
+          </small>
+        </article>
+      ) : null}
+      {abstained ? <p class="lesson-material-abstention"><strong>No responsible pick.</strong> {abstained.reason}</p> : null}
+      {request?.status === 'completed' && request.result_valid === false ? <p class="learning-material-error" role="alert">The research output did not satisfy the ready-or-abstain contract. Nothing was attached.</p> : null}
+      {request?.status === 'failed' || request?.error ? <p class="learning-material-error" role="alert">{request.error || 'Material research failed.'}</p> : null}
+      {message && <p class="folio-status" role="status">{message}</p>}
+      {error && <p class="learning-material-error" role="alert">{error}</p>}
+    </section>
+  )
+}
+
 function LessonView({
   lesson,
   stage,
   threadId,
   threadTitle,
+  followingLesson,
   onChanged,
 }: {
   lesson: ThreadLesson
   stage: PathStage
   threadId: string
   threadTitle: string
+  followingLesson: ThreadLesson | null
   onChanged: () => void
 }) {
   const [saving, setSaving] = useState(false)
@@ -1856,6 +2649,11 @@ function LessonView({
   const canStudy = stage.status === 'in_progress'
   const canComplete = readiness !== 'needs_material' && canStudy
   const displayState = stage.status === 'locked' ? 'locked' : stage.status === 'available' ? 'level_not_started' : readiness
+  const canRequestMaterial =
+    ['available', 'in_progress'].includes(stage.status) &&
+    lesson.status !== 'completed' &&
+    !String(lesson.content || '').trim() &&
+    !(lesson.sources?.length)
 
   const currentIndex = stage.lessons.findIndex((l) => l.id === lesson.id)
   const prevLesson = currentIndex > 0 ? stage.lessons[currentIndex - 1] : null
@@ -1871,6 +2669,9 @@ function LessonView({
         body: JSON.stringify({ status: nextStatus }),
       })
       onChanged()
+      if (nextStatus === 'completed' && followingLesson) {
+        location.hash = lessonHref(threadId, followingLesson.id).slice(1)
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Lesson update failed.')
     } finally {
@@ -1974,6 +2775,8 @@ function LessonView({
         </div>
       )}
 
+      {canRequestMaterial ? <FindLessonMaterial threadId={threadId} lesson={lesson} onChanged={onChanged} /> : null}
+
       {lesson.sources?.length ? <SourceSection sources={lesson.sources} /> : null}
 
       <details class="course-level-materials is-lesson-tools">
@@ -2062,6 +2865,12 @@ function SourceCard({ source }: { source: PathSource }) {
         {source.expected_contribution && <p class="course-source-rationale" dir="auto">{source.expected_contribution}</p>}
       </div>
       <SourceMaterialLauncher source={source} />
+      <SourceHealthControl
+        sourceId={source.recommendation_id}
+        sourceUrl={source.video_url}
+        companionHref={verifiedCompanionHref(source)}
+        compact
+      />
     </li>
   )
 }

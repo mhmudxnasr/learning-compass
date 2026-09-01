@@ -1,4 +1,4 @@
-export const AGENT_CONTRACT_VERSION = '2026-08-26'
+export const AGENT_CONTRACT_VERSION = '2026-08-31'
 export const AGENT_PROTOCOL = 'learning-compass-agent-http/2'
 
 export type AgentMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -112,6 +112,14 @@ const COMPASS_PICK_SCHEMA = objectSchema({
   candidates: { type: 'array', items: COMPASS_CANDIDATE_SCHEMA, minItems: 3, maxItems: 24 },
 }, ['intent', 'thread_id', 'candidates'])
 
+const RECALL_MUTATION_PRECONDITION_PROPERTIES: Record<string, JsonSchema> = {
+  expected_content_revision: { type: 'integer', minimum: 1, description: 'Exact content_revision from the latest card read.' },
+  expected_scheduler_revision: { type: 'integer', minimum: 1, description: 'Exact scheduler_revision from the latest card read.' },
+  expected_status_revision: { type: 'integer', minimum: 1, description: 'Exact status_revision from the latest card read.' },
+  expected_repair_status: { type: 'string', enum: ['active', 'paused', 'retired'], description: 'Exact repair_status from the latest card read.' },
+}
+const RECALL_MUTATION_PRECONDITION_FIELDS = ['expected_content_revision', 'expected_scheduler_revision', 'expected_status_revision', 'expected_repair_status']
+
 const BODY_SCHEMAS: Record<string, JsonSchema> = {
   'POST /capture': objectSchema({ source: { type: 'string', minLength: 1 }, title: { type: 'string' }, artifact_id: { type: 'string' }, branch_id: { type: 'string', minLength: 1 }, branch_reason: { type: 'string', maxLength: 500 } }, ['source', 'branch_id']),
   'POST /capture/personal': objectSchema(PERSONAL_LIBRARY_PROPERTIES, ['title', 'item_type', 'state', 'branch_id']),
@@ -135,6 +143,10 @@ const BODY_SCHEMAS: Record<string, JsonSchema> = {
     language: { type: 'string' },
     source_checksum: { type: 'string' },
   }, ['recommendation_id', 'locator_type', 'quote']),
+  'PATCH /annotations/:id': objectSchema({
+    locator_type: { type: 'string', enum: ['web', 'pdf', 'video', 'epub', 'artifact', 'text'] },
+    selector: { type: 'object' }, quote: { type: 'string', minLength: 1 }, context_before: { type: ['string', 'null'] }, context_after: { type: ['string', 'null'] }, language: { type: 'string' },
+  }),
   'POST /capture/:id/triage': objectSchema({
     action: {
       type: 'string',
@@ -182,7 +194,9 @@ const BODY_SCHEMAS: Record<string, JsonSchema> = {
   'POST /brain/resurfacing/presentations': objectSchema({ recommendation_id: { type: 'string', minLength: 1, maxLength: 100 } }, ['recommendation_id']),
   'POST /brain/resurfacing/:eventId/action': objectSchema({ action: { type: 'string', enum: ['reviewed', 'snooze', 'dismissed'] } }, ['action']),
   'POST /recommendations/map': objectSchema({ ids: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 50 }, branch_id: { type: 'string', minLength: 1 } }, ['ids', 'branch_id']),
-  'PATCH /recommendations/:id/source-url': objectSchema({ source_url: { type: 'string', format: 'uri' } }, ['source_url']),
+  'PATCH /recommendations/:id/source-url': objectSchema({ source_url: { type: 'string', format: 'uri' }, expected_source_url: { type: 'string', minLength: 1, maxLength: 2048 } }, ['source_url', 'expected_source_url']),
+  'POST /recommendations/:id/source-health/check': objectSchema({ expected_source_url: { type: 'string', format: 'uri' } }),
+  'POST /recommendations/:id/source-url/verify': objectSchema({ source_url: { type: 'string', format: 'uri' }, expected_source_url: { type: 'string', minLength: 1, maxLength: 2048 } }, ['source_url', 'expected_source_url']),
   'PATCH /recommendations/content-types': objectSchema({
     ids: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 100 }, minItems: 1, maxItems: 500, uniqueItems: true },
     content_type: { type: 'string', enum: ['video'] },
@@ -200,13 +214,22 @@ const BODY_SCHEMAS: Record<string, JsonSchema> = {
     takeaway: { type: 'string', maxLength: 4000 },
     content: { type: 'string', maxLength: 12000 },
   }, ['status']),
-  'POST /learning/core/threads/:id/lessons/:lessonId/sources': objectSchema({ recommendation_id: { type: 'string', minLength: 1 }, role: { type: 'string', enum: ['primary', 'case', 'challenge', 'reference', 'optional'] }, position: { type: 'integer', minimum: 0 }, branch_id: { type: 'string', minLength: 1 } }, ['recommendation_id', 'role', 'branch_id']),
+  'POST /learning/core/threads/:id/sources': objectSchema({ recommendation_id: { type: 'string', minLength: 1 }, role: { type: 'string', enum: ['primary', 'supporting', 'counterevidence', 'reference'] }, expected_contribution: { type: 'string', minLength: 1, maxLength: 1000, pattern: '\\S' }, position: { type: 'integer', minimum: 0 }, branch_id: { type: 'string', minLength: 1, description: 'Optional optimistic precondition; persisted Library ownership remains authoritative.' } }, ['recommendation_id', 'expected_contribution']),
+  'PATCH /learning/core/threads/:id/sources/:sourceId': objectSchema({ role: { type: 'string', enum: ['primary', 'supporting', 'counterevidence', 'reference'] }, expected_contribution: { type: 'string', minLength: 1, maxLength: 1000, pattern: '\\S' }, position: { type: 'integer', minimum: 0 } }),
+  'POST /learning/core/threads/:id/stages/:stageId/sources': objectSchema({ recommendation_id: { type: 'string', minLength: 1 }, role: { type: 'string', enum: ['primary', 'case', 'challenge', 'reference', 'optional'] }, required: { type: 'boolean' }, expected_contribution: { type: 'string', minLength: 1, maxLength: 1000, pattern: '\\S' }, position: { type: 'integer', minimum: 0 }, branch_id: { type: 'string', minLength: 1, description: 'Optional optimistic precondition; persisted Library ownership remains authoritative.' } }, ['recommendation_id', 'expected_contribution']),
+  'PATCH /learning/core/threads/:id/stages/:stageId/sources/:sourceId': objectSchema({ role: { type: 'string', enum: ['primary', 'case', 'challenge', 'reference', 'optional'] }, required: { type: 'boolean' }, expected_contribution: { type: 'string', minLength: 1, maxLength: 1000, pattern: '\\S' }, position: { type: 'integer', minimum: 0 } }),
+  'POST /learning/core/threads/:id/lessons/:lessonId/sources': objectSchema({ recommendation_id: { type: 'string', minLength: 1 }, role: { type: 'string', enum: ['primary', 'case', 'challenge', 'reference', 'optional'] }, expected_contribution: { type: 'string', minLength: 1, maxLength: 1000, pattern: '\\S' }, expected_source_url: { type: 'string', format: 'uri', description: 'Optional canonical URL precondition. Required when attaching a reviewed Find material result.' }, position: { type: 'integer', minimum: 0 }, branch_id: { type: 'string', minLength: 1, description: 'Optional optimistic precondition; persisted Library ownership remains authoritative.' } }, ['recommendation_id', 'expected_contribution']),
+  'PATCH /learning/core/threads/:id/lessons/:lessonId/sources/:sourceId': objectSchema({ role: { type: 'string', enum: ['primary', 'case', 'challenge', 'reference', 'optional'] }, expected_contribution: { type: 'string', minLength: 1, maxLength: 1000, pattern: '\\S' }, position: { type: 'integer', minimum: 0 } }),
+  'POST /learning/core/threads/:id/lessons/:lessonId/material-request': objectSchema({ idempotency_key: { type: 'string', minLength: 1, maxLength: 160 } }),
   'POST /learning/core/canon/domains': objectSchema({ title: { type: 'string', minLength: 1 }, slug: { type: 'string' }, kind: { type: 'string', enum: ['family', 'domain'] }, parent_id: { type: 'string' }, branch_id: { type: 'string', minLength: 1 }, boundary: { type: 'string', minLength: 1 }, orientation: { type: 'string' }, sort_order: { type: 'integer' } }, ['title', 'branch_id', 'boundary']),
   'PATCH /learning/core/canon/domains/:id': objectSchema({ title: { type: 'string' }, boundary: { type: 'string' }, orientation: { type: 'string' }, branch_id: { type: 'string' }, curation_status: { type: 'string', enum: ['unmapped', 'curating', 'complete'] }, validation_state: { type: 'string', enum: ['untested', 'exploring', 'field_tested'] }, sort_order: { type: 'integer' } }),
   'PUT /learning/core/canon/domains/:id/entries/:role': objectSchema({ title: { type: 'string', minLength: 1 }, author: { type: 'string', minLength: 1 }, canonical_url: { type: 'string', format: 'uri' }, isbn: { type: 'string' }, why_slot: { type: 'string', minLength: 1 }, beginner_case: { type: 'string', minLength: 1 }, expert_case: { type: 'string', minLength: 1 }, unique_contribution: { type: 'string', minLength: 1 }, limitations: { type: 'string', minLength: 1 }, difficulty: { type: 'string', minLength: 1 }, rejected_alternative: { type: 'string', minLength: 1 }, rejection_reason: { type: 'string', minLength: 1 }, evidence: { type: 'array', minItems: 1 }, recommendation_id: { type: 'string' }, editorial_status: { type: 'string', enum: ['draft', 'reviewed', 'approved'] }, validation_state: { type: 'string', enum: ['untested', 'exploring', 'field_tested'] }, replacement_reason: { type: 'string' } }, ['title', 'author', 'why_slot', 'beginner_case', 'expert_case', 'unique_contribution', 'limitations', 'difficulty', 'rejected_alternative', 'rejection_reason']),
-  'POST /learning/srs/review': objectSchema({ card_id: { type: 'string', minLength: 1 }, grade: { type: 'integer', minimum: 0, maximum: 5 } }, ['card_id', 'grade']),
+  'POST /learning/srs/review': objectSchema({ card_id: { type: 'string', minLength: 1 }, grade: { type: 'integer', minimum: 0, maximum: 5 }, ...RECALL_MUTATION_PRECONDITION_PROPERTIES }, ['card_id', 'grade', ...RECALL_MUTATION_PRECONDITION_FIELDS]),
   'PUT /srs/drafts/:id': objectSchema({ question: { type: 'string', minLength: 1, description: 'Recall question written primarily in Arabic.' }, answer: { type: 'string', minLength: 1, description: 'Recall answer written primarily in Arabic.' }, topic: { type: 'string' }, branch: { type: 'string' }, card_type: { type: 'string' }, source_anchor: { type: 'string' } }),
-  'POST /learning/srs/create': objectSchema({ thread_id: { type: 'string' }, stage_id: { type: 'string' }, lesson_id: { type: 'string' }, note_id: { type: 'string' }, recommendation_id: { type: 'string' }, question: { type: 'string', minLength: 1, description: 'Recall question written primarily in Arabic.' }, answer: { type: 'string', minLength: 1, description: 'Recall answer written primarily in Arabic.' }, topic: { type: 'string' }, branch: { type: 'string' } }, ['question', 'answer']),
+  'POST /learning/srs/create': objectSchema({ thread_id: { type: 'string' }, stage_id: { type: 'string' }, lesson_id: { type: 'string' }, note_id: { type: 'string' }, recommendation_id: { type: 'string' }, annotation_id: { type: 'string' }, source_anchor: { type: 'string', maxLength: 1000 }, question: { type: 'string', minLength: 1, description: 'Recall question written primarily in Arabic.' }, answer: { type: 'string', minLength: 1, description: 'Recall answer written primarily in Arabic.' }, topic: { type: 'string' }, branch: { type: 'string' } }, ['question', 'answer']),
+  'PUT /learning/srs/cards/:id': objectSchema({ question: { type: 'string', minLength: 1 }, answer: { type: 'string', minLength: 1 }, change_kind: { type: 'string', enum: ['wording', 'semantic'] }, reason: { type: 'string', maxLength: 1000 }, ...RECALL_MUTATION_PRECONDITION_PROPERTIES }, ['question', 'answer', 'change_kind', ...RECALL_MUTATION_PRECONDITION_FIELDS]),
+  'POST /learning/srs/cards/:id/status': objectSchema({ status: { type: 'string', enum: ['active', 'paused', 'retired'] }, reason: { type: 'string', maxLength: 1000 }, ...RECALL_MUTATION_PRECONDITION_PROPERTIES }, ['status', ...RECALL_MUTATION_PRECONDITION_FIELDS]),
+  'POST /learning/srs/cards/:id/reset': objectSchema({ confirm: { const: true }, reason: { type: 'string', maxLength: 1000 }, ...RECALL_MUTATION_PRECONDITION_PROPERTIES }, ['confirm', ...RECALL_MUTATION_PRECONDITION_FIELDS]),
   'POST /notebooklm/learning/route': objectSchema({
     recommendation_id: { type: 'string', minLength: 1 },
     purpose: { type: 'string', enum: ['learn', 'orientation', 'review', 'teach-back', 'presentation'] },
@@ -269,6 +292,7 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /capture/feeds/sync': '/capture/feeds',
   'POST /capture/feeds/:id/sync': '/capture/feeds/:id/entries',
   'POST /annotations': '/annotations/:id',
+  'PATCH /annotations/:id': '/annotations/:id',
   'POST /annotations/:id/archive': '/annotations/:id',
   'POST /capture/:id/triage': '/capture/:id/record',
   'POST /capture/:id/visualise': '/capture/:id/record',
@@ -280,7 +304,9 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /brain/resurfacing/presentations': '/brain/resurfacing',
   'POST /brain/resurfacing/:eventId/action': '/brain/resurfacing',
   'POST /recommendations/action': '/capture/:id/record',
-  'PATCH /recommendations/:id/source-url': '/capture/:id/record',
+  'POST /recommendations/:id/source-health/check': '/recommendations/:id/source-health',
+  'POST /recommendations/:id/source-url/verify': '/recommendations/:id/source-health',
+  'PATCH /recommendations/:id/source-url': '/recommendations/:id/source-health',
   'PATCH /recommendations/content-types': null,
   'DELETE /recommendations/:id/permanent': '/recommendations/list',
   'POST /brain/branch-swipe': '/brain/branch-deck',
@@ -298,11 +324,17 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /learning/core/threads/:id/stages': '/learning/core/threads/:id/path',
   'PATCH /learning/core/threads/:id/stages/:stageId': '/learning/core/threads/:id/path',
   'POST /learning/core/threads/:id/stages/:stageId/sources': '/learning/core/threads/:id/path',
+  'PATCH /learning/core/threads/:id/stages/:stageId/sources/:sourceId': '/learning/core/threads/:id/path',
+  'DELETE /learning/core/threads/:id/stages/:stageId/sources/:sourceId': '/learning/core/threads/:id/path',
   'POST /learning/core/threads/:id/stages/:stageId/lessons': '/learning/core/threads/:id/path',
   'PATCH /learning/core/threads/:id/lessons/:lessonId': '/learning/core/threads/:id/path',
   'POST /learning/core/threads/:id/lessons/:lessonId/sources': '/learning/core/threads/:id/path',
+  'PATCH /learning/core/threads/:id/lessons/:lessonId/sources/:sourceId': '/learning/core/threads/:id/path',
+  'DELETE /learning/core/threads/:id/lessons/:lessonId/sources/:sourceId': '/learning/core/threads/:id/path',
+  'POST /learning/core/threads/:id/lessons/:lessonId/material-request': '/learning/core/threads/:id/lessons/:lessonId/material-request',
   'PATCH /learning/core/threads/:id/projects/:projectId': '/learning/core/threads/:id/path',
   'POST /learning/core/threads/:id/sources': '/learning/core/threads/:id/path',
+  'PATCH /learning/core/threads/:id/sources/:sourceId': '/learning/core/threads/:id/path',
   'DELETE /learning/core/threads/:id/sources/:sourceId': '/learning/core/threads/:id/path',
   'DELETE /learning/core/threads/:id': '/learning/core/threads',
   'POST /learning/core/canon/domains': '/learning/core/canon/domains/:id',
@@ -312,6 +344,9 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /learning/core/canon/domains/:id/thread': '/learning/core/canon/domains/:id',
   'POST /learning/srs/review': '/learning/srs/cards/:card_id',
   'POST /learning/srs/create': '/learning/srs/cards/:card_id',
+  'PUT /learning/srs/cards/:id': '/learning/srs/cards/:id',
+  'POST /learning/srs/cards/:id/status': '/learning/srs/cards/:id',
+  'POST /learning/srs/cards/:id/reset': '/learning/srs/cards/:id',
   'POST /notebooklm/learning/route': '/notebooklm/learning/receipts?recommendation_id=:recommendation_id',
   'POST /notebooklm/learning/receipts': '/notebooklm/learning/receipts?recommendation_id=:recommendation_id',
   'POST /agent/jobs/reconcile': '/agent/jobs/active',
@@ -332,14 +367,28 @@ const PRECONDITION_OVERRIDES: Record<string, string[]> = {
   'DELETE /notes/:id': ['Read and resolve the exact note before irreversible deletion.', 'Explicit destructive intent is required.'],
   'DELETE /learning/core/threads/:id': ['Read the exact Thread and require explicit destructive intent.'],
   'POST /compass/pick/:id/start': ['The pick must be ready and Queue must be below the cap.'],
-  'POST /learning/srs/review': ['The learner must supply or confirm the recall grade.', 'Confirm the exact card state before recording the review.'],
+  'POST /learning/srs/review': ['The learner must supply or confirm the recall grade.', 'Read the exact card and forward its complete content/scheduler/status revision token and repair status.'],
+  'PUT /learning/srs/cards/:id': ['Read the exact card and forward its complete content/scheduler/status revision token and repair status.'],
+  'POST /learning/srs/cards/:id/status': ['Read the exact card and forward its complete content/scheduler/status revision token and repair status.'],
+  'POST /learning/srs/cards/:id/reset': ['Read the exact card, forward its complete content/scheduler/status revision token and repair status, and require explicit learner confirmation before resetting its schedule.'],
+  'PATCH /recommendations/:id/source-url': ['Read the exact current source URL and send it as expected_source_url.', 'Verify the candidate URL directly and reject any deduplication collision before replacement.'],
+  'POST /learning/core/threads/:id/stages/:stageId/sources': ['Search the existing Library first.', 'Use persisted non-pruned branch and domain ownership; client branch_id is only an optimistic precondition.'],
+  'POST /learning/core/threads/:id/lessons/:lessonId/sources': ['Search the existing Library first.', 'Use persisted non-pruned branch and domain ownership; client branch_id is only an optimistic precondition.'],
+  'POST /learning/core/threads/:id/lessons/:lessonId/material-request': ['Confirm the exact lesson is in the current Level, incomplete, and has neither authored content nor an attached source.', 'This explicit request may abstain and cannot attach, Queue, start, or advance anything.'],
 }
 
 const PRECONDITION_PATH_OVERRIDES: Record<string, string> = {
+  'PATCH /recommendations/:id/source-url': '/capture/:id/record',
   'DELETE /recommendations/:id/permanent': '/capture/:id/record',
   'DELETE /notes/:id': '/notes/:id',
   'DELETE /learning/core/threads/:id': '/learning/core/threads/:id',
   'POST /learning/srs/review': '/learning/srs/cards/:id',
+  'PUT /learning/srs/cards/:id': '/learning/srs/cards/:id',
+  'POST /learning/srs/cards/:id/status': '/learning/srs/cards/:id',
+  'POST /learning/srs/cards/:id/reset': '/learning/srs/cards/:id',
+  'POST /learning/core/threads/:id/stages/:stageId/sources': '/learning/core/threads/:id/material-sources',
+  'POST /learning/core/threads/:id/lessons/:lessonId/sources': '/learning/core/threads/:id/material-sources',
+  'POST /learning/core/threads/:id/lessons/:lessonId/material-request': '/learning/core/threads/:id/path',
   'POST /analytics/hermes/engine/activate': '/analytics/hermes/engine',
   'POST /analytics/hermes/recalibrate': '/analytics/hermes/engine',
   'POST /analytics/hermes/repair': '/analytics/hermes/repair',
@@ -354,6 +403,8 @@ const VERIFICATION_ID_SOURCES: Record<string, string[]> = {
   'POST /compass/picks': ['response.pick_id'],
   'POST /recommendations/map': ['body.ids', 'body.id', 'response.sources.*.id'],
   'POST /recommendations/action': ['body.ids', 'body.id', 'response.ids'],
+  'POST /recommendations/:id/source-health/check': ['response.id'],
+  'POST /recommendations/:id/source-url/verify': ['response.id'],
   'PATCH /recommendations/:id/source-url': ['response.id'],
   'POST /learning/core/threads': ['response.id'],
   'POST /learning/core/canon/domains': ['response.id'],
@@ -445,7 +496,7 @@ const deriveRisk = (method: AgentMethod, path: string) => {
 
 const reversible = (method: AgentMethod, path: string) => {
   if (/permanent|\/threads\/:id$|\/artifacts\/:id$|\/notes\/:id$|\/learning\/srs\/cards\/:id$/.test(path)) return false
-  return method !== 'DELETE' || /feeds/.test(path)
+  return method !== 'DELETE' || /feeds|\/sources\/:sourceId$/.test(path)
 }
 
 export function buildCapabilityCatalog(capabilities: readonly CapabilityTuple[], filters: { domain?: string; intent?: string; method?: string; q?: string } = {}) {

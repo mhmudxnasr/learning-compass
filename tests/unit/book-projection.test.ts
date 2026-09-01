@@ -54,6 +54,17 @@ test('chapter projection defensively ignores staged artifact metadata', () => {
   assert.equal(chapters[0].html?.id, 'ready-html')
 })
 
+test('chapter projection ignores newer superseded pairs after a guarded rollback', () => {
+  const chapters = normalizeBookChapters([], [
+    { id: 'restored-html', created_at: '2026-08-01', metadata: { chapter_key: 'chapter-1', role: 'html', pair_id: 'restored', publication_state: 'ready', validation_status: 'passed' } },
+    { id: 'restored-pdf', created_at: '2026-08-01', metadata: { chapter_key: 'chapter-1', role: 'pdf', pair_id: 'restored', publication_state: 'ready', validation_status: 'passed' } },
+    { id: 'rejected-html', created_at: '2026-08-03', metadata: { chapter_key: 'chapter-1', role: 'html', pair_id: 'rejected', publication_state: 'superseded', validation_status: 'passed' } },
+    { id: 'rejected-pdf', created_at: '2026-08-03', metadata: { chapter_key: 'chapter-1', role: 'pdf', pair_id: 'rejected', publication_state: 'superseded', validation_status: 'passed' } },
+  ])
+  assert.equal(chapters[0].html?.id, 'restored-html')
+  assert.equal(chapters[0].pdf?.id, 'restored-pdf')
+})
+
 test('projection derives progress and the next unread chapter from one normalized array', () => {
   const projection = projectBook({ learning_state: 'captured' }, [
     { chapter_key: 'chapter-2', chapter_title: 'Two', position: 2 },
