@@ -17,7 +17,7 @@ function parseMetadata(row: LearningArtifactRow) {
   if (row.metadata && typeof row.metadata === 'object') return row.metadata
   try {
     const parsed = JSON.parse(String(row.metadata_json || '{}'))
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
   } catch {
     return {}
   }
@@ -26,10 +26,15 @@ function parseMetadata(row: LearningArtifactRow) {
 function renditionRole(row: LearningArtifactRow, metadata: Record<string, unknown>) {
   const explicit = String(metadata.role || '').toLowerCase()
   if (explicit === 'html' || explicit === 'pdf') return explicit
-  const mediaType = String(row.media_type || '').toLowerCase().split(';', 1)[0].trim()
+  const mediaType = String(row.media_type || '')
+    .toLowerCase()
+    .split(';', 1)[0]
+    .trim()
   if (mediaType === 'text/html' || mediaType === 'application/xhtml+xml') return 'html'
   if (mediaType === 'application/pdf') return 'pdf'
-  const filename = String(row.filename || '').trim().toLowerCase()
+  const filename = String(row.filename || '')
+    .trim()
+    .toLowerCase()
   if (/\.html?$/.test(filename)) return 'html'
   if (/\.pdf$/.test(filename)) return 'pdf'
   return null
@@ -43,9 +48,19 @@ function newestFirst(a: LearningArtifactRow, b: LearningArtifactRow) {
 }
 
 function publishable(metadata: Record<string, unknown>) {
+  const publicationState = String(metadata.publication_state || '')
+    .trim()
+    .toLowerCase()
+  if (publicationState === 'staged' || publicationState === 'superseded') return false
   const contract = String(metadata.workflow_contract || '')
   if (!contract) return true
-  return contract !== 'lite-visual-linear/v4' || metadata.generator === 'lite-visual' && metadata.publication_state === 'ready' && metadata.validation_status === 'passed' && metadata.asset_policy === 'code-only'
+  return (
+    contract !== 'lite-visual-linear/v4' ||
+    (metadata.generator === 'lite-visual' &&
+      metadata.publication_state === 'ready' &&
+      metadata.validation_status === 'passed' &&
+      metadata.asset_policy === 'code-only')
+  )
 }
 
 /**
@@ -82,8 +97,11 @@ export function selectLearningSourceRenditions(rows: LearningArtifactRow[]) {
 
     const completePairs = [...pairs.values()]
       .map((pair) => pair.sort(newestFirst))
-      .filter((pair) => pair.some((item) => renditionRole(item, item.metadata || {}) === 'html')
-        && pair.some((item) => renditionRole(item, item.metadata || {}) === 'pdf'))
+      .filter(
+        (pair) =>
+          pair.some((item) => renditionRole(item, item.metadata || {}) === 'html') &&
+          pair.some((item) => renditionRole(item, item.metadata || {}) === 'pdf'),
+      )
       .sort((a, b) => newestFirst(a[0], b[0]))
 
     const chosen = completePairs[0]

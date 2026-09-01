@@ -30,190 +30,249 @@ export type ThemePreset = {
   mode: ThemeMode
   swatches: [string, string, string, string] // [brand, shell, highlight, accent]
   ink?: string
+  surface?: string
+  rail?: string
+  seam?: string
+  due?: string
+  danger?: string
+  map?: string
 }
 
 export const THEME_PRESETS: ThemePreset[] = [
-  // --- Light & Editorial Palettes ---
   {
-    id: 'botanical',
-    name: 'Botanical Folio',
-    description: 'Deep forest cypress, crisp paper linen, and tender lichen accents.',
+    id: 'continuum',
+    name: 'Attio Coral',
+    description: 'Attio-inspired warm editorial planes, crisp black type, and a confident coral working signal.',
     mode: 'light',
-    swatches: ['#1b4332', '#f6f4ee', '#d8f3dc', '#2d3b32'],
-    ink: '#17231c'
+    swatches: ['#e55a42', '#fcfaf6', '#f8d8d0', '#665f58'],
+    ink: '#171513',
+    surface: '#fefdfb',
+    rail: '#171513',
+    seam: '#e1d5ca',
+    due: '#8a5b12',
+    danger: '#a8373f',
+    map: '#24757a',
   },
   {
-    id: 'terracotta',
-    name: 'Warm Terracotta',
-    description: 'Artisan terracotta, sun-baked clay, warm peach, and roasted umber.',
-    mode: 'light',
-    swatches: ['#b84a28', '#faf4ed', '#f9dfd5', '#4d281e'],
-    ink: '#291814'
-  },
-  {
-    id: 'indigo',
-    name: 'Kyoto Indigo',
-    description: 'Traditional Japanese aizome indigo, clean washi paper, and porcelain sky.',
-    mode: 'light',
-    swatches: ['#1e3a8a', '#f4f6fa', '#dbeafe', '#1e293b'],
-    ink: '#0f172a'
-  },
-  {
-    id: 'sepia',
-    name: 'Editorial Sepia',
-    description: 'Walnut gall ink, warm antiquarian parchment, and golden amber flax.',
-    mode: 'light',
-    swatches: ['#78350f', '#fcf8f0', '#fde68a', '#3e2415'],
-    ink: '#27160d'
-  },
-  {
-    id: 'slate',
-    name: 'Nordic Mist',
-    description: 'Glacial sea-glass teal, frosted Nordic mist, and deep spruce pine.',
-    mode: 'light',
-    swatches: ['#0f766e', '#f0fdfa', '#ccfbf1', '#134e4a'],
-    ink: '#042f2e'
-  },
-  {
-    id: 'bordeaux',
-    name: 'Bordeaux Velvet',
-    description: 'Vintage wine crimson, soft rose silk, and antique gilded burgundy.',
-    mode: 'light',
-    swatches: ['#881337', '#fdf2f4', '#fbcfe8', '#4c0519'],
-    ink: '#300510'
-  },
-  {
-    id: 'alpine',
-    name: 'Alpine Meadow',
-    description: 'Fresh clover green, mountain breeze canvas, and highland moss.',
-    mode: 'light',
-    swatches: ['#15803d', '#f3faf4', '#bbf7d0', '#14532d'],
-    ink: '#0d2818'
-  },
-  {
-    id: 'amber',
-    name: 'Solar Amber',
-    description: 'Radiant amber flame, golden honey canvas, and roasted burnt sienna.',
-    mode: 'light',
-    swatches: ['#c2410c', '#fff8ee', '#fed7aa', '#431407'],
-    ink: '#280d05'
-  },
-  {
-    id: 'amethyst',
-    name: 'Amethyst Silk',
-    description: 'Regal wisteria purple, soft lilac mist, and deep imperial violet.',
-    mode: 'light',
-    swatches: ['#6d28d9', '#fbf8ff', '#ede9fe', '#3b0764'],
-    ink: '#22053d'
-  },
-  {
-    id: 'swiss',
-    name: 'Swiss Modernist',
-    description: 'Architectural Bauhaus signal red, crisp gallery white, and carbon jet.',
-    mode: 'light',
-    swatches: ['#dc2626', '#f8fafc', '#fee2e2', '#18181b'],
-    ink: '#09090b'
-  },
-  {
-    id: 'sandstone',
-    name: 'Desert Sandstone',
-    description: 'Canyon clay, warm desert dune sands, and sunlit ochre.',
-    mode: 'light',
-    swatches: ['#9a3412', '#fbf6f0', '#ffedd5', '#451a03'],
-    ink: '#291003'
-  },
-  {
-    id: 'cobalt',
-    name: 'Pacific Cobalt',
-    description: 'Deep ocean cobalt, crisp seafoam spray, and maritime navy.',
-    mode: 'light',
-    swatches: ['#0284c7', '#f0f9ff', '#bae6fd', '#0c4a6e'],
-    ink: '#082f49'
-  },
-
-  // --- Dark & High-Focus Palettes ---
-  {
-    id: 'midnight',
-    name: 'Midnight Observatory',
-    description: 'Electric celestial azure glowing over deep astronomical navy.',
+    id: 'carbon',
+    name: 'Raycast Aubergine',
+    description: 'Raycast-inspired aubergine depth, coral actions, and softly luminous command surfaces.',
     mode: 'dark',
-    swatches: ['#38bdf8', '#0b1120', '#1e293b', '#94a3b8'],
-    ink: '#f8fafc'
+    swatches: ['#ff6363', '#160d19', '#3c1c36', '#f0a8c0'],
+    ink: '#fff5fa',
+    surface: '#241528',
+    rail: '#0f0811',
+    seam: '#47243e',
+    due: '#f4b15e',
+    danger: '#ff6b7d',
+    map: '#8bc4ff',
   },
   {
-    id: 'obsidian',
-    name: 'Obsidian & Gold',
-    description: 'Molten brushed gold embers on pitch obsidian graphite.',
+    id: 'deep-focus',
+    name: 'Superhuman Navy',
+    description: 'Superhuman-inspired midnight navy, electric sky actions, and compressed high-velocity hierarchy.',
     mode: 'dark',
-    swatches: ['#fbbf24', '#0f0f11', '#26231c', '#d97706'],
-    ink: '#fef3c7'
+    swatches: ['#4ec5ff', '#06131c', '#12364a', '#86afc4'],
+    ink: '#effbff',
+    surface: '#0d2230',
+    rail: '#030a0f',
+    seam: '#204255',
+    due: '#f0b55f',
+    danger: '#ff7474',
+    map: '#54d6c0',
   },
   {
-    id: 'emerald',
-    name: 'Emerald Sanctuary',
-    description: 'Luminous mint phosphor on shadowed boreal cedar.',
-    mode: 'dark',
-    swatches: ['#34d399', '#091510', '#13281e', '#6ee7b7'],
-    ink: '#ecfdf5'
+    id: 'ember',
+    name: 'Reader Sepia',
+    description: 'Readwise Reader-inspired parchment, burnt-orange actions, and low-fatigue long-form contrast.',
+    mode: 'light',
+    swatches: ['#d65a1f', '#f2e6d3', '#f7d3b2', '#6c4a32'],
+    ink: '#2b2118',
+    surface: '#fff9f0',
+    rail: '#2f241c',
+    seam: '#d5c3ad',
+    due: '#8c5c12',
+    danger: '#a63d43',
+    map: '#34737b',
   },
   {
-    id: 'crimson',
-    name: 'Crimson Eclipse',
-    description: 'Vivid ruby fire over midnight volcanic basalt.',
-    mode: 'dark',
-    swatches: ['#f87171', '#140c0e', '#2b151a', '#fca5a5'],
-    ink: '#fff1f2'
+    id: 'porcelain',
+    name: 'Notion Paper',
+    description: 'Notion-inspired paper white, near-black hierarchy, and deliberately neutral working planes.',
+    mode: 'light',
+    swatches: ['#2f3437', '#f7f7f5', '#ececea', '#6b6f72'],
+    ink: '#1f2021',
+    surface: '#ffffff',
+    rail: '#ededea',
+    seam: '#d9d9d6',
+    due: '#8a641c',
+    danger: '#a23d45',
+    map: '#3c6e91',
   },
   {
-    id: 'cyberpunk',
-    name: 'Cyber Abyss',
-    description: 'Electric violet neon glowing against a pitch midnight void.',
-    mode: 'dark',
-    swatches: ['#c084fc', '#0d0b14', '#1f1a2e', '#e9d5ff'],
-    ink: '#faf5ff'
+    id: 'warm-paper',
+    name: 'Craft Cream',
+    description: 'Craft-inspired cream canvas, warm coral emphasis, and generous journal-like surfaces.',
+    mode: 'light',
+    swatches: ['#d4533d', '#faf6f0', '#f8ddd4', '#74483c'],
+    ink: '#2d2421',
+    surface: '#ffffff',
+    rail: '#f0e7de',
+    seam: '#e1d5ca',
+    due: '#956116',
+    danger: '#ad3b47',
+    map: '#337977',
   },
   {
-    id: 'stealth',
-    name: 'Titanium Stealth',
-    description: 'Hyper-clean monochrome titanium and brushed steel on pure carbon.',
-    mode: 'dark',
-    swatches: ['#94a3b8', '#090a0f', '#181a20', '#cbd5e1'],
-    ink: '#ffffff'
+    id: 'mineral',
+    name: 'Arc Lavender',
+    description: 'Arc-inspired lavender chrome, saturated violet focus, and friendly spatial softness.',
+    mode: 'light',
+    swatches: ['#6b57e5', '#eeeaf8', '#d8ccf6', '#70546f'],
+    ink: '#261e32',
+    surface: '#fbf9ff',
+    rail: '#2e2244',
+    seam: '#cfc5df',
+    due: '#8b611a',
+    danger: '#a94258',
+    map: '#24788a',
   },
   {
-    id: 'dusk',
-    name: 'Solar Dusk',
-    description: 'Warm sunset amber glow on deeply scorched twilight earth.',
-    mode: 'dark',
-    swatches: ['#fb923c', '#15100c', '#2c1e14', '#fed7aa'],
-    ink: '#fff7ed'
+    id: 'ink-pearl',
+    name: 'Are.na Index',
+    description: 'Are.na-inspired gallery white, cobalt links, and blunt archival indexing with no ornament.',
+    mode: 'light',
+    swatches: ['#1a50d6', '#f1f1ec', '#dde5fa', '#252525'],
+    ink: '#151515',
+    surface: '#ffffff',
+    rail: '#ffffff',
+    seam: '#cfcfc9',
+    due: '#856015',
+    danger: '#a43d46',
+    map: '#1b6a66',
   },
-  {
-    id: 'arctic',
-    name: 'Deep Arctic',
-    description: 'Bioluminescent arctic teal on sub-zero oceanic black.',
-    mode: 'dark',
-    swatches: ['#2dd4bf', '#081416', '#10262b', '#99f6e4'],
-    ink: '#f0fdfa'
-  }
 ]
 
+export function paletteFromThemePreset(preset: ThemePreset): CustomPalette {
+  return {
+    brand: preset.swatches[0],
+    shell: preset.swatches[1],
+    highlight: preset.swatches[2],
+    accent: preset.swatches[3],
+    ink: preset.ink,
+    surface: preset.surface,
+    rail: preset.rail,
+    seam: preset.seam,
+    due: preset.due,
+    danger: preset.danger,
+    map: preset.map,
+  }
+}
+
 export const DEFAULT_CUSTOM_PALETTE: CustomPalette = {
-  brand: '#1b4332',
-  shell: '#f6f4ee',
-  highlight: '#d8f3dc',
-  accent: '#2d3b32',
-  ink: '#1b4332',
-  map: '#3f6e4e'
+  brand: '#e55a42',
+  shell: '#fcfaf6',
+  surface: '#fefdfb',
+  highlight: '#f8d8d0',
+  accent: '#665f58',
+  ink: '#171513',
+  rail: '#171513',
+  seam: '#e1d5ca',
+  due: '#8a5b12',
+  danger: '#a8373f',
+  map: '#24757a',
 }
 
 export type ThemePair = { day: CustomPalette; night: CustomPalette }
 
 export const THEME_VARIANTS: Array<{ name: string; day: CustomPalette; night: CustomPalette }> = [
-  { name: 'Moss & Paper', day: { ...DEFAULT_CUSTOM_PALETTE }, night: { brand: '#8CCB9B', shell: '#111A16', surface: '#1B2921', highlight: '#274936', accent: '#D2A96A', ink: '#E6F1E8', rail: '#0B100D', seam: '#34483A', due: '#E5B76A', danger: '#E77D78', map: '#72B887' } },
-  { name: 'Indigo Archive', day: { brand: '#284B63', shell: '#F2F5F7', surface: '#FFFFFF', highlight: '#DCEAF1', accent: '#A05A3C', ink: '#183243', rail: '#1E394B', seam: '#C9D7DE', due: '#9A651E', danger: '#A63D40', map: '#3F6E4E' }, night: { brand: '#86B9D3', shell: '#10171D', surface: '#18242C', highlight: '#213B49', accent: '#D99877', ink: '#E6F2F7', rail: '#091016', seam: '#334650', due: '#E1B36B', danger: '#F08D8D', map: '#72B887' } },
-  { name: 'Mulberry Night', day: { brand: '#713B57', shell: '#FAF4F5', surface: '#FFFFFF', highlight: '#F1DDE5', accent: '#8A5A44', ink: '#402335', rail: '#552B40', seam: '#DECBD3', due: '#96651D', danger: '#A63F4E', map: '#3F6E4E' }, night: { brand: '#D58AA9', shell: '#1A1218', surface: '#281C25', highlight: '#442B3A', accent: '#D6A27E', ink: '#F6E8EF', rail: '#100B10', seam: '#4A3442', due: '#E7B86A', danger: '#EF8B9D', map: '#76B98B' } },
-  { name: 'Copper Observatory', day: { brand: '#8A4B2F', shell: '#FBF5EE', surface: '#FFFFFF', highlight: '#F2DFCB', accent: '#34586B', ink: '#3A241B', rail: '#6A3925', seam: '#E1CDC0', due: '#976117', danger: '#A33F32', map: '#3F6E4E' }, night: { brand: '#D58A5F', shell: '#181311', surface: '#28201B', highlight: '#453126', accent: '#83B3C7', ink: '#F5E9DE', rail: '#100C0A', seam: '#4B3930', due: '#E7B76B', danger: '#F08C7E', map: '#78B88B' } },
+  {
+    name: 'Studio Wave',
+    day: {
+      brand: '#E55A42',
+      shell: '#FCFAF6',
+      surface: '#FEFDFB',
+      highlight: '#F8D8D0',
+      accent: '#665F58',
+      ink: '#171513',
+      rail: '#171513',
+      seam: '#E1D5CA',
+      due: '#8A5B12',
+      danger: '#A8373F',
+      map: '#24757A',
+    },
+    night: {
+      brand: '#FF735E',
+      shell: '#151311',
+      surface: '#211E1A',
+      highlight: '#3D2924',
+      accent: '#D7CCC3',
+      ink: '#FFF9F3',
+      rail: '#0B0A09',
+      seam: '#3B342E',
+      due: '#E6AD55',
+      danger: '#F0787E',
+      map: '#63BEC0',
+    },
+  },
+  {
+    name: 'Reader',
+    day: {
+      brand: '#D65A1F',
+      shell: '#F2E6D3',
+      surface: '#FFF9F0',
+      highlight: '#F7D3B2',
+      accent: '#6C4A32',
+      ink: '#2B2118',
+      rail: '#2F241C',
+      seam: '#D5C3AD',
+      due: '#8C5C12',
+      danger: '#A63D43',
+      map: '#34737B',
+    },
+    night: {
+      brand: '#F29B62',
+      shell: '#17110D',
+      surface: '#251B15',
+      highlight: '#3B281D',
+      accent: '#D8BDA7',
+      ink: '#FFF7EF',
+      rail: '#0D0907',
+      seam: '#463429',
+      due: '#E5B35D',
+      danger: '#EE7B7F',
+      map: '#70C0C2',
+    },
+  },
+  {
+    name: 'Arc',
+    day: {
+      brand: '#6B57E5',
+      shell: '#EEEAF8',
+      surface: '#FBF9FF',
+      highlight: '#D8CCF6',
+      accent: '#70546F',
+      ink: '#261E32',
+      rail: '#2E2244',
+      seam: '#CFC5DF',
+      due: '#8B611A',
+      danger: '#A94258',
+      map: '#24788A',
+    },
+    night: {
+      brand: '#A993FF',
+      shell: '#15101F',
+      surface: '#221A30',
+      highlight: '#35264D',
+      accent: '#D5C5DC',
+      ink: '#FAF6FF',
+      rail: '#0C0812',
+      seam: '#44345A',
+      due: '#DFB15E',
+      danger: '#F07E91',
+      map: '#66C8D2',
+    },
+  },
 ]
 
 export const DEFAULT_THEME_PAIR: ThemePair = { day: DEFAULT_CUSTOM_PALETTE, night: THEME_VARIANTS[0].night }
@@ -222,17 +281,25 @@ export function getSavedThemePair(): ThemePair {
   if (typeof localStorage === 'undefined') return DEFAULT_THEME_PAIR
   try {
     const value = JSON.parse(localStorage.getItem('taste-map-theme-pair') || '{}')
-    return { day: { ...DEFAULT_CUSTOM_PALETTE, ...(value?.day || {}) }, night: { ...DEFAULT_THEME_PAIR.night, ...(value?.night || {}) } }
-  } catch { return DEFAULT_THEME_PAIR }
+    return {
+      day: { ...DEFAULT_CUSTOM_PALETTE, ...(value?.day || {}) },
+      night: { ...DEFAULT_THEME_PAIR.night, ...(value?.night || {}) },
+    }
+  } catch {
+    return DEFAULT_THEME_PAIR
+  }
 }
 
 export function saveThemePair(pair: ThemePair) {
-  try { localStorage.setItem('taste-map-theme-pair', JSON.stringify(pair)) } catch {}
+  try {
+    localStorage.setItem('taste-map-theme-pair', JSON.stringify(pair))
+  } catch {}
 }
 
 /** Resolve the palette for the currently selected day/night mode on every route. */
 export function getActiveCustomPalette(): CustomPalette {
-  const mode = typeof localStorage !== 'undefined' && localStorage.getItem('taste-map-theme-mode') === 'night' ? 'night' : 'day'
+  const mode =
+    typeof localStorage !== 'undefined' && localStorage.getItem('taste-map-theme-mode') === 'night' ? 'night' : 'day'
   return getSavedThemePair()[mode]
 }
 
@@ -240,39 +307,75 @@ export type FontPreset = {
   id: string
   name: string
   description: string
-  ui: string      // interface / body stack
+  ui: string // interface / body stack
   display: string // headings & display stack
   reading: string // long-form & display stack
-  mono: string    // code & data stack
+  mono: string // code & data stack
 }
 
 export const FONT_PRESETS: FontPreset[] = [
+  {
+    id: 'studio',
+    name: 'Studio Sans',
+    description: 'A smooth contemporary interface with first-class Arabic support.',
+    ui: '"Manrope", "Noto Sans Arabic", system-ui, -apple-system, sans-serif',
+    display: '"Manrope", "Noto Sans Arabic", system-ui, sans-serif',
+    reading: '"Manrope", "Noto Sans Arabic", system-ui, sans-serif',
+    mono: '"JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace',
+  },
   {
     id: 'plex',
     name: 'Plex Studio',
     description: 'Crisp humanist sans with a warm serif for reading.',
     ui: '"IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif',
-    display: '"IBM Plex Serif", "Literata", Georgia, serif',
-    reading: '"IBM Plex Serif", "Literata", Georgia, serif',
-    mono: '"IBM Plex Mono", ui-monospace, monospace'
+    display: '"IBM Plex Serif", "Literata", "Noto Naskh Arabic", Georgia, serif',
+    reading: '"IBM Plex Serif", "Literata", "Noto Naskh Arabic", Georgia, serif',
+    mono: '"IBM Plex Mono", ui-monospace, monospace',
+  },
+  {
+    id: 'inter',
+    name: 'Modern Inter',
+    description: 'Clean geometric neutral sans with editorial reading and JetBrains Mono.',
+    ui: '"Inter", "Noto Sans Arabic", system-ui, -apple-system, sans-serif',
+    display: '"Inter", "Noto Sans Arabic", system-ui, sans-serif',
+    reading: '"Literata", Georgia, "Times New Roman", serif',
+    mono: '"JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace',
+  },
+  {
+    id: 'editorial',
+    name: 'Editorial Literary',
+    description: 'Bookish serif throughout for a literary studio.',
+    ui: '"Literata", "Noto Naskh Arabic", Georgia, "Times New Roman", serif',
+    display: '"Literata", "Noto Naskh Arabic", Georgia, serif',
+    reading: '"Literata", "Noto Naskh Arabic", Georgia, serif',
+    mono: '"IBM Plex Mono", ui-monospace, monospace',
+  },
+  {
+    id: 'newsreader',
+    name: 'Newsreader Academic',
+    description: 'Scholarly serif display and reading with crisp humanist interface.',
+    ui: '"IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif',
+    display: '"Newsreader", "Literata", "Noto Naskh Arabic", Georgia, serif',
+    reading: '"Newsreader", "Literata", "Noto Naskh Arabic", Georgia, serif',
+    mono: '"JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace',
+  },
+  {
+    id: 'jakarta',
+    name: 'Plus Jakarta Crisp',
+    description: 'Contemporary high-clarity sans with Fraunces accents and Fira Code.',
+    ui: '"Plus Jakarta Sans", "Noto Sans Arabic", system-ui, sans-serif',
+    display: '"Plus Jakarta Sans", "Noto Sans Arabic", system-ui, sans-serif',
+    reading: '"Literata", Georgia, serif',
+    mono: '"Fira Code", "IBM Plex Mono", ui-monospace, monospace',
   },
   {
     id: 'system',
     name: 'System Clean',
     description: 'Native platform fonts for a neutral, fast feel.',
-    ui: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-    display: 'Georgia, "Times New Roman", serif',
+    ui: 'system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif',
+    display: '-apple-system, "Segoe UI", Roboto, Georgia, serif',
     reading: 'Georgia, "Times New Roman", serif',
-    mono: 'ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace'
-  },
-  {
-    id: 'editorial',
-    name: 'Editorial Serif',
-    description: 'Bookish serif throughout for a literary studio.',
-    ui: '"Literata", Georgia, "Times New Roman", serif',
-    display: '"Literata", Georgia, serif',
-    reading: '"Literata", Georgia, serif',
-    mono: '"IBM Plex Mono", ui-monospace, monospace'
+    mono: 'ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace',
   },
   {
     id: 'terminal',
@@ -281,11 +384,11 @@ export const FONT_PRESETS: FontPreset[] = [
     ui: '"IBM Plex Mono", ui-monospace, "SF Mono", monospace',
     display: '"IBM Plex Serif", "Literata", Georgia, serif',
     reading: '"IBM Plex Serif", "Literata", Georgia, serif',
-    mono: '"IBM Plex Mono", ui-monospace, monospace'
-  }
+    mono: '"IBM Plex Mono", ui-monospace, monospace',
+  },
 ]
 
-export const DEFAULT_FONT_ID = 'plex'
+export const DEFAULT_FONT_ID = 'studio'
 
 export type CustomFont = {
   ui: string
@@ -298,15 +401,17 @@ export const DEFAULT_CUSTOM_FONT: CustomFont = {
   ui: '"IBM Plex Sans", "Noto Sans Arabic", "IBM Plex Sans Arabic", system-ui, sans-serif',
   display: '"IBM Plex Serif", "Literata", "Noto Naskh Arabic", Georgia, serif',
   reading: '"IBM Plex Serif", "Literata", "Noto Naskh Arabic", Georgia, serif',
-  mono: '"IBM Plex Mono", ui-monospace, monospace'
+  mono: '"IBM Plex Mono", ui-monospace, monospace',
 }
 
 /** Merge imported or previously saved stacks with safe, renderable defaults. */
 export function normalizeCustomFont(input?: Partial<CustomFont> | null): CustomFont {
   return {
     ui: typeof input?.ui === 'string' && input.ui.trim() ? input.ui.trim() : DEFAULT_CUSTOM_FONT.ui,
-    display: typeof input?.display === 'string' && input.display.trim() ? input.display.trim() : DEFAULT_CUSTOM_FONT.display,
-    reading: typeof input?.reading === 'string' && input.reading.trim() ? input.reading.trim() : DEFAULT_CUSTOM_FONT.reading,
+    display:
+      typeof input?.display === 'string' && input.display.trim() ? input.display.trim() : DEFAULT_CUSTOM_FONT.display,
+    reading:
+      typeof input?.reading === 'string' && input.reading.trim() ? input.reading.trim() : DEFAULT_CUSTOM_FONT.reading,
     mono: typeof input?.mono === 'string' && input.mono.trim() ? input.mono.trim() : DEFAULT_CUSTOM_FONT.mono,
   }
 }
@@ -331,6 +436,178 @@ export const DEFAULT_TYPOGRAPHY: TypographyPreferences = {
   readingMeasure: 68,
 }
 
+export type VisualPreset = {
+  id: string
+  name: string
+  description: string
+  inspiration: string
+  theme: string
+  font: string
+  typography: TypographyPreferences
+  display: Pick<DisplayPreferences, 'density' | 'radius' | 'fontSize'>
+}
+
+/**
+ * Complete art directions rather than palette shortcuts. Each preset binds
+ * color, semantic font roles, reading rhythm, information density, and shape.
+ */
+export const VISUAL_PRESETS: VisualPreset[] = [
+  {
+    id: 'continuum',
+    name: 'Continuum',
+    description: 'Warm editorial canvas, decisive coral actions, and generous new-wave product rhythm.',
+    inspiration: 'Inspired by Attio',
+    theme: 'continuum',
+    font: 'studio',
+    typography: {
+      ...DEFAULT_TYPOGRAPHY,
+      baseSize: 17,
+      bodyWeight: 400,
+      headingWeight: 650,
+      lineHeight: 1.62,
+      letterSpacing: -0.008,
+      displayScale: 1.05,
+      readingMeasure: 70,
+    },
+    display: { density: 'comfortable', radius: 'round', fontSize: 'medium' },
+  },
+  {
+    id: 'raycast-command',
+    name: 'Raycast Command',
+    description: 'Aubergine chrome, coral commands, and rounded launcher-like surfaces.',
+    inspiration: 'Inspired by Raycast',
+    theme: 'carbon',
+    font: 'jakarta',
+    typography: {
+      ...DEFAULT_TYPOGRAPHY,
+      baseSize: 16,
+      bodyWeight: 400,
+      headingWeight: 700,
+      lineHeight: 1.6,
+      displayScale: 1.03,
+      readingMeasure: 66,
+    },
+    display: { density: 'comfortable', radius: 'round', fontSize: 'medium' },
+  },
+  {
+    id: 'superhuman-focus',
+    name: 'Superhuman Focus',
+    description: 'Midnight navy, electric sky signals, and compressed rows built for rapid scanning.',
+    inspiration: 'Inspired by Superhuman',
+    theme: 'deep-focus',
+    font: 'inter',
+    typography: {
+      ...DEFAULT_TYPOGRAPHY,
+      baseSize: 15,
+      bodyWeight: 400,
+      headingWeight: 600,
+      lineHeight: 1.48,
+      letterSpacing: -0.01,
+      readingMeasure: 62,
+    },
+    display: { density: 'compact', radius: 'sharp', fontSize: 'small' },
+  },
+  {
+    id: 'reader-study',
+    name: 'Reader Study',
+    description: 'Parchment planes, burnt-orange actions, and a literary rhythm for deep reading.',
+    inspiration: 'Inspired by Readwise Reader',
+    theme: 'ember',
+    font: 'editorial',
+    typography: {
+      ...DEFAULT_TYPOGRAPHY,
+      baseSize: 18,
+      bodyWeight: 400,
+      headingWeight: 600,
+      lineHeight: 1.78,
+      displayScale: 1.12,
+      readingMeasure: 61,
+    },
+    display: { density: 'comfortable', radius: 'soft', fontSize: 'large' },
+  },
+  {
+    id: 'notion-minimal',
+    name: 'Notion Minimal',
+    description: 'Paper white, near-black type, and neutral blocks that keep content dominant.',
+    inspiration: 'Inspired by Notion',
+    theme: 'porcelain',
+    font: 'system',
+    typography: {
+      ...DEFAULT_TYPOGRAPHY,
+      baseSize: 16,
+      bodyWeight: 400,
+      headingWeight: 600,
+      lineHeight: 1.56,
+      readingMeasure: 68,
+    },
+    display: { density: 'balanced', radius: 'sharp', fontSize: 'medium' },
+  },
+  {
+    id: 'craft-journal',
+    name: 'Craft Journal',
+    description: 'Cream canvas, coral emphasis, and generous editorial surfaces for reflective work.',
+    inspiration: 'Inspired by Craft',
+    theme: 'warm-paper',
+    font: 'newsreader',
+    typography: {
+      ...DEFAULT_TYPOGRAPHY,
+      baseSize: 17,
+      bodyWeight: 400,
+      headingWeight: 600,
+      lineHeight: 1.7,
+      displayScale: 1.1,
+      readingMeasure: 64,
+    },
+    display: { density: 'comfortable', radius: 'round', fontSize: 'large' },
+  },
+  {
+    id: 'arc-space',
+    name: 'Arc Space',
+    description: 'Lavender chrome, saturated violet focus, and soft spatial grouping.',
+    inspiration: 'Inspired by Arc',
+    theme: 'mineral',
+    font: 'plex',
+    typography: {
+      ...DEFAULT_TYPOGRAPHY,
+      baseSize: 16,
+      bodyWeight: 400,
+      headingWeight: 600,
+      lineHeight: 1.62,
+      displayScale: 1.04,
+      readingMeasure: 72,
+    },
+    display: { density: 'balanced', radius: 'round', fontSize: 'medium' },
+  },
+  {
+    id: 'arena-index',
+    name: 'Are.na Index',
+    description: 'Gallery white, cobalt links, and terse mono indexing with almost no decoration.',
+    inspiration: 'Inspired by Are.na',
+    theme: 'ink-pearl',
+    font: 'terminal',
+    typography: {
+      ...DEFAULT_TYPOGRAPHY,
+      baseSize: 15,
+      bodyWeight: 400,
+      headingWeight: 600,
+      lineHeight: 1.45,
+      letterSpacing: -0.01,
+      readingMeasure: 60,
+    },
+    display: { density: 'compact', radius: 'sharp', fontSize: 'small' },
+  },
+]
+
+export const TYPOGRAPHY_LIMITS: Record<keyof TypographyPreferences, { min: number; max: number }> = {
+  baseSize: { min: 12, max: 24 },
+  bodyWeight: { min: 300, max: 800 },
+  headingWeight: { min: 400, max: 900 },
+  lineHeight: { min: 1.15, max: 2.3 },
+  letterSpacing: { min: -0.04, max: 0.1 },
+  displayScale: { min: 0.8, max: 1.5 },
+  readingMeasure: { min: 45, max: 90 },
+}
+
 type RGB = { r: number; g: number; b: number }
 
 export function parseColor(input: string): RGB | null {
@@ -342,7 +619,10 @@ export function parseColor(input: string): RGB | null {
   if (hexMatch) {
     let hex = hexMatch[1]
     if (hex.length === 3 || hex.length === 4) {
-      hex = hex.split('').map(c => c + c).join('')
+      hex = hex
+        .split('')
+        .map((c) => c + c)
+        .join('')
     }
     if (hex.length >= 6) {
       const r = parseInt(hex.slice(0, 2), 16)
@@ -365,7 +645,10 @@ export function parseColor(input: string): RGB | null {
 }
 
 export function rgbToHex({ r, g, b }: RGB): string {
-  const toHex = (n: number) => Math.min(255, Math.max(0, Math.round(n))).toString(16).padStart(2, '0')
+  const toHex = (n: number) =>
+    Math.min(255, Math.max(0, Math.round(n)))
+      .toString(16)
+      .padStart(2, '0')
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`
 }
 
@@ -426,7 +709,8 @@ function contrastBetween(foreground: RGB, background: RGB): number {
  * are used on each plane.
  */
 function ensureTextContrast(color: RGB, backgrounds: RGB[], minimum = 4.5): RGB {
-  const minimumContrast = (candidate: RGB) => Math.min(...backgrounds.map(background => contrastBetween(candidate, background)))
+  const minimumContrast = (candidate: RGB) =>
+    Math.min(...backgrounds.map((background) => contrastBetween(candidate, background)))
   if (minimumContrast(color) >= minimum) return color
 
   const anchor = minimumContrast(WHITE) >= minimumContrast(CONTRAST_BLACK) ? WHITE : CONTRAST_BLACK
@@ -446,7 +730,7 @@ function ensureTextContrast(color: RGB, backgrounds: RGB[], minimum = 4.5): RGB 
 export function extractColorsFromText(text: string): string[] {
   if (!text) return []
   const found: string[] = []
-  
+
   // Find all hex codes
   const hexes = text.match(/#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g) || []
   for (const h of hexes) found.push(normalizeColor(h))
@@ -464,12 +748,12 @@ const CONTRAST_BLACK: RGB = { r: 0, g: 0, b: 0 }
 
 // Semantic functional colors (overdue / danger / map) stay recognizable in both modes.
 const SEMANTIC = {
-  dueLight: { r: 135, g: 70, b: 6 },     // #874606
+  dueLight: { r: 135, g: 70, b: 6 }, // #874606
   dangerLight: { r: 156, g: 46, b: 33 }, // #9c2e21
-  mapLight: { r: 40, g: 84, b: 111 },    // #28546f
-  dueDark: { r: 224, g: 138, b: 30 },    // #e08a1e
-  dangerDark: { r: 229, g: 72, b: 77 },  // #e5484d
-  mapDark: { r: 77, g: 163, b: 216 }     // #4da3d8
+  mapLight: { r: 40, g: 84, b: 111 }, // #28546f
+  dueDark: { r: 224, g: 138, b: 30 }, // #e08a1e
+  dangerDark: { r: 229, g: 72, b: 77 }, // #e5484d
+  mapDark: { r: 77, g: 163, b: 216 }, // #4da3d8
 }
 
 /**
@@ -483,28 +767,32 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
   const shell = parseColor(palette.shell) || { r: 247, g: 234, b: 224 }
   const highlight = parseColor(palette.highlight) || { r: 249, g: 210, b: 186 }
   const accent = parseColor(palette.accent) || { r: 94, g: 49, b: 34 }
-  const surface = parseColor(palette.surface || '') || mixColors(shell, WHITE, isDarkColor(shell) ? 0.08 : 0.96)
   const dark = modeOverride ? modeOverride === 'dark' : isDarkColor(shell)
+  const authoredSurface = parseColor(palette.surface || '')
+  const surface = authoredSurface || mixColors(shell, WHITE, dark ? 0.08 : 0.96)
 
   // Structural surfaces — elevated planes are always lighter than the shell,
   // but dark shells use much smaller elevation steps.
-  const ledger = mixColors(shell, WHITE, dark ? 0.05 : 0.40)
-  const canvas = mixColors(shell, WHITE, dark ? 0.10 : 0.75)
-  const inspector = mixColors(shell, WHITE, dark ? 0.07 : 0.25)
+  const ledger = dark ? mixColors(shell, surface, 0.25) : mixColors(shell, WHITE, 0.4)
+  const canvas = dark ? mixColors(shell, surface, 0.6) : mixColors(shell, WHITE, 0.75)
+  const inspector = dark ? mixColors(shell, surface, 0.78) : mixColors(shell, WHITE, 0.25)
   // Seams/borders sit opposite the elevation: darker than shell in light, lighter in dark.
   const seam = parseColor(palette.seam || '') || (dark ? mixColors(shell, WHITE, 0.16) : mixColors(shell, BLACK, 0.12))
 
-  // Text — near-white on dark shells, deep ink on light shells.
+  // Text — preserve authored intent where possible, then derive readable CSS tokens.
   const parsedInk = palette.ink ? parseColor(palette.ink) : null
-  const ink = parsedInk || (dark ? mixColors(shell, WHITE, 0.86) : mixColors(accent, BLACK, 0.62))
-  const secondaryCandidate = dark ? mixColors(ink, shell, 0.40) : mixColors(ink, accent, 0.35)
+  const inkCandidate = parsedInk || (dark ? mixColors(shell, WHITE, 0.86) : mixColors(accent, BLACK, 0.62))
+  const textPlanes = [shell, canvas, surface]
+  const ink = ensureTextContrast(inkCandidate, textPlanes)
+  const secondaryCandidate = dark ? mixColors(ink, shell, 0.4) : mixColors(ink, accent, 0.35)
   const mutedCandidate = mixColors(secondaryCandidate, shell, dark ? 0.42 : 0.35)
-  const textPlanes = [canvas, surface]
   const secondary = ensureTextContrast(secondaryCandidate, textPlanes)
   const muted = ensureTextContrast(mutedCandidate, textPlanes)
 
   // Rail is the deepest plane, anchored to the brand in light mode, or tinted obsidian in dark mode.
-  const rail = parseColor(palette.rail || '') || (dark ? mixColors(mixColors(shell, brand, 0.12), BLACK, 0.40) : adjustBrightness(brand, -15))
+  const rail =
+    parseColor(palette.rail || '') ||
+    (dark ? mixColors(mixColors(shell, brand, 0.12), BLACK, 0.4) : adjustBrightness(brand, -15))
 
   // Status colors brighten on dark backgrounds so they remain legible.
   const due = parseColor(palette.due || '') || (dark ? SEMANTIC.dueDark : SEMANTIC.dueLight)
@@ -512,7 +800,10 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
   const map = parseColor(palette.map || '') || (dark ? SEMANTIC.mapDark : SEMANTIC.mapLight)
 
   // Determine active rail button background and text contrast
-  const textOn = (background: RGB) => contrastRatio('#ffffff', rgbToHex(background))! >= contrastRatio('#000000', rgbToHex(background))! ? '#ffffff' : '#000000'
+  const textOn = (background: RGB) =>
+    contrastRatio('#ffffff', rgbToHex(background))! >= contrastRatio('#000000', rgbToHex(background))!
+      ? '#ffffff'
+      : '#000000'
   const railActiveInk = textOn(brand)
   const actionInk = textOn(brand)
   const mapInk = textOn(map)
@@ -555,8 +846,43 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
     '--studio-map': rgbToHex(map),
     '--studio-sage': rgbToHex(brand),
     '--studio-ochre': rgbToHex(due),
-    '--studio-focus-ring': `0 0 0 3px ${rgbToHex(canvas)}, 0 0 0 5px ${rgbToHex(brand)}`
+    '--studio-focus-ring': `0 0 0 3px ${rgbToHex(canvas)}, 0 0 0 5px ${rgbToHex(brand)}`,
   }
+}
+
+export type ThemeContrastCheck = {
+  id: string
+  label: string
+  foreground: string
+  background: string
+  ratio: number | null
+  minimum: number
+  passes: boolean
+}
+
+const THEME_CONTRAST_PAIRS = [
+  ['ink-shell', 'Ink / shell', '--studio-ink', '--studio-shell'],
+  ['ink-surface', 'Ink / surface', '--studio-ink', '--studio-surface'],
+  ['secondary-shell', 'Quiet text / shell', '--studio-secondary', '--studio-shell'],
+  ['secondary-surface', 'Quiet text / surface', '--studio-secondary', '--studio-surface'],
+  ['rail', 'Rail text / rail', '--studio-rail-ink', '--studio-rail'],
+  ['rail-active', 'Active rail / brand', '--studio-rail-active-ink', '--studio-rail-active-bg'],
+  ['action', 'Action text / brand', '--studio-action-ink', '--studio-cypress'],
+  ['map', 'Map text / map', '--studio-map-ink', '--studio-map'],
+  ['due', 'Due text / due', '--studio-due-ink', '--studio-due'],
+  ['danger', 'Danger text / danger', '--studio-danger-ink', '--studio-danger'],
+] as const
+
+/** Audit the actual foreground/background tokens emitted for a theme. */
+export function auditThemeContrast(palette: CustomPalette, modeOverride?: ThemeMode): ThemeContrastCheck[] {
+  const variables = computeThemeVariables(palette, modeOverride)
+  return THEME_CONTRAST_PAIRS.map(([id, label, foregroundToken, backgroundToken]) => {
+    const foreground = variables[foregroundToken]
+    const background = variables[backgroundToken]
+    const ratio = contrastRatio(foreground, background)
+    const minimum = 4.5
+    return { id, label, foreground, background, ratio, minimum, passes: ratio !== null && ratio >= minimum }
+  })
 }
 
 function paletteForTheme(themeId: string, customPalette?: CustomPalette): { palette: CustomPalette; mode: ThemeMode } {
@@ -571,16 +897,10 @@ function paletteForTheme(themeId: string, customPalette?: CustomPalette): { pale
     const shell = parseColor(palette.shell) || { r: 247, g: 234, b: 224 }
     return { palette, mode: isDarkColor(shell) ? 'dark' : 'light' }
   }
-  const preset = THEME_PRESETS.find(p => p.id === themeId) || THEME_PRESETS[0]
+  const preset = THEME_PRESETS.find((p) => p.id === themeId) || THEME_PRESETS[0]
   return {
-    palette: {
-      brand: preset.swatches[0],
-      shell: preset.swatches[1],
-      highlight: preset.swatches[2],
-      accent: preset.swatches[3],
-      ink: preset.ink
-    },
-    mode: preset.mode
+    palette: paletteFromThemePreset(preset),
+    mode: preset.mode,
   }
 }
 
@@ -588,9 +908,18 @@ export function applyDisplayPreferences(preferences: Partial<DisplayPreferences>
   if (typeof document === 'undefined') return
   const fallback = getSavedDisplayPreferences()
   const next: DisplayPreferences = {
-    density: preferences.density === 'comfortable' || preferences.density === 'compact' || preferences.density === 'balanced' ? preferences.density : fallback.density,
-    radius: preferences.radius === 'sharp' || preferences.radius === 'round' || preferences.radius === 'soft' ? preferences.radius : fallback.radius,
-    fontSize: preferences.fontSize === 'small' || preferences.fontSize === 'large' || preferences.fontSize === 'medium' ? preferences.fontSize : fallback.fontSize,
+    density:
+      preferences.density === 'comfortable' || preferences.density === 'compact' || preferences.density === 'balanced'
+        ? preferences.density
+        : fallback.density,
+    radius:
+      preferences.radius === 'sharp' || preferences.radius === 'round' || preferences.radius === 'soft'
+        ? preferences.radius
+        : fallback.radius,
+    fontSize:
+      preferences.fontSize === 'small' || preferences.fontSize === 'large' || preferences.fontSize === 'medium'
+        ? preferences.fontSize
+        : fallback.fontSize,
     reducedMotion: typeof preferences.reducedMotion === 'boolean' ? preferences.reducedMotion : fallback.reducedMotion,
   }
   const root = document.documentElement
@@ -598,7 +927,9 @@ export function applyDisplayPreferences(preferences: Partial<DisplayPreferences>
   root.dataset.radius = next.radius
   root.dataset.fontSize = next.fontSize
   root.dataset.reducedMotion = next.reducedMotion ? 'true' : 'false'
-  try { localStorage.setItem('taste-map-display-preferences', JSON.stringify(next)) } catch {}
+  try {
+    localStorage.setItem('taste-map-display-preferences', JSON.stringify(next))
+  } catch {}
   window.dispatchEvent(new CustomEvent('displaypreferenceschange', { detail: next }))
 }
 
@@ -610,23 +941,35 @@ export function getSavedDisplayPreferences(): DisplayPreferences {
     if (!raw) return fallback
     const value = JSON.parse(raw)
     return {
-      density: value?.density === 'comfortable' || value?.density === 'compact' || value?.density === 'balanced' ? value.density : fallback.density,
-      radius: value?.radius === 'sharp' || value?.radius === 'round' || value?.radius === 'soft' ? value.radius : fallback.radius,
-      fontSize: value?.fontSize === 'small' || value?.fontSize === 'large' || value?.fontSize === 'medium' ? value.fontSize : fallback.fontSize,
+      density:
+        value?.density === 'comfortable' || value?.density === 'compact' || value?.density === 'balanced'
+          ? value.density
+          : fallback.density,
+      radius:
+        value?.radius === 'sharp' || value?.radius === 'round' || value?.radius === 'soft'
+          ? value.radius
+          : fallback.radius,
+      fontSize:
+        value?.fontSize === 'small' || value?.fontSize === 'large' || value?.fontSize === 'medium'
+          ? value.fontSize
+          : fallback.fontSize,
       reducedMotion: typeof value?.reducedMotion === 'boolean' ? value.reducedMotion : fallback.reducedMotion,
     }
-  } catch { return fallback }
+  } catch {
+    return fallback
+  }
 }
 
 export function applyTheme(themeId: string, customPalette?: CustomPalette) {
   if (typeof document === 'undefined') return
   const root = document.documentElement
+  const resolvedThemeId = themeId === 'botanical' ? 'continuum' : themeId
 
-  const { palette, mode } = paletteForTheme(themeId, customPalette)
+  const { palette, mode } = paletteForTheme(resolvedThemeId, customPalette)
   const vars = computeThemeVariables(palette, mode)
 
-  const preset = THEME_PRESETS.find(p => p.id === themeId)
-  root.dataset.theme = themeId === 'custom' ? 'custom' : (preset ? preset.id : THEME_PRESETS[0].id)
+  const preset = THEME_PRESETS.find((p) => p.id === resolvedThemeId)
+  root.dataset.theme = resolvedThemeId === 'custom' ? 'custom' : preset ? preset.id : THEME_PRESETS[0].id
 
   // Always write the full set inline so switching themes never leaves stale values.
   for (const [key, value] of Object.entries(vars)) {
@@ -637,7 +980,7 @@ export function applyTheme(themeId: string, customPalette?: CustomPalette) {
   document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content', vars['--studio-shell'])
 
   try {
-    localStorage.setItem('taste-map-theme', themeId)
+    localStorage.setItem('taste-map-theme', root.dataset.theme)
     if (customPalette) {
       localStorage.setItem('taste-map-custom-palette', JSON.stringify(customPalette))
     }
@@ -656,7 +999,7 @@ export function getSavedCustomPalette(): CustomPalette {
           ...DEFAULT_CUSTOM_PALETTE,
           ...(value || {}),
           // Ink follows the brand family unless the user explicitly chose a different ink.
-          ink: value?.ink && value.ink !== value?.accent ? value.ink : (value?.brand || DEFAULT_CUSTOM_PALETTE.ink),
+          ink: value?.ink && value.ink !== value?.accent ? value.ink : value?.brand || DEFAULT_CUSTOM_PALETTE.ink,
           map: value?.map || DEFAULT_CUSTOM_PALETTE.map,
         }
       }
@@ -669,19 +1012,20 @@ export function getSavedTheme(): string {
   if (typeof localStorage !== 'undefined') {
     try {
       const saved = localStorage.getItem('taste-map-theme')
-      if (saved && (THEME_PRESETS.some(p => p.id === saved) || saved === 'custom')) {
+      if (saved === 'botanical') return 'continuum'
+      if (saved && (THEME_PRESETS.some((p) => p.id === saved) || saved === 'custom')) {
         return saved
       }
     } catch {}
   }
-  return 'botanical'
+  return 'continuum'
 }
 
 export function getSavedFontId(): string {
   if (typeof localStorage !== 'undefined') {
     try {
       const saved = localStorage.getItem('taste-map-font')
-      if (saved && (FONT_PRESETS.some(f => f.id === saved) || saved === 'custom')) return saved
+      if (saved && (FONT_PRESETS.some((f) => f.id === saved) || saved === 'custom')) return saved
     } catch {}
   }
   return DEFAULT_FONT_ID
@@ -699,16 +1043,56 @@ export function getSavedCustomFont(): CustomFont {
 
 // Generic keywords and system-only faces that are NOT available on Google Fonts.
 const SYSTEM_FONTS = new Set([
-  'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui',
-  'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'math', 'emoji',
-  '-apple-system', 'blinkmacsystemfont', 'segoe ui', 'sf mono', 'cascadia mono',
-  'menlo', 'consolas', 'monaco', 'arial', 'helvetica', 'helvetica neue',
-  'georgia', 'times new roman', 'courier new', 'verdana', 'tahoma',
-  'trebuchet ms', 'impact', 'comic sans ms', 'palatino linotype',
-  'book antiqua', 'garamond', 'dejavu sans', 'dejavu serif', 'berkeley mono',
-  'dejavu sans mono', 'liberation sans', 'liberation serif',
-  'liberation mono', 'cantarell', 'gill sans', 'futura', 'avenir',
-  'optima', 'baskerville', 'century gothic', 'lucida grande', 'lucida console'
+  'serif',
+  'sans-serif',
+  'monospace',
+  'cursive',
+  'fantasy',
+  'system-ui',
+  'ui-serif',
+  'ui-sans-serif',
+  'ui-monospace',
+  'ui-rounded',
+  'math',
+  'emoji',
+  '-apple-system',
+  'blinkmacsystemfont',
+  'segoe ui',
+  'sf mono',
+  'cascadia mono',
+  'menlo',
+  'consolas',
+  'monaco',
+  'arial',
+  'helvetica',
+  'helvetica neue',
+  'georgia',
+  'times new roman',
+  'courier new',
+  'verdana',
+  'tahoma',
+  'trebuchet ms',
+  'impact',
+  'comic sans ms',
+  'palatino linotype',
+  'book antiqua',
+  'garamond',
+  'dejavu sans',
+  'dejavu serif',
+  'berkeley mono',
+  'dejavu sans mono',
+  'liberation sans',
+  'liberation serif',
+  'liberation mono',
+  'cantarell',
+  'gill sans',
+  'futura',
+  'avenir',
+  'optima',
+  'baskerville',
+  'century gothic',
+  'lucida grande',
+  'lucida console',
 ])
 
 const LOADED_FONT_FAMILIES = new Set<string>()
@@ -716,7 +1100,10 @@ const LOADED_FONT_FAMILIES = new Set<string>()
 function extractFamilies(stack: string): string[] {
   const families: string[] = []
   for (const part of stack.split(',')) {
-    const name = part.trim().replace(/^['"]+|['"]+$/g, '').trim()
+    const name = part
+      .trim()
+      .replace(/^['"]+|['"]+$/g, '')
+      .trim()
     if (!name || SYSTEM_FONTS.has(name.toLowerCase())) continue
     families.push(name)
   }
@@ -755,20 +1142,28 @@ export function applyFont(fontId: string, customFont?: CustomFont) {
     reading = cf.reading
     mono = cf.mono
   } else {
-    const preset = FONT_PRESETS.find(f => f.id === fontId) || FONT_PRESETS[0]
+    const preset = FONT_PRESETS.find((f) => f.id === fontId) || FONT_PRESETS[0]
     ui = preset.ui
     display = preset.display || preset.reading
     reading = preset.reading
     mono = preset.mono
   }
   root.style.setProperty('--font-ui', ui)
+  root.style.setProperty('--font-body', ui)
   root.style.setProperty('--font-display', display)
+  root.style.setProperty('--font-editorial', display)
   root.style.setProperty('--font-reading', reading)
   root.style.setProperty('--font-mono', mono)
-  loadGoogleFonts([...extractFamilies(ui), ...extractFamilies(display), ...extractFamilies(reading), ...extractFamilies(mono)])
+  loadGoogleFonts([
+    ...extractFamilies(ui),
+    ...extractFamilies(display),
+    ...extractFamilies(reading),
+    ...extractFamilies(mono),
+  ])
   try {
     localStorage.setItem('taste-map-font', fontId)
-    if (fontId === 'custom') localStorage.setItem('taste-map-custom-font', JSON.stringify(normalizeCustomFont(customFont)))
+    if (fontId === 'custom')
+      localStorage.setItem('taste-map-custom-font', JSON.stringify(normalizeCustomFont(customFont)))
   } catch {}
   window.dispatchEvent(new Event('fontchange'))
 }
@@ -778,30 +1173,41 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback
 }
 
+export function normalizeTypography(
+  preferences: Partial<TypographyPreferences>,
+  fallback: TypographyPreferences = DEFAULT_TYPOGRAPHY,
+): TypographyPreferences {
+  return Object.fromEntries(
+    (Object.keys(DEFAULT_TYPOGRAPHY) as Array<keyof TypographyPreferences>).map((key) => {
+      const { min, max } = TYPOGRAPHY_LIMITS[key]
+      return [key, clampNumber(preferences[key], min, max, fallback[key])]
+    }),
+  ) as TypographyPreferences
+}
+
 export function applyTypography(preferences: Partial<TypographyPreferences>) {
   if (typeof document === 'undefined') return
-  const fallback = getSavedTypography()
-  const next: TypographyPreferences = {
-    baseSize: clampNumber(preferences.baseSize, 14, 20, fallback.baseSize),
-    bodyWeight: clampNumber(preferences.bodyWeight, 350, 700, fallback.bodyWeight),
-    headingWeight: clampNumber(preferences.headingWeight, 450, 800, fallback.headingWeight),
-    lineHeight: clampNumber(preferences.lineHeight, 1.2, 2, fallback.lineHeight),
-    letterSpacing: clampNumber(preferences.letterSpacing, -0.03, 0.08, fallback.letterSpacing),
-    displayScale: clampNumber(preferences.displayScale, 0.9, 1.3, fallback.displayScale),
-    readingMeasure: clampNumber(preferences.readingMeasure, 52, 82, fallback.readingMeasure),
-  }
+  const next = normalizeTypography(preferences, getSavedTypography())
   const root = document.documentElement
   root.style.setProperty('--font-base-size', `${next.baseSize}px`)
-  root.style.setProperty('--font-scale', `calc(${next.baseSize / DEFAULT_TYPOGRAPHY.baseSize} * var(--font-preference-scale, 1) * var(--font-viewport-scale, 1))`)
+  root.style.setProperty(
+    '--font-scale',
+    `calc(${next.baseSize / DEFAULT_TYPOGRAPHY.baseSize} * var(--font-preference-scale, 1) * var(--font-viewport-scale, 1))`,
+  )
   root.style.setProperty('--font-body-weight', String(next.bodyWeight))
   root.style.setProperty('--font-heading-weight', String(next.headingWeight))
-  root.style.setProperty('--font-medium-weight', String(Math.round((next.bodyWeight + next.headingWeight) / 2 / 10) * 10))
-  root.style.setProperty('--font-bold-weight', String(Math.min(800, next.headingWeight + 100)))
+  root.style.setProperty(
+    '--font-medium-weight',
+    String(Math.round((next.bodyWeight + next.headingWeight) / 2 / 10) * 10),
+  )
+  root.style.setProperty('--font-bold-weight', String(Math.min(900, next.headingWeight + 100)))
   root.style.setProperty('--font-line-height', String(next.lineHeight))
   root.style.setProperty('--font-letter-spacing', `${next.letterSpacing}em`)
   root.style.setProperty('--font-display-scale', String(next.displayScale))
   root.style.setProperty('--font-reading-measure', `${next.readingMeasure}ch`)
-  try { localStorage.setItem('taste-map-typography', JSON.stringify(next)) } catch {}
+  try {
+    localStorage.setItem('taste-map-typography', JSON.stringify(next))
+  } catch {}
   window.dispatchEvent(new Event('typographychange'))
 }
 
@@ -809,16 +1215,10 @@ export function getSavedTypography(): TypographyPreferences {
   if (typeof localStorage === 'undefined') return DEFAULT_TYPOGRAPHY
   try {
     const value = JSON.parse(localStorage.getItem('taste-map-typography') || '{}')
-    return {
-      baseSize: clampNumber(value?.baseSize, 14, 20, DEFAULT_TYPOGRAPHY.baseSize),
-      bodyWeight: clampNumber(value?.bodyWeight, 350, 700, DEFAULT_TYPOGRAPHY.bodyWeight),
-      headingWeight: clampNumber(value?.headingWeight, 450, 800, DEFAULT_TYPOGRAPHY.headingWeight),
-      lineHeight: clampNumber(value?.lineHeight, 1.2, 2, DEFAULT_TYPOGRAPHY.lineHeight),
-      letterSpacing: clampNumber(value?.letterSpacing, -0.03, 0.08, DEFAULT_TYPOGRAPHY.letterSpacing),
-      displayScale: clampNumber(value?.displayScale, 0.9, 1.3, DEFAULT_TYPOGRAPHY.displayScale),
-      readingMeasure: clampNumber(value?.readingMeasure, 52, 82, DEFAULT_TYPOGRAPHY.readingMeasure),
-    }
-  } catch { return DEFAULT_TYPOGRAPHY }
+    return normalizeTypography(value)
+  } catch {
+    return DEFAULT_TYPOGRAPHY
+  }
 }
 
 export function initTheme() {
@@ -837,21 +1237,31 @@ export async function hydrateThemeFromServer() {
   try {
     const response = await authFetch('/settings')
     if (!response.ok) return
-    const payload = await response.json() as { resolved?: { appearance?: Record<string, unknown> } }
+    const payload = (await response.json()) as { resolved?: { appearance?: Record<string, unknown> } }
     const appearance = payload.resolved?.appearance
     if (!appearance) return
     const theme = typeof appearance.theme === 'string' ? appearance.theme : getSavedTheme()
     const storedPair = typeof localStorage !== 'undefined' ? localStorage.getItem('taste-map-theme-pair') : null
-    const serverPalette = appearance.custom_palette && typeof appearance.custom_palette === 'object' ? appearance.custom_palette as CustomPalette : undefined
+    const serverPalette =
+      appearance.custom_palette && typeof appearance.custom_palette === 'object'
+        ? (appearance.custom_palette as CustomPalette)
+        : undefined
     // The Worker is canonical when it has a saved palette. The locally stored
     // day/night pair remains the offline fallback, never a reason to overwrite
     // a newer visual system from another device.
-    const palette = theme === 'custom' ? (serverPalette || (storedPair ? getActiveCustomPalette() : undefined)) : undefined
+    const palette =
+      theme === 'custom' ? serverPalette || (storedPair ? getActiveCustomPalette() : undefined) : undefined
     applyTheme(theme, palette)
     if (typeof appearance.font === 'string') {
-      applyFont(appearance.font, appearance.custom_font && typeof appearance.custom_font === 'object' ? normalizeCustomFont(appearance.custom_font as Partial<CustomFont>) : undefined)
+      applyFont(
+        appearance.font,
+        appearance.custom_font && typeof appearance.custom_font === 'object'
+          ? normalizeCustomFont(appearance.custom_font as Partial<CustomFont>)
+          : undefined,
+      )
     }
-    if (appearance.typography && typeof appearance.typography === 'object') applyTypography(appearance.typography as Partial<TypographyPreferences>)
+    if (appearance.typography && typeof appearance.typography === 'object')
+      applyTypography(appearance.typography as Partial<TypographyPreferences>)
     applyDisplayPreferences({
       density: appearance.density as DisplayPreferences['density'],
       radius: appearance.radius as DisplayPreferences['radius'],

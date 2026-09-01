@@ -8,7 +8,12 @@ test('browser requests use same-origin credentials without an unlock prompt or s
   const originalWindow = (globalThis as any).window
   let prompts = 0
   const calls: Array<{ input: string; init?: RequestInit }> = []
-  ;(globalThis as any).window = { prompt() { prompts += 1; return 'unused' } }
+  ;(globalThis as any).window = {
+    prompt() {
+      prompts += 1
+      return 'unused'
+    },
+  }
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     calls.push({ input: String(input), init })
     return Response.json({ ok: true })
@@ -27,7 +32,12 @@ test('browser requests use same-origin credentials without an unlock prompt or s
 })
 
 test('all browser network boundaries use the shared fetch wrapper', () => {
-  for (const site of ['client/src/api.ts', 'client/src/theme.ts', 'client/src/app/upload.ts', 'client/src/workspaces/SettingsWorkspace.tsx']) {
+  for (const site of [
+    'client/src/api.ts',
+    'client/src/theme.ts',
+    'client/src/app/upload.ts',
+    'client/src/workspaces/SettingsWorkspace.tsx',
+  ]) {
     const source = readFileSync(site, 'utf8')
     assert.match(source, /import \{ authFetch \}/)
     assert.match(source, /await authFetch\(/)

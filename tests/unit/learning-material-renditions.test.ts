@@ -2,7 +2,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { selectLearningSourceRenditions } from '../../src/services/learning-material-renditions.ts'
 
-const row = (id: string, role: 'html' | 'pdf', pairId: string | null, createdAt: string, recommendationId = 'rec-1') => ({
+const row = (
+  id: string,
+  role: 'html' | 'pdf',
+  pairId: string | null,
+  createdAt: string,
+  recommendationId = 'rec-1',
+) => ({
   id,
   filename: `${id}.${role}`,
   media_type: role === 'html' ? 'text/html' : 'application/pdf',
@@ -98,10 +104,51 @@ test('Legacy media type wins over a misleading word in the filename', () => {
 test('v4 companions stay hidden until the complete validated pair is ready', () => {
   const v4 = (id: string, role: 'html' | 'pdf', publicationState: string) => ({
     ...row(id, role, 'lv-source-v4', '2026-08-21T00:00:00Z'),
-    metadata_json: JSON.stringify({ recommendation_id: 'rec-1', pair_id: 'lv-source-v4', role, generator: 'lite-visual', workflow_contract: 'lite-visual-linear/v4', asset_policy: 'code-only', publication_state: publicationState, validation_status: publicationState === 'ready' ? 'passed' : 'pending' }),
+    metadata_json: JSON.stringify({
+      recommendation_id: 'rec-1',
+      pair_id: 'lv-source-v4',
+      role,
+      generator: 'lite-visual',
+      workflow_contract: 'lite-visual-linear/v4',
+      asset_policy: 'code-only',
+      publication_state: publicationState,
+      validation_status: publicationState === 'ready' ? 'passed' : 'pending',
+    }),
   })
-  assert.equal(selectLearningSourceRenditions([v4('staged-html', 'html', 'staged'), v4('staged-pdf', 'pdf', 'staged')]).has('rec-1'), false)
+  assert.equal(
+    selectLearningSourceRenditions([v4('staged-html', 'html', 'staged'), v4('staged-pdf', 'pdf', 'staged')]).has(
+      'rec-1',
+    ),
+    false,
+  )
   const ready = selectLearningSourceRenditions([v4('ready-html', 'html', 'ready'), v4('ready-pdf', 'pdf', 'ready')])
   assert.equal(ready.get('rec-1')?.html?.id, 'ready-html')
   assert.equal(ready.get('rec-1')?.pdf?.id, 'ready-pdf')
+})
+
+test('superseded companion revisions never displace the current visible pair', () => {
+  const versioned = (
+    id: string,
+    role: 'html' | 'pdf',
+    pairId: string,
+    publicationState: 'ready' | 'superseded',
+    createdAt: string,
+  ) => ({
+    ...row(id, role, pairId, createdAt),
+    metadata_json: JSON.stringify({
+      recommendation_id: 'rec-1',
+      pair_id: pairId,
+      role,
+      publication_state: publicationState,
+      validation_status: 'passed',
+    }),
+  })
+  const selected = selectLearningSourceRenditions([
+    versioned('restored-html', 'html', 'pair-restored', 'ready', '2026-08-01T00:00:00Z'),
+    versioned('restored-pdf', 'pdf', 'pair-restored', 'ready', '2026-08-01T00:00:01Z'),
+    versioned('newer-superseded-html', 'html', 'pair-rejected', 'superseded', '2026-08-03T00:00:00Z'),
+    versioned('newer-superseded-pdf', 'pdf', 'pair-rejected', 'superseded', '2026-08-03T00:00:01Z'),
+  ])
+  assert.equal(selected.get('rec-1')?.html?.id, 'restored-html')
+  assert.equal(selected.get('rec-1')?.pdf?.id, 'restored-pdf')
 })

@@ -1,5 +1,5 @@
 export const BRIEFING_JOB_COUNTS_SQL = `SELECT
-  SUM(CASE WHEN j.status IN ('pending','running','retry') THEN 1 ELSE 0 END) active_count,
+  SUM(CASE WHEN j.status IN ('pending','running','retry','awaiting_activation') THEN 1 ELSE 0 END) active_count,
   SUM(CASE WHEN j.status='failed' THEN 1 ELSE 0 END) failed_count,
   SUM(CASE WHEN j.status='dead_letter' THEN 1 ELSE 0 END) dead_letter_count,
   SUM(CASE WHEN j.status='running' AND j.lease_expires_at<datetime('now') THEN 1 ELSE 0 END) stale_count,
@@ -10,7 +10,7 @@ export const BRIEFING_JOB_COUNTS_SQL = `SELECT
     THEN 1 ELSE 0 END) overdue_retry_count
   FROM agent_jobs j
   LEFT JOIN agent_job_retries jr ON jr.job_id=j.id
-  WHERE j.status IN ('pending','running','retry','failed','dead_letter')`
+  WHERE j.status IN ('pending','running','retry','awaiting_activation','failed','dead_letter')`
 
 export const DELAYED_RETRY_COUNT_SQL = `SELECT COUNT(*) count
   FROM agent_job_retries r

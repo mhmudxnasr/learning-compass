@@ -23,7 +23,11 @@ test('Android manifest is installable and keeps capture inside the canonical sou
 })
 
 test('launcher assets have the exact Android dimensions and are served without private API auth', () => {
-  for (const [name, size] of [['compass-192.png', 192], ['compass-512.png', 512], ['compass-maskable-512.png', 512]] as const) {
+  for (const [name, size] of [
+    ['compass-192.png', 192],
+    ['compass-512.png', 512],
+    ['compass-maskable-512.png', 512],
+  ] as const) {
     const png = readFileSync(new URL(`../../client/public/icons/${name}`, import.meta.url))
     assert.ok(png.length > 1000, `${name} is missing or empty`)
     assert.equal(png.subarray(1, 4).toString(), 'PNG', `${name} is not a PNG`)
@@ -39,7 +43,7 @@ test('the app links its manifest, registers the service worker, and exposes a re
   assert.match(html, /<link rel="manifest" href="\/manifest\.json" \/>/)
   assert.match(html, /<meta name="mobile-web-app-capable" content="yes" \/>/)
   assert.match(entry, /initAndroidExperience\(\)/)
-  assert.match(android, /serviceWorker\.register\('\/sw\.js'/)
+  assert.match(android, /serviceWorker\s*\.\s*register\('\/sw\.js'/)
   assert.match(android, /beforeinstallprompt/)
   assert.match(android, /DISMISS_FOR_MS = 30 \* 24 \* 60 \* 60 \* 1000/)
   assert.match(worker, /cacheShell\(\)/)
@@ -50,6 +54,11 @@ test('the app links its manifest, registers the service worker, and exposes a re
   assert.match(worker, /cache\.put\(request, response\.clone\(\)\)/)
   assert.match(worker, /isAppShellNavigation\(url\)/)
   assert.match(worker, /\/icons\/compass-maskable-512\.png/)
-  assert.match(server, /\/#\/library\/source\/\$\{encodeURIComponent\(result\.id\)\}/)
-  assert.match(server, /action: 'capture', share: 'retry'/)
+  assert.match(server, /await createShareIntake/)
+  assert.match(server, /share_intake: intake\.id/)
+  assert.doesNotMatch(
+    server.slice(server.indexOf("app.post('/api/share-target'"), server.indexOf('// YouTube metadata enrichment')),
+    /createCapture/,
+  )
+  assert.match(server, /could not save this shared item/)
 })

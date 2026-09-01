@@ -13,13 +13,26 @@ test('Lesson launcher honors a stored recommended start and keeps other formats 
         id: 'html_1',
         filename: 'companion.html',
         size_bytes: 48_500,
-        metadata: { recommended_start: 'html', revision: '4', language: 'ar', workflow_contract: 'lite-visual-linear/v4', validation_status: 'passed' },
+        metadata: {
+          recommended_start: 'html',
+          revision: '4',
+          language: 'ar',
+          workflow_contract: 'lite-visual-linear/v4',
+          validation_status: 'passed',
+        },
       },
       pdf: {
         id: 'pdf_1',
         filename: 'companion.pdf',
         size_bytes: 1_500_000,
-        metadata: { recommended_start: 'html', revision: '4', language: 'ar', page_count: 24, workflow_contract: 'lite-visual-linear/v4', validation_status: 'passed' },
+        metadata: {
+          recommended_start: 'html',
+          revision: '4',
+          language: 'ar',
+          page_count: 24,
+          workflow_contract: 'lite-visual-linear/v4',
+          validation_status: 'passed',
+        },
       },
     },
   })
@@ -29,7 +42,10 @@ test('Lesson launcher honors a stored recommended start and keeps other formats 
   assert.equal(launcher?.primary.href, '/artifacts/html_1')
   assert.deepEqual(launcher?.primary.details, ['47 KB', 'Arabic', 'Revision 4', 'Verified pair'])
   assert.equal(launcher?.primary.purpose, 'Read the complete Arabic companion in your browser.')
-  assert.deepEqual(launcher?.alternatives.map((material) => material.kind), ['original', 'pdf', 'notebooklm'])
+  assert.deepEqual(
+    launcher?.alternatives.map((material) => material.kind),
+    ['original', 'pdf', 'notebooklm'],
+  )
   assert.deepEqual(launcher?.alternatives[1].details, ['24 pages', '1.4 MB', 'Arabic', 'Revision 4', 'Verified pair'])
   assert.equal(launcher?.alternatives[1].purpose, 'Read or annotate the exact A4 print edition on a tablet.')
 })
@@ -55,7 +71,10 @@ test('Lesson launcher reads legacy metadata JSON without exposing an unavailable
 })
 
 test('Lesson launcher falls back to the original and returns no fake option when no link exists', () => {
-  const original = buildSourceMaterialLauncher({ recommendation_id: 'source_3', video_url: 'https://example.com/source' })
+  const original = buildSourceMaterialLauncher({
+    recommendation_id: 'source_3',
+    video_url: 'https://example.com/source',
+  })
   assert.equal(original?.primary.kind, 'original')
   assert.equal(original?.alternatives.length, 0)
   assert.equal(buildSourceMaterialLauncher({ recommendation_id: 'source_4' }), null)

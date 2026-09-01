@@ -1,6 +1,6 @@
 import { Component, type ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
-import { flushOfflineMutations } from '../api'
+import { api, flushOfflineMutations } from '../api'
 import { CaptureDialog } from '../shell/CaptureDialog'
 import { SearchDialog } from '../shell/SearchDialog'
 import { StudioShell } from '../shell/StudioShell'
@@ -13,6 +13,7 @@ import type { LibrarySelection } from '../workspaces/library/types'
 import { AndroidInstallBanner } from './android'
 import { Inspector, type InspectorSelection, type MapSelection } from './inspector'
 import { objectHref, routeHref, useRoute, type Route } from './router'
+import { ShareIntakeReviewDialog, shareIntakeCompletionKind, type ShareIntake } from './ShareIntakeReviewDialog'
 
 type ErrorBoundaryProps = { children: ComponentChildren }
 type ErrorBoundaryState = { error: Error | null }
@@ -26,14 +27,18 @@ class AppErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState>
 
   render() {
     if (this.state.error) {
-      return <main class="app-error-boundary" role="alert">
-        <div>
-          <span class="folio-kicker">Learning Compass</span>
-          <h1>The studio needs a fresh start.</h1>
-          <p>{this.state.error.message || 'An unexpected rendering error interrupted this view.'}</p>
-          <button class="button primary" type="button" onClick={() => location.reload()}>Reload the studio</button>
-        </div>
-      </main>
+      return (
+        <main class="app-error-boundary" role="alert">
+          <div>
+            <span class="folio-kicker">Learning Compass</span>
+            <h1>The studio needs a fresh start.</h1>
+            <p>{this.state.error.message || 'An unexpected rendering error interrupted this view.'}</p>
+            <button class="button primary" type="button" onClick={() => location.reload()}>
+              Reload the studio
+            </button>
+          </div>
+        </main>
+      )
     }
     return this.props.children
   }
@@ -64,34 +69,125 @@ function mapSelection(route: Route): MapSelection | null {
 }
 
 function workspace(route: Route, onCapture: () => void, onInspect: (selection: InspectorSelection) => void) {
-  if (route.root === 'home') return <HomeWorkspace onCapture={onCapture} onInspect={(selection: HomeSelection) => onInspect(selection)} onNavigate={navigate}/>
+  if (route.root === 'home')
+    return (
+      <HomeWorkspace
+        onCapture={onCapture}
+        onInspect={(selection: HomeSelection) => onInspect(selection)}
+        onNavigate={navigate}
+      />
+    )
   if (route.root === 'library') {
-    const inspect = (selection: LibrarySelection | null) => { if (selection) onInspect(selection) }
-    return <LibraryWorkspace route={route} onInspect={inspect} onSelect={inspect} onNavigate={navigate}/>
+    const inspect = (selection: LibrarySelection | null) => {
+      if (selection) onInspect(selection)
+    }
+    return <LibraryWorkspace route={route} onInspect={inspect} onSelect={inspect} onNavigate={navigate} />
   }
-  if (route.root === 'learn') return <LearnWorkspace route={route}/>
+  if (route.root === 'learn') return <LearnWorkspace route={route} />
   if (route.root === 'map') {
-    const mapRoute = { view: route.view as MapWorkspaceRoute['view'], objectType: route.objectType as MapObjectType | undefined, objectId: route.objectId }
-    return <MapWorkspace route={mapRoute} onRouteChange={(next) => navigate(mapRouteHref(next))}/>
+    const mapRoute = {
+      view: route.view as MapWorkspaceRoute['view'],
+      objectType: route.objectType as MapObjectType | undefined,
+      objectId: route.objectId,
+    }
+    return <MapWorkspace route={mapRoute} onRouteChange={(next) => navigate(mapRouteHref(next))} />
   }
-  return <SettingsWorkspace route={{ view: route.view as SettingsWorkspaceRoute['view'] }} onRouteChange={(next: SettingsWorkspaceRoute) => navigate(routeHref('settings', next.view))} onCapture={onCapture}/>
+  return (
+    <SettingsWorkspace
+      route={{ view: route.view as SettingsWorkspaceRoute['view'] }}
+      onRouteChange={(next: SettingsWorkspaceRoute) => navigate(routeHref('settings', next.view))}
+      onCapture={onCapture}
+    />
+  )
 }
 
 export function App() {
   const route = useRoute()
   const capturePayload = route.query.get('capture') || ''
   const captureAction = route.query.get('action') === 'capture'
+  const shareIntakeId = route.query.get('share_intake') || ''
   const shareState = route.query.get('share')
-  const captureNotice = shareState === 'retry'
-    ? 'The shared source was not saved. Your input is preserved—try again when the connection is stable.'
-    : shareState === 'invalid'
-      ? 'The shared item was empty or too large. Add a link, title, or note before saving.'
-      : ''
   const [captureOpen, setCaptureOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [selection, setSelection] = useState<InspectorSelection | null>(null)
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [shareIntake, setShareIntake] = useState<ShareIntake | null>(null)
+  const [shareIntakeError, setShareIntakeError] = useState('')
+  const shareCompletionKind = shareIntakeCompletionKind(shareIntake)
+
+  const resolvedCapturePayload =
+    capturePayload ||
+    (shareCompletionKind === 'capture' ? shareIntake?.source_url || shareIntake?.shared_text || '' : '')
+  const captureNotice =
+    shareState === 'retry'
+      ? 'The share could not be persisted. Your input is preserved—try again when the connection is stable.'
+      : shareState === 'invalid'
+        ? 'The shared item was empty or too large. Add a link, title, or note before saving.'
+        : shareIntakeError
+          ? `The saved share could not be loaded: ${shareIntakeError}`
+          : shareIntakeId && !shareIntake
+            ? 'Loading the saved share…'
+            : shareCompletionKind === 'capture'
+              ? 'Shared input recovered. Choose its reviewed branch to finish capture.'
+              : ''
+
+  useEffect(() => {
+    let live = true
+    setShareIntake(null)
+    setShareIntakeError('')
+    if (!shareIntakeId)
+      return () => {
+        live = false
+      }
+    api<{ intake: ShareIntake }>(`/api/share-intakes/${encodeURIComponent(shareIntakeId)}`)
+      .then(({ intake }) => {
+        if (!live) return
+        setShareIntake(intake)
+        const completionKind = shareIntakeCompletionKind(intake)
+        if (intake.status !== 'consumed') {
+          if (intake.kind === 'review' && completionKind === 'capture' && !captureAction) {
+            navigate(`#/home?action=capture&share_intake=${encodeURIComponent(intake.id)}`)
+          } else if (intake.kind === 'review' && completionKind === 'anchor' && route.root !== 'learn') {
+            navigate(`#/learn?mode=practice&focus=notes&share_intake=${encodeURIComponent(intake.id)}`)
+          }
+          return
+        }
+        setCaptureOpen(false)
+        if (completionKind === 'capture' && intake.recommendation_id)
+          navigate(objectHref('library', 'source', intake.recommendation_id))
+        else if (completionKind === 'anchor' && intake.annotation_id)
+          navigate(`#/learn?mode=practice&focus=notes&annotation=${encodeURIComponent(intake.annotation_id)}`)
+      })
+      .catch((error: any) => {
+        if (live) setShareIntakeError(error?.message || 'Saved share unavailable.')
+      })
+    return () => {
+      live = false
+    }
+  }, [shareIntakeId, captureAction, route.root])
+
+  useEffect(() => {
+    if (route.root !== 'home' || capturePayload || captureAction || shareIntakeId) return
+    let live = true
+    api<{ intakes: ShareIntake[] }>('/api/share-intakes/pending?limit=1')
+      .then(({ intakes }) => {
+        if (!live || !intakes[0]) return
+        const intake = intakes[0]
+        const completionKind = shareIntakeCompletionKind(intake)
+        navigate(
+          completionKind === 'anchor'
+            ? `#/learn?mode=practice&focus=notes&share_intake=${encodeURIComponent(intake.id)}`
+            : completionKind === 'capture'
+              ? `#/home?action=capture&share_intake=${encodeURIComponent(intake.id)}`
+              : `#/home?action=review-share&share_intake=${encodeURIComponent(intake.id)}`,
+        )
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [route.root, capturePayload, captureAction, shareIntakeId])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -106,7 +202,8 @@ export function App() {
       else if (captureOpen) setCaptureOpen(false)
       else if (selection || (route.root === 'map' && route.objectId && route.view !== 'balance')) {
         setSelection(null)
-        if (route.root === 'map' && route.objectId && route.view !== 'balance') navigate(routeHref('map', route.mode, route.focus))
+        if (route.root === 'map' && route.objectId && route.view !== 'balance')
+          navigate(routeHref('map', route.mode, route.focus))
       }
     }
     addEventListener('keydown', onKeyDown)
@@ -118,8 +215,13 @@ export function App() {
   }, [capturePayload, captureAction])
 
   useEffect(() => {
-    const retryQueuedWrites = () => { if (typeof document === 'undefined' || document.visibilityState === 'visible') void flushOfflineMutations() }
-    const onOnline = () => { setOnline(true); retryQueuedWrites() }
+    const retryQueuedWrites = () => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') void flushOfflineMutations()
+    }
+    const onOnline = () => {
+      setOnline(true)
+      retryQueuedWrites()
+    }
     const onOffline = () => setOnline(false)
     const onVisibility = () => retryQueuedWrites()
     addEventListener('online', onOnline)
@@ -142,7 +244,8 @@ export function App() {
   }, [route.root, route.view, route.objectId, route.mode, route.focus])
 
   const routedMapSelection = mapSelection(route)
-  const activeSelection = route.root === 'map' ? routedMapSelection : (route.root === 'library' && route.objectId ? null : selection)
+  const activeSelection =
+    route.root === 'map' ? routedMapSelection : route.root === 'library' && route.objectId ? null : selection
   const closeSelection = () => {
     setSelection(null)
     if (routedMapSelection) navigate(routeHref('map', route.mode, route.focus))
@@ -155,29 +258,56 @@ export function App() {
   const refreshWorkspace = () => setRefreshKey((value) => value + 1)
   const closeCapture = () => {
     setCaptureOpen(false)
-    if (capturePayload || captureAction) navigate(routeHref('home'))
+    if (capturePayload || captureAction || shareIntakeId) navigate(routeHref('home'))
   }
-  const workspaceKey = route.root === 'map'
-    ? `map-${route.mode}:${refreshKey}`
-    : `${route.canonical}:${refreshKey}`
+  const workspaceKey = route.root === 'map' ? `map-${route.mode}:${refreshKey}` : `${route.canonical}:${refreshKey}`
 
-  return <AppErrorBoundary>
-    <StudioShell
-      route={route}
-      inspector={activeSelection ? <Inspector selection={activeSelection} onClose={closeSelection}/> : undefined}
-      onInspectorClose={activeSelection ? closeSelection : undefined}
-      onCapture={() => { setCaptureOpen(true); setSearchOpen(false) }}
-      onSearch={() => { setSearchOpen(true); setCaptureOpen(false) }}
-      online={online}
-    >
-      <AndroidInstallBanner />
-      <div key={workspaceKey}>
-        {workspace(route, () => setCaptureOpen(true), setSelection)}
-      </div>
-    </StudioShell>
-    <CaptureDialog open={captureOpen} initialSource={capturePayload} initialStatus={captureNotice} onClose={closeCapture} onCaptured={refreshWorkspace}/>
-    <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)}/>
-  </AppErrorBoundary>
+  return (
+    <AppErrorBoundary>
+      <StudioShell
+        route={route}
+        inspector={activeSelection ? <Inspector selection={activeSelection} onClose={closeSelection} /> : undefined}
+        onInspectorClose={activeSelection ? closeSelection : undefined}
+        onCapture={() => {
+          setCaptureOpen(true)
+          setSearchOpen(false)
+        }}
+        onSearch={() => {
+          setSearchOpen(true)
+          setCaptureOpen(false)
+        }}
+        online={online}
+      >
+        <AndroidInstallBanner />
+        <div key={workspaceKey}>{workspace(route, () => setCaptureOpen(true), setSelection)}</div>
+      </StudioShell>
+      <CaptureDialog
+        open={captureOpen}
+        initialSource={resolvedCapturePayload}
+        initialTitle={shareCompletionKind === 'capture' ? shareIntake?.title || '' : ''}
+        initialStatus={captureNotice}
+        shareIntakeId={shareCompletionKind === 'capture' && shareIntake?.status === 'pending' ? shareIntake.id : ''}
+        onClose={closeCapture}
+        onCaptured={refreshWorkspace}
+      />
+      {shareIntake?.kind === 'review' && !shareCompletionKind && shareIntake.status === 'pending' && (
+        <ShareIntakeReviewDialog
+          intake={shareIntake}
+          onResolved={(intake) => {
+            setShareIntake(intake)
+            const completionKind = shareIntakeCompletionKind(intake)
+            navigate(
+              completionKind === 'anchor'
+                ? `#/learn?mode=practice&focus=notes&share_intake=${encodeURIComponent(intake.id)}`
+                : `#/home?action=capture&share_intake=${encodeURIComponent(intake.id)}`,
+            )
+          }}
+          onDefer={() => navigate(routeHref('home'))}
+        />
+      )}
+      <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
+    </AppErrorBoundary>
+  )
 }
 
 export default App

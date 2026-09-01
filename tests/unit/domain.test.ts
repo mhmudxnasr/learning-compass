@@ -12,7 +12,6 @@ import {
   selectCurationMode,
 } from '../../src/domain.ts'
 
-
 test('queue blocks the sixth normal item but preserves an explicit override', () => {
   assert.deepEqual(queueDecision(5, false), { allowed: false, slotsRemaining: 0, requiresOverride: true })
   assert.deepEqual(queueDecision(5, true), { allowed: true, slotsRemaining: 0, requiresOverride: false })
@@ -84,12 +83,12 @@ test('computeDialecticDivergenceScore computes mathematical divergence score cor
 })
 
 test('cleanRawSourceText cleans YouTube timestamps, PDF page numbers, and web boilerplate', () => {
-  const ytRaw = "[00:12] Hello world\n01:23:45 Substantive argument\n\n\n"
-  assert.equal(cleanRawSourceText(ytRaw, 'youtube'), "Hello world\nSubstantive argument")
+  const ytRaw = '[00:12] Hello world\n01:23:45 Substantive argument\n\n\n'
+  assert.equal(cleanRawSourceText(ytRaw, 'youtube'), 'Hello world\nSubstantive argument')
 
-  const pdfRaw = "Page 12\nSection 1 text\n 45 \nSection 2 text"
-  assert.equal(cleanRawSourceText(pdfRaw, 'pdf'), "Section 1 text\n\nSection 2 text")
+  const pdfRaw = 'Page 12\nSection 1 text\n 45 \nSection 2 text'
+  assert.equal(cleanRawSourceText(pdfRaw, 'pdf'), 'Section 1 text\n\nSection 2 text')
 
-  const webRaw = "<p>Clean main text</p>\nCookie Policy\nPrivacy Policy"
-  assert.equal(cleanRawSourceText(webRaw, 'web'), "Clean main text")
+  const webRaw = '<p>Clean main text</p>\nCookie Policy\nPrivacy Policy'
+  assert.equal(cleanRawSourceText(webRaw, 'web'), 'Clean main text')
 })

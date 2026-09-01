@@ -1,0 +1,513 @@
+/* ==========================================================================
+   NOTES RETRIEVAL STUDIO & KNOWLEDGE VAULT
+   ========================================================================== */
+
+/* --- Notes Vault Explorer --- */
+.learn-notes-vault {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding-bottom: 60px;
+}
+
+.notes-vault-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--studio-seam);
+  width: 100%;
+}
+
+.notes-vault-hero-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: none;
+}
+
+.notes-vault-kicker-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.notes-kicker-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: calc(10.5px * var(--font-scale));
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--studio-cypress);
+}
+
+.notes-count-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--studio-cypress) 10%, transparent);
+  color: var(--studio-cypress);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.notes-vault-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: var(--font-heading-weight);
+  color: var(--studio-ink);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.notes-vault-lede {
+  margin: 0;
+  color: var(--studio-secondary);
+  font-size: calc(14.5px * var(--font-scale));
+  line-height: 1.6;
+  max-width: 900px;
+}
+
+.notes-vault-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.notes-primary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--studio-radius-control);
+  font-weight: 600;
+}
+
+/* --- Metrics Strip --- */
+.notes-vault-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.notes-metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 18px;
+  border-radius: var(--studio-radius-card);
+  border: 1px solid var(--studio-seam);
+  background: var(--studio-canvas);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.notes-metric-card.highlight {
+  background: color-mix(in srgb, var(--studio-lichen) 35%, var(--studio-canvas));
+  border-color: color-mix(in srgb, var(--studio-cypress) 28%, var(--studio-seam));
+}
+
+.notes-metric-num {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--studio-ink);
+  line-height: 1.1;
+}
+
+.notes-metric-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--studio-muted);
+}
+
+/* --- Toast Banner --- */
+.notes-toast-banner {
+  padding: 10px 16px;
+  border-radius: var(--studio-radius-control);
+  background: color-mix(in srgb, var(--studio-cypress) 12%, var(--studio-canvas));
+  border: 1px solid color-mix(in srgb, var(--studio-cypress) 30%, transparent);
+  color: var(--studio-cypress);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  animation: fadeIn 0.2s ease;
+}
+
+/* --- Create Note Panel --- */
+.notes-create-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+  border-radius: var(--studio-radius-panel);
+  border: 1px solid var(--studio-seam);
+  background: var(--studio-canvas);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.notes-create-head h3 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--studio-ink);
+}
+
+.notes-create-hint {
+  font-size: 12.5px;
+  color: var(--studio-muted);
+}
+
+.notes-create-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.notes-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--studio-secondary);
+}
+
+.notes-field-group input,
+.notes-field-group select {
+  height: 38px;
+  padding: 0 12px;
+  border-radius: var(--studio-radius-control);
+  border: 1px solid var(--studio-seam);
+  background: var(--studio-ledger);
+  color: var(--studio-ink);
+  font-size: 13.5px;
+}
+
+.notes-field-group input:focus,
+.notes-field-group select:focus {
+  outline: none;
+  border-color: var(--studio-cypress);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--studio-cypress) 20%, transparent);
+}
+
+.notes-create-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.notes-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--studio-seam);
+}
+
+/* --- Filter & Search Toolbar --- */
+.notes-vault-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.notes-search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 300px;
+  max-width: 480px;
+}
+
+.notes-search-wrapper .icon {
+  position: absolute;
+  left: 12px;
+  color: var(--studio-muted);
+  pointer-events: none;
+}
+
+.notes-search-input {
+  width: 100%;
+  height: 38px;
+  padding: 0 32px 0 36px;
+  border-radius: var(--studio-radius-control);
+  border: 1px solid var(--studio-seam);
+  background: var(--studio-canvas);
+  color: var(--studio-ink);
+  font-size: 13px;
+}
+
+.notes-search-input:focus {
+  outline: none;
+  border-color: var(--studio-cypress);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--studio-cypress) 20%, transparent);
+}
+
+.notes-search-clear {
+  position: absolute;
+  right: 10px;
+  border: none;
+  background: transparent;
+  color: var(--studio-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.notes-filter-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.notes-filter-pill {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--studio-seam);
+  background: var(--studio-canvas);
+  color: var(--studio-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.notes-filter-pill:hover {
+  border-color: var(--studio-cypress);
+  color: var(--studio-ink);
+}
+
+.notes-filter-pill.active {
+  background: var(--studio-cypress);
+  color: var(--studio-action-ink, #ffffff);
+  border-color: var(--studio-cypress);
+}
+
+.notes-branch-select {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--studio-seam);
+  background: var(--studio-canvas);
+  color: var(--studio-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* --- Cards Grid --- */
+.notes-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.note-grid-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-radius: var(--studio-radius-card);
+  border: 1px solid var(--studio-seam);
+  background: var(--studio-canvas);
+  padding: 18px 20px;
+  gap: 12px;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+  position: relative;
+}
+
+.note-grid-card:hover {
+  border-color: color-mix(in srgb, var(--studio-cypress) 40%, var(--studio-seam));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.04);
+  transform: translateY(-1px);
+}
+
+.note-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.note-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.note-kind-tag {
+  display: inline-flex;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.note-kind-tag.kind-guide {
+  background: color-mix(in srgb, var(--studio-cypress) 12%, transparent);
+  color: var(--studio-cypress);
+}
+
+.note-kind-tag.kind-reflection {
+  background: color-mix(in srgb, var(--studio-map) 12%, transparent);
+  color: var(--studio-map);
+}
+
+.note-kind-tag.kind-note {
+  background: color-mix(in srgb, var(--studio-ink) 8%, transparent);
+  color: var(--studio-secondary);
+}
+
+.note-branch-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--studio-ledger);
+  border: 1px solid var(--studio-seam);
+  color: var(--studio-secondary);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.note-round-pill {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--studio-muted);
+}
+
+.note-card-delete-btn {
+  border: none;
+  background: transparent;
+  color: var(--studio-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease;
+}
+
+.note-grid-card:hover .note-card-delete-btn,
+.note-grid-card:focus-within .note-card-delete-btn {
+  opacity: 1;
+}
+
+.note-card-delete-btn:hover {
+  color: var(--studio-danger);
+  background: color-mix(in srgb, var(--studio-danger) 10%, transparent);
+}
+
+.note-card-body-link {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-decoration: none;
+  color: inherit;
+  flex: 1;
+}
+
+.note-card-title {
+  margin: 0;
+  font-family: var(--font-display), 'Noto Naskh Arabic', Georgia, serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--studio-ink);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  transition: color 0.15s ease;
+}
+
+.note-grid-card:hover .note-card-title {
+  color: var(--studio-cypress);
+}
+
+.note-card-excerpt {
+  margin: 0;
+  color: var(--studio-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.note-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--studio-seam);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--studio-muted);
+}
+
+.note-card-meta-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.note-card-meta-left span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.note-card-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.note-card-open-arrow {
+  color: var(--studio-cypress);
+  display: flex;
+  align-items: center;
+  transition: transform 0.15s ease;
+}
+
+.note-grid-card:hover .note-card-open-arrow {
+  transform: translateX(2px);
+}

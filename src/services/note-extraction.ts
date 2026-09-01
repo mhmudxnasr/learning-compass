@@ -28,23 +28,40 @@ export function validateSourceNoteCompletion(payload: any, body: any): string[] 
 
   if (note.kind === 'reflection') failures.push('source note cannot be a reflection')
   if (!String(note.title || '').trim()) failures.push('source note title is required')
-  if (genericTitleSuffix.test(String(note.title || '').trim())) failures.push('source note title must preserve the source title without a generated suffix')
+  if (genericTitleSuffix.test(String(note.title || '').trim()))
+    failures.push('source note title must preserve the source title without a generated suffix')
   if (!sections.length) failures.push('source note requires at least one section')
-  if (sections.some((section: any) => !String(section?.section_key || '').trim() || !String(section?.label || '').trim() || !String(section?.content || '').trim())) failures.push('every source note section requires section_key, label, and content')
+  if (
+    sections.some(
+      (section: any) =>
+        !String(section?.section_key || '').trim() ||
+        !String(section?.label || '').trim() ||
+        !String(section?.content || '').trim(),
+    )
+  )
+    failures.push('every source note section requires section_key, label, and content')
   const sectionKeys = new Set(sections.map((section: any) => String(section?.section_key || '').trim()))
-  if ([...legacySectionKeys].every((key) => sectionKeys.has(key))) failures.push('legacy Foundation/Case Studies/Exploitation/Defense template is forbidden')
+  if ([...legacySectionKeys].every((key) => sectionKeys.has(key)))
+    failures.push('legacy Foundation/Case Studies/Exploitation/Defense template is forbidden')
 
   if (extraction.contract !== SOURCE_NOTE_CONTRACT) failures.push(`extraction.contract must be ${SOURCE_NOTE_CONTRACT}`)
   if (extraction.complete !== true) failures.push('source extraction must be complete')
   if (!String(extraction.adapter || '').trim()) failures.push('extraction.adapter is required')
-  if (!/^[a-f0-9]{64}$/i.test(String(extraction.source_hash || ''))) failures.push('extraction.source_hash must be a SHA-256 hash')
+  if (!/^[a-f0-9]{64}$/i.test(String(extraction.source_hash || '')))
+    failures.push('extraction.source_hash must be a SHA-256 hash')
   const sourceWordCount = Number(extraction.source_word_count || 0)
-  if (!Number.isInteger(sourceWordCount) || sourceWordCount < 1) failures.push('extraction.source_word_count must be a positive integer')
+  if (!Number.isInteger(sourceWordCount) || sourceWordCount < 1)
+    failures.push('extraction.source_word_count must be a positive integer')
 
   const noteWordCount = sections.reduce((sum: number, section: any) => sum + countNoteWords(section?.content), 0)
-  if (Number(extraction.note_word_count) !== noteWordCount) failures.push('extraction.note_word_count must match the submitted note body')
-  if (sourceWordCount > 0 && noteWordCount < minimumSourceNoteWords(sourceWordCount)) failures.push(`source note is too thin for the source (${noteWordCount}/${minimumSourceNoteWords(sourceWordCount)} minimum words)`)
-  if (!['complete', 'source-bounded'].includes(String(extraction.coverage_status || ''))) failures.push('extraction.coverage_status must be complete or source-bounded')
+  if (Number(extraction.note_word_count) !== noteWordCount)
+    failures.push('extraction.note_word_count must match the submitted note body')
+  if (sourceWordCount > 0 && noteWordCount < minimumSourceNoteWords(sourceWordCount))
+    failures.push(
+      `source note is too thin for the source (${noteWordCount}/${minimumSourceNoteWords(sourceWordCount)} minimum words)`,
+    )
+  if (!['complete', 'source-bounded'].includes(String(extraction.coverage_status || '')))
+    failures.push('extraction.coverage_status must be complete or source-bounded')
 
   if (!units.length) failures.push('source note requires at least one durable learning unit')
   if (units.length > 16) failures.push('source note may keep at most 16 learning units')
@@ -63,12 +80,17 @@ export function validateSourceNoteCompletion(payload: any, body: any): string[] 
     else semanticStatements.add(semantic)
     if (!anchors.length) failures.push(`learning unit ${index + 1} requires a source anchor`)
     for (const [anchorIndex, anchor] of anchors.entries()) {
-      if (!anchorTypes.has(String(anchor?.anchor_type || ''))) failures.push(`learning unit ${index + 1} anchor ${anchorIndex + 1} has an invalid type`)
-      if (!String(anchor?.locator || '').trim()) failures.push(`learning unit ${index + 1} anchor ${anchorIndex + 1} requires a locator`)
+      if (!anchorTypes.has(String(anchor?.anchor_type || '')))
+        failures.push(`learning unit ${index + 1} anchor ${anchorIndex + 1} has an invalid type`)
+      if (!String(anchor?.locator || '').trim())
+        failures.push(`learning unit ${index + 1} anchor ${anchorIndex + 1} requires a locator`)
     }
   }
 
-  if (drafts.length) failures.push('automated recall drafting is disabled; create cards only through an explicit learner-authored action')
+  if (drafts.length)
+    failures.push(
+      'automated recall drafting is disabled; create cards only through an explicit learner-authored action',
+    )
 
   return failures
 }

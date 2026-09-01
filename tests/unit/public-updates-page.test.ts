@@ -11,11 +11,19 @@ let vite: ViteDevServer
 
 test.before(async () => {
   const root = fileURLToPath(new URL('../..', import.meta.url))
-  vite = await createServer({ root, configFile: false, server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' })
+  vite = await createServer({
+    root,
+    configFile: false,
+    server: { middlewareMode: true },
+    appType: 'custom',
+    logLevel: 'silent',
+  })
   app = (await vite.ssrLoadModule('/src/index.ts')).default
 })
 
-test.after(async () => { await vite.close() })
+test.after(async () => {
+  await vite.close()
+})
 
 test('public learning update explains the real material contract in accessible plain HTML', () => {
   assert.match(updateHtml, /^<!doctype html>/i)
@@ -35,11 +43,9 @@ test('public learning update explains the real material contract in accessible p
   assert.doesNotMatch(updateHtml, /<script\b/i)
 })
 
-test('learning update stays public in private mode and is served with strict document headers', async () => {
+test('learning update stays public and is served with strict document headers', async () => {
   const requestedPaths: string[] = []
   const env = {
-    REQUIRE_API_AUTH: 'true',
-    API_TOKEN: 'configured-but-not-sent',
     ASSETS: {
       async fetch(request: Request) {
         requestedPaths.push(new URL(request.url).pathname)
@@ -48,7 +54,11 @@ test('learning update stays public in private mode and is served with strict doc
     },
   }
 
-  const response = await app.fetch(new Request(`https://learning-compass.test${updatePath}`), env as any, {} as ExecutionContext)
+  const response = await app.fetch(
+    new Request(`https://learning-compass.test${updatePath}`),
+    env as any,
+    {} as ExecutionContext,
+  )
   assert.equal(response.status, 200)
   assert.deepEqual(requestedPaths, [updatePath])
   assert.equal(response.headers.get('content-type'), 'text/html; charset=utf-8')

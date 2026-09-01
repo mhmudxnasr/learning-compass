@@ -6,7 +6,7 @@ This is a deliberately small Manifest V3 capture seam. It requests only `activeT
 
 1. Open the browser’s extensions page and enable developer mode.
 2. Load this directory as an unpacked extension.
-3. Open the extension options and set the Learning Compass app origin.
+3. Open the extension options and confirm the Learning Compass app origin. It defaults to the production Worker and can be changed for a local or alternate deployment.
 4. Use the toolbar button or page/selection context menu.
 
-The origin must already be reachable from the browser. If private API mode is enabled, the browser session must already have the authorized app access path; the extension never receives or persists `API_TOKEN`.
+The origin must be an HTTP or HTTPS URL reachable from the browser. Ordinary Learning Compass reads and writes are public; the extension never receives or persists an API credential or creates a browser unlock session. A selected passage over 10,000 characters opens the app's limit explanation and is not sent or partially anchored.

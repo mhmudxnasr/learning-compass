@@ -4,12 +4,15 @@ import test from 'node:test'
 import { parseFeed, validateFeedUrl } from '../../src/services/rss-parser.ts'
 
 test('parses RSS entries and resolves relative article links', () => {
-  const feed = parseFeed(`<?xml version="1.0"?>
+  const feed = parseFeed(
+    `<?xml version="1.0"?>
     <rss><channel><title>Example Notes</title><link>https://example.com</link>
       <item><title>First &amp; best</title><link>/posts/first</link><guid>a-1</guid>
         <dc:creator>Mahmood</dc:creator><description><![CDATA[<p>A useful idea.</p>]]></description>
         <pubDate>Wed, 29 Jul 2026 10:00:00 GMT</pubDate></item>
-    </channel></rss>`, 'https://example.com/feed.xml')
+    </channel></rss>`,
+    'https://example.com/feed.xml',
+  )
   assert.equal(feed.title, 'Example Notes')
   assert.equal(feed.siteUrl, 'https://example.com/')
   assert.deepEqual(feed.entries[0], {
@@ -23,19 +26,25 @@ test('parses RSS entries and resolves relative article links', () => {
 })
 
 test('ignores self-closing namespaced links before the RSS channel link', () => {
-  const feed = parseFeed(`<rss xmlns:atom="http://www.w3.org/2005/Atom"><channel>
+  const feed = parseFeed(
+    `<rss xmlns:atom="http://www.w3.org/2005/Atom"><channel>
     <title>AI News</title>
     <atom:link href="https://example.com/feed/" rel="self" type="application/rss+xml" />
     <link>https://example.com/ai/</link>
     <item><title>First story</title><link>https://example.com/ai/first</link></item>
-  </channel></rss>`, 'https://example.com/feed')
+  </channel></rss>`,
+    'https://example.com/feed',
+  )
   assert.equal(feed.siteUrl, 'https://example.com/ai/')
 })
 
 test('parses Atom alternate links', () => {
-  const feed = parseFeed(`<feed><title>Atom Source</title><link href="https://example.org"/>
+  const feed = parseFeed(
+    `<feed><title>Atom Source</title><link href="https://example.org"/>
     <entry><id>tag:example.org,1</id><title>New entry</title><link rel="alternate" href="/new"/>
-    <author>Writer</author><summary>Short summary</summary><updated>2026-07-29T12:00:00Z</updated></entry></feed>`, 'https://example.org/atom.xml')
+    <author>Writer</author><summary>Short summary</summary><updated>2026-07-29T12:00:00Z</updated></entry></feed>`,
+    'https://example.org/atom.xml',
+  )
   assert.equal(feed.entries[0].url, 'https://example.org/new')
   assert.equal(feed.entries[0].guid, 'tag:example.org,1')
 })
@@ -60,7 +69,10 @@ test('RSS import explicitly requests captured state rather than Queue state', ()
 })
 
 test('RSS schema backfills current feeds and enforces a reviewed branch default', () => {
-  const migration = readFileSync(new URL('../../migrations/0063_data_trust_and_feed_branches.sql', import.meta.url), 'utf8')
+  const migration = readFileSync(
+    new URL('../../migrations/0063_data_trust_and_feed_branches.sql', import.meta.url),
+    'utf8',
+  )
   assert.match(migration, /ALTER TABLE feed_sources ADD COLUMN branch_id/)
   assert.match(migration, /ON DELETE RESTRICT/)
   assert.match(migration, /rss_feed_migration_0063/)

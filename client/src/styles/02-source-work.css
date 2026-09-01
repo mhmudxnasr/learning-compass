@@ -1,0 +1,409 @@
+/* Home, library, and source work ---------------------------------------- */
+
+.momentum-page,
+.momentum-workspace,
+.today,
+.queue-view,
+.inbox-view,
+.books-page,
+.archive-page,
+.collection-page,
+.source-record-page,
+.notes-layout,
+.settings-page,
+.system-console,
+.profile-page,
+.taste-page,
+.hermes-page,
+.forecast-page {
+  display: grid;
+  gap: 28px;
+}
+
+.momentum-grid,
+.today-columns {
+  align-items: start;
+}
+
+.momentum-primary,
+.today-lead,
+.focus-desk,
+.queue-manifest,
+.queue-brief,
+.source-record-head,
+.source-record-page > section,
+.focus-resources,
+.weekly-closure,
+.evidence-sheet,
+.note-document,
+.note-reader,
+.path-dossier,
+.path-focus,
+.system-hero,
+.system-health,
+.system-safety,
+.api-catalog,
+.profile-section,
+.setting-section,
+.reminder-controls,
+.deck-callout-banner {
+  padding-block: 18px;
+  border-top: 1px solid var(--studio-seam);
+}
+
+.momentum-primary h2,
+.today-lead h2,
+.focus-desk h2 {
+  max-width: 22ch;
+  margin-bottom: 8px;
+  font-size: clamp(24px, 3.4vw, 42px);
+}
+
+.momentum-eyebrow,
+.focus-identity .meta {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--studio-muted);
+  font-size: calc(11px * var(--font-scale));
+}
+
+.focus-desk-head,
+.queue-row-header,
+.queue-row-main,
+.source-record-head,
+.focus-resources-head,
+.source-record-link,
+.mission-section,
+.path-header,
+.path-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.focus-desk,
+.queue-manifest,
+.source-record-page,
+.hub-path,
+.learning-path-workspace,
+.profile-page,
+.system-console {
+  min-width: 0;
+}
+
+.focus-item,
+.focus-source-row,
+.queue-row,
+.mission-card,
+.path-index-row,
+.path-next-card,
+.stage-item-row,
+.hub-source-row,
+.hub-file-row,
+.note-row,
+.artifact-archive,
+.book-row,
+.chapter-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 60px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--studio-seam);
+}
+
+.focus-source-row,
+.queue-row,
+.mission-card,
+.path-index-row,
+.hub-source-row,
+.book-row,
+.chapter-row {
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+}
+
+.item-mark,
+.item-check,
+.queue-slot,
+.record-number,
+.book-spine,
+.chapter-num,
+.record-line {
+  display: grid;
+  min-width: 25px;
+  min-height: 25px;
+  place-items: center;
+  border: 1px solid var(--studio-seam);
+  border-radius: 5px;
+  background: var(--studio-shell);
+  color: var(--studio-cypress);
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale));
+}
+
+.queue-slot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--studio-lichen);
+  color: var(--studio-focus);
+}
+
+.focus-source-row strong,
+.queue-row strong,
+.mission-card strong,
+.path-index-row strong,
+.hub-source-row strong,
+.book-row strong,
+.chapter-row strong,
+.note-row strong,
+.artifact-archive strong {
+  display: block;
+  color: var(--studio-ink);
+  font-size: calc(13px * var(--font-scale));
+  font-weight: var(--font-heading-weight);
+}
+
+.focus-source-row small,
+.queue-row small,
+.mission-card small,
+.path-index-row small,
+.hub-source-row small,
+.book-row small,
+.chapter-row small,
+.note-row small,
+.artifact-archive small {
+  display: block;
+  margin-top: 3px;
+  color: var(--studio-secondary);
+  font-size: calc(11px * var(--font-scale));
+}
+
+.queue-row {
+  min-height: 72px;
+}
+
+.queue-row.selected,
+.queue-row[aria-selected='true'],
+.note-row.open,
+.path-index-row.active,
+.focus-source-row.current,
+.mission-card.current {
+  margin-inline: -10px;
+  padding-inline: 10px;
+  background: var(--studio-lichen);
+}
+
+.queue-row.selected::before,
+.path-index-row.active::before,
+.focus-source-row.current::before {
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--studio-focus);
+  content: '';
+}
+
+.queue-row-header {
+  grid-column: 2 / -1;
+  justify-content: flex-start;
+}
+
+.queue-row-main {
+  grid-column: 2 / -1;
+  align-items: start;
+}
+
+.queue-brief,
+.queue-warning,
+.queue-preflight,
+.compass-strip,
+.compass-pick-module,
+.inbox-summary,
+.archive-rss,
+.deck-callout-banner,
+.settings-status,
+.hub-feedback {
+  padding: 12px 14px;
+  border: 1px solid var(--studio-seam);
+  border-radius: var(--studio-radius-panel);
+  background: var(--studio-shell);
+  color: var(--studio-secondary);
+}
+
+.queue-warning,
+.queue-preflight {
+  border-color: var(--studio-due);
+  color: var(--studio-due);
+}
+
+.queue-switcher,
+.queue-index,
+.queue-summary,
+.inbox-summary,
+.artifact-library-head,
+.book-shelf,
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--studio-seam);
+}
+
+.queue-switcher button,
+.queue-index a,
+.filter-bar button {
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--studio-secondary);
+  font-size: calc(12px * var(--font-scale));
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.queue-switcher button.active,
+.queue-index a.active,
+.filter-bar button.active {
+  border-bottom: 2px solid var(--studio-focus);
+  color: var(--studio-focus);
+}
+
+.item-source-actions {
+  justify-content: flex-end;
+}
+
+.item-source-actions a,
+.source-link,
+.source-record-link,
+.nblm-link {
+  color: var(--studio-cypress);
+  font-size: calc(12px * var(--font-scale));
+  font-weight: var(--font-heading-weight);
+}
+
+.focus-resource-grid,
+.manifest-files,
+.file-stack,
+.archive-rss-list,
+.book-chapters,
+.chapter-actions,
+.artifact-actions {
+  display: grid;
+  gap: 7px;
+}
+
+.focus-resource-grid a,
+.manifest-files a,
+.file-stack a,
+.archive-rss-list a,
+.chapter-actions a,
+.artifact-actions a {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--studio-seam);
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-canvas);
+  color: var(--studio-cypress);
+  font-size: calc(12px * var(--font-scale));
+  text-decoration: none;
+}
+
+.focus-resource-grid a:hover,
+.manifest-files a:hover,
+.file-stack a:hover,
+.archive-rss-list a:hover,
+.chapter-actions a:hover,
+.artifact-actions a:hover {
+  border-color: var(--studio-focus);
+  background: var(--studio-lichen);
+}
+
+.note-document,
+.note-reader {
+  max-width: var(--font-reading-measure, 68ch);
+  font-family: var(--font-reading);
+  font-size: calc(16px * var(--font-scale));
+  line-height: 1.75;
+}
+
+.note-document h2,
+.note-reader h1,
+.note-reader h2 {
+  font-family: var(--font-reading);
+}
+
+.note-document [dir='rtl'],
+.note-reader [dir='rtl'],
+[dir='rtl'].note-document,
+[dir='rtl'].note-reader {
+  font-family: var(--font-ui);
+  text-align: start;
+}
+
+.note-meta,
+.note-status,
+.note-source {
+  color: var(--studio-secondary);
+  font-family: var(--font-ui);
+  font-size: calc(12px * var(--font-scale));
+}
+
+.note-editor,
+.hub-note-title-input {
+  font-family: var(--font-reading);
+}
+
+.hub-note-row {
+  border-bottom: 1px solid var(--studio-seam);
+}
+
+.hub-note-head {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+}
+
+.hub-note-toggle {
+  min-height: 28px;
+  border-color: var(--studio-seam);
+  color: var(--studio-cypress);
+}
+
+.hub-note-body {
+  padding: 12px 38px 18px;
+  border-top: 1px solid var(--studio-seam);
+}
+
+.hub-note-copy p {
+  font-family: var(--font-reading);
+}
+
+.upload-btn {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  width: fit-content;
+  margin-top: 12px;
+  padding: 0 12px;
+  border: 1px solid var(--studio-seam);
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-canvas);
+  color: var(--studio-cypress);
+  cursor: pointer;
+}
+
+.upload-btn input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}

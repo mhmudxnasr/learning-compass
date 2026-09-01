@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import assert from 'node:assert/strict'
@@ -13,25 +13,68 @@ try {
 
   console.log('\nStep 1: Setting up local D1 database schema and migrations...')
   for (const args of [
-    ['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--file', 'schema.sql'],
-    ['d1', 'migrations', 'apply', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir],
+    [
+      'd1',
+      'execute',
+      'recommendations-db',
+      '--local',
+      '--config',
+      'wrangler.toml',
+      '--persist-to',
+      persistDir,
+      '--file',
+      'schema.sql',
+    ],
+    [
+      'd1',
+      'migrations',
+      'apply',
+      'recommendations-db',
+      '--local',
+      '--config',
+      'wrangler.toml',
+      '--persist-to',
+      persistDir,
+    ],
   ]) {
     const process = spawn(wrangler, args, { stdio: ['ignore', 'pipe', 'pipe'] })
     let output = ''
-    process.stdout.on('data', (chunk) => { output += chunk })
-    process.stderr.on('data', (chunk) => { output += chunk })
+    process.stdout.on('data', (chunk) => {
+      output += chunk
+    })
+    process.stderr.on('data', (chunk) => {
+      output += chunk
+    })
     const status = await new Promise((resolve) => process.on('close', resolve))
     if (status !== 0) throw new Error(`D1 setup failed:\n${output}`)
   }
 
   console.log('Step 2: Launching local worker server...')
-  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', '8789', '--var', 'REQUIRE_API_AUTH:false', '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: true,
-  })
+  server = spawn(
+    wrangler,
+    [
+      'dev',
+      '--config',
+      'wrangler.toml',
+      '--persist-to',
+      persistDir,
+      '--port',
+      '8789',
+      '--var',
+      'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true',
+    ],
+    {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    },
+  )
   let serverLog = ''
-  server.stdout.on('data', (chunk) => { serverLog = (serverLog + chunk).slice(-4000) })
-  server.stderr.on('data', (chunk) => { serverLog = (serverLog + chunk).slice(-4000) })
+  server.stdout.on('data', (chunk) => {
+    serverLog = (serverLog + chunk).slice(-4000)
+  })
+  server.stderr.on('data', (chunk) => {
+    serverLog = (serverLog + chunk).slice(-4000)
+  })
 
   for (let attempt = 0; attempt < 60; attempt++) {
     try {
@@ -97,7 +140,14 @@ try {
       source_class: 'paper',
       is_verified: true,
       verification: { verified_url: 'https://arxiv.org/abs/2301.00001', author_verified: true },
-      score_components: { frontier_potential: 0.95, info_gain: 0.9, personal_pull: 0.85, real_life_relevance: 0.8, source_quality: 0.95, format_exploration: 0.8 },
+      score_components: {
+        frontier_potential: 0.95,
+        info_gain: 0.9,
+        personal_pull: 0.85,
+        real_life_relevance: 0.8,
+        source_quality: 0.95,
+        format_exploration: 0.8,
+      },
       total_score: 0.91,
     },
     {
@@ -107,8 +157,18 @@ try {
       format: 'article',
       source_class: 'essay',
       is_verified: true,
-      verification: { verified_url: 'https://aeon.co/essays/how-auction-theory-reshaped-modern-markets', author_verified: true },
-      score_components: { frontier_potential: 0.85, info_gain: 0.8, personal_pull: 0.8, real_life_relevance: 0.85, source_quality: 0.9, format_exploration: 0.7 },
+      verification: {
+        verified_url: 'https://aeon.co/essays/how-auction-theory-reshaped-modern-markets',
+        author_verified: true,
+      },
+      score_components: {
+        frontier_potential: 0.85,
+        info_gain: 0.8,
+        personal_pull: 0.8,
+        real_life_relevance: 0.85,
+        source_quality: 0.9,
+        format_exploration: 0.7,
+      },
       total_score: 0.84,
     },
     ...Array.from({ length: 18 }, (_, i) => ({
@@ -171,9 +231,13 @@ try {
   const interviewRes = await req(`/discovery/runs/${runId}/interview`, {
     method: 'POST',
     body: JSON.stringify({
-      raw_feedback: 'This paper completely opened a new frontier for how I view institutional design under uncertainty!',
+      raw_feedback:
+        'This paper completely opened a new frontier for how I view institutional design under uncertainty!',
       questions: ['Did the academic preprint format feel appropriate for this level of depth?'],
-      answers: { 'Did the academic preprint format feel appropriate for this level of depth?': 'Yes, 45-minute deep focus preprint was perfect.' },
+      answers: {
+        'Did the academic preprint format feel appropriate for this level of depth?':
+          'Yes, 45-minute deep focus preprint was perfect.',
+      },
     }),
   })
   assert.equal(interviewRes.status, 200)
@@ -192,7 +256,8 @@ try {
       },
       evidence_deltas: { frontier_potential: 0.04, source_quality: 0.02 },
       branch_mutations: [{ branch_id: 'mechanism-design', action: 'promote' }],
-      learned_heuristics_patch: '- Academic preprints in Mechanism Design yield high frontier potential when prior conviction is high.',
+      learned_heuristics_patch:
+        '- Academic preprints in Mechanism Design yield high frontier potential when prior conviction is high.',
     }),
   })
   assert.equal(resolveRes.status, 200)
@@ -220,9 +285,19 @@ try {
 } finally {
   if (server && server.exitCode === null) {
     const exited = new Promise((resolve) => server.once('exit', resolve))
-    try { process.kill(-server.pid, 'SIGTERM') } catch { server.kill('SIGTERM') }
+    try {
+      process.kill(-server.pid, 'SIGTERM')
+    } catch {
+      server.kill('SIGTERM')
+    }
     await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 3000))])
-    if (server.exitCode === null) { try { process.kill(-server.pid, 'SIGKILL') } catch { server.kill('SIGKILL') } }
+    if (server.exitCode === null) {
+      try {
+        process.kill(-server.pid, 'SIGKILL')
+      } catch {
+        server.kill('SIGKILL')
+      }
+    }
   }
   rmSync(persistDir, { recursive: true, force: true })
 }

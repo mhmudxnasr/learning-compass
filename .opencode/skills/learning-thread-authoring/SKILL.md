@@ -1,6 +1,6 @@
 ---
 name: learning-thread-authoring
-description: "Design and operate Learning Compass Learn content: purpose-first Threads, visible Levels backed by stages, lessons, optional projects, and sources. Progress comes only from direct lesson completion. Use for requests to create, edit, inspect, populate, source, start, or complete any Thread, course, Level, stage, or lesson in recommendations-worker."
+description: 'Design and operate Learning Compass Learn content: purpose-first Threads, visible Levels backed by stages, lessons, optional projects, and sources. Progress comes only from direct lesson completion. Use for requests to create, edit, inspect, populate, source, start, or complete any Thread, course, Level, stage, or lesson in recommendations-worker.'
 ---
 
 # Learning Thread Authoring

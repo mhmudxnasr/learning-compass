@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { countNoteWords, minimumSourceNoteWords, SOURCE_NOTE_CONTRACT, validateSourceNoteCompletion } from '../../src/services/note-extraction.ts'
+import {
+  countNoteWords,
+  minimumSourceNoteWords,
+  SOURCE_NOTE_CONTRACT,
+  validateSourceNoteCompletion,
+} from '../../src/services/note-extraction.ts'
 
 const validBody = {
   extraction: {
@@ -15,18 +20,22 @@ const validBody = {
   note: {
     title: 'Why incentives fail in multitask work',
     kind: 'guide',
-    sections: [{
-      section_key: 'body',
-      label: 'Source note',
-      content: Array.from({ length: 151 }, (_, index) => `word${index}`).join(' '),
-    }],
+    sections: [
+      {
+        section_key: 'body',
+        label: 'Source note',
+        content: Array.from({ length: 151 }, (_, index) => `word${index}`).join(' '),
+      },
+    ],
   },
-  learning_units: [{
-    id: 'unit_1',
-    unit_type: 'claim',
-    statement: 'Strong incentives can redirect effort toward measured tasks.',
-    anchors: [{ anchor_type: 'section', locator: 'Multitasking', excerpt: 'Measured tasks attract effort.' }],
-  }],
+  learning_units: [
+    {
+      id: 'unit_1',
+      unit_type: 'claim',
+      statement: 'Strong incentives can redirect effort toward measured tasks.',
+      anchors: [{ anchor_type: 'section', locator: 'Multitasking', excerpt: 'Measured tasks attract effort.' }],
+    },
+  ],
 }
 
 test('source-note v2 accepts a proportional note with anchored ideas and no generated recall', () => {
@@ -59,5 +68,9 @@ test('source-note v2 does not require a recall receipt', () => {
 test('source-note v2 rejects all automatically generated recall drafts', () => {
   const body = structuredClone(validBody)
   body.srs_drafts = [{ question: 'سؤال تلقائي؟', answer: 'إجابة تلقائية.' }]
-  assert.ok(validateSourceNoteCompletion({ output_contract: SOURCE_NOTE_CONTRACT }, body).some((failure) => failure.includes('automated recall drafting is disabled')))
+  assert.ok(
+    validateSourceNoteCompletion({ output_contract: SOURCE_NOTE_CONTRACT }, body).some((failure) =>
+      failure.includes('automated recall drafting is disabled'),
+    ),
+  )
 })

@@ -1,10 +1,24 @@
 import { Hono } from 'hono'
 import { Bindings, redactSensitiveText, safeError } from '../lib'
 import { buildLearningBalance } from '../services/learning-balance'
-import { buildMemoryEvidenceStatements, compileMemoryContext, isMemoryOwnershipAllowed, isMemoryTaskKind } from '../services/memory-context'
+import {
+  buildMemoryEvidenceStatements,
+  compileMemoryContext,
+  isMemoryOwnershipAllowed,
+  isMemoryTaskKind,
+} from '../services/memory-context'
 import { loadCaptureQueue } from '../services/capture-queue'
 import { loadHermesBrief } from '../services/agent-briefing'
-import { AGENT_CONTRACT_VERSION, AGENT_PROTOCOL, type AgentMethod, agentCapabilityPathPattern, agentReadbackPathPattern, buildAgentOpenApi, buildCapabilityCatalog, resolveCapabilityReadbacks } from '../services/agent-capabilities'
+import {
+  AGENT_CONTRACT_VERSION,
+  AGENT_PROTOCOL,
+  type AgentMethod,
+  agentCapabilityPathPattern,
+  agentReadbackPathPattern,
+  buildAgentOpenApi,
+  buildCapabilityCatalog,
+  resolveCapabilityReadbacks,
+} from '../services/agent-capabilities'
 import { MAINTENANCE_CRON, runMaintenance } from '../services/maintenance'
 import { loadOperationalHealth } from '../services/operational-health'
 import { loadDataQuality } from '../services/data-quality'
@@ -12,12 +26,17 @@ import { loadDataQuality } from '../services/data-quality'
 const app = new Hono<{ Bindings: Bindings }>()
 const sqliteTime = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString().slice(0, 19).replace('T', ' ')
 const MAX_AGENT_VALUE_BYTES = 32 * 1024
-const SENSITIVE_AGENT_FIELD = /^(?:authorization|cookie|set_cookie|password|secret|token|api_key|private_key|auth|p256dh|chat_id|endpoint)$|^(?:access|refresh|client|bearer|session|id|auth|api|private|signing|encryption|webhook)_(?:token|secret|key|endpoint)$/
+const SENSITIVE_AGENT_FIELD =
+  /^(?:authorization|cookie|set_cookie|password|secret|token|api_key|private_key|auth|p256dh|chat_id|endpoint)$|^(?:access|refresh|client|bearer|session|id|auth|api|private|signing|encryption|webhook)_(?:token|secret|key|endpoint)$/
 const jsonBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value) || 'null').byteLength
 
-const isSensitiveAgentField = (key: string) => SENSITIVE_AGENT_FIELD.test(
-  key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/[-\s]+/g, '_').toLowerCase(),
-)
+const isSensitiveAgentField = (key: string) =>
+  SENSITIVE_AGENT_FIELD.test(
+    key
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/[-\s]+/g, '_')
+      .toLowerCase(),
+  )
 
 const redactAgentValue = (value: any, key = '', depth = 0): any => {
   if (isSensitiveAgentField(key)) return '[redacted]'
@@ -31,7 +50,9 @@ const redactAgentValue = (value: any, key = '', depth = 0): any => {
   }
   if (typeof value === 'object') {
     const entries = Object.entries(value)
-    const projected = Object.fromEntries(entries.slice(0, 100).map(([field, item]) => [field, redactAgentValue(item, field, depth + 1)]))
+    const projected = Object.fromEntries(
+      entries.slice(0, 100).map(([field, item]) => [field, redactAgentValue(item, field, depth + 1)]),
+    )
     if (entries.length > 100) projected.__agent_projection = { truncated: true, omitted_fields: entries.length - 100 }
     return projected
   }
@@ -43,23 +64,33 @@ const boundAgentValue = (value: any, maxBytes = MAX_AGENT_VALUE_BYTES): any => {
   const originalBytes = jsonBytes(safe)
   if (originalBytes <= maxBytes) return safe
   if (Array.isArray(safe)) {
-    return { truncated: true, original_bytes: originalBytes, item_count: safe.length, sample: safe.slice(0, 3).map((item) => boundAgentValue(item, 2000)) }
+    return {
+      truncated: true,
+      original_bytes: originalBytes,
+      item_count: safe.length,
+      sample: safe.slice(0, 3).map((item) => boundAgentValue(item, 2000)),
+    }
   }
   if (safe && typeof safe === 'object') {
-    const fields = Object.fromEntries(Object.entries(safe).slice(0, 50).map(([field, item]) => {
-      if (Array.isArray(item)) return [field, { type: 'array', count: item.length }]
-      if (item && typeof item === 'object') return [field, { type: 'object', keys: Object.keys(item).slice(0, 12) }]
-      return [field, typeof item === 'string' && item.length > 500 ? `${item.slice(0, 500)}…[truncated]` : item]
-    }))
+    const fields = Object.fromEntries(
+      Object.entries(safe)
+        .slice(0, 50)
+        .map(([field, item]) => {
+          if (Array.isArray(item)) return [field, { type: 'array', count: item.length }]
+          if (item && typeof item === 'object') return [field, { type: 'object', keys: Object.keys(item).slice(0, 12) }]
+          return [field, typeof item === 'string' && item.length > 500 ? `${item.slice(0, 500)}…[truncated]` : item]
+        }),
+    )
     return { truncated: true, original_bytes: originalBytes, fields }
   }
   return safe
 }
 
 const projectAgentSnapshots = (snapshots: any) => {
-  const project = (snapshot: any) => snapshot && typeof snapshot === 'object'
-    ? { ...snapshot, data: boundAgentValue(snapshot.data, 12 * 1024) }
-    : boundAgentValue(snapshot, 12 * 1024)
+  const project = (snapshot: any) =>
+    snapshot && typeof snapshot === 'object'
+      ? { ...snapshot, data: boundAgentValue(snapshot.data, 12 * 1024) }
+      : boundAgentValue(snapshot, 12 * 1024)
   if (!Array.isArray(snapshots)) return snapshots == null ? snapshots : project(snapshots)
   const items = snapshots.slice(0, 10).map(project)
   return snapshots.length > items.length ? { items, omitted: snapshots.length - items.length } : items
@@ -70,9 +101,13 @@ const projectAgentReceipt = (receipt: any) => {
   const projected = {
     ...safe,
     before: projectAgentSnapshots(safe?.before),
-    mutation_or_job: safe?.mutation_or_job ? { ...safe.mutation_or_job, data: boundAgentValue(safe.mutation_or_job.data, 12 * 1024) } : safe?.mutation_or_job,
+    mutation_or_job: safe?.mutation_or_job
+      ? { ...safe.mutation_or_job, data: boundAgentValue(safe.mutation_or_job.data, 12 * 1024) }
+      : safe?.mutation_or_job,
     after: projectAgentSnapshots(safe?.after),
-    evidence: Array.isArray(safe?.evidence) ? safe.evidence.slice(0, 50).map((item: any) => boundAgentValue(item, 2000)) : safe?.evidence || [],
+    evidence: Array.isArray(safe?.evidence)
+      ? safe.evidence.slice(0, 50).map((item: any) => boundAgentValue(item, 2000))
+      : safe?.evidence || [],
     blocker: boundAgentValue(safe?.blocker, 4000),
   }
   return boundAgentValue(projected, 28 * 1024)
@@ -88,62 +123,201 @@ const CAPABILITIES = [
   ['GET', '/agent/context', 'Read the compact taste and learning context.'],
   ['GET', '/agent/briefing', 'Read the deterministic next-action brief shared with the Home workspace.'],
   ['GET', '/agent/activity', 'Read recent Hermes receipts, audit events, and operational status.'],
-  ['GET', '/agent/system', 'Read the user-visible runtime, storage, data-quality contracts, schedule, recovery, and service inventory.'],
-  ['GET', '/health/ready', 'Read canonical production readiness across storage, integrity, jobs, maintenance, and recovery.'],
-  ['POST', '/agent/maintenance/run', 'Run the configured maintenance workflow on demand and persist a task-level receipt.'],
+  [
+    'GET',
+    '/agent/system',
+    'Read the user-visible runtime, storage, data-quality contracts, schedule, recovery, and service inventory.',
+  ],
+  [
+    'GET',
+    '/health/ready',
+    'Read canonical production readiness across storage, integrity, jobs, maintenance, and recovery.',
+  ],
+  [
+    'POST',
+    '/agent/maintenance/run',
+    'Run the configured maintenance workflow on demand and persist a task-level receipt.',
+  ],
   ['GET', '/dashboard/briefing', 'Read Momentum, active Queue files, weekly progress, and current insight.'],
   ['GET', '/capture', 'Read captured source records.'],
   ['POST', '/capture', 'Save a URL, text, or artifact as a source record.'],
-  ['GET', '/capture/personal', 'Read the searchable personal library with typed media state, progress, ratings, branches, and exact visual-summary counts.'],
+  [
+    'GET',
+    '/capture/personal',
+    'Read the searchable personal library with typed media state, progress, ratings, branches, and exact visual-summary counts.',
+  ],
   ['GET', '/capture/personal/:id', 'Read one exact personal library record.'],
-  ['POST', '/capture/personal', 'Create one branch-verified book, movie, series, podcast, course, game, album, or other personal record without changing Queue commitment.'],
-  ['PATCH', '/capture/personal/:id', 'Edit personal library metadata, progress, status, rating, tags, note, link, or branch while retaining canonical identity and event lineage.'],
-  ['POST', '/assistant/interpret', 'Interpret a natural-language consumption note into a reviewable set of personal records, profile signals, and follow-up questions without writing anything.'],
-  ['GET', '/hardcover', 'Read the configured Hardcover mirror, sync state, and which external books are already imported into the Personal Data Studio.'],
-  ['POST', '/hardcover/sync', 'Fetch the authenticated Hardcover library into the server-side mirror without importing anything into Queue.'],
-  ['POST', '/hardcover/import', 'Import selected or all unimported Hardcover books into the branch-verified Personal Data Studio.'],
+  [
+    'POST',
+    '/capture/personal',
+    'Create one branch-verified book, movie, series, podcast, course, game, album, or other personal record without changing Queue commitment.',
+  ],
+  [
+    'PATCH',
+    '/capture/personal/:id',
+    'Edit personal library metadata, progress, status, rating, tags, note, or branch while retaining canonical identity and event lineage; canonical links use guarded source replacement.',
+  ],
+  [
+    'POST',
+    '/assistant/interpret',
+    'Interpret a natural-language consumption note into a reviewable set of personal records, profile signals, and follow-up questions without writing anything.',
+  ],
+  [
+    'GET',
+    '/hardcover',
+    'Read the configured Hardcover mirror, sync state, and which external books are already imported into the Personal Data Studio.',
+  ],
+  [
+    'POST',
+    '/hardcover/sync',
+    'Fetch the authenticated Hardcover library into the server-side mirror without importing anything into Queue.',
+  ],
+  [
+    'POST',
+    '/hardcover/import',
+    'Import selected or all unimported Hardcover books into the branch-verified Personal Data Studio.',
+  ],
   ['GET', '/capture/feeds', 'Read RSS and Atom subscriptions.'],
   ['GET', '/capture/feeds/:id/entries', 'Read every article imported from one feed, paginated.'],
-  ['POST', '/capture/feeds', 'Subscribe to an RSS or Atom feed under a required verified default branch and import its latest entries; optional limit caps the initial import.'],
-  ['POST', '/capture/feeds/sync', 'Check every enabled web feed for new captured source records; optional limit caps entries per feed.'],
-  ['POST', '/capture/feeds/:id/sync', 'Check one web feed for new captured source records; optional limit caps imported entries.'],
+  [
+    'POST',
+    '/capture/feeds',
+    'Subscribe to an RSS or Atom feed under a required verified default branch and import its latest entries; optional limit caps the initial import.',
+  ],
+  [
+    'POST',
+    '/capture/feeds/sync',
+    'Check every enabled web feed for new captured source records; optional limit caps entries per feed.',
+  ],
+  [
+    'POST',
+    '/capture/feeds/:id/sync',
+    'Check one web feed for new captured source records; optional limit caps imported entries.',
+  ],
   ['DELETE', '/capture/feeds/:id', 'Unsubscribe from a web feed without deleting captured articles.'],
   ['GET', '/capture/queue', 'Read the active queue.'],
-  ['POST', '/capture/:id/triage', 'Queue, neutrally remove from Queue, or exclude a captured source; queue cap is enforced.'],
+  [
+    'POST',
+    '/capture/:id/triage',
+    'Queue, neutrally remove from Queue, or exclude a captured source; queue cap is enforced.',
+  ],
   ['POST', '/capture/:id/visualise', 'Ask Hermes to create a Lite Visual HTML/PDF companion for a queued link.'],
   ['GET', '/capture/:id', 'Read one capture.'],
-  ['GET', '/capture/:id/record', 'Read the canonical source record with exact feedback, extracted note sections, jobs, proposals, files, recall, sessions, memory influence, and outcome.'],
+  [
+    'GET',
+    '/capture/:id/record',
+    'Read the canonical source record with exact feedback, extracted note sections, jobs, proposals, files, recall, sessions, memory influence, and outcome.',
+  ],
   ['GET', '/compass/pick', 'Read the newest active ready/started Compass Pick; multiple concurrent picks may exist.'],
   ['GET', '/compass/pick/:id', 'Read one exact persisted Compass Pick and its candidate decision record.'],
-  ['GET', '/compass/context', 'Read the bounded canonical Thread, profile, exclusions, history, and candidate contract before Hermes researches recommendation candidates.'],
-  ['POST', '/compass/semantic/index', 'Explicitly index changed Learning Compass sources, Threads, Notes, and Units into the private semantic retrieval index; no recommendation is created.'],
-  ['POST', '/compass/picks', 'Submit 3–24 candidates for server-owned adaptive Compass Pick selection while queued/in-progress Queue count is below five; does not auto-start.'],
+  [
+    'GET',
+    '/compass/context',
+    'Read the bounded canonical Thread, profile, exclusions, history, and candidate contract before Hermes researches recommendation candidates.',
+  ],
+  [
+    'POST',
+    '/compass/semantic/index',
+    'Explicitly index changed Learning Compass sources, Threads, Notes, and Units into the private semantic retrieval index; no recommendation is created.',
+  ],
+  [
+    'POST',
+    '/compass/picks',
+    'Submit 3–24 candidates for server-owned adaptive Compass Pick selection while queued/in-progress Queue count is below five; does not auto-start.',
+  ],
   ['POST', '/compass/evaluate', 'Dry-run v1 and v2 scoring for 3–24 candidates without creating a pick.'],
-  ['POST', '/compass/pick/:id/candidates', 'Expand an abstained Compass Pick with additional candidates and rescore the complete set up to eight.'],
-  ['POST', '/compass/pick/:id/start', 'Explicitly start any ready Compass Pick through the normal Queue/session workflow; the five-item cap is enforced.'],
+  [
+    'POST',
+    '/compass/pick/:id/candidates',
+    'Expand an abstained Compass Pick with additional candidates and rescore the complete set up to eight.',
+  ],
+  [
+    'POST',
+    '/compass/pick/:id/start',
+    'Explicitly start any ready Compass Pick through the normal Queue/session workflow; the five-item cap is enforced.',
+  ],
   ['POST', '/compass/pick/:id/feedback', 'Record explicit Compass Pick outcome, rating, reason tags, and reflection.'],
   ['GET', '/recommendations/list', 'Search and filter recommendation history.'],
-  ['GET', '/feedback/context', 'Read all archived feedback with the current profile and knowledge nodes for evidence-based learning.'],
+  [
+    'GET',
+    '/feedback/context',
+    'Read all archived feedback with the current profile and knowledge nodes for evidence-based learning.',
+  ],
   ['POST', '/recommendations/push', 'Create or update a recommendation with deduplication.'],
-  ['POST', '/recommendations/action', 'Change status, rating, review, consumed date, or register an item-specific NotebookLM URL.'],
-  ['PATCH', '/recommendations/:id/source-url', 'Replace the preferred Original source URL while preserving the previous archive URL.'],
-  ['PATCH', '/recommendations/content-types', 'Correct a bounded set of verified YouTube source records to the canonical video content type.'],
-  ['GET', '/recommendations/books', 'Read the unified Books workspace projection, including personal state, normalized chapters, progress, next action, and book-scoped file links.'],
-  ['POST', '/recommendations/books/:id/reading-state', 'Set personal saved, reading, or finished state without changing Queue commitment; primary true explicitly pins one Reading book.'],
-  ['POST', '/recommendations/books/:id/chapters', 'Register or update book-scoped chapter metadata without creating artifacts.'],
-  ['POST', '/recommendations/books/:id/chapters/:chapterKey/complete', 'Mark one book-scoped chapter complete or incomplete.'],
+  [
+    'POST',
+    '/recommendations/action',
+    'Change status, rating, review, consumed date, or register an item-specific NotebookLM URL.',
+  ],
+  [
+    'PATCH',
+    '/recommendations/:id/source-url',
+    'Replace the preferred Original source URL with the observed current URL as a required precondition while preserving the previous archive URL.',
+  ],
+  [
+    'GET',
+    '/recommendations/:id/source-health',
+    'Read the latest advisory source-health projection, bounded attempts, and guarded URL replacement lineage.',
+  ],
+  [
+    'POST',
+    '/recommendations/:id/source-health/check',
+    'Explicitly verify and persist the current Original URL without rewriting it.',
+  ],
+  [
+    'POST',
+    '/recommendations/:id/source-url/verify',
+    'Verify and persist one replacement candidate against the observed current URL without installing it.',
+  ],
+  [
+    'PATCH',
+    '/recommendations/content-types',
+    'Correct a bounded set of verified YouTube source records to the canonical video content type.',
+  ],
+  [
+    'GET',
+    '/recommendations/books',
+    'Read the unified Books workspace projection, including personal state, normalized chapters, progress, next action, and book-scoped file links.',
+  ],
+  [
+    'POST',
+    '/recommendations/books/:id/reading-state',
+    'Set personal saved, reading, or finished state without changing Queue commitment; primary true explicitly pins one Reading book.',
+  ],
+  [
+    'POST',
+    '/recommendations/books/:id/chapters',
+    'Register or update book-scoped chapter metadata without creating artifacts.',
+  ],
+  [
+    'POST',
+    '/recommendations/books/:id/chapters/:chapterKey/complete',
+    'Mark one book-scoped chapter complete or incomplete.',
+  ],
   ['POST', '/recommendations/map', 'Attach one or more completed sources to an existing knowledge-map branch.'],
   ['POST', '/recommendations/delete', 'Delete a recommendation.'],
-  ['DELETE', '/recommendations/:id/permanent', 'Irreversibly delete an archived recommendation and linked learning history/artifacts.'],
+  [
+    'DELETE',
+    '/recommendations/:id/permanent',
+    'Irreversibly delete an archived recommendation and linked learning history/artifacts.',
+  ],
   ['POST', '/recommendations/undo', 'Undo a reversible recommendation deletion.'],
   ['GET', '/brain/profile', 'Read profile, priorities, patterns, blacklist, and audit history.'],
   ['POST', '/brain/profile', 'Edit any editable profile field.'],
   ['GET', '/brain/profile/intelligence', 'Read typed profile assertions, health, and reversible revisions.'],
   ['PUT', '/brain/profile/assertions/:key', 'Create or replace a typed profile assertion as an explicit user edit.'],
   ['POST', '/brain/profile/revisions/:id/revert', 'Undo one typed profile revision.'],
-  ['GET', '/brain/branch-deck', 'Read the personal top-level branch index, category index, status, and linked activity.'],
+  [
+    'GET',
+    '/brain/branch-deck',
+    'Read the personal top-level branch index, category index, status, and linked activity.',
+  ],
   ['POST', '/brain/branch-swipe', 'Activate, pause, prioritize, archive, add, edit, or undo a personal branch.'],
-  ['POST', '/brain/branch-suggest', 'Request review-before-commit new-branch ideas grounded in live Compass context; nothing is written.'],
+  [
+    'POST',
+    '/brain/branch-suggest',
+    'Request review-before-commit new-branch ideas grounded in live Compass context; nothing is written.',
+  ],
   ['POST', '/brain/priorities', 'Replace priorities.'],
   ['GET', '/brain/tree', 'Read the knowledge tree.'],
   ['POST', '/brain/node', 'Create a knowledge node.'],
@@ -152,16 +326,48 @@ const CAPABILITIES = [
   ['POST', '/brain/pattern/strength', 'Promote or demote a pattern.'],
   ['POST', '/brain/contradiction/resolve', 'Resolve a contradiction.'],
   ['GET', '/brain/resurfacing', 'Read the bounded daily resurfacing item with canonical branch and domain context.'],
-  ['PATCH', '/brain/resurfacing/:recommendationId/preference', 'Explicitly star or unstar one consumed source for resurfacing priority.'],
-  ['POST', '/brain/resurfacing/presentations', 'Record one source presentation idempotently for the current Cairo day.'],
-  ['POST', '/brain/resurfacing/:eventId/action', 'Mark a resurfaced source reviewed, snoozed, or dismissed without changing learning progression.'],
+  [
+    'PATCH',
+    '/brain/resurfacing/:recommendationId/preference',
+    'Explicitly star or unstar one consumed source for resurfacing priority.',
+  ],
+  [
+    'POST',
+    '/brain/resurfacing/presentations',
+    'Record one source presentation idempotently for the current Cairo day.',
+  ],
+  [
+    'POST',
+    '/brain/resurfacing/:eventId/action',
+    'Mark a resurfaced source reviewed, snoozed, or dismissed without changing learning progression.',
+  ],
   ['GET', '/knowledge/graph', 'Read the evidence-backed graph.'],
   ['GET', '/notes', 'Read structured notes and sections.'],
-  ['GET', '/notes/:id', 'Read one note dossier with anchored Units, meaningful backlinks, recall, and progressive distillation.'],
-  ['POST', '/notes', 'Create a structured note owned by a source, Thread (thread_id), or exact Level (stage_id); a note cannot belong directly to both Thread and Level.'],
-  ['POST', '/notes/:id/distillation/highlights', 'Explicitly retain one checksum-bound claim from the current note text.'],
-  ['POST', '/notes/:id/distillation/syntheses', 'Append one user-authored concise synthesis revision without rewriting the note.'],
-  ['POST', '/notes/:id/distillation/highlights/:highlightId/promote', 'Explicitly promote a retained claim into one anchored Learning Unit.'],
+  [
+    'GET',
+    '/notes/:id',
+    'Read one note dossier with anchored Units, meaningful backlinks, recall, and progressive distillation.',
+  ],
+  [
+    'POST',
+    '/notes',
+    'Create a structured note owned by a source, Thread (thread_id), or exact Level (stage_id); a note cannot belong directly to both Thread and Level.',
+  ],
+  [
+    'POST',
+    '/notes/:id/distillation/highlights',
+    'Explicitly retain one checksum-bound claim from the current note text.',
+  ],
+  [
+    'POST',
+    '/notes/:id/distillation/syntheses',
+    'Append one user-authored concise synthesis revision without rewriting the note.',
+  ],
+  [
+    'POST',
+    '/notes/:id/distillation/highlights/:highlightId/promote',
+    'Explicitly promote a retained claim into one anchored Learning Unit.',
+  ],
   ['PUT', '/notes/:id', 'Edit a note and its sections.'],
   ['DELETE', '/notes/:id', 'Delete a note and sections.'],
   ['POST', '/notes/:id/process', 'Queue confirmation-gated feedback processing for a personal reflection.'],
@@ -170,72 +376,269 @@ const CAPABILITIES = [
   ['POST', '/sessions/start', 'Start an external learning session.'],
   ['POST', '/sessions/:id/return', 'Return, reflect, and optionally complete a session.'],
   ['DELETE', '/sessions/:id', 'Delete an incomplete session.'],
-  ['GET', '/srs/drafts', 'Read editable SRS drafts globally or directly owned by one Thread (thread_id) or Level (stage_id).'],
+  [
+    'GET',
+    '/srs/drafts',
+    'Read editable SRS drafts globally or directly owned by one Thread (thread_id) or Level (stage_id).',
+  ],
   ['PUT', '/srs/drafts/:id', 'Edit an SRS draft.'],
   ['POST', '/srs/drafts/:id/approve', 'Approve an SRS draft into review.'],
   ['POST', '/srs/drafts/:id/reject', 'Reject an SRS draft.'],
   ['DELETE', '/srs/drafts/:id', 'Delete a draft.'],
-  ['GET', '/learning/srs/cards', 'Read active recall cards globally or directly owned by one Thread (thread_id) or Level (stage_id).'],
+  [
+    'GET',
+    '/learning/srs/cards',
+    'Read active recall cards globally or directly owned by one Thread (thread_id) or Level (stage_id).',
+  ],
   ['GET', '/learning/srs/cards/:id', 'Read one exact recall card, including cards that are not due.'],
-  ['POST', '/learning/srs/create', 'Create one learner-authored recall card owned by a Thread (thread_id) or exact Level (stage_id).'],
-  ['POST', '/learning/srs/review', 'Record a learner-confirmed recall grade and update its schedule and review history.'],
+  [
+    'GET',
+    '/learning/srs/repair',
+    'Read cards that crossed the transparent lapse threshold, with review history, repair history, provenance, and comparison candidates.',
+  ],
+  [
+    'POST',
+    '/learning/srs/create',
+    'Create one learner-authored recall card owned by a Thread (thread_id) or exact Level (stage_id).',
+  ],
+  [
+    'POST',
+    '/learning/srs/review',
+    'Record a learner-confirmed recall grade and update its schedule and review history.',
+  ],
+  [
+    'PUT',
+    '/learning/srs/cards/:id',
+    'Learner-edit a recall card; wording preserves scheduling while a semantic revision explicitly resets it.',
+  ],
+  [
+    'POST',
+    '/learning/srs/cards/:id/status',
+    'Pause, resume, retire, or restore one recall card while preserving scheduling and history.',
+  ],
+  ['POST', '/learning/srs/cards/:id/reset', 'Explicitly reset one card schedule while preserving its review history.'],
   ['DELETE', '/learning/srs/cards/:id', 'Delete an active recall card.'],
   ['GET', '/learning/core/integrity/health', 'Read canonical relationship integrity and quarantined legacy records.'],
-  ['GET', '/learning/core/hub', 'Read the Learning Hub with path progress and the current stage for every deliberate learning path.'],
+  [
+    'GET',
+    '/learning/core/hub',
+    'Read the Learning Hub with path progress and the current stage for every deliberate learning path.',
+  ],
   ['GET', '/learning/core/threads', 'Read Learning Threads.'],
-  ['GET', '/learning/core/threads/:id/path', 'Read one complete Learning Thread workspace: direct lesson completion plus each Level and its lessons, notes, files, recall cards, projects, and sources.'],
-  ['GET', '/learning/core/canon', 'Browse the evergreen three-book Canon by domain, curation state, validation state, family, or book search.'],
-  ['GET', '/learning/core/canon/domains/:id', 'Read one Canon domain with its three role-based book dossiers and replacement history.'],
+  [
+    'GET',
+    '/learning/core/threads/:id/path',
+    'Read one complete Learning Thread workspace: direct lesson completion plus each Level and its lessons, notes, files, recall cards, projects, and sources.',
+  ],
+  [
+    'GET',
+    '/learning/core/threads/:id/material-sources',
+    'Search existing branch-owned Library sources and read their current Thread, Level, and Lesson placements before attaching material.',
+  ],
+  [
+    'GET',
+    '/learning/core/canon',
+    'Browse the evergreen three-book Canon by domain, curation state, validation state, family, or book search.',
+  ],
+  [
+    'GET',
+    '/learning/core/canon/domains/:id',
+    'Read one Canon domain with its three role-based book dossiers and replacement history.',
+  ],
   ['GET', '/learning/core/canon/entries/:id', 'Read one exact Canon book selection and its linked source state.'],
-  ['POST', '/learning/core/canon/domains', 'Create a Canon family or domain connected to a verified non-pruned knowledge branch.'],
-  ['PATCH', '/learning/core/canon/domains/:id', 'Edit a Canon domain boundary, branch, curation state, or field-test state.'],
-  ['PUT', '/learning/core/canon/domains/:id/entries/:role', 'Create or replace one Foundation, Representative, or Boundary selection while preserving replacement history.'],
-  ['POST', '/learning/core/canon/entries/:id/capture', 'Explicitly save one Canon book as a source and inherit the domain branch.'],
-  ['POST', '/learning/core/canon/domains/:id/thread', 'Explicitly start a normal finite Learning Thread from one Canon domain.'],
-  ['POST', '/learning/core/threads/:id/stages/:stageId/start', 'Start an available Learning Hub stage and make its next action explicit.'],
-  ['GET', '/learning/core/weekly', 'Read the weekly closure review for stale Threads, cognitive loops, and due recall.'],
-  ['GET', '/learning/core/counterevidence', 'Find important Thread Units without contradiction or qualification evidence.'],
-  ['POST', '/learning/core/threads', 'Create a purpose-first Learning Thread; deep Hub paths must include an interview brief in the Thread context.'],
-  ['GET', '/learning/core/threads/:id', 'Read a Thread workspace, direct lesson state, sources, Units, and optional project context.'],
+  [
+    'POST',
+    '/learning/core/canon/domains',
+    'Create a Canon family or domain connected to a verified non-pruned knowledge branch.',
+  ],
+  [
+    'PATCH',
+    '/learning/core/canon/domains/:id',
+    'Edit a Canon domain boundary, branch, curation state, or field-test state.',
+  ],
+  [
+    'PUT',
+    '/learning/core/canon/domains/:id/entries/:role',
+    'Create or replace one Foundation, Representative, or Boundary selection while preserving replacement history.',
+  ],
+  [
+    'POST',
+    '/learning/core/canon/entries/:id/capture',
+    'Explicitly save one Canon book as a source and inherit the domain branch.',
+  ],
+  [
+    'POST',
+    '/learning/core/canon/domains/:id/thread',
+    'Explicitly start a normal finite Learning Thread from one Canon domain.',
+  ],
+  [
+    'POST',
+    '/learning/core/threads/:id/stages/:stageId/start',
+    'Start an available Learning Hub stage and make its next action explicit.',
+  ],
+  [
+    'GET',
+    '/learning/core/weekly',
+    'Read the weekly closure review for stale Threads, cognitive loops, and due recall.',
+  ],
+  [
+    'GET',
+    '/learning/core/counterevidence',
+    'Find important Thread Units without contradiction or qualification evidence.',
+  ],
+  [
+    'POST',
+    '/learning/core/threads',
+    'Create a purpose-first Learning Thread; deep Hub paths must include an interview brief in the Thread context.',
+  ],
+  [
+    'GET',
+    '/learning/core/threads/:id',
+    'Read a Thread workspace, direct lesson state, sources, Units, and optional project context.',
+  ],
   ['GET', '/learning/core/threads/:id/export', 'Export a complete Thread packet as JSON or Markdown.'],
   ['PATCH', '/learning/core/threads/:id', 'Edit a Thread or its final synthesis.'],
   ['POST', '/learning/core/threads/:id/status', 'Activate, pause, or abandon a Thread.'],
   ['POST', '/learning/core/threads/:id/sources', 'Attach a source to a Thread with an explicit role.'],
+  [
+    'PATCH',
+    '/learning/core/threads/:id/sources/:sourceId',
+    'Edit one exact Thread source role, contribution, or order without changing progression.',
+  ],
   ['POST', '/learning/core/threads/:id/stages', 'Add a staged curriculum level to a Learning Hub path.'],
-  ['PATCH', '/learning/core/threads/:id/stages/:stageId', 'Edit a Learning Thread Level definition and order; direct lesson completion owns progression.'],
-  ['POST', '/learning/core/threads/:id/stages/:stageId/sources', 'Assign a source to an existing Learning Hub stage with a foundation, case, companion, counterevidence, or reference role; source-fill work preserves the path structure.'],
-  ['POST', '/learning/core/threads/:id/stages/:stageId/lessons', 'Create one authored lesson inside an existing Learning Thread level.'],
-  ['PATCH', '/learning/core/threads/:id/lessons/:lessonId', 'Update lesson orientation, content, or self-directed completion state.'],
-  ['POST', '/learning/core/threads/:id/lessons/:lessonId/sources', 'Attach one verified study source directly to a course lesson.'],
-  ['PATCH', '/learning/core/threads/:id/projects/:projectId', 'Update optional Thread project metadata; projects do not affect progression.'],
+  [
+    'PATCH',
+    '/learning/core/threads/:id/stages/:stageId',
+    'Edit a Learning Thread Level definition and order; direct lesson completion owns progression.',
+  ],
+  [
+    'POST',
+    '/learning/core/threads/:id/stages/:stageId/sources',
+    'Attach one existing branch-owned Library source to an exact Level with a primary, case, challenge, reference, or optional role.',
+  ],
+  [
+    'PATCH',
+    '/learning/core/threads/:id/stages/:stageId/sources/:sourceId',
+    'Edit one exact Level source role, contribution, requirement, or order without changing progression.',
+  ],
+  [
+    'DELETE',
+    '/learning/core/threads/:id/stages/:stageId/sources/:sourceId',
+    'Remove one exact Level source placement without deleting the Library source.',
+  ],
+  [
+    'POST',
+    '/learning/core/threads/:id/stages/:stageId/lessons',
+    'Create one authored lesson inside an existing Learning Thread level.',
+  ],
+  [
+    'PATCH',
+    '/learning/core/threads/:id/lessons/:lessonId',
+    'Update lesson orientation, content, or self-directed completion state.',
+  ],
+  [
+    'POST',
+    '/learning/core/threads/:id/lessons/:lessonId/sources',
+    'Attach one existing branch-owned Library source directly to an exact lesson.',
+  ],
+  [
+    'PATCH',
+    '/learning/core/threads/:id/lessons/:lessonId/sources/:sourceId',
+    'Edit one exact lesson source role, contribution, or order without changing progression.',
+  ],
+  [
+    'DELETE',
+    '/learning/core/threads/:id/lessons/:lessonId/sources/:sourceId',
+    'Remove one exact lesson source placement without deleting the Library source.',
+  ],
+  [
+    'GET',
+    '/learning/core/threads/:id/lessons/:lessonId/material-request',
+    'Read the latest explicit Find material job for one exact lesson.',
+  ],
+  [
+    'POST',
+    '/learning/core/threads/:id/lessons/:lessonId/material-request',
+    'Explicitly request Library-first material research for an empty current-Level lesson; the worker may abstain and cannot attach, Queue, start, or advance anything.',
+  ],
+  [
+    'PATCH',
+    '/learning/core/threads/:id/projects/:projectId',
+    'Update optional Thread project metadata; projects do not affect progression.',
+  ],
   ['DELETE', '/learning/core/threads/:id/sources/:sourceId', 'Remove a source from a Thread without deleting it.'],
-  ['DELETE', '/learning/core/threads/:id', 'Irreversibly delete one exact Learning Thread after explicit confirmation.'],
+  [
+    'DELETE',
+    '/learning/core/threads/:id',
+    'Irreversibly delete one exact Learning Thread after explicit confirmation.',
+  ],
   ['GET', '/learning/core/units', 'Read atomic anchored Learning Units.'],
-  ['GET', '/learning/core/units/:id', 'Read one anchored Learning Unit with incoming and outgoing explained relationships.'],
+  [
+    'GET',
+    '/learning/core/units/:id',
+    'Read one anchored Learning Unit with incoming and outgoing explained relationships.',
+  ],
   ['POST', '/learning/core/units', 'Create an anchored Learning Unit.'],
   ['POST', '/learning/core/units/:id/relations', 'Create a typed relationship between Learning Units.'],
   ['GET', '/learning/core/contradictions', 'Read anchored Unit contradictions by review state.'],
-  ['PATCH', '/learning/core/contradictions/:id', 'Accept, resolve, or dismiss one anchored contradiction while preserving its claims and sources.'],
+  [
+    'PATCH',
+    '/learning/core/contradictions/:id',
+    'Accept, resolve, or dismiss one anchored contradiction while preserving its claims and sources.',
+  ],
   ['GET', '/annotations', 'Read source-anchored passage annotations with durable locators.'],
+  [
+    'GET',
+    '/annotations/resolve',
+    'Resolve a shared public URL to an existing branch-owned source before anchor creation.',
+  ],
   ['POST', '/annotations', 'Create a source-anchored passage annotation in the canonical evidence ledger.'],
   ['GET', '/annotations/:id', 'Read one source annotation and its linked derivations.'],
+  ['PATCH', '/annotations/:id', 'Edit the exact passage, context, or typed locator and refresh its search projection.'],
   ['POST', '/annotations/:id/archive', 'Archive an annotation without deleting its evidence history.'],
   ['GET', '/learning/core/consolidation/open', 'Read open cognitive loops.'],
   ['GET', '/learning/core/consolidation/:sourceId', 'Read one source consolidation run and its steps.'],
   ['POST', '/learning/core/consolidation/:id/retry', 'Retry a repair-required consolidation run.'],
   ['POST', '/learning/core/consolidation/:id/waive', 'Explicitly waive a consolidation run with a reason.'],
-  ['POST', '/learning/core/consolidation/:id/reconcile', 'Close a complete stranded consolidation or recreate and link its missing extraction job.'],
+  [
+    'POST',
+    '/learning/core/consolidation/:id/reconcile',
+    'Close a complete stranded consolidation or recreate and link its missing extraction job.',
+  ],
   ['GET', '/feedback/proposals', 'Read pending and reviewed Hermes change proposals.'],
-  ['POST', '/feedback/record', 'Resolve or capture a source, preserve feedback verbatim, update completion and rating, create idempotent analysis/extraction work, and return one exact receipt.'],
+  [
+    'POST',
+    '/feedback/record',
+    'Resolve or capture a source, preserve feedback verbatim, update completion and rating, create idempotent analysis/extraction work, and return one exact receipt.',
+  ],
   ['POST', '/feedback/proposals/:id/approve', 'Approve a proposed profile or map change for Hermes application.'],
   ['POST', '/feedback/proposals/:id/apply', 'Policy-check and automatically apply a Hermes profile proposal.'],
   ['POST', '/feedback/proposals/:id/revert', 'Revert one applied proposal and its typed profile revision.'],
   ['POST', '/feedback/proposals/:id/reject', 'Reject a proposed profile or map change.'],
   ['GET', '/artifacts', 'Read R2 artifact metadata and pairs.'],
   ['POST', '/artifacts', 'Upload an HTML, PDF, or other source artifact.'],
+  [
+    'POST',
+    '/artifacts/pairs',
+    'Publish one receipt-attested atomic Lite Visual HTML/PDF pair or stage it inside an exact corpus.',
+  ],
+  [
+    'POST',
+    '/artifacts/corpora',
+    'Create one manifest-, target-set-, aggregate-audit-, and workflow-run-bound Lite Visual corpus.',
+  ],
+  ['GET', '/artifacts/corpora/:id', 'Read one exact Lite Visual corpus and its activation state.'],
+  ['GET', '/artifacts/corpora/:id/pairs/:pairId', 'Read one hidden staged pair from its exact corpus.'],
+  ['POST', '/artifacts/corpora/:id/activate', 'Atomically activate one complete audited Lite Visual corpus.'],
+  ['POST', '/artifacts/corpora/:id/abort', 'Abort one exact staged corpus and safely release its target jobs.'],
+  ['POST', '/artifacts/corpora/:id/rollback', 'Guardedly restore the immediately prior visible Lite Visual corpus.'],
   ['POST', '/artifacts/:id/process', 'Queue idempotent note extraction.'],
   ['DELETE', '/artifacts/:id', 'Delete an artifact and its R2 object.'],
-  ['GET', '/artifacts/hub', 'Read file metadata directly owned by a Learning Thread (thread_id) or exact Level (stage_id).'],
+  [
+    'GET',
+    '/artifacts/hub',
+    'Read file metadata directly owned by a Learning Thread (thread_id) or exact Level (stage_id).',
+  ],
   ['GET', '/settings', 'Read settings.'],
   ['PUT', '/settings/:key', 'Edit one setting.'],
   ['GET', '/dashboard/layout', 'Read dashboard layout.'],
@@ -244,7 +647,11 @@ const CAPABILITIES = [
   ['GET', '/agent/jobs/health', 'Read Hermes job queue health, overdue retries, and stale lease counts.'],
   ['GET', '/agent/jobs/active', 'Read active and recently terminal jobs for bounded recovery verification.'],
   ['GET', '/agent/jobs/:id', 'Read one exact durable job and its current lease, retry, workflow, and result state.'],
-  ['POST', '/agent/jobs/reconcile', 'Dry-run or apply conservative reconciliation of visual jobs against canonical sources and complete R2 pairs.'],
+  [
+    'POST',
+    '/agent/jobs/reconcile',
+    'Dry-run or apply conservative reconciliation of visual jobs against canonical sources and complete R2 pairs.',
+  ],
   ['POST', '/agent/jobs/:id/claim', 'Claim a leased job.'],
   ['POST', '/agent/jobs/:id/checkpoint', 'Advance one resumable workflow to its next declared step.'],
   ['POST', '/agent/jobs/:id/complete', 'Complete a leased job with structured output.'],
@@ -265,15 +672,27 @@ const CAPABILITIES = [
   ['POST', '/discovery/runs', 'Create one research mission after enforcing the hard feedback gate.'],
   ['POST', '/discovery/runs/:id/candidates', 'Batch-store structured researched candidates.'],
   ['POST', '/discovery/runs/:id/select', 'Store the winner and decision receipt.'],
-  ['POST', '/discovery/runs/:id/activate', 'Capture through Inbox, promote through normal Queue validation, and start the linked session.'],
+  [
+    'POST',
+    '/discovery/runs/:id/activate',
+    'Capture through Inbox, promote through normal Queue validation, and start the linked session.',
+  ],
   ['POST', '/discovery/runs/:id/interview', 'Record feedback questions and answers.'],
-  ['POST', '/discovery/runs/:id/resolve', 'Atomically apply resolved evidence, bounded weights, branch mutations, and the learning receipt.'],
+  [
+    'POST',
+    '/discovery/runs/:id/resolve',
+    'Atomically apply resolved evidence, bounded weights, branch mutations, and the learning receipt.',
+  ],
   ['GET', '/discovery/revisions/pending', 'Fetch staged skill revisions for host-side Hermes synchronization.'],
   ['POST', '/discovery/revisions/:id/confirm', 'Confirm host-side application of a staged skill revision.'],
   ['POST', '/ai/enhance', 'Enhance or repair a recommendation using taste context.'],
   ['POST', '/ai/enhance/why', 'Generate or improve recommendation rationale.'],
   ['GET', '/search', 'Search site content.'],
-  ['GET', '/search/evidence', 'Search source-anchored evidence and return durable locators plus linked learning units.'],
+  [
+    'GET',
+    '/search/evidence',
+    'Search source-anchored evidence and return durable locators plus linked learning units.',
+  ],
   ['GET', '/taste/vector', 'Read taste vectors.'],
   ['GET', '/learning/health', 'Read learning health.'],
   ['GET', '/learning/balance', 'Read attention balance, branch coverage, retention signals, and unmapped sources.'],
@@ -282,7 +701,11 @@ const CAPABILITIES = [
   ['GET', '/analytics/heatmaps', 'Read learning heatmaps.'],
   ['GET', '/analytics/forecast', 'Read forecast analytics.'],
   ['GET', '/analytics/hermes', 'Read Hermes operations, quality, memory, alerts, and engine metrics.'],
-  ['POST', '/analytics/hermes/recalibrate', 'Apply conversation-bound, slow, evidence-gated recommendation weight recalibration.'],
+  [
+    'POST',
+    '/analytics/hermes/recalibrate',
+    'Apply conversation-bound, slow, evidence-gated recommendation weight recalibration.',
+  ],
   ['GET', '/analytics/hermes/engine', 'Read v2 shadow-rollout gates and current engine mode.'],
   ['POST', '/analytics/hermes/engine/activate', 'Switch from shadow to v2 only after every evidence gate passes.'],
   ['POST', '/analytics/hermes/engine/rollback', 'Return recommendation serving to shadow mode with a receipt.'],
@@ -290,8 +713,16 @@ const CAPABILITIES = [
   ['POST', '/analytics/hermes/repair', 'Apply a conversation-bound, snapshot-guarded deterministic history repair.'],
   ['GET', '/analytics/hermes/improvements', 'Read self-improvement run receipts and rollback status.'],
   ['POST', '/analytics/hermes/improvements', 'Open a conversation-bound self-improvement run.'],
-  ['POST', '/analytics/hermes/improvements/:id/complete', 'Record validated application or deployment of a self-improvement run.'],
-  ['POST', '/analytics/hermes/improvements/:id/revert', 'Record rollback of an applied or deployed self-improvement run.'],
+  [
+    'POST',
+    '/analytics/hermes/improvements/:id/complete',
+    'Record validated application or deployment of a self-improvement run.',
+  ],
+  [
+    'POST',
+    '/analytics/hermes/improvements/:id/revert',
+    'Record rollback of an applied or deployed self-improvement run.',
+  ],
   ['GET', '/notifications', 'Read browser and Telegram reminder controls and delivery history.'],
   ['GET', '/notifications/vapid', 'Read browser push configuration status.'],
   ['POST', '/notifications/push/subscribe', 'Enable browser reminder delivery for this device.'],
@@ -299,14 +730,30 @@ const CAPABILITIES = [
   ['POST', '/notifications/telegram', 'Enable or disable Telegram reminder delivery.'],
   ['POST', '/notifications/test', 'Send and record a reminder delivery test.'],
   ['GET', '/analytics/hermes/weekly', 'Read the weekly Hermes evaluator report.'],
-  ['POST', '/analytics/hermes/evaluate', 'Create conversation-bound reviewable evaluator proposals from weekly evidence.'],
+  [
+    'POST',
+    '/analytics/hermes/evaluate',
+    'Create conversation-bound reviewable evaluator proposals from weekly evidence.',
+  ],
   ['POST', '/analytics/hermes/backfill', 'Dry-run or conversation-bound apply of missing intelligence records.'],
   ['GET', '/notebooklm/health', 'Read NotebookLM broker, grounding, fallback, and session health.'],
   ['POST', '/notebooklm/health', 'Record a NotebookLM broker heartbeat and grounding result.'],
   ['POST', '/notebooklm/recover', 'Record a NotebookLM session recovery request.'],
-  ['GET', '/notebooklm/learning/receipts', 'Read the latest NotebookLM source indexing, focused output plan, and provider artifact receipts for one source.'],
-  ['POST', '/notebooklm/learning/route', 'Create a focused source-grounded NotebookLM output plan after source indexing is verified.'],
-  ['POST', '/notebooklm/learning/receipts', 'Record truthful NotebookLM source or provider artifact lifecycle evidence without changing learning progress.'],
+  [
+    'GET',
+    '/notebooklm/learning/receipts',
+    'Read the latest NotebookLM source indexing, focused output plan, and provider artifact receipts for one source.',
+  ],
+  [
+    'POST',
+    '/notebooklm/learning/route',
+    'Create a focused source-grounded NotebookLM output plan after source indexing is verified.',
+  ],
+  [
+    'POST',
+    '/notebooklm/learning/receipts',
+    'Record truthful NotebookLM source or provider artifact lifecycle evidence without changing learning progress.',
+  ],
 ] as const
 
 const CAPABILITY_PATTERNS = CAPABILITIES.map(([method, path]) => ({
@@ -322,27 +769,41 @@ async function logAgentAction(DB: any, c: any, action: string, payload: unknown,
   try {
     const agent = c.req.header('x-agent-name') || c.req.header('user-agent') || 'unknown-agent'
     await DB.prepare('INSERT INTO agent_logs (agent_name, action, payload_json, status) VALUES (?, ?, ?, ?)')
-      .bind(redactSensitiveText(agent, 120), redactSensitiveText(action, 200), JSON.stringify(boundAgentValue(payload ?? null, 16000)).slice(0, 20000), redactSensitiveText(status, 40)).run()
-  } catch { /* audit failure must not break the product request */ }
+      .bind(
+        redactSensitiveText(agent, 120),
+        redactSensitiveText(action, 200),
+        JSON.stringify(boundAgentValue(payload ?? null, 16000)).slice(0, 20000),
+        redactSensitiveText(status, 40),
+      )
+      .run()
+  } catch {
+    /* audit failure must not break the product request */
+  }
 }
 
 async function persistAgentReceipt(DB: any, c: any, receipt: any, statusCode: number, verified: boolean) {
   try {
     const agent = c.req.header('x-agent-name') || c.req.header('user-agent') || 'unknown-agent'
     const projectedReceipt = projectAgentReceipt(receipt)
-    await DB.prepare(`INSERT INTO agent_receipts
+    await DB.prepare(
+      `INSERT INTO agent_receipts
       (id,request_id,agent_name,intent,target,status_code,verified,receipt_json)
-      VALUES (?,?,?,?,?,?,?,?)`).bind(
-      `receipt_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`,
-      c.req.header('x-request-id') ? redactSensitiveText(c.req.header('x-request-id'), 120) : null,
-      redactSensitiveText(agent, 120),
-      redactSensitiveText(receipt?.intent || 'unknown', 40),
-      redactSensitiveText(receipt?.target || '', 500),
-      statusCode,
-      verified ? 1 : 0,
-      JSON.stringify(projectedReceipt).slice(0, 100000),
-    ).run()
-  } catch { /* receipt persistence must not turn a committed mutation into a failure */ }
+      VALUES (?,?,?,?,?,?,?,?)`,
+    )
+      .bind(
+        `receipt_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`,
+        c.req.header('x-request-id') ? redactSensitiveText(c.req.header('x-request-id'), 120) : null,
+        redactSensitiveText(agent, 120),
+        redactSensitiveText(receipt?.intent || 'unknown', 40),
+        redactSensitiveText(receipt?.target || '', 500),
+        statusCode,
+        verified ? 1 : 0,
+        JSON.stringify(projectedReceipt).slice(0, 100000),
+      )
+      .run()
+  } catch {
+    /* receipt persistence must not turn a committed mutation into a failure */
+  }
 }
 
 app.get('/briefing', async (c) => {
@@ -351,14 +812,17 @@ app.get('/briefing', async (c) => {
     return c.json(await loadHermesBrief(c.env.DB))
   } catch (error) {
     const failure = safeError('Hermes briefing unavailable')(error)
-    return c.json({
-      ...failure,
-      as_of: new Date().toISOString(),
-      health: { status: 'unavailable' },
-      next_action: null,
-      blockers: { context_unavailable: true },
-      counts: null,
-    }, 503)
+    return c.json(
+      {
+        ...failure,
+        as_of: new Date().toISOString(),
+        health: { status: 'unavailable' },
+        next_action: null,
+        blockers: { context_unavailable: true },
+        counts: null,
+      },
+      503,
+    )
   }
 })
 
@@ -379,31 +843,62 @@ app.get('/activity', async (c) => {
     }
   }
   const [receipts, logs, jobs, proposals] = await Promise.all([
-    load('receipts', () => c.env.DB.prepare(`SELECT id,request_id,agent_name,intent,target,status_code,verified,receipt_json,created_at
-      FROM agent_receipts ORDER BY created_at DESC LIMIT ?`).bind(limit).all<any>()),
-    load('audit_events', () => c.env.DB.prepare(`SELECT id,ts,agent_name,action,status FROM agent_logs ORDER BY ts DESC LIMIT ?`).bind(limit).all<any>()),
-    load('jobs', () => c.env.DB.prepare(`SELECT id,job_type,status,error,attempts,created_at,updated_at,lease_expires_at,
-      SUM(CASE WHEN status IN ('pending','running','retry') THEN 1 ELSE 0 END) OVER () active_total,
+    load('receipts', () =>
+      c.env.DB.prepare(
+        `SELECT id,request_id,agent_name,intent,target,status_code,verified,receipt_json,created_at
+      FROM agent_receipts ORDER BY created_at DESC LIMIT ?`,
+      )
+        .bind(limit)
+        .all<any>(),
+    ),
+    load('audit_events', () =>
+      c.env.DB.prepare(`SELECT id,ts,agent_name,action,status FROM agent_logs ORDER BY ts DESC LIMIT ?`)
+        .bind(limit)
+        .all<any>(),
+    ),
+    load('jobs', () =>
+      c.env.DB.prepare(
+        `SELECT id,job_type,status,error,attempts,created_at,updated_at,lease_expires_at,
+      SUM(CASE WHEN status IN ('pending','running','retry','awaiting_activation') THEN 1 ELSE 0 END) OVER () active_total,
       SUM(CASE WHEN status IN ('failed','dead_letter') THEN 1 ELSE 0 END) OVER () failed_total,
       SUM(CASE WHEN status='running' AND lease_expires_at<datetime('now') THEN 1 ELSE 0 END) OVER () stale_total,
       SUM(CASE WHEN status='dead_letter' THEN 1 ELSE 0 END) OVER () dead_letter_total
-      FROM agent_jobs WHERE status IN ('pending','running','retry','failed','dead_letter')
-      ORDER BY updated_at DESC LIMIT ?`).bind(limit).all<any>()),
-    load('proposals', () => c.env.DB.prepare(`SELECT id,change_type AS proposal_type,status,created_at,reviewed_at,applied_at,
+      FROM agent_jobs WHERE status IN ('pending','running','retry','awaiting_activation','failed','dead_letter')
+      ORDER BY updated_at DESC LIMIT ?`,
+      )
+        .bind(limit)
+        .all<any>(),
+    ),
+    load('proposals', () =>
+      c.env.DB.prepare(
+        `SELECT id,change_type AS proposal_type,status,created_at,reviewed_at,applied_at,
       COALESCE(applied_at,reviewed_at,created_at) AS updated_at,
       SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) OVER () pending_total
       FROM feedback_proposals WHERE status IN ('pending','approved','applied','rejected')
-      ORDER BY COALESCE(applied_at,reviewed_at,created_at) DESC LIMIT ?`).bind(limit).all<any>()),
+      ORDER BY COALESCE(applied_at,reviewed_at,created_at) DESC LIMIT ?`,
+      )
+        .bind(limit)
+        .all<any>(),
+    ),
   ])
   const parsedReceipts = (receipts.results || []).map((row: any) => {
-    let receipt: any = null
-    try { receipt = JSON.parse(row.receipt_json || '{}') } catch { receipt = { blocker: { message: 'Receipt payload could not be decoded.' } } }
+    let receipt: any
+    try {
+      receipt = JSON.parse(row.receipt_json || '{}')
+    } catch {
+      receipt = { blocker: { message: 'Receipt payload could not be decoded.' } }
+    }
     const { receipt_json: _receiptJson, ...metadata } = row
     return { ...redactAgentValue(metadata), verified: Boolean(row.verified), receipt: projectAgentReceipt(receipt) }
   })
   const auditRows = (logs.results || []).map((row: any) => redactAgentValue(row))
-  const jobRows = (jobs.results || []).map(({ active_total: _active, failed_total: _failed, stale_total: _stale, dead_letter_total: _dead, ...row }: any) => boundAgentValue(row, 8000))
-  const proposalRows = (proposals.results || []).map(({ pending_total: _pending, ...row }: any) => redactAgentValue(row))
+  const jobRows = (jobs.results || []).map(
+    ({ active_total: _active, failed_total: _failed, stale_total: _stale, dead_letter_total: _dead, ...row }: any) =>
+      boundAgentValue(row, 8000),
+  )
+  const proposalRows = (proposals.results || []).map(({ pending_total: _pending, ...row }: any) =>
+    redactAgentValue(row),
+  )
   const jobTotals = jobs.results?.[0] || {}
   const proposalTotals = proposals.results?.[0] || {}
   const degraded = Object.values(sections).some((section) => section.status === 'degraded')
@@ -443,31 +938,37 @@ app.get('/context', async (c) => {
     }
   }
 
-  const profile = await load<any>('profile', null, () => DB.prepare('SELECT identity_json, mega_priority_json, core_filter, reaction_style_json, quality_rules_json, patterns_summary_json FROM profile WHERE id = 1').first<any>())
-  const priorities = await load<any>('priorities', { results: [] }, () => DB.prepare('SELECT rank, branch_id, label, rationale FROM priorities ORDER BY rank ASC LIMIT 10').all())
+  const profile = await load<any>('profile', null, () =>
+    DB.prepare(
+      'SELECT identity_json, mega_priority_json, core_filter, reaction_style_json, quality_rules_json, patterns_summary_json FROM profile WHERE id = 1',
+    ).first<any>(),
+  )
+  const priorities = await load<any>('priorities', { results: [] }, () =>
+    DB.prepare('SELECT rank, branch_id, label, rationale FROM priorities ORDER BY rank ASC LIMIT 10').all(),
+  )
   const activeQueue = await load<any[]>('active_queue', [], () => loadCaptureQueue(DB, 50))
-  const profileAssertions = await load<any>('profile_assertions', { results: [] }, () => DB.prepare("SELECT assertion_key,category,scope,value_json,weight,confidence,status,source_kind,version,updated_at FROM profile_assertions WHERE status IN ('active','hypothesis') ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,confidence DESC,updated_at DESC LIMIT 100").all())
+  const profileAssertions = await load<any>('profile_assertions', { results: [] }, () =>
+    DB.prepare(
+      "SELECT assertion_key,category,scope,value_json,weight,confidence,status,source_kind,version,updated_at FROM profile_assertions WHERE status IN ('active','hypothesis') ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,confidence DESC,updated_at DESC LIMIT 100",
+    ).all(),
+  )
   // Recommendation targets are canonical only in /compass/context. Until this
   // aggregate owns a real query, expose the section as unavailable rather than
   // presenting a healthy empty array as live truth.
   sectionHealth.learning_gaps = { status: 'degraded', as_of: asOf, error: 'canonical_source_is_compass_context' }
-  const completedThreads = await load<any>('completed_threads', { results: [] }, () => DB.prepare(`
+  const completedThreads = await load<any>('completed_threads', { results: [] }, () =>
+    DB.prepare(
+      `
     SELECT id,title,thread_type,guiding_question,definition_of_done,final_synthesis,completed_at
-    FROM learning_threads WHERE status='verified' ORDER BY COALESCE(completed_at,updated_at) DESC LIMIT 50`).all())
-  let neglected: any = { results: [] }
-  let mastered: any = { results: [] }
-  let blindSpots: any = { results: [] }
-  let blacklist: any = { results: [] }
-  let creatorTrust: any = { results: [] }
-  let tasteVectors: any = { results: [] }
-  let reflections: any = { results: [] }
-  let learningBalance: any = null
-
-  neglected = await load<any>('neglected_branches', { results: [] }, async () => {
+    FROM learning_threads WHERE status='verified' ORDER BY COALESCE(completed_at,updated_at) DESC LIMIT 50`,
+    ).all(),
+  )
+  const neglected = await load<any>('neglected_branches', { results: [] }, async () => {
     // Neglected = no consumed source mapped to the branch (recommendation_meta.branch_id,
     // the canonical linkage written by POST /recommendations/map) and no legacy
     // dedup_key-prefix consumption in the window.
-    return DB.prepare(`
+    return DB.prepare(
+      `
       SELECT t.id, t.label, t.super_category,
              MAX(COALESCE(dm.last_consumed, dr.last_consumed)) as last_consumed
       FROM tree_nodes t
@@ -490,10 +991,15 @@ app.get('/context', async (c) => {
          OR MAX(COALESCE(dm.last_consumed, dr.last_consumed)) < date('now', '-30 days')
       ORDER BY MAX(COALESCE(dm.last_consumed, dr.last_consumed)) ASC
       LIMIT 5
-    `).all()
+    `,
+    ).all()
   })
-  mastered = await load<any>('mastered', { results: [] }, () => DB.prepare('SELECT id, kind, label, author, rating FROM mastered ORDER BY mastered_at DESC').all())
-  blindSpots = await load<any>('blind_spots', { results: [] }, () => DB.prepare(`
+  const mastered = await load<any>('mastered', { results: [] }, () =>
+    DB.prepare('SELECT id, kind, label, author, rating FROM mastered ORDER BY mastered_at DESC').all(),
+  )
+  const blindSpots = await load<any>('blind_spots', { results: [] }, () =>
+    DB.prepare(
+      `
       SELECT n.id, n.label, n.super_category
       FROM tree_nodes n
       LEFT JOIN recommendation_meta m ON m.branch_id = n.id
@@ -502,37 +1008,89 @@ app.get('/context', async (c) => {
       GROUP BY n.id
       HAVING COUNT(r.id) = 0
       LIMIT 15
-    `).all())
-  blacklist = await load<any>('blacklist', { results: [] }, () => DB.prepare('SELECT name, work, reason, severity FROM blacklist ORDER BY severity ASC').all())
-  creatorTrust = await load<any>('creator_trust', { results: [] }, () => DB.prepare(`
+    `,
+    ).all(),
+  )
+  const blacklist = await load<any>('blacklist', { results: [] }, () =>
+    DB.prepare('SELECT name, work, reason, severity FROM blacklist ORDER BY severity ASC').all(),
+  )
+  const creatorTrust = await load<any>('creator_trust', { results: [] }, () =>
+    DB.prepare(
+      `
       SELECT creator, ROUND(AVG(COALESCE(user_score, CASE user_rating WHEN 'love' THEN 10 WHEN 'like' THEN 8 WHEN 'meh' THEN 5 WHEN 'dislike' THEN 2 END)), 2) as avg_score
       FROM recommendations
       WHERE creator IS NOT NULL AND creator != '' AND status = 'consumed'
       GROUP BY creator
       ORDER BY avg_score DESC
       LIMIT 15
-    `).all())
-  tasteVectors = await load<any>('taste_vectors', { results: [] }, () => DB.prepare('SELECT topic, affinity_score FROM taste_vectors ORDER BY affinity_score DESC LIMIT 15').all())
-  reflections = await load<any>('recent_note_anchors', { results: [] }, () => DB.prepare("SELECT reflection FROM learning_sessions WHERE reflection IS NOT NULL AND reflection != '' ORDER BY completed_at DESC LIMIT 5").all())
-  learningBalance = await load<any>('learning_balance', null, async () => {
+    `,
+    ).all(),
+  )
+  const tasteVectors = await load<any>('taste_vectors', { results: [] }, () =>
+    DB.prepare('SELECT topic, affinity_score FROM taste_vectors ORDER BY affinity_score DESC LIMIT 15').all(),
+  )
+  const reflections = await load<any>('recent_note_anchors', { results: [] }, () =>
+    DB.prepare(
+      "SELECT reflection FROM learning_sessions WHERE reflection IS NOT NULL AND reflection != '' ORDER BY completed_at DESC LIMIT 5",
+    ).all(),
+  )
+  const learningBalance = await load<any>('learning_balance', null, async () => {
     const balance = await buildLearningBalance(DB, 90)
     const branches = balance.branches || []
-    const compact = (state: string) => branches.filter((branch: any) => branch.state === state).sort((a: any, b: any) => Number(b.attention_share || 0) - Number(a.attention_share || 0)).slice(0, 8)
+    const compact = (state: string) =>
+      branches
+        .filter((branch: any) => branch.state === state)
+        .sort((a: any, b: any) => Number(b.attention_share || 0) - Number(a.attention_share || 0))
+        .slice(0, 8)
     return {
       window_days: balance.window_days,
       unmapped_count: balance.portfolio?.unmapped_count || 0,
-      attention_by_branch: [...branches].sort((a: any, b: any) => Number(b.attention_share || 0) - Number(a.attention_share || 0)).slice(0, 12).map((branch: any) => ({ id: branch.id, label: branch.label, attention_share: branch.attention_share, priority_share: branch.priority_share })),
-      overfocused_branches: compact('over-focused').map((branch: any) => ({ id: branch.id, label: branch.label, attention_share: branch.attention_share, priority_share: branch.priority_share, reasons: branch.reasons })),
-      at_risk_branches: compact('at-risk').map((branch: any) => ({ id: branch.id, label: branch.label, last_consumed_at: branch.last_consumed_at, srs_due: branch.srs_due, recall_strength: branch.recall_strength, reasons: branch.reasons })),
-      weakly_consolidated_branches: compact('exposed').map((branch: any) => ({ id: branch.id, label: branch.label, consumed_count: branch.consumed_count, reasons: branch.reasons })),
-      uncovered_branches: compact('uncovered').map((branch: any) => ({ id: branch.id, label: branch.label, priority_rank: branch.priority_rank })),
+      attention_by_branch: [...branches]
+        .sort((a: any, b: any) => Number(b.attention_share || 0) - Number(a.attention_share || 0))
+        .slice(0, 12)
+        .map((branch: any) => ({
+          id: branch.id,
+          label: branch.label,
+          attention_share: branch.attention_share,
+          priority_share: branch.priority_share,
+        })),
+      overfocused_branches: compact('over-focused').map((branch: any) => ({
+        id: branch.id,
+        label: branch.label,
+        attention_share: branch.attention_share,
+        priority_share: branch.priority_share,
+        reasons: branch.reasons,
+      })),
+      at_risk_branches: compact('at-risk').map((branch: any) => ({
+        id: branch.id,
+        label: branch.label,
+        last_consumed_at: branch.last_consumed_at,
+        srs_due: branch.srs_due,
+        recall_strength: branch.recall_strength,
+        reasons: branch.reasons,
+      })),
+      weakly_consolidated_branches: compact('exposed').map((branch: any) => ({
+        id: branch.id,
+        label: branch.label,
+        consumed_count: branch.consumed_count,
+        reasons: branch.reasons,
+      })),
+      uncovered_branches: compact('uncovered').map((branch: any) => ({
+        id: branch.id,
+        label: branch.label,
+        priority_rank: branch.priority_rank,
+      })),
     }
   })
 
   let identityParsed = null
   let patternsParsed = null
-  try { if (profile?.identity_json) identityParsed = JSON.parse(profile.identity_json) } catch {}
-  try { if (profile?.patterns_summary_json) patternsParsed = JSON.parse(profile.patterns_summary_json) } catch {}
+  try {
+    if (profile?.identity_json) identityParsed = JSON.parse(profile.identity_json)
+  } catch {}
+  try {
+    if (profile?.patterns_summary_json) patternsParsed = JSON.parse(profile.patterns_summary_json)
+  } catch {}
 
   const noteAnchors = (reflections?.results || [])
     .map((r: any) => (r.reflection || '').trim())
@@ -540,12 +1098,18 @@ app.get('/context', async (c) => {
     .slice(0, 5)
     .map((t: string) => (t.length > 180 ? t.slice(0, 180) + '...' : t))
 
-  const requiredUnavailable = ['active_queue', 'learning_gaps', 'learning_balance'].some((name) => sectionHealth[name]?.status === 'degraded')
+  const requiredUnavailable = ['active_queue', 'learning_gaps', 'learning_balance'].some(
+    (name) => sectionHealth[name]?.status === 'degraded',
+  )
   const payload = {
     timestamp: asOf,
     context_version: AGENT_CONTRACT_VERSION,
     health: {
-      status: requiredUnavailable ? 'unavailable' : Object.values(sectionHealth).some((section) => section.status === 'degraded') ? 'degraded' : 'healthy',
+      status: requiredUnavailable
+        ? 'unavailable'
+        : Object.values(sectionHealth).some((section) => section.status === 'degraded')
+          ? 'degraded'
+          : 'healthy',
       sections: sectionHealth,
     },
     curator: 'Mahmood',
@@ -556,7 +1120,9 @@ app.get('/context', async (c) => {
       model_version: 'profile_v2',
       assertions: (profileAssertions?.results || []).map((assertion: any) => {
         let value: any = assertion.value_json
-        try { value = JSON.parse(assertion.value_json) } catch {}
+        try {
+          value = JSON.parse(assertion.value_json)
+        } catch {}
         return { ...assertion, value, value_json: undefined }
       }),
     },
@@ -582,37 +1148,73 @@ app.get('/memory', async (c) => {
   const status = requestedStatus || 'active'
   const q = (c.req.query('q') || '').trim().slice(0, 120)
   const recommendationId = c.req.query('recommendation_id')
-  await c.env.DB.prepare(`UPDATE hermes_memory SET status='expired',updated_at=datetime('now') WHERE status IN ('active','approved') AND expires_at IS NOT NULL AND expires_at<=datetime('now')`).run()
+  await c.env.DB.prepare(
+    `UPDATE hermes_memory SET status='expired',updated_at=datetime('now') WHERE status IN ('active','approved') AND expires_at IS NOT NULL AND expires_at<=datetime('now')`,
+  ).run()
   const clauses: string[] = []
   const binds: any[] = []
   if (status === 'active' && !requestedStatus) clauses.push("status IN ('active','approved')")
-  else if (status !== 'all') { clauses.push('status=?'); binds.push(status) }
-  if (kind) { clauses.push('memory_kind=?'); binds.push(kind) }
-  if (q) { clauses.push('(memory_key LIKE ? OR source LIKE ? OR value_json LIKE ?)'); binds.push(`%${q}%`, `%${q}%`, `%${q}%`) }
-  if (recommendationId) clauses.push('evidence_json LIKE ?'), binds.push(`%${recommendationId}%`)
-  const query = c.env.DB.prepare(`SELECT * FROM hermes_memory ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY updated_at DESC LIMIT 200`).bind(...binds)
+  else if (status !== 'all') {
+    clauses.push('status=?')
+    binds.push(status)
+  }
+  if (kind) {
+    clauses.push('memory_kind=?')
+    binds.push(kind)
+  }
+  if (q) {
+    clauses.push('(memory_key LIKE ? OR source LIKE ? OR value_json LIKE ?)')
+    binds.push(`%${q}%`, `%${q}%`, `%${q}%`)
+  }
+  if (recommendationId) {
+    clauses.push('evidence_json LIKE ?')
+    binds.push(`%${recommendationId}%`)
+  }
+  const query = c.env.DB.prepare(
+    `SELECT * FROM hermes_memory ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY updated_at DESC LIMIT 200`,
+  ).bind(...binds)
   const rows = await query.all<any>()
   const memoryIds = (rows.results || []).map((row: any) => row.id)
-  let relationalEvidence = new Map<string, any[]>()
+  const relationalEvidence = new Map<string, any[]>()
   if (memoryIds.length) {
     try {
-      const evidenceRows = await c.env.DB.prepare(`SELECT memory_id,evidence_type,recommendation_id,thread_id,unit_id,learning_event_id,source_ref,quote,reason,confidence,created_at FROM memory_evidence WHERE memory_id IN (${memoryIds.map(() => '?').join(',')}) ORDER BY created_at DESC`).bind(...memoryIds).all<any>()
-      for (const item of evidenceRows.results || []) relationalEvidence.set(item.memory_id, [...(relationalEvidence.get(item.memory_id) || []), item])
-    } catch { /* compatibility before migration */ }
+      const evidenceRows = await c.env.DB.prepare(
+        `SELECT memory_id,evidence_type,recommendation_id,thread_id,unit_id,learning_event_id,source_ref,quote,reason,confidence,created_at FROM memory_evidence WHERE memory_id IN (${memoryIds.map(() => '?').join(',')}) ORDER BY created_at DESC`,
+      )
+        .bind(...memoryIds)
+        .all<any>()
+      for (const item of evidenceRows.results || [])
+        relationalEvidence.set(item.memory_id, [...(relationalEvidence.get(item.memory_id) || []), item])
+    } catch {
+      /* compatibility before migration */
+    }
   }
   const memories = (rows.results || []).map((row: any) => {
-    let value: any = null; let evidence: any[] = []
-    try { value = JSON.parse(row.value_json || 'null') } catch {}
-    try { evidence = JSON.parse(row.evidence_json || '[]') } catch {}
+    let value: any = null
+    let evidence: any[] = []
+    try {
+      value = JSON.parse(row.value_json || 'null')
+    } catch {}
+    try {
+      evidence = JSON.parse(row.evidence_json || '[]')
+    } catch {}
     if (relationalEvidence.has(row.id)) evidence = relationalEvidence.get(row.id) || evidence
-    return { ...row, value, evidence, value_json: undefined, evidence_json: undefined, influences: evidence.filter((item) => item.recommendation_id) }
+    return {
+      ...row,
+      value,
+      evidence,
+      value_json: undefined,
+      evidence_json: undefined,
+      influences: evidence.filter((item) => item.recommendation_id),
+    }
   })
   return c.json({ memories })
 })
 
 app.get('/memory/context', async (c) => {
   const taskKind = c.req.query('task_kind') || ''
-  if (!isMemoryTaskKind(taskKind)) return c.json({ error: 'task_kind must be recommendation, feedback, learning, or self_evolution' }, 400)
+  if (!isMemoryTaskKind(taskKind))
+    return c.json({ error: 'task_kind must be recommendation, feedback, learning, or self_evolution' }, 400)
   const context = await compileMemoryContext(c.env.DB, {
     taskKind,
     query: c.req.query('q') || '',
@@ -627,53 +1229,113 @@ app.get('/memory/context', async (c) => {
 
 app.post('/memory', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}))
-  const memoryKey = String(body.memory_key || '').trim().slice(0, 180)
+  const memoryKey = String(body.memory_key || '')
+    .trim()
+    .slice(0, 180)
   const memoryKind = String(body.memory_kind || '').trim()
-  const source = String(body.source || '').trim().slice(0, 180)
+  const source = String(body.source || '')
+    .trim()
+    .slice(0, 180)
   const confidence = Math.max(0, Math.min(1, Number(body.confidence ?? 0.5)))
-  if (!memoryKey || !source || body.value === undefined) return c.json({ error: 'memory_key, value, and source are required' }, 400)
-  if (!['durable', 'episodic', 'working', 'rejection', 'hypothesis'].includes(memoryKind)) return c.json({ error: 'invalid memory_kind' }, 400)
-  if (!isMemoryOwnershipAllowed(memoryKey)) return c.json({ error: 'memory_key belongs to profile or live learning state; use its canonical API instead' }, 409)
-  if (memoryKind === 'durable' && confidence < 0.7) return c.json({ error: 'durable memory requires confidence >= 0.7' }, 400)
-  const existing = await c.env.DB.prepare(`SELECT id FROM hermes_memory WHERE memory_key=? AND status IN ('active','approved') ORDER BY updated_at DESC,id DESC LIMIT 1`).bind(memoryKey).first<any>()
+  if (!memoryKey || !source || body.value === undefined)
+    return c.json({ error: 'memory_key, value, and source are required' }, 400)
+  if (!['durable', 'episodic', 'working', 'rejection', 'hypothesis'].includes(memoryKind))
+    return c.json({ error: 'invalid memory_kind' }, 400)
+  if (!isMemoryOwnershipAllowed(memoryKey))
+    return c.json({ error: 'memory_key belongs to profile or live learning state; use its canonical API instead' }, 409)
+  if (memoryKind === 'durable' && confidence < 0.7)
+    return c.json({ error: 'durable memory requires confidence >= 0.7' }, 400)
+  const existing = await c.env.DB.prepare(
+    `SELECT id FROM hermes_memory WHERE memory_key=? AND status IN ('active','approved') ORDER BY updated_at DESC,id DESC LIMIT 1`,
+  )
+    .bind(memoryKey)
+    .first<any>()
   const id = `mem_${crypto.randomUUID()}`
-  const expiry = body.expires_at ? String(body.expires_at).replace('T', ' ').replace('Z', '').slice(0, 19) : (memoryKind === 'working' || memoryKind === 'hypothesis' ? sqliteTime(30 * 86400000) : null)
-  const evidence = Array.isArray(body.evidence) ? body.evidence.slice(0, 20).map((item: any) => ({
-    recommendation_id: item.recommendation_id ? String(item.recommendation_id).slice(0, 120) : undefined,
-    source: item.source ? String(item.source).slice(0, 500) : undefined,
-    quote: item.quote ? String(item.quote).slice(0, 1000) : undefined,
-    reason: item.reason ? String(item.reason).slice(0, 500) : undefined,
-    confidence: item.confidence == null ? undefined : Math.max(0, Math.min(1, Number(item.confidence))),
-  })) : []
-  if (['durable', 'hypothesis'].includes(memoryKind) && !evidence.length) return c.json({ error: 'validated memory requires evidence' }, 400)
+  const expiry = body.expires_at
+    ? String(body.expires_at).replace('T', ' ').replace('Z', '').slice(0, 19)
+    : memoryKind === 'working' || memoryKind === 'hypothesis'
+      ? sqliteTime(30 * 86400000)
+      : null
+  const evidence = Array.isArray(body.evidence)
+    ? body.evidence.slice(0, 20).map((item: any) => ({
+        recommendation_id: item.recommendation_id ? String(item.recommendation_id).slice(0, 120) : undefined,
+        source: item.source ? String(item.source).slice(0, 500) : undefined,
+        quote: item.quote ? String(item.quote).slice(0, 1000) : undefined,
+        reason: item.reason ? String(item.reason).slice(0, 500) : undefined,
+        confidence: item.confidence == null ? undefined : Math.max(0, Math.min(1, Number(item.confidence))),
+      }))
+    : []
+  if (['durable', 'hypothesis'].includes(memoryKind) && !evidence.length)
+    return c.json({ error: 'validated memory requires evidence' }, 400)
   const statements: D1PreparedStatement[] = []
-  if (existing) statements.push(c.env.DB.prepare(`UPDATE hermes_memory SET status='superseded',updated_at=datetime('now') WHERE memory_key=? AND status IN ('active','approved')`).bind(memoryKey))
-  statements.push(c.env.DB.prepare(`INSERT INTO hermes_memory (id,memory_key,memory_kind,value_json,confidence,source,status,supersedes_id,expires_at,evidence_json) VALUES (?,?,?,?,?,?,'active',?,?,?)`)
-    .bind(id, memoryKey, memoryKind, JSON.stringify(body.value).slice(0, 12000), confidence, source, existing?.id || null, expiry, JSON.stringify(evidence).slice(0, 16000)))
+  if (existing)
+    statements.push(
+      c.env.DB.prepare(
+        `UPDATE hermes_memory SET status='superseded',updated_at=datetime('now') WHERE memory_key=? AND status IN ('active','approved')`,
+      ).bind(memoryKey),
+    )
+  statements.push(
+    c.env.DB.prepare(
+      `INSERT INTO hermes_memory (id,memory_key,memory_kind,value_json,confidence,source,status,supersedes_id,expires_at,evidence_json) VALUES (?,?,?,?,?,?,'active',?,?,?)`,
+    ).bind(
+      id,
+      memoryKey,
+      memoryKind,
+      JSON.stringify(body.value).slice(0, 12000),
+      confidence,
+      source,
+      existing?.id || null,
+      expiry,
+      JSON.stringify(evidence).slice(0, 16000),
+    ),
+  )
   statements.push(...buildMemoryEvidenceStatements(c.env.DB, id, evidence))
   await c.env.DB.batch(statements)
   return c.json({ ok: true, id, superseded_id: existing?.id || null, expires_at: expiry }, 201)
 })
 
 app.post('/memory/:id/approve', async (c) => {
-  const result = await c.env.DB.prepare(`UPDATE hermes_memory SET status='approved',updated_at=datetime('now') WHERE id=? AND status IN ('active','approved')`).bind(c.req.param('id')).run()
+  const result = await c.env.DB.prepare(
+    `UPDATE hermes_memory SET status='approved',updated_at=datetime('now') WHERE id=? AND status IN ('active','approved')`,
+  )
+    .bind(c.req.param('id'))
+    .run()
   return result.meta.changes ? c.json({ ok: true, status: 'approved' }) : c.json({ error: 'memory not found' }, 404)
 })
 
 app.post('/memory/:id/expire', async (c) => {
-  const result = await c.env.DB.prepare(`UPDATE hermes_memory SET status='expired',updated_at=datetime('now') WHERE id=? AND status IN ('active','approved')`).bind(c.req.param('id')).run()
-  return result.meta.changes ? c.json({ ok: true, status: 'expired' }) : c.json({ error: 'active memory not found' }, 404)
+  const result = await c.env.DB.prepare(
+    `UPDATE hermes_memory SET status='expired',updated_at=datetime('now') WHERE id=? AND status IN ('active','approved')`,
+  )
+    .bind(c.req.param('id'))
+    .run()
+  return result.meta.changes
+    ? c.json({ ok: true, status: 'expired' })
+    : c.json({ error: 'active memory not found' }, 404)
 })
 
 app.post('/memory/:id/resolve', async (c) => {
-  const body: { status?: 'superseded' | 'rejected' } = await c.req.json<{ status?: 'superseded' | 'rejected' }>().catch(() => ({} as { status?: 'superseded' | 'rejected' }))
-  if (!body.status || !['superseded', 'rejected'].includes(body.status)) return c.json({ error: 'status must be superseded or rejected' }, 400)
-  const result = await c.env.DB.prepare(`UPDATE hermes_memory SET status=?,updated_at=datetime('now') WHERE id=? AND status IN ('active','approved')`).bind(body.status, c.req.param('id')).run()
-  return result.meta.changes ? c.json({ ok: true, status: body.status }) : c.json({ error: 'live memory not found' }, 404)
+  const body: { status?: 'superseded' | 'rejected' } = await c.req
+    .json<{ status?: 'superseded' | 'rejected' }>()
+    .catch(() => ({}) as { status?: 'superseded' | 'rejected' })
+  if (!body.status || !['superseded', 'rejected'].includes(body.status))
+    return c.json({ error: 'status must be superseded or rejected' }, 400)
+  const result = await c.env.DB.prepare(
+    `UPDATE hermes_memory SET status=?,updated_at=datetime('now') WHERE id=? AND status IN ('active','approved')`,
+  )
+    .bind(body.status, c.req.param('id'))
+    .run()
+  return result.meta.changes
+    ? c.json({ ok: true, status: body.status })
+    : c.json({ error: 'live memory not found' }, 404)
 })
 
 app.post('/alerts/:id/ack', async (c) => {
-  const result = await c.env.DB.prepare(`UPDATE hermes_alerts SET acknowledged_at=datetime('now') WHERE id=? AND acknowledged_at IS NULL`).bind(c.req.param('id')).run()
+  const result = await c.env.DB.prepare(
+    `UPDATE hermes_alerts SET acknowledged_at=datetime('now') WHERE id=? AND acknowledged_at IS NULL`,
+  )
+    .bind(c.req.param('id'))
+    .run()
   return result.meta.changes ? c.json({ ok: true }) : c.json({ error: 'open alert not found' }, 404)
 })
 
@@ -687,18 +1349,31 @@ app.get('/capabilities', (c) => {
   const catalog = buildCapabilityCatalog(CAPABILITIES, filters)
   const summary = c.req.query('view') !== 'full'
   const capabilities = summary
-    ? catalog.map(({ method, path, description, domain, intent, risk, reversible }) => ({ method, path, description, domain, intent, risk, reversible }))
+    ? catalog.map(({ method, path, description, domain, intent, risk, reversible }) => ({
+        method,
+        path,
+        description,
+        domain,
+        intent,
+        risk,
+        reversible,
+      }))
     : catalog
   return c.json({
     version: AGENT_CONTRACT_VERSION,
     protocol: AGENT_PROTOCOL,
     description: 'Structured allow-listed control surface for Learning Compass.',
-    authentication: 'No Learning Compass API token is required. Telegram and external-provider integrations retain their own dedicated credentials.',
+    authentication:
+      'No Learning Compass API token is required. Telegram and external-provider integrations retain their own dedicated credentials.',
     filters,
     view: summary ? 'summary' : 'full',
     total: CAPABILITIES.length,
     returned: capabilities.length,
-    safety: ['No arbitrary SQL or outbound proxy.', 'Product validation and invariants remain active.', 'Every mutation supports idempotency and is audit logged.'],
+    safety: [
+      'No arbitrary SQL or outbound proxy.',
+      'Product validation and invariants remain active.',
+      'Every mutation supports idempotency and is audit logged.',
+    ],
     capabilities,
   })
 })
@@ -710,16 +1385,21 @@ app.post('/maintenance/run', async (c) => {
 
 app.get('/system', async (c) => {
   const DB = c.env.DB
-  const [health, dataQuality, personalItemCount, noteCount, artifactCount, jobCount, annotationCount, receiptCount] = await Promise.all([
-    loadOperationalHealth(c.env),
-    loadDataQuality(DB),
-    DB.prepare('SELECT COUNT(*) count FROM personal_library_items').first<{ count: number }>(),
-    DB.prepare('SELECT COUNT(*) count FROM notes').first<{ count: number }>(),
-    DB.prepare('SELECT COUNT(*) count FROM artifacts').first<{ count: number }>(),
-    DB.prepare("SELECT COUNT(*) count FROM agent_jobs WHERE status IN ('pending','running','retry')").first<{ count: number }>(),
-    DB.prepare("SELECT COUNT(*) count FROM source_annotations WHERE status='active'").first<{ count: number }>(),
-    DB.prepare('SELECT COUNT(*) count FROM agent_receipts').first<{ count: number }>(),
-  ])
+  const [health, dataQuality, personalItemCount, noteCount, artifactCount, jobCount, annotationCount, receiptCount] =
+    await Promise.all([
+      loadOperationalHealth(c.env),
+      loadDataQuality(DB),
+      DB.prepare('SELECT COUNT(*) count FROM personal_library_items').first<{ count: number }>(),
+      DB.prepare('SELECT COUNT(*) count FROM notes').first<{ count: number }>(),
+      DB.prepare(
+        "SELECT COUNT(*) count FROM artifacts WHERE COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged'",
+      ).first<{ count: number }>(),
+      DB.prepare(
+        "SELECT COUNT(*) count FROM agent_jobs WHERE status IN ('pending','running','retry','awaiting_activation')",
+      ).first<{ count: number }>(),
+      DB.prepare("SELECT COUNT(*) count FROM source_annotations WHERE status='active'").first<{ count: number }>(),
+      DB.prepare('SELECT COUNT(*) count FROM agent_receipts').first<{ count: number }>(),
+    ])
   return c.json({
     status: health.status,
     ready: health.ok,
@@ -729,21 +1409,37 @@ app.get('/system', async (c) => {
     protocol: AGENT_PROTOCOL,
     contract_version: AGENT_CONTRACT_VERSION,
     storage: [
-      { name: 'D1', purpose: 'Canonical personal records, sources, Threads, notes, recall, settings, jobs, and audit history', status: health.storage.d1 ? 'connected' : 'unavailable' },
-      { name: 'R2', purpose: 'PDF, HTML, transcript, and generated companion files', status: health.storage.r2 ? 'connected' : 'unavailable' },
+      {
+        name: 'D1',
+        purpose: 'Canonical personal records, sources, Threads, notes, recall, settings, jobs, and audit history',
+        status: health.storage.d1 ? 'connected' : 'unavailable',
+      },
+      {
+        name: 'R2',
+        purpose: 'PDF, HTML, transcript, and generated companion files',
+        status: health.storage.r2 ? 'connected' : 'unavailable',
+      },
       { name: 'Browser', purpose: 'Local preferences and recoverable offline mutations', status: 'client managed' },
     ],
-    schedule: [{
-      id: 'worker-maintenance',
-      cron: MAINTENANCE_CRON,
-      cadence: 'Every 6 hours',
-      timezone: 'UTC',
-      responsibilities: ['Refresh enabled RSS/Atom feeds', 'Deliver due reminders', 'Synchronize search indexes', 'Surface neglected knowledge branches', 'Expire reversible undo windows'],
-      last_run: health.maintenance?.last_run || null,
-      last_success: health.maintenance?.last_success || null,
-      last_search_sync: health.maintenance?.last_search_sync || null,
-      status: health.maintenance?.ok ? 'healthy' : 'stale',
-    }],
+    schedule: [
+      {
+        id: 'worker-maintenance',
+        cron: MAINTENANCE_CRON,
+        cadence: 'Every 6 hours',
+        timezone: 'UTC',
+        responsibilities: [
+          'Refresh enabled RSS/Atom feeds',
+          'Deliver due reminders',
+          'Synchronize search indexes',
+          'Surface neglected knowledge branches',
+          'Expire reversible undo windows',
+        ],
+        last_run: health.maintenance?.last_run || null,
+        last_success: health.maintenance?.last_success || null,
+        last_search_sync: health.maintenance?.last_search_sync || null,
+        status: health.maintenance?.ok ? 'healthy' : 'stale',
+      },
+    ],
     recovery: health.recovery,
     operational_health: health,
     data_quality: dataQuality,
@@ -764,8 +1460,15 @@ app.get('/system', async (c) => {
       active_annotations: Number(annotationCount?.count || 0),
       agent_receipts: Number(receiptCount?.count || 0),
     },
-    authentication: 'Learning Compass reads and writes are open at the Worker URL; Telegram and external-provider integrations retain dedicated authentication.',
-    safety: ['No arbitrary SQL', 'No arbitrary outbound proxy', 'Validated mutations only', 'Agent mutations are audit logged', 'Receipts persist canonical before/after verification'],
+    authentication:
+      'Learning Compass reads and writes are open at the Worker URL; Telegram and external-provider integrations retain dedicated authentication.',
+    safety: [
+      'No arbitrary SQL',
+      'No arbitrary outbound proxy',
+      'Validated mutations only',
+      'Agent mutations are audit logged',
+      'Receipts persist canonical before/after verification',
+    ],
   })
 })
 
@@ -775,7 +1478,8 @@ app.get('/openapi.json', (c) => c.json(buildAgentOpenApi(new URL(c.req.url).orig
 app.post('/request', async (c) => {
   const { DB } = c.env
   type Assertion = { path?: string; field?: string; equals?: unknown }
-  const readField = (value: any, field?: string) => field ? field.split('.').reduce((current, key) => current == null ? undefined : current[key], value) : value
+  const readField = (value: any, field?: string) =>
+    field ? field.split('.').reduce((current, key) => (current == null ? undefined : current[key]), value) : value
   const normalizeLocalPath = (input: string) => {
     const raw = input.startsWith('/') ? input : `/${input}`
     const parsed = new URL(raw, c.req.url)
@@ -786,19 +1490,20 @@ app.post('/request', async (c) => {
     }
     return `${parsed.pathname}${parsed.search}`
   }
-  const readTarget = async (path: string, token: string | undefined, agentName: string | undefined, allowNotFound = false) => {
+  const readTarget = async (path: string, agentName: string | undefined, allowNotFound = false) => {
     const normalized = normalizeLocalPath(path)
-    if (!isAllowedAgentRequest('GET', normalized)) throw new Error(`verification path is not allow-listed: ${normalized}`)
+    if (!isAllowedAgentRequest('GET', normalized))
+      throw new Error(`verification path is not allow-listed: ${normalized}`)
     const headers = new Headers({ accept: 'application/json' })
-    if (token) headers.set('x-api-token', token)
-    const cookie = c.req.header('cookie')
-    if (cookie) headers.set('cookie', cookie)
     if (agentName) headers.set('x-agent-name', agentName)
     const response = await fetch(new URL(normalized, c.req.url), { headers })
     const text = await response.text()
     let data: any = text
-    try { data = text ? JSON.parse(text) : null } catch {}
-    if (allowNotFound && response.status === 404) return { path: normalized, status: 404, data: { absent: true }, absent: true }
+    try {
+      data = text ? JSON.parse(text) : null
+    } catch {}
+    if (allowNotFound && response.status === 404)
+      return { path: normalized, status: 404, data: { absent: true }, absent: true }
     if (!response.ok) throw new Error(`verification read failed: GET ${normalized} returned ${response.status}`)
     return { path: normalized, status: response.status, data }
   }
@@ -827,12 +1532,20 @@ app.post('/request', async (c) => {
     const method = String(input.method || 'GET').toUpperCase() as AgentMethod
     const rawPath = String(input.path || '')
     const path = normalizeLocalPath(rawPath)
-    const precondition = input.precondition?.path ? { ...input.precondition, path: normalizeLocalPath(input.precondition.path) } : input.precondition
+    const precondition = input.precondition?.path
+      ? { ...input.precondition, path: normalizeLocalPath(input.precondition.path) }
+      : input.precondition
     const verify = input.verify?.path ? { ...input.verify, path: normalizeLocalPath(input.verify.path) } : input.verify
     const patternIndex = CAPABILITY_PATTERNS.findIndex((item) => item.method === method && item.regex.test(path))
     if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || patternIndex < 0) {
       await logAgentAction(DB, c, `${method} ${path}`, input.body, 'denied')
-      return c.json({ error: 'operation_not_allowed', message: 'Use filtered GET /agent/capabilities for the allow-listed site API.' }, 403)
+      return c.json(
+        {
+          error: 'operation_not_allowed',
+          message: 'Use filtered GET /agent/capabilities for the allow-listed site API.',
+        },
+        403,
+      )
     }
     const capability = buildCapabilityCatalog([CAPABILITIES[patternIndex]])[0]
     const capabilityKey = `${capability.method} ${capability.path}`
@@ -844,31 +1557,71 @@ app.post('/request', async (c) => {
     if (mutation && !input.dry_run && capability.explicit_confirmation_required && input.confirm !== true) {
       return c.json({ error: 'explicit confirmation required', risk: capability.risk, dry_run_available: true }, 409)
     }
-    const requiredPreconditionPaths = resolveCapabilityReadbacks(capabilityKey, capability.precondition_path, capability.path, path, input.body)
+    const requiredPreconditionPaths = resolveCapabilityReadbacks(
+      capabilityKey,
+      capability.precondition_path,
+      capability.path,
+      path,
+      input.body,
+    )
     if (mutation && capability.risk === 'high' && !input.dry_run) {
-      const hasExpected = precondition && typeof precondition.field === 'string' && precondition.field.length > 0 && Object.prototype.hasOwnProperty.call(precondition, 'equals')
-      if (!hasExpected || requiredPreconditionPaths.length !== 1 || precondition?.path !== requiredPreconditionPaths[0]) {
-        return c.json({
-          error: 'high-risk mutations require an exact-target read precondition with field and expected value',
-          risk: capability.risk,
-          required_precondition_path: requiredPreconditionPaths[0] || capability.precondition_path,
-        }, 409)
+      const hasExpected =
+        precondition &&
+        typeof precondition.field === 'string' &&
+        precondition.field.length > 0 &&
+        Object.prototype.hasOwnProperty.call(precondition, 'equals')
+      if (
+        !hasExpected ||
+        requiredPreconditionPaths.length !== 1 ||
+        precondition?.path !== requiredPreconditionPaths[0]
+      ) {
+        return c.json(
+          {
+            error: 'high-risk mutations require an exact-target read precondition with field and expected value',
+            risk: capability.risk,
+            required_precondition_path: requiredPreconditionPaths[0] || capability.precondition_path,
+          },
+          409,
+        )
       }
     }
 
-    const plannedVerificationPaths = resolveCapabilityReadbacks(capabilityKey, capability.verification_path, capability.path, path, input.body)
+    const plannedVerificationPaths = resolveCapabilityReadbacks(
+      capabilityKey,
+      capability.verification_path,
+      capability.path,
+      path,
+      input.body,
+    )
     if (mutation && !input.dry_run && precondition) {
-      const canonicalPreconditions = requiredPreconditionPaths.length ? requiredPreconditionPaths : plannedVerificationPaths
+      const canonicalPreconditions = requiredPreconditionPaths.length
+        ? requiredPreconditionPaths
+        : plannedVerificationPaths
       if (!canonicalPreconditions.includes(precondition.path || '')) {
-        return c.json({ error: 'precondition path must be the declared canonical target', required_precondition_paths: canonicalPreconditions }, 409)
+        return c.json(
+          {
+            error: 'precondition path must be the declared canonical target',
+            required_precondition_paths: canonicalPreconditions,
+          },
+          409,
+        )
       }
     }
-    if (mutation && !input.dry_run && verify && (
-      !capability.verification_path
-      || !agentReadbackPathPattern(capability.verification_path).test(verify.path || '')
-      || (plannedVerificationPaths.length > 0 && !plannedVerificationPaths.includes(verify.path || ''))
-    )) {
-      return c.json({ error: 'verification path must match the declared canonical readback', required_verification_path: capability.verification_path }, 409)
+    if (
+      mutation &&
+      !input.dry_run &&
+      verify &&
+      (!capability.verification_path ||
+        !agentReadbackPathPattern(capability.verification_path).test(verify.path || '') ||
+        (plannedVerificationPaths.length > 0 && !plannedVerificationPaths.includes(verify.path || '')))
+    ) {
+      return c.json(
+        {
+          error: 'verification path must match the declared canonical readback',
+          required_verification_path: capability.verification_path,
+        },
+        409,
+      )
     }
     if (input.dry_run) {
       return c.json({
@@ -890,21 +1643,19 @@ app.post('/request', async (c) => {
       })
     }
 
-    const token = c.req.header('x-api-token')
     const agentName = c.req.header('x-agent-name')
     let before: any = null
     if (precondition?.path) {
-      before = await readTarget(precondition.path, token, agentName)
+      before = await readTarget(precondition.path, agentName)
       assertTarget(before, precondition, 'precondition')
     } else if (plannedVerificationPaths.length && mutation) {
-      const snapshots = await Promise.all(plannedVerificationPaths.map((verificationPath) => readTarget(verificationPath, token, agentName)))
+      const snapshots = await Promise.all(
+        plannedVerificationPaths.map((verificationPath) => readTarget(verificationPath, agentName)),
+      )
       before = snapshots.length === 1 ? snapshots[0] : snapshots
     }
 
     const headers = new Headers({ accept: 'application/json' })
-    if (token) headers.set('x-api-token', token)
-    const cookie = c.req.header('cookie')
-    if (cookie) headers.set('cookie', cookie)
     if (agentName) headers.set('x-agent-name', agentName)
     if (idempotencyKey) headers.set('x-client-mutation-id', idempotencyKey)
     if (mutation && method !== 'DELETE') {
@@ -918,22 +1669,50 @@ app.post('/request', async (c) => {
     })
     const text = await response.text()
     let payload: any = text
-    try { payload = text ? JSON.parse(text) : null } catch {}
-    await logAgentAction(DB, c, `${method} ${path}`, { body: input.body, idempotency_key: idempotencyKey || null }, String(response.status))
+    try {
+      payload = text ? JSON.parse(text) : null
+    } catch {}
+    await logAgentAction(
+      DB,
+      c,
+      `${method} ${path}`,
+      { body: input.body, idempotency_key: idempotencyKey || null },
+      String(response.status),
+    )
 
     let after: any = null
     let verificationBlocker: any = null
-    const verificationPaths = resolveCapabilityReadbacks(capabilityKey, capability.verification_path, capability.path, path, input.body, payload)
+    const verificationPaths = resolveCapabilityReadbacks(
+      capabilityKey,
+      capability.verification_path,
+      capability.path,
+      path,
+      input.body,
+      payload,
+    )
     if (response.ok) {
       if (mutation && !capability.verification_path) {
-        verificationBlocker = { code: 'verification_not_declared', message: 'Mutation committed but this capability has no canonical readback.', mutation_committed: true }
+        verificationBlocker = {
+          code: 'verification_not_declared',
+          message: 'Mutation committed but this capability has no canonical readback.',
+          mutation_committed: true,
+        }
       } else if (capability.verification_path && !verificationPaths.length) {
-        verificationBlocker = { code: 'verification_unresolved', message: 'Mutation committed but the declared readback target could not be resolved.', mutation_committed: true }
+        verificationBlocker = {
+          code: 'verification_unresolved',
+          message: 'Mutation committed but the declared readback target could not be resolved.',
+          mutation_committed: true,
+        }
       } else if (verificationPaths.length) {
         try {
           const exactDeletionReadback = method === 'DELETE' && capability.verification_path === capability.path
-          const snapshots = await Promise.all(verificationPaths.map((verificationPath) => readTarget(verificationPath, token, agentName, exactDeletionReadback)))
-          if (exactDeletionReadback && snapshots.some((snapshot) => snapshot.status !== 404 || snapshot.absent !== true)) {
+          const snapshots = await Promise.all(
+            verificationPaths.map((verificationPath) => readTarget(verificationPath, agentName, exactDeletionReadback)),
+          )
+          if (
+            exactDeletionReadback &&
+            snapshots.some((snapshot) => snapshot.status !== 404 || snapshot.absent !== true)
+          ) {
             const error: any = new Error('Post-deletion readback still resolves the exact target.')
             error.code = 'deletion_verification_failed'
             throw error
@@ -953,7 +1732,9 @@ app.post('/request', async (c) => {
             code: verificationError?.code || 'verification_failed',
             message: verificationError?.message || 'Post-mutation verification failed.',
             mutation_committed: true,
-            ...(verificationError?.expected !== undefined ? { expected: verificationError.expected, actual: verificationError.actual } : {}),
+            ...(verificationError?.expected !== undefined
+              ? { expected: verificationError.expected, actual: verificationError.actual }
+              : {}),
           }
         }
       }
@@ -963,22 +1744,36 @@ app.post('/request', async (c) => {
       intent: capability.intent,
       target: path,
       before,
-      mutation_or_job: { method, status: response.status, mutation_committed: mutation && response.ok, idempotency_key: idempotencyKey || null, data: payload },
+      mutation_or_job: {
+        method,
+        status: response.status,
+        mutation_committed: mutation && response.ok,
+        idempotency_key: idempotencyKey || null,
+        data: payload,
+      },
       after,
       evidence: [
         { kind: 'allow_list', capability: capabilityKey },
         ...(idempotencyKey ? [{ kind: 'idempotency', key: idempotencyKey }] : []),
-        ...verificationEvidence.map((snapshot: any) => ({ kind: 'verification_read', path: snapshot.path, status: snapshot.status })),
+        ...verificationEvidence.map((snapshot: any) => ({
+          kind: 'verification_read',
+          path: snapshot.path,
+          status: snapshot.status,
+        })),
       ],
       blocker: response.ok ? verificationBlocker : payload,
     }
     const verified = response.ok && !verificationBlocker && (!mutation || after != null)
     const projectedReceipt = projectAgentReceipt(receipt)
     await persistAgentReceipt(DB, c, receipt, response.status, verified)
-    return c.json({ ok: response.ok, verified, status: response.status, data: boundAgentValue(payload), receipt: projectedReceipt }, response.status as any)
+    return c.json(
+      { ok: response.ok, verified, status: response.status, data: boundAgentValue(payload), receipt: projectedReceipt },
+      response.status as any,
+    )
   } catch (err: any) {
     await logAgentAction(DB, c, 'agent_request', null, err?.code || 'error')
-    if (err?.code === 'assertion_failed') return c.json({ error: err.code, message: err.message, expected: err.expected, actual: err.actual }, 409)
+    if (err?.code === 'assertion_failed')
+      return c.json({ error: err.code, message: err.message, expected: err.expected, actual: err.actual }, 409)
     if (err?.code === 'invalid_path') return c.json({ error: err.code, message: err.message }, 400)
     return c.json(safeError('Agent request failed')(err), 400)
   }
@@ -995,7 +1790,8 @@ app.get('/tools', (c) => {
     tools: [
       {
         name: 'list_capabilities',
-        description: 'Search the structured allow-listed Learning Compass operations by domain, intent, method, or text.',
+        description:
+          'Search the structured allow-listed Learning Compass operations by domain, intent, method, or text.',
         parameters: {
           type: 'object',
           properties: {
@@ -1009,7 +1805,8 @@ app.get('/tools', (c) => {
       },
       {
         name: 'site_request',
-        description: 'Dry-run or execute one allow-listed operation with mandatory mutation idempotency, optional optimistic precondition, explicit high-risk confirmation, verification reread, and a canonical receipt.',
+        description:
+          'Dry-run or execute one allow-listed operation with mandatory mutation idempotency, optional optimistic precondition, explicit high-risk confirmation, verification reread, and a canonical receipt.',
         parameters: {
           type: 'object',
           properties: {
@@ -1019,8 +1816,16 @@ app.get('/tools', (c) => {
             dry_run: { type: 'boolean' },
             confirm: { type: 'boolean' },
             idempotency_key: { type: 'string', maxLength: 120 },
-            precondition: { type: 'object', properties: { path: { type: 'string' }, field: { type: 'string' }, equals: {} }, required: ['path'] },
-            verify: { type: 'object', properties: { path: { type: 'string' }, field: { type: 'string' }, equals: {} }, required: ['path'] },
+            precondition: {
+              type: 'object',
+              properties: { path: { type: 'string' }, field: { type: 'string' }, equals: {} },
+              required: ['path'],
+            },
+            verify: {
+              type: 'object',
+              properties: { path: { type: 'string' }, field: { type: 'string' }, equals: {} },
+              required: ['path'],
+            },
           },
           required: ['method', 'path'],
           additionalProperties: false,
@@ -1042,15 +1847,19 @@ app.post('/tool-call', async (c) => {
     if (name === 'list_capabilities') {
       const filters = { domain: args?.domain, intent: args?.intent, method: args?.method, q: args?.q }
       const capabilities = buildCapabilityCatalog(CAPABILITIES, filters)
-      return c.json({ version: AGENT_CONTRACT_VERSION, total: CAPABILITIES.length, returned: capabilities.length, capabilities })
+      return c.json({
+        version: AGENT_CONTRACT_VERSION,
+        total: CAPABILITIES.length,
+        returned: capabilities.length,
+        capabilities,
+      })
     }
 
     if (name === 'site_request') {
-      const headers = new Headers({ 'content-type': 'application/json', 'x-agent-name': c.req.header('x-agent-name') || 'tool-call' })
-      const token = c.req.header('x-api-token')
-      const cookie = c.req.header('cookie')
-      if (token) headers.set('x-api-token', token)
-      if (cookie) headers.set('cookie', cookie)
+      const headers = new Headers({
+        'content-type': 'application/json',
+        'x-agent-name': c.req.header('x-agent-name') || 'tool-call',
+      })
       const response = await fetch(new URL('/agent/request', c.req.url), {
         method: 'POST',
         headers,

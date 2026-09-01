@@ -57,7 +57,9 @@ test('migration 0067 replaces recursive FTS with a portable projection and repai
     assert.equal(Number((sqlite.prepare('SELECT COUNT(*) count FROM search_idx').get() as { count: number }).count), 7)
 
     assert.deepEqual(
-      sqlite.prepare("SELECT source,ref_id FROM search_idx WHERE text LIKE ? ESCAPE '\\' ORDER BY source").all('%Systems%')
+      sqlite
+        .prepare("SELECT source,ref_id FROM search_idx WHERE text LIKE ? ESCAPE '\\' ORDER BY source")
+        .all('%Systems%')
         .map((row: any) => ({ source: row.source, ref_id: row.ref_id })),
       [
         { source: 'assertion', ref_id: 'preference.systems' },
@@ -66,12 +68,30 @@ test('migration 0067 replaces recursive FTS with a portable projection and repai
       ],
     )
 
-    sqlite.exec("DELETE FROM search_idx WHERE source='rec'; INSERT OR REPLACE INTO search_idx(source,ref_id,text) VALUES ('rec','rec-1','Updated systems text');")
-    assert.equal((sqlite.prepare("SELECT text FROM search_idx WHERE source='rec' AND ref_id='rec-1'").get() as { text: string }).text, 'Updated systems text')
+    sqlite.exec(
+      "DELETE FROM search_idx WHERE source='rec'; INSERT OR REPLACE INTO search_idx(source,ref_id,text) VALUES ('rec','rec-1','Updated systems text');",
+    )
+    assert.equal(
+      (sqlite.prepare("SELECT text FROM search_idx WHERE source='rec' AND ref_id='rec-1'").get() as { text: string })
+        .text,
+      'Updated systems text',
+    )
 
-    assert.equal((sqlite.prepare("SELECT thread_id FROM learning_events WHERE id='event-live'").get() as { thread_id: string }).thread_id, 'thread-live')
-    assert.equal((sqlite.prepare("SELECT thread_id FROM learning_events WHERE id='event-dangling'").get() as { thread_id: null }).thread_id, null)
-    assert.equal((sqlite.prepare("SELECT thread_id FROM learning_events WHERE id='event-unowned'").get() as { thread_id: null }).thread_id, null)
+    assert.equal(
+      (sqlite.prepare("SELECT thread_id FROM learning_events WHERE id='event-live'").get() as { thread_id: string })
+        .thread_id,
+      'thread-live',
+    )
+    assert.equal(
+      (sqlite.prepare("SELECT thread_id FROM learning_events WHERE id='event-dangling'").get() as { thread_id: null })
+        .thread_id,
+      null,
+    )
+    assert.equal(
+      (sqlite.prepare("SELECT thread_id FROM learning_events WHERE id='event-unowned'").get() as { thread_id: null })
+        .thread_id,
+      null,
+    )
   } finally {
     sqlite.close()
   }

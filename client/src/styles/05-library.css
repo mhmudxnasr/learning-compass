@@ -1,0 +1,771 @@
+/* Library Workspace Views */
+.folio-library-view {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  margin: 0;
+}
+
+.folio-view-intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--studio-seam);
+}
+
+.folio-view-intro h1 {
+  margin: 0 0 6px;
+  font-family: var(--font-reading, 'IBM Plex Serif', Georgia, serif);
+  font-size: clamp(26px, 3vw, 36px);
+  line-height: 1.1;
+}
+
+.folio-view-intro p {
+  margin: 0;
+  color: var(--studio-secondary);
+  font-size: calc(13.5px * var(--font-scale));
+  max-width: 60ch;
+}
+
+.folio-view-intro-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.folio-view-toggle {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--studio-seam);
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-ledger);
+}
+
+.folio-view-toggle button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: calc(var(--studio-radius-control) - 2px);
+  background: transparent;
+  color: var(--studio-muted);
+  font: inherit;
+  font-size: calc(11px * var(--font-scale));
+  cursor: pointer;
+}
+
+.folio-view-toggle button.active {
+  background: var(--studio-cypress);
+  color: var(--studio-canvas);
+}
+
+.folio-cap-readout,
+.folio-count-readout {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-family: var(--font-mono, monospace);
+}
+
+.folio-cap-readout strong,
+.folio-count-readout strong {
+  font-size: calc(24px * var(--font-scale));
+  color: var(--studio-cypress);
+}
+
+.folio-cap-readout small,
+.folio-count-readout small {
+  font-size: calc(11px * var(--font-scale));
+  color: var(--studio-muted);
+}
+
+.folio-overflow-notice {
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--studio-due) 12%, var(--studio-canvas));
+  border: 1px solid color-mix(in srgb, var(--studio-due) 35%, transparent);
+  border-radius: var(--studio-radius-control);
+  font-size: calc(13px * var(--font-scale));
+}
+
+.folio-record-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.folio-queue-view-gallery .folio-record-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.folio-record {
+  display: block;
+  padding: 16px 20px;
+  background: var(--studio-canvas);
+  border: 1px solid var(--studio-seam);
+  border-radius: var(--studio-radius-panel);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+  width: 100%;
+}
+
+.folio-queue-record {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.folio-queue-view-gallery .folio-queue-record {
+  position: relative;
+  display: flex;
+  min-height: 340px;
+  padding: 18px;
+  border-color: color-mix(in srgb, var(--studio-cypress) 32%, var(--studio-seam));
+}
+
+.folio-queue-view-gallery .folio-queue-record:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--studio-cypress) 12%, transparent);
+}
+
+.folio-queue-view-gallery .folio-rank {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  padding: 0;
+  color: var(--studio-muted);
+  font-size: calc(12px * var(--font-scale));
+}
+
+.folio-queue-view-gallery .folio-record-main {
+  min-height: 100%;
+}
+
+.folio-queue-view-gallery .folio-object-copy {
+  padding-right: 28px;
+}
+
+.folio-queue-view-gallery .folio-object-copy strong {
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.folio-queue-view-gallery .folio-record-reason {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.folio-queue-view-gallery .folio-row-actions {
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.folio-record:hover {
+  border-color: var(--studio-focus);
+}
+
+.folio-rank {
+  font-family: var(--font-mono, monospace);
+  font-size: calc(18px * var(--font-scale));
+  font-weight: var(--font-heading-weight);
+  color: var(--studio-cypress);
+  padding-top: 4px;
+}
+
+.folio-record-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.folio-record-meta {
+  font-family: var(--font-mono, monospace);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--studio-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.folio-object-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  width: 100%;
+}
+
+.folio-object-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-lichen);
+  color: var(--studio-cypress);
+  flex-shrink: 0;
+}
+
+.folio-object-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.folio-object-copy strong {
+  font-family: var(--font-reading, 'IBM Plex Serif', Georgia, serif);
+  font-size: calc(16px * var(--font-scale));
+  font-weight: var(--font-heading-weight);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folio-object-copy small {
+  font-size: calc(12px * var(--font-scale));
+  color: var(--studio-muted);
+}
+
+.folio-record-reason {
+  margin: 2px 0 0;
+  font-size: calc(13.5px * var(--font-scale));
+  color: var(--studio-secondary);
+  line-height: 1.45;
+}
+
+.folio-record-note {
+  margin: 2px 0 0;
+  font-size: calc(12px * var(--font-scale));
+  color: var(--studio-muted);
+}
+
+.folio-inline-warning {
+  margin: 4px 0 0;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--studio-due) 10%, var(--studio-canvas));
+  border: 1px solid color-mix(in srgb, var(--studio-due) 30%, transparent);
+  border-radius: var(--studio-radius-control);
+  font-size: calc(12px * var(--font-scale));
+  color: var(--studio-due);
+}
+
+.folio-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.folio-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: calc(12.5px * var(--font-scale));
+  font-weight: var(--font-medium-weight);
+  border-radius: var(--studio-radius-control);
+  border: 1px solid var(--studio-seam);
+  background: var(--studio-ledger);
+  color: var(--studio-ink);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.folio-button:hover:not([disabled]) {
+  background: var(--studio-canvas);
+  border-color: var(--studio-secondary);
+}
+
+.folio-button-primary,
+.folio-primary {
+  background: var(--studio-cypress) !important;
+  color: var(--studio-action-ink, #ffffff) !important;
+  border-color: var(--studio-cypress) !important;
+}
+
+.folio-button-primary:hover:not([disabled]),
+.folio-primary:hover:not([disabled]) {
+  opacity: 0.92;
+}
+
+.folio-action-note {
+  font-size: calc(11px * var(--font-scale));
+  color: var(--studio-muted);
+}
+
+.folio-action-status {
+  font-size: calc(12px * var(--font-scale));
+  color: var(--studio-cypress);
+  font-family: var(--font-mono, monospace);
+  padding: 8px 12px;
+  background: var(--studio-lichen);
+  border-radius: var(--studio-radius-control);
+}
+
+/* Files Ledger - Refined Typography & Premium Buttons */
+.folio-files-ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.folio-file-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  min-height: 86px;
+  padding: 17px 22px;
+  background: var(--studio-canvas);
+  border: 1px solid var(--studio-seam);
+  border-radius: var(--studio-radius-panel);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background-color 150ms ease;
+}
+
+.folio-file-card:hover {
+  border-color: var(--studio-focus);
+  background: color-mix(in srgb, var(--studio-ledger) 35%, var(--studio-canvas));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.folio-file-main-link {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.folio-file-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+
+.folio-file-title {
+  font-family: var(--font-reading, 'IBM Plex Serif', 'Literata', Georgia, serif);
+  font-size: calc(17px * var(--font-scale));
+  font-weight: var(--font-heading-weight);
+  color: var(--studio-ink);
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folio-file-card:hover .folio-file-title {
+  color: var(--studio-cypress);
+}
+
+.folio-file-sub {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: calc(11.5px * var(--font-scale));
+  color: var(--studio-muted);
+  letter-spacing: 0.02em;
+}
+
+.folio-file-topic {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  background: color-mix(in srgb, var(--studio-cypress) 8%, var(--studio-canvas));
+  color: var(--studio-cypress);
+  border: 1px solid color-mix(in srgb, var(--studio-cypress) 22%, transparent);
+  border-radius: 4px;
+  font-size: calc(10.5px * var(--font-scale));
+  font-weight: var(--font-medium-weight);
+  text-transform: capitalize;
+  letter-spacing: 0.01em;
+}
+
+.folio-file-sep {
+  opacity: 0.5;
+}
+
+.folio-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  padding-inline-start: 18px;
+  border-inline-start: 1px solid var(--studio-seam);
+}
+
+@media (max-width: 860px) {
+  .folio-file-card {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .folio-file-actions {
+    justify-content: flex-end;
+    padding-inline-start: 0;
+    padding-top: 12px;
+    border-inline-start: 0;
+    border-top: 1px solid var(--studio-seam);
+  }
+}
+
+.folio-file-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px;
+  font-size: calc(11.5px * var(--font-scale));
+  border-radius: var(--studio-radius-control);
+  text-decoration: none;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    opacity 140ms ease,
+    transform 140ms ease;
+  line-height: 1;
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.03em;
+}
+
+.folio-file-badge .badge-format {
+  font-weight: var(--font-bold-weight);
+}
+
+.folio-file-badge .badge-size {
+  font-size: calc(10px * var(--font-scale));
+  opacity: 0.82;
+  font-weight: var(--font-medium-weight);
+}
+
+.folio-badge-source {
+  background: color-mix(in srgb, var(--studio-ink) 7%, var(--studio-canvas));
+  color: var(--studio-ink);
+  border: 1px solid var(--studio-seam);
+}
+
+.folio-badge-source:hover {
+  background: var(--studio-ink);
+  color: var(--studio-canvas);
+  border-color: var(--studio-ink);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.folio-badge-nblm {
+  background: color-mix(in srgb, var(--studio-map) 10%, var(--studio-canvas));
+  color: var(--studio-map);
+  border: 1px solid color-mix(in srgb, var(--studio-map) 30%, transparent);
+}
+
+.folio-badge-nblm:hover {
+  background: var(--studio-map);
+  color: var(--studio-map-ink, #ffffff);
+  border-color: var(--studio-map);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--studio-map) 35%, transparent);
+  transform: translateY(-1px);
+}
+
+.folio-badge-html {
+  background: color-mix(in srgb, var(--studio-cypress) 10%, var(--studio-canvas));
+  color: var(--studio-cypress);
+  border: 1px solid color-mix(in srgb, var(--studio-cypress) 30%, transparent);
+}
+
+.folio-badge-html:hover {
+  background: var(--studio-cypress);
+  color: var(--studio-action-ink, #ffffff);
+  border-color: var(--studio-cypress);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--studio-cypress) 35%, transparent);
+  transform: translateY(-1px);
+}
+
+.folio-badge-pdf {
+  background: color-mix(in srgb, var(--studio-ochre) 10%, var(--studio-canvas));
+  color: var(--studio-ochre);
+  border: 1px solid color-mix(in srgb, var(--studio-ochre) 30%, transparent);
+}
+
+.folio-badge-pdf:hover {
+  background: var(--studio-ochre);
+  color: var(--studio-due-ink, #ffffff);
+  border-color: var(--studio-ochre);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--studio-ochre) 35%, transparent);
+  transform: translateY(-1px);
+}
+
+.folio-file-admin {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+  padding-left: 10px;
+  border-left: 1px solid var(--studio-seam);
+}
+
+.folio-file-admin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 8px;
+  font-size: calc(11px * var(--font-scale));
+  font-family: var(--font-mono, monospace);
+  font-weight: var(--font-medium-weight);
+  border-radius: var(--studio-radius-control);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--studio-muted);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.folio-file-admin-btn:hover:not([disabled]) {
+  background: var(--studio-ledger);
+  border-color: var(--studio-seam);
+  color: var(--studio-ink);
+}
+
+.folio-file-admin-btn.folio-btn-danger:hover:not([disabled]) {
+  background: color-mix(in srgb, var(--studio-danger, #d9383a) 10%, var(--studio-canvas));
+  border-color: color-mix(in srgb, var(--studio-danger, #d9383a) 25%, transparent);
+  color: var(--studio-danger, #d9383a);
+}
+
+.folio-inline-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--studio-ledger);
+  padding: 2px 4px 2px 8px;
+  border-radius: var(--studio-radius-control);
+  border: 1px solid var(--studio-seam);
+}
+
+.folio-confirm-label {
+  font-size: calc(10.5px * var(--font-scale));
+  font-family: var(--font-mono, monospace);
+  color: var(--studio-danger, #d9383a);
+  font-weight: var(--font-heading-weight);
+  margin-right: 2px;
+}
+
+.folio-btn-confirm-yes {
+  background: color-mix(in srgb, var(--studio-danger, #d9383a) 15%, var(--studio-canvas));
+  color: var(--studio-danger, #d9383a);
+  font-weight: var(--font-heading-weight);
+}
+
+.folio-btn-confirm-no {
+  color: var(--studio-muted);
+}
+
+.folio-file-record,
+.folio-book-record {
+  display: block;
+  padding: 16px 20px;
+  background: var(--studio-canvas);
+  border: 1px solid var(--studio-seam);
+  border-radius: var(--studio-radius-panel);
+  width: 100%;
+}
+
+.folio-shelf {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+
+.folio-intake-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--studio-ledger);
+  border: 1px solid var(--studio-seam);
+  border-radius: var(--studio-radius-panel);
+}
+
+.folio-chapter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  list-style: none;
+  margin-top: 8px;
+}
+
+.folio-chapter-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: var(--studio-ledger);
+  border-radius: var(--studio-radius-control);
+  font-size: calc(12.5px * var(--font-scale));
+}
+
+/* RSS Feeds Triage & Stream Architecture -------------------------------- */
+@keyframes folio-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.folio-icon-spin {
+  animation: folio-spin 0.85s linear infinite;
+}
+
+.folio-feed-navigator {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.folio-feed-pill-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 8px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--studio-seam) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+.folio-feed-pill-strip::-webkit-scrollbar {
+  height: 4px;
+}
+
+.folio-feed-pill-strip::-webkit-scrollbar-thumb {
+  background: var(--studio-seam);
+  border-radius: 4px;
+}
+
+.folio-feed-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--studio-seam);
+  background: var(--studio-canvas);
+  color: var(--studio-ink);
+  font-family: var(--font-ui);
+  font-size: calc(12.5px * var(--font-scale));
+  font-weight: var(--font-medium-weight);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    opacity 140ms ease,
+    transform 140ms ease;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+
+.folio-feed-pill:hover:not(.is-active) {
+  background: var(--studio-ledger);
+  border-color: var(--studio-secondary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.folio-feed-pill.is-active {
+  background: var(--studio-cypress);
+  border-color: var(--studio-cypress);
+  color: var(--studio-action-ink, #ffffff);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--studio-cypress) 35%, transparent);
+}
+
+.folio-feed-pill-label {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folio-feed-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-family: var(--font-mono, monospace);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: var(--font-bold-weight);
+  background: color-mix(in srgb, var(--studio-ink) 8%, var(--studio-canvas));
+  color: var(--studio-ink);
+  line-height: 1;
+}
+
+.folio-feed-pill.is-active .folio-feed-pill-badge {
+  background: rgba(255, 255, 255, 0.22);
+  color: var(--studio-action-ink, #ffffff);
+}
+
+.folio-feed-dropdown-wrapper {
+  display: none;
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .folio-feed-pill-strip {
+    display: none;
+  }
+  .folio-feed-dropdown-wrapper {
+    display: block;
+  }
+}
