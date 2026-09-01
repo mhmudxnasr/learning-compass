@@ -1,10 +1,12 @@
 # Learning Compass — Current State
 
-## Current truth — 2026-09-02 (focused Recall review stage, local)
+## Current truth — 2026-09-02 (focused Recall review stage, deployed)
 
 Learn → Practice → Recall now presents the active due card as one intentional retrieval stage instead of a large generic panel. A compact due-position band, quieter source/branch and schedule ledger, centered Arabic reading treatment, explicit question/answer hierarchy, retrieval pause cue, and balanced grading controls keep the learner focused without changing FSRS behavior or review mutations. The phone layout uses deliberate two-by-two view and grading grids and retains the five-root dock without horizontal overflow.
 
-Verification passes ESLint, all 488 unit tests, TypeScript, the production build at 132.40 KB gzip for base JavaScript and 102.62 KB gzip for CSS, the complete Worker-backed E2E suite across five roots and 16 internal modes including Android/offline behavior, and `git diff --check`. Browser inspection passed the question and revealed-answer states at desktop and 390×844 phone widths with zero document overflow. This visual-only change is local; no deployment, migration, production data write, or corpus operation occurred.
+The guarded release gate passed quality, all 488 unit tests plus TypeScript, all six isolated Worker/D1 integration programs, and the production build at 132.40 KB gzip for base JavaScript and 102.62 KB gzip for CSS. Worker-backed E2E passed five roots, 16 internal modes, typed objects, Android/PWA offline behavior, and the mobile shell. Migration rehearsal passed clean apply plus idempotent reapply across 75 migrations; Hermes passed 30 synchronized checks and 145 owned routes, both Telegram prompt contracts, 32/32 agent-control tests, 37/37 deterministic manager-routing tests, both 46/46 installed site-client suites, installed Python/Node syntax checks, and the final tracked-diff check.
+
+Worker version `7d6401be-004d-4eb5-8b04-089ba6a4c720` is deployed at 100%; application rollback is `0fec3f5b-9d48-4c90-a6c2-0b6a663cadad`. Pre- and post-deploy readiness passed, and canonical live smoke returned the expected success and boundary responses across health, briefing, Capture, Notes, Recall, agent jobs, retired auth, and fake-route checks. Final readiness reports D1, R2, and assets healthy, zero active integrity orphans, zero unresolved quarantines, healthy maintenance and jobs, a verified and restore-rehearsed recovery snapshot inside its freshness window, and no blockers. Live browser inspection passed the question and revealed-answer states at desktop and phone widths, including the two-by-two mobile view and grading grids, with zero document overflow. This visual-only application release applied no production migration, review grade, production data write, or corpus operation.
 
 ## Current truth — 2026-09-01 (integrated learning workflows and production hardening, deployed)
 
