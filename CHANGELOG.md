@@ -4,7 +4,13 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
-No unreleased changes.
+### Changed
+
+- Updated the GitHub Verify workflow to the official Node 24-based checkout and setup-node v7 actions.
+
+### Removed
+
+- Removed an empty, unconfigured `whatsapp-insights-site` gitlink that caused checkout cleanup warnings.
 
 ## 2026-09-01
 
