@@ -4,6 +4,10 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+No unreleased changes.
+
+## 2026-09-01
+
 ### Added
 
 - Added ESLint, Prettier, EditorConfig, and Knip configuration with one `npm run quality` gate. This makes style, hook safety, formatting, dead-file detection, and dependency reachability repeatable.
@@ -15,7 +19,7 @@ This file records user-visible behavior, architecture, dependency, and operating
 ### Changed
 
 - Updated Hono, Preact, Cytoscape, Vite, Wrangler, Playwright, Cloudflare types, and the supporting build/test tools. Vite now uses its Rolldown chunk configuration; TypeScript remains on 6.x until the lint toolchain supports 7.x.
-- Split the global application stylesheet into ordered product-area modules without changing cascade order or generated CSS, so a workspace can be inspected without loading a 28,000-line file.
+- Split the global application stylesheet into ordered product-area modules without changing cascade order or generated CSS, so a workspace can be inspected without loading a 37,000-line file.
 - Split the Learning Thread screen into route, level, project, lesson, material, and view-model modules while preserving its route and progression contracts.
 - Kept the newer Thread source organizer, exact-lesson material request, offline-pack, source-health, and next-lesson flows within those smaller modules.
 - Removed redundant queries, unused imports and helpers, ineffective assignments, and stale hook patterns found by the new static checks.
