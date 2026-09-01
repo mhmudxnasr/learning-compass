@@ -53,6 +53,16 @@
   background: var(--studio-lichen);
   color: var(--studio-cypress);
 }
+.book-hardcover-pill {
+  border-color: color-mix(in srgb, var(--studio-map) 30%, var(--studio-seam));
+  background: color-mix(in srgb, var(--studio-map) 8%, var(--studio-canvas));
+  color: var(--studio-map);
+}
+.book-hardcover-pill:hover {
+  border-color: color-mix(in srgb, var(--studio-map) 30%, var(--studio-seam));
+  background: color-mix(in srgb, var(--studio-map) 8%, var(--studio-canvas));
+  color: var(--studio-map);
+}
 .books-room .reading-fold-context .reading-fold-branch-pill {
   min-height: 32px;
   padding-inline: 9px;
@@ -76,6 +86,20 @@
 .books-library-branch-pill {
   padding-block: 2px;
   font-size: calc(11px * var(--font-scale));
+}
+.books-library-origin {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--studio-map) 24%, var(--studio-seam));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--studio-map) 7%, var(--studio-canvas));
+  color: var(--studio-map);
+  font: var(--font-medium-weight) calc(10.5px * var(--font-scale))/1.2 var(--font-body);
+}
+.books-room .books-library-external-action {
+  text-decoration: none;
 }
 .reading-fold-form-errors {
   display: grid;

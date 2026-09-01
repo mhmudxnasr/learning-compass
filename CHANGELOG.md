@@ -6,6 +6,7 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ### Changed
 
+- Made Library → Books display the existing Hardcover mirror as read-only reading history without importing it, deduplicating unambiguous matches while keeping mirror-only titles external and mutation-free.
 - Made the Daily resurfacing card open the exact source dossier from its title or card surface while preserving its branch, companion, and review controls.
 - Updated the GitHub Verify workflow to the official Node 24-based checkout and setup-node v7 actions.
 

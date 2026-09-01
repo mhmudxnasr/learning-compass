@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-01 (read-only Hardcover history in Books, release candidate)
+
+Library → Books now composes the existing D1 Hardcover mirror into My Books without calling the import route or creating personal-ledger records. An explicit `recommendation_id` or one unambiguous normalized title/primary-author match displays once with Hardcover's reading status; unmatched mirror titles remain visibly sourced from Hardcover, open their external book page, and expose no internal branch, dossier, chapter, pin, or reading-state action. The canonical editable `books[]` contract, verified-branch intake, Queue exclusion, and explicit branch-gated `/hardcover/import` path remain unchanged. The installed PWA shell advances to `learning-compass-shell-v54` so cached clients cannot retain the previous Books projection.
+
+This application-only release candidate is layered on the currently deployed resurfacing-card release. Its guarded verification and deployment receipt will replace this paragraph after release; it performs no migration, Hardcover import, corpus operation, or product-data mutation.
+
 ## Current truth — 2026-09-01 (resurfacing source dossier link, deployed)
 
 The Daily resurfacing card on Home opens the unified source dossier for its exact recommendation id from the title or card surface. Branch, Original/HTML/PDF, Star, Reviewed, Snooze, and Dismiss remain independent controls with their existing behavior. The destination retains source access, branch context, recall, feedback and outcome, files, and notes. The installed PWA shell advances to `learning-compass-shell-v53` so an installed client cannot retain the superseded Home interaction.

@@ -87,7 +87,7 @@ test('Vertical Journey preserves direct progression language and ships a fresh P
   assert.match(threadView, /Projects are optional practice/)
   assert.equal((threadView.match(/vertical-thread-next-link button/g) || []).length, 1)
   assert.doesNotMatch(threadView, /optional evidence/)
-  assert.match(serviceWorker, /learning-compass-shell-v53/)
+  assert.match(serviceWorker, /learning-compass-shell-v54/)
 })
 
 test('locked Levels distinguish prerequisites from missing material', () => {
