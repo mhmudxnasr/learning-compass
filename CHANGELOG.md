@@ -22,6 +22,7 @@ No unreleased changes.
 - Split the global application stylesheet into ordered product-area modules without changing cascade order or generated CSS, so a workspace can be inspected without loading a 37,000-line file.
 - Split the Learning Thread screen into route, level, project, lesson, material, and view-model modules while preserving its route and progression contracts.
 - Kept the newer Thread source organizer, exact-lesson material request, offline-pack, source-health, and next-lesson flows within those smaller modules.
+- Hardened the mobile Preferences hero and density choices so doubled text remains inside a 390px viewport.
 - Removed redundant queries, unused imports and helpers, ineffective assignments, and stale hook patterns found by the new static checks.
 - Made the release gate run repository style, static analysis, and standalone integration scenarios before the build and browser stages.
 
