@@ -1614,6 +1614,17 @@ a.branch-ledger-title:hover {
 }
 
 @media (max-width: 560px) {
+  .preferences-hero,
+  .preferences-hero > div,
+  .preferences-hero h1 {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .preferences-hero h1 {
+    overflow-wrap: anywhere;
+  }
+
   .preferences-main > .preference-panel,
   .preferences-main > .visual-presets-section,
   .preference-disclosure-body {
@@ -1724,8 +1735,17 @@ a.branch-ledger-title:hover {
     width: 64px;
   }
 
+  .preference-choice-options {
+    grid-template-columns: 1fr;
+  }
+
   .preference-choice-options label {
     min-height: 78px;
+  }
+
+  .preference-choice-options label > span,
+  .preference-choice-options label > small {
+    overflow-wrap: anywhere;
   }
 
   .preference-choice-options label > small {

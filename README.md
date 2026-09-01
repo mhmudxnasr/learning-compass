@@ -114,7 +114,7 @@ Start with [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for the durable product mode
 - Node.js 22
 - npm
 - A Chromium browser installed through Playwright for E2E
-- A Cloudflare account only when applying remote migrations or deploying
+- A Cloudflare account only when backing up production, applying remote migrations, or deploying
 
 ### Install
 
@@ -173,17 +173,18 @@ The checked-in development commands retain their loopback-only write-rate-limit 
 
 ## Commands
 
-| Command                    | Purpose                                                                                                                       |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`              | Run the Vite client only                                                                                                      |
-| `npm run dev:worker`       | Apply the base schema and local migrations, build the client, and run the complete Worker locally                             |
-| `npm run quality`          | Run ESLint, dead-code and dependency analysis, and formatting checks                                                          |
-| `npm test`                 | Run all unit tests and TypeScript checks                                                                                      |
-| `npm run test:integration` | Run the standalone Worker and D1 integration scenarios sequentially                                                           |
-| `npm run build`            | Create the production client bundle                                                                                           |
-| `npm run test:e2e`         | Create a fresh temporary D1 database and test all root destinations, grouped modes, and responsive shell behavior in Chromium |
-| `npm run verify:release`   | Run the local release gate, including repository and installed Hermes contracts; it does not deploy                           |
-| `npm run deploy`           | Run the guarded release script and deploy with the repository Wrangler config                                                 |
+| Command                     | Purpose                                                                                                                       |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`               | Run the Vite client only                                                                                                      |
+| `npm run dev:worker`        | Apply the base schema and local migrations, build the client, and run the complete Worker locally                             |
+| `npm run quality`           | Run ESLint, dead-code and dependency analysis, and formatting checks                                                          |
+| `npm test`                  | Run all unit tests and TypeScript checks                                                                                      |
+| `npm run test:integration`  | Run the standalone Worker and D1 integration scenarios sequentially                                                           |
+| `npm run build`             | Create the production client bundle                                                                                           |
+| `npm run test:e2e`          | Create a fresh temporary D1 database and test all root destinations, grouped modes, and responsive shell behavior in Chromium |
+| `npm run verify:release`    | Run the local release gate, including repository and installed Hermes contracts; it does not deploy                           |
+| `npm run backup:production` | Export remote D1 and every canonical R2 object, verify checksums, and rehearse a local restore before release                 |
+| `npm run deploy`            | Run the guarded release script and deploy with the repository Wrangler config                                                 |
 
 The E2E runner owns its temporary database, Wrangler process, browser, and cleanup. A local test pass therefore does not depend on an old `.wrangler` database.
 
