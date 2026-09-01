@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
 
-import { BRIEFING_JOB_COUNTS_SQL, DELAYED_RETRY_COUNT_SQL, OVERDUE_RETRY_COUNT_SQL } from '../../src/services/job-retry-health.ts'
+import {
+  BRIEFING_JOB_COUNTS_SQL,
+  DELAYED_RETRY_COUNT_SQL,
+  OVERDUE_RETRY_COUNT_SQL,
+} from '../../src/services/job-retry-health.ts'
 
 test('future-scheduled retries stay delayed while due stale retries become overdue', async () => {
   const sqlite = new DatabaseSync(':memory:')

@@ -44,10 +44,13 @@ export function ShareIntakeReviewDialog({
     setWorking(kind)
     setNotice('')
     try {
-      const payload = await api<{ intake: ShareIntake }>(`/api/share-intakes/${encodeURIComponent(intake.id)}/resolve`, {
-        method: 'POST',
-        body: JSON.stringify({ kind }),
-      })
+      const payload = await api<{ intake: ShareIntake }>(
+        `/api/share-intakes/${encodeURIComponent(intake.id)}/resolve`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ kind }),
+        },
+      )
       onResolved(payload.intake)
     } catch (error: any) {
       if (error?.status === 409) {
@@ -61,9 +64,11 @@ export function ShareIntakeReviewDialog({
           // Keep the original conflict visible if recovery cannot load current state.
         }
       }
-      setNotice(error?.offlineQueued
-        ? 'Your choice is saved for retry. This share will remain recoverable until it syncs.'
-        : error?.message || 'The share choice could not be saved. Try again.')
+      setNotice(
+        error?.offlineQueued
+          ? 'Your choice is saved for retry. This share will remain recoverable until it syncs.'
+          : error?.message || 'The share choice could not be saved. Try again.',
+      )
     } finally {
       setWorking('')
     }
@@ -76,7 +81,9 @@ export function ShareIntakeReviewDialog({
       return
     }
     if (event.key !== 'Tab') return
-    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href]') || [])
+    const focusable = Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href]') || [],
+    )
     if (!focusable.length) return
     const first = focusable[0]
     const last = focusable[focusable.length - 1]
@@ -89,34 +96,72 @@ export function ShareIntakeReviewDialog({
     }
   }
 
-  return <div class="dialog-layer share-intake-review-layer" role="presentation">
-    <section ref={dialogRef} class="dialog share-intake-review" role="dialog" aria-modal="true" aria-labelledby="share-intake-review-title" aria-describedby="share-intake-review-help" aria-busy={Boolean(working)} onKeyDown={onKeyDown}>
-      <header class="dialog-head">
-        <div><span>Saved Android share</span><h2 id="share-intake-review-title">What did you mean to share?</h2></div>
-      </header>
-      <div class="share-intake-review-body">
-        <p id="share-intake-review-help">Android sent both a page address and some text. Choose explicitly so a page description is never mistaken for a selected passage.</p>
-        <div class="share-intake-review-source">
-          {intake.title && <strong>{intake.title}</strong>}
-          {intake.source_url && <a href={intake.source_url} target="_blank" rel="noreferrer">{intake.source_url}</a>}
+  return (
+    <div class="dialog-layer share-intake-review-layer" role="presentation">
+      <section
+        ref={dialogRef}
+        class="dialog share-intake-review"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-intake-review-title"
+        aria-describedby="share-intake-review-help"
+        aria-busy={Boolean(working)}
+        onKeyDown={onKeyDown}
+      >
+        <header class="dialog-head">
+          <div>
+            <span>Saved Android share</span>
+            <h2 id="share-intake-review-title">What did you mean to share?</h2>
+          </div>
+        </header>
+        <div class="share-intake-review-body">
+          <p id="share-intake-review-help">
+            Android sent both a page address and some text. Choose explicitly so a page description is never mistaken
+            for a selected passage.
+          </p>
+          <div class="share-intake-review-source">
+            {intake.title && <strong>{intake.title}</strong>}
+            {intake.source_url && (
+              <a href={intake.source_url} target="_blank" rel="noreferrer">
+                {intake.source_url}
+              </a>
+            )}
+          </div>
+          {intake.shared_text && <blockquote dir="auto">{intake.shared_text}</blockquote>}
+          <div class="share-intake-review-options" aria-label="Share intent">
+            <button
+              data-share-choice
+              type="button"
+              class="share-intake-review-option"
+              onClick={() => void resolve('capture')}
+              disabled={Boolean(working)}
+            >
+              <strong>{working === 'capture' ? 'Opening Capture…' : 'Capture the whole source'}</strong>
+              <span>Keep the page as a Library source after you choose its reviewed branch.</span>
+            </button>
+            <button
+              type="button"
+              class="share-intake-review-option"
+              onClick={() => void resolve('anchor')}
+              disabled={Boolean(working)}
+            >
+              <strong>{working === 'anchor' ? 'Opening anchor review…' : 'Save a selected passage'}</strong>
+              <span>Treat the shared text as an exact quote anchored to this page.</span>
+            </button>
+          </div>
+          {notice && (
+            <p class="share-intake-review-notice" role="status">
+              {notice}
+            </p>
+          )}
+          <footer class="share-intake-review-actions">
+            <button type="button" class="button secondary" onClick={onDefer} disabled={Boolean(working)}>
+              Decide later
+            </button>
+            <small>The saved share will return after the app is reopened.</small>
+          </footer>
         </div>
-        {intake.shared_text && <blockquote dir="auto">{intake.shared_text}</blockquote>}
-        <div class="share-intake-review-options" aria-label="Share intent">
-          <button data-share-choice type="button" class="share-intake-review-option" onClick={() => void resolve('capture')} disabled={Boolean(working)}>
-            <strong>{working === 'capture' ? 'Opening Capture…' : 'Capture the whole source'}</strong>
-            <span>Keep the page as a Library source after you choose its reviewed branch.</span>
-          </button>
-          <button type="button" class="share-intake-review-option" onClick={() => void resolve('anchor')} disabled={Boolean(working)}>
-            <strong>{working === 'anchor' ? 'Opening anchor review…' : 'Save a selected passage'}</strong>
-            <span>Treat the shared text as an exact quote anchored to this page.</span>
-          </button>
-        </div>
-        {notice && <p class="share-intake-review-notice" role="status">{notice}</p>}
-        <footer class="share-intake-review-actions">
-          <button type="button" class="button secondary" onClick={onDefer} disabled={Boolean(working)}>Decide later</button>
-          <small>The saved share will return after the app is reopened.</small>
-        </footer>
-      </div>
-    </section>
-  </div>
+      </section>
+    </div>
+  )
 }

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["browser-extension/background.js", "browser-extension/options.js", "scripts/*.mjs", "tests/**/*.{ts,mjs}"],
+  "project": [
+    "src/**/*.ts",
+    "client/src/**/*.{ts,tsx}",
+    "browser-extension/**/*.js",
+    "scripts/*.mjs",
+    "tests/**/*.{ts,mjs}"
+  ],
+  "ignoreDependencies": ["@mozilla/readability", "@types/cytoscape", "jsdom"]
+}

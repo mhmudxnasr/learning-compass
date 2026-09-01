@@ -15,9 +15,21 @@ export const notebookLearningFormats = [
   'report',
 ] as const
 
-export type NotebookLearningFormat = typeof notebookLearningFormats[number]
+export type NotebookLearningFormat = (typeof notebookLearningFormats)[number]
 export type NotebookLearningPurpose = 'learn' | 'orientation' | 'review' | 'teach-back' | 'presentation'
-export type NotebookConceptFeature = 'hierarchy' | 'causality' | 'taxonomy' | 'mechanism' | 'process' | 'comparison' | 'data' | 'spatial' | 'motion' | 'sequence' | 'procedure' | 'demonstration'
+export type NotebookConceptFeature =
+  | 'hierarchy'
+  | 'causality'
+  | 'taxonomy'
+  | 'mechanism'
+  | 'process'
+  | 'comparison'
+  | 'data'
+  | 'spatial'
+  | 'motion'
+  | 'sequence'
+  | 'procedure'
+  | 'demonstration'
 
 export type NotebookLearningPlanInput = {
   recommendation_id: string
@@ -53,44 +65,73 @@ const conceptFit: Partial<Record<NotebookLearningFormat, Set<NotebookConceptFeat
 }
 
 const purposeValues = new Set<NotebookLearningPurpose>(['learn', 'orientation', 'review', 'teach-back', 'presentation'])
-const featureValues = new Set<NotebookConceptFeature>(['hierarchy', 'causality', 'taxonomy', 'mechanism', 'process', 'comparison', 'data', 'spatial', 'motion', 'sequence', 'procedure', 'demonstration'])
+const featureValues = new Set<NotebookConceptFeature>([
+  'hierarchy',
+  'causality',
+  'taxonomy',
+  'mechanism',
+  'process',
+  'comparison',
+  'data',
+  'spatial',
+  'motion',
+  'sequence',
+  'procedure',
+  'demonstration',
+])
 const formatValues = new Set<NotebookLearningFormat>(notebookLearningFormats)
 
 const normalizedFormat = (value: unknown): NotebookLearningFormat | null => {
-  const key = String(value || '').trim().toLowerCase()
+  const key = String(value || '')
+    .trim()
+    .toLowerCase()
   const normalized = aliases[key] || key
-  return formatValues.has(normalized as NotebookLearningFormat) ? normalized as NotebookLearningFormat : null
+  return formatValues.has(normalized as NotebookLearningFormat) ? (normalized as NotebookLearningFormat) : null
 }
 
 const requirementsFor = (format: NotebookLearningFormat, purpose: NotebookLearningPurpose) => {
-  if (format === 'quiz') return {
-    source_grounded: true,
-    difficulty: 'hard',
-    question_count_min: 5,
-    question_count_max: 8,
-    hints_before_explanations: true,
-    transfer_question_count_min: 1,
-  }
-  if (format === 'audio') return {
-    source_grounded: true,
-    language: 'ar_eg',
-    purpose,
-    use: purpose === 'orientation' ? 'orientation' : 'review',
-  }
-  if (format === 'slide-deck') return { source_grounded: true, use: purpose === 'presentation' ? 'presentation' : 'teach-back-cues', dense_source_duplicate: false }
+  if (format === 'quiz')
+    return {
+      source_grounded: true,
+      difficulty: 'hard',
+      question_count_min: 5,
+      question_count_max: 8,
+      hints_before_explanations: true,
+      transfer_question_count_min: 1,
+    }
+  if (format === 'audio')
+    return {
+      source_grounded: true,
+      language: 'ar_eg',
+      purpose,
+      use: purpose === 'orientation' ? 'orientation' : 'review',
+    }
+  if (format === 'slide-deck')
+    return {
+      source_grounded: true,
+      use: purpose === 'presentation' ? 'presentation' : 'teach-back-cues',
+      dense_source_duplicate: false,
+    }
   return { source_grounded: true, custom_prompt_required: true }
 }
 
 export function buildNotebookLearningPlan(input: NotebookLearningPlanInput): NotebookLearningPlan {
   const recommendationId = String(input.recommendation_id || '').trim()
   if (!recommendationId) throw new Error('recommendation_id is required')
-  const purpose = purposeValues.has(input.purpose as NotebookLearningPurpose) ? input.purpose as NotebookLearningPurpose : 'learn'
-  const features = new Set((Array.isArray(input.concept_features) ? input.concept_features : [])
-    .map((value) => String(value || '').trim().toLowerCase())
-    .filter((value): value is NotebookConceptFeature => featureValues.has(value as NotebookConceptFeature)))
-  const requested = Array.isArray(input.requested_formats) && input.requested_formats.length
-    ? input.requested_formats
-    : ['quiz']
+  const purpose = purposeValues.has(input.purpose as NotebookLearningPurpose)
+    ? (input.purpose as NotebookLearningPurpose)
+    : 'learn'
+  const features = new Set(
+    (Array.isArray(input.concept_features) ? input.concept_features : [])
+      .map((value) =>
+        String(value || '')
+          .trim()
+          .toLowerCase(),
+      )
+      .filter((value): value is NotebookConceptFeature => featureValues.has(value as NotebookConceptFeature)),
+  )
+  const requested =
+    Array.isArray(input.requested_formats) && input.requested_formats.length ? input.requested_formats : ['quiz']
   const selected: NotebookLearningFormat[] = []
   const rejected: Array<{ format: string; reason: string }> = []
 
@@ -180,30 +221,50 @@ export function validateNotebookLearningReceipt(input: NotebookLearningReceiptIn
   cleanRequired(input.recommendation_id, 'recommendation_id', failures)
   const notebookId = cleanRequired(input.notebook_id, 'notebook_id', failures)
   const notebookUrl = cleanRequired(input.notebook_url, 'notebook_url', failures)
-  const notebookUrlMatch = notebookUrl.match(/^https:\/\/(?:notebook|notebooklm)\.google\.com\/notebook\/([A-Za-z0-9_-]+)(?:[/?#].*)?$/)
+  const notebookUrlMatch = notebookUrl.match(
+    /^https:\/\/(?:notebook|notebooklm)\.google\.com\/notebook\/([A-Za-z0-9_-]+)(?:[/?#].*)?$/,
+  )
   if (notebookUrl && !notebookUrlMatch) failures.push('notebook_url must be an exact NotebookLM notebook URL')
-  if (notebookUrlMatch && notebookId && notebookUrlMatch[1] !== notebookId) failures.push('notebook_id must match notebook_url')
+  if (notebookUrlMatch && notebookId && notebookUrlMatch[1] !== notebookId)
+    failures.push('notebook_id must match notebook_url')
 
   if (input.kind === 'source') {
-    if (!['pending', 'indexed', 'failed'].includes(input.status)) failures.push('source status must be pending, indexed, or failed')
-    if (input.status === 'indexed' && !String(input.provider_source_id || '').trim()) failures.push('provider_source_id is required when source status is indexed')
-    if (input.status === 'failed' && !String(input.error || '').trim()) failures.push('error is required when source status is failed')
+    if (!['pending', 'indexed', 'failed'].includes(input.status))
+      failures.push('source status must be pending, indexed, or failed')
+    if (input.status === 'indexed' && !String(input.provider_source_id || '').trim())
+      failures.push('provider_source_id is required when source status is indexed')
+    if (input.status === 'failed' && !String(input.error || '').trim())
+      failures.push('error is required when source status is failed')
   } else {
     const format = normalizedFormat(input.format)
     if (!format) failures.push('format is unsupported')
-    if (!['pending', 'ready', 'failed'].includes(input.status)) failures.push('artifact status must be pending, ready, or failed')
+    if (!['pending', 'ready', 'failed'].includes(input.status))
+      failures.push('artifact status must be pending, ready, or failed')
     if (!String(input.plan_id || '').trim()) failures.push('plan_id is required')
-    if (plan && format && !plan.selected_formats.includes(format)) failures.push('format is not selected by the learning output plan')
-    if (input.status === 'pending' && !String(input.provider_task_id || '').trim()) failures.push('provider_task_id is required when artifact status is pending')
-    if (input.status === 'ready' && !String(input.provider_artifact_id || '').trim()) failures.push('provider_artifact_id is required when artifact status is ready')
-    if (input.status === 'failed' && !String(input.error || '').trim()) failures.push('error is required when artifact status is failed')
-    if (input.status !== 'failed' && input.source_grounded !== true) failures.push('source_grounded must be true for submitted or ready learning artifacts')
-    if (input.status !== 'failed' && input.custom_prompt_applied !== true) failures.push('custom_prompt_applied must be true for submitted or ready learning artifacts')
-    if (format === 'audio' && input.status !== 'failed' && input.language !== 'ar_eg') failures.push('NotebookLM learning audio must use language ar_eg')
+    if (plan && format && !plan.selected_formats.includes(format))
+      failures.push('format is not selected by the learning output plan')
+    if (input.status === 'pending' && !String(input.provider_task_id || '').trim())
+      failures.push('provider_task_id is required when artifact status is pending')
+    if (input.status === 'ready' && !String(input.provider_artifact_id || '').trim())
+      failures.push('provider_artifact_id is required when artifact status is ready')
+    if (input.status === 'failed' && !String(input.error || '').trim())
+      failures.push('error is required when artifact status is failed')
+    if (input.status !== 'failed' && input.source_grounded !== true)
+      failures.push('source_grounded must be true for submitted or ready learning artifacts')
+    if (input.status !== 'failed' && input.custom_prompt_applied !== true)
+      failures.push('custom_prompt_applied must be true for submitted or ready learning artifacts')
+    if (format === 'audio' && input.status !== 'failed' && input.language !== 'ar_eg')
+      failures.push('NotebookLM learning audio must use language ar_eg')
     if (format === 'quiz' && input.status === 'ready') {
-      if (!Number.isInteger(input.question_count) || Number(input.question_count) < 5 || Number(input.question_count) > 8) failures.push('ready quiz must contain 5 to 8 questions')
+      if (
+        !Number.isInteger(input.question_count) ||
+        Number(input.question_count) < 5 ||
+        Number(input.question_count) > 8
+      )
+        failures.push('ready quiz must contain 5 to 8 questions')
       if (input.hints_before_explanations !== true) failures.push('ready quiz must provide hints before explanations')
-      if (!Number.isInteger(input.transfer_question_count) || Number(input.transfer_question_count) < 1) failures.push('ready quiz must contain at least one transfer question')
+      if (!Number.isInteger(input.transfer_question_count) || Number(input.transfer_question_count) < 1)
+        failures.push('ready quiz must contain at least one transfer question')
     }
   }
   return { ok: failures.length === 0, failures: [...new Set(failures)] }
@@ -246,10 +307,12 @@ export type NotebookLearningState = {
   receipts: ParsedNotebookLearningReceipt[]
 }
 
-export type NotebookLearningSummary = Pick<NotebookLearningState,
-  'linked' | 'indexed' | 'index_status' | 'output_status' | 'primary_format'> & {
-    outputs: Array<{ format: string; status: 'pending' | 'ready' | 'failed' }>
-  }
+export type NotebookLearningSummary = Pick<
+  NotebookLearningState,
+  'linked' | 'indexed' | 'index_status' | 'output_status' | 'primary_format'
+> & {
+  outputs: Array<{ format: string; status: 'pending' | 'ready' | 'failed' }>
+}
 
 export function summarizeNotebookLearningState(state: NotebookLearningState): NotebookLearningSummary {
   return {
@@ -266,21 +329,37 @@ export const notebookLearningTarget = (recommendationId: string) => `notebooklm:
 
 const parsedLearningReceipt = (row: NotebookLearningReceiptRow): ParsedNotebookLearningReceipt => {
   let receipt: Record<string, any> = {}
-  try { receipt = JSON.parse(row.receipt_json || '{}') } catch { /* retain the ledger row even when old JSON is malformed */ }
+  try {
+    receipt = JSON.parse(row.receipt_json || '{}')
+  } catch {
+    /* retain the ledger row even when old JSON is malformed */
+  }
   // Ledger identity always wins over provider payloads, including older rows
   // written before receipt inputs were allow-listed at the API boundary.
-  return { ...receipt, id: row.id, intent: row.intent, status_code: row.status_code, verified: Boolean(row.verified), created_at: row.created_at }
+  return {
+    ...receipt,
+    id: row.id,
+    intent: row.intent,
+    status_code: row.status_code,
+    verified: Boolean(row.verified),
+    created_at: row.created_at,
+  }
 }
 
-export function reduceNotebookLearningReceipts(rows: NotebookLearningReceiptRow[], notebookUrl: string | null = null): NotebookLearningState {
+export function reduceNotebookLearningReceipts(
+  rows: NotebookLearningReceiptRow[],
+  notebookUrl: string | null = null,
+): NotebookLearningState {
   const receipts = rows.map(parsedLearningReceipt)
   const source = receipts.find((item) => item.intent === 'notebooklm_source_receipt') || null
   const linked = Boolean(notebookUrl)
   const receiptMatchesLink = Boolean(source && notebookUrl && source.notebook_url === notebookUrl)
   const indexed = receiptMatchesLink && source?.status === 'indexed'
-  const plan = indexed && source
-    ? receipts.find((item) => item.intent === 'notebooklm_learning_plan' && item.source_receipt_id === source.id) || null
-    : null
+  const plan =
+    indexed && source
+      ? receipts.find((item) => item.intent === 'notebooklm_learning_plan' && item.source_receipt_id === source.id) ||
+        null
+      : null
   const artifacts: Record<string, ParsedNotebookLearningReceipt> = {}
   for (const item of receipts) {
     if (item.intent !== 'notebooklm_artifact_receipt' || !item.format || artifacts[item.format]) continue
@@ -295,23 +374,30 @@ export function reduceNotebookLearningReceipts(rows: NotebookLearningReceiptRow[
       : source.status === 'pending' || source.status === 'indexed' || source.status === 'failed'
         ? source.status
         : 'linked'
-  const selected: NotebookLearningFormat[] = (Array.isArray(plan?.plan?.selected_formats) ? plan.plan.selected_formats : [])
+  const selected: NotebookLearningFormat[] = (
+    Array.isArray(plan?.plan?.selected_formats) ? plan.plan.selected_formats : []
+  )
     .map((format: unknown) => normalizeNotebookLearningFormat(format))
     .filter((format: NotebookLearningFormat | null): format is NotebookLearningFormat => Boolean(format))
   // The displayed format and status must describe the same real artifact.
   // Prefer something usable now, then an in-flight output, then a failure.
-  const primaryFormat = selected.find((format) => artifacts[format]?.status === 'ready')
-    || selected.find((format) => artifacts[format]?.status === 'pending')
-    || selected.find((format) => artifacts[format]?.status === 'failed')
-    || selected[0]
-    || null
+  const primaryFormat =
+    selected.find((format) => artifacts[format]?.status === 'ready') ||
+    selected.find((format) => artifacts[format]?.status === 'pending') ||
+    selected.find((format) => artifacts[format]?.status === 'failed') ||
+    selected[0] ||
+    null
   const primaryStatus = primaryFormat ? artifacts[primaryFormat]?.status : null
   const outputStatus = ['pending', 'ready', 'failed'].includes(primaryStatus)
-    ? primaryStatus as 'pending' | 'ready' | 'failed'
+    ? (primaryStatus as 'pending' | 'ready' | 'failed')
     : 'none'
   const outputs = Object.values(artifacts)
     .filter((item) => ['pending', 'ready', 'failed'].includes(item.status))
-    .map((item) => ({ format: String(item.format), status: item.status as 'pending' | 'ready' | 'failed', receipt_id: item.id }))
+    .map((item) => ({
+      format: String(item.format),
+      status: item.status as 'pending' | 'ready' | 'failed',
+      receipt_id: item.id,
+    }))
   return {
     contract_version: NOTEBOOKLM_LEARNING_CONTRACT,
     linked,
@@ -328,11 +414,19 @@ export function reduceNotebookLearningReceipts(rows: NotebookLearningReceiptRow[
   }
 }
 
-export async function loadNotebookLearningState(DB: D1Database, recommendationId: string, notebookUrl: string | null = null) {
-  const rows = await DB.prepare(`SELECT rowid sequence,id,intent,status_code,verified,receipt_json,created_at
+export async function loadNotebookLearningState(
+  DB: D1Database,
+  recommendationId: string,
+  notebookUrl: string | null = null,
+) {
+  const rows = await DB.prepare(
+    `SELECT rowid sequence,id,intent,status_code,verified,receipt_json,created_at
     FROM agent_receipts
     WHERE target=? AND intent IN ('notebooklm_learning_plan','notebooklm_source_receipt','notebooklm_artifact_receipt')
-    ORDER BY rowid DESC LIMIT 200`).bind(notebookLearningTarget(recommendationId)).all<NotebookLearningReceiptRow>()
+    ORDER BY rowid DESC LIMIT 200`,
+  )
+    .bind(notebookLearningTarget(recommendationId))
+    .all<NotebookLearningReceiptRow>()
   return reduceNotebookLearningReceipts(rows.results || [], notebookUrl)
 }
 
@@ -352,13 +446,19 @@ export async function loadNotebookLearningStates(
 
   const recommendationIds = [...notebookUrls.keys()]
   const targets = recommendationIds.map(notebookLearningTarget)
-  const rowBatches = await Promise.all(chunkForD1(targets).map((batch) => {
-    const placeholders = batch.map(() => '?').join(',')
-    return DB.prepare(`SELECT rowid sequence,id,intent,target,status_code,verified,receipt_json,created_at
+  const rowBatches = await Promise.all(
+    chunkForD1(targets).map((batch) => {
+      const placeholders = batch.map(() => '?').join(',')
+      return DB.prepare(
+        `SELECT rowid sequence,id,intent,target,status_code,verified,receipt_json,created_at
       FROM agent_receipts
       WHERE target IN (${placeholders}) AND intent IN ('notebooklm_learning_plan','notebooklm_source_receipt','notebooklm_artifact_receipt')
-      ORDER BY rowid DESC`).bind(...batch).all<NotebookLearningReceiptRow & { target: string }>()
-  }))
+      ORDER BY rowid DESC`,
+      )
+        .bind(...batch)
+        .all<NotebookLearningReceiptRow & { target: string }>()
+    }),
+  )
   const byTarget = new Map<string, NotebookLearningReceiptRow[]>()
   for (const row of rowBatches.flatMap((batch) => batch.results || [])) {
     const group = byTarget.get(row.target) || []
@@ -366,10 +466,13 @@ export async function loadNotebookLearningStates(
     byTarget.set(row.target, group)
   }
   for (const recommendationId of recommendationIds) {
-    states.set(recommendationId, reduceNotebookLearningReceipts(
-      byTarget.get(notebookLearningTarget(recommendationId)) || [],
-      notebookUrls.get(recommendationId) || null,
-    ))
+    states.set(
+      recommendationId,
+      reduceNotebookLearningReceipts(
+        byTarget.get(notebookLearningTarget(recommendationId)) || [],
+        notebookUrls.get(recommendationId) || null,
+      ),
+    )
   }
   return states
 }

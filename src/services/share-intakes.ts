@@ -34,15 +34,20 @@ export class ShareIntakeError extends Error {
   }
 }
 
-const isSharedUrl = (value: unknown): value is string => typeof value === 'string'
-  && value.length > 0 && value.length < 2048 && /^https?:\/\/[^\s<>"']+$/i.test(value)
+const isSharedUrl = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0 && value.length < 2048 && /^https?:\/\/[^\s<>"']+$/i.test(value)
 
 export function extractSharedSourceUrl(text: unknown) {
   const value = String(text || '').trim()
   for (const match of value.matchAll(/https?:\/\/[^\s<>"']+/gi)) {
     let candidate = String(match[0] || '').replace(/[.,;?]+$/g, '')
-    for (const [open, close] of [['(', ')'], ['[', ']'], ['{', '}']] as const) {
-      while (candidate.endsWith(close) && candidate.split(close).length > candidate.split(open).length) candidate = candidate.slice(0, -1)
+    for (const [open, close] of [
+      ['(', ')'],
+      ['[', ']'],
+      ['{', '}'],
+    ] as const) {
+      while (candidate.endsWith(close) && candidate.split(close).length > candidate.split(open).length)
+        candidate = candidate.slice(0, -1)
     }
     if (isSharedUrl(candidate)) return candidate
   }
@@ -55,7 +60,8 @@ export function classifyShareIntake(text: unknown, sourceUrl: unknown): Extract<
   return url && sharedText && sharedText !== url ? 'review' : 'capture'
 }
 
-const withoutUrlFragmentSql = (expression: string) => `rtrim(CASE WHEN instr(${expression},'#')>0 THEN substr(${expression},1,instr(${expression},'#')-1) ELSE ${expression} END,'/')`
+const withoutUrlFragmentSql = (expression: string) =>
+  `rtrim(CASE WHEN instr(${expression},'#')>0 THEN substr(${expression},1,instr(${expression},'#')-1) ELSE ${expression} END,'/')`
 const selectorUrlSql = `json_extract(a.selector_json,'$.url')`
 const selectorLocatorSql = `json_extract(a.selector_json,'$.locator')`
 const selectorMatchesIntakeSql = `(${selectorUrlSql}=si.source_url OR ${selectorLocatorSql}=si.source_url
@@ -118,21 +124,32 @@ const intakeSelect = `SELECT si.*,
   ) ELSE NULL END recoverable_annotation_id
   FROM share_intakes si`
 
-export async function createShareIntake(DB: Bindings['DB'], input: {
-  kind: ShareIntakeKind
-  title?: string | null
-  text?: string | null
-  sourceUrl?: string | null
-}) {
-  const title = String(input.title || '').trim().slice(0, 500) || null
+export async function createShareIntake(
+  DB: Bindings['DB'],
+  input: {
+    kind: ShareIntakeKind
+    title?: string | null
+    text?: string | null
+    sourceUrl?: string | null
+  },
+) {
+  const title =
+    String(input.title || '')
+      .trim()
+      .slice(0, 500) || null
   const rawSharedText = String(input.text || '').trim()
   if (rawSharedText.length > 10000) {
     throw new ShareIntakeError('share_text_too_large', 'Shared text must contain at most 10,000 characters.')
   }
   const sharedText = rawSharedText || null
-  const sourceUrl = String(input.sourceUrl || '').trim().slice(0, 2048) || null
+  const sourceUrl =
+    String(input.sourceUrl || '')
+      .trim()
+      .slice(0, 2048) || null
   const sourceIdentityUrl = sourceUrl ? normalizeSourceUrlIdentity(sourceUrl) : null
-  const sourceIdentityKey = sourceIdentityUrl ? deriveDedupKey({ video_url: sourceIdentityUrl, content_type: 'article' }) : null
+  const sourceIdentityKey = sourceIdentityUrl
+    ? deriveDedupKey({ video_url: sourceIdentityUrl, content_type: 'article' })
+    : null
   const candidate = sourceUrl || sharedText
   if (!candidate) throw new ShareIntakeError('share_intake_empty', 'The shared item is empty.')
   if ((input.kind === 'anchor' || input.kind === 'review') && (!sourceUrl || !sharedText)) {
@@ -142,13 +159,18 @@ export async function createShareIntake(DB: Bindings['DB'], input: {
     )
   }
   const id = `share_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`
-  await DB.prepare(`INSERT INTO share_intakes (id,kind,title,shared_text,source_url,source_identity_url,source_identity_key) VALUES (?,?,?,?,?,?,?)`)
-    .bind(id, input.kind, title, sharedText, sourceUrl, sourceIdentityUrl, sourceIdentityKey).run()
+  await DB.prepare(
+    `INSERT INTO share_intakes (id,kind,title,shared_text,source_url,source_identity_url,source_identity_key) VALUES (?,?,?,?,?,?,?)`,
+  )
+    .bind(id, input.kind, title, sharedText, sourceUrl, sourceIdentityUrl, sourceIdentityKey)
+    .run()
   return loadShareIntake(DB, id)
 }
 
 export async function loadShareIntake(DB: Bindings['DB'], id: string) {
-  const cleanId = String(id || '').trim().slice(0, 120)
+  const cleanId = String(id || '')
+    .trim()
+    .slice(0, 120)
   if (!cleanId) return null
   return DB.prepare(`${intakeSelect} WHERE si.id=?`).bind(cleanId).first<ShareIntake>()
 }
@@ -156,7 +178,8 @@ export async function loadShareIntake(DB: Bindings['DB'], id: string) {
 export async function loadPendingShareIntakes(DB: Bindings['DB'], limit = 10) {
   const boundedLimit = Math.max(1, Math.min(20, Math.floor(Number(limit) || 10)))
   const rows = await DB.prepare(`${intakeSelect} WHERE si.status='pending' ORDER BY si.created_at DESC LIMIT ?`)
-    .bind(boundedLimit).all<ShareIntake>()
+    .bind(boundedLimit)
+    .all<ShareIntake>()
   return rows.results || []
 }
 
@@ -167,45 +190,79 @@ export async function resolveShareIntake(DB: Bindings['DB'], id: string, destina
   const intake = await loadShareIntake(DB, id)
   if (!intake) throw new ShareIntakeError('share_intake_not_found', 'The shared item is unavailable.', 404)
   if (intake.kind !== 'review') {
-    throw new ShareIntakeError('share_intake_not_reviewable', 'This shared item does not require an intent choice.', 409)
+    throw new ShareIntakeError(
+      'share_intake_not_reviewable',
+      'This shared item does not require an intent choice.',
+      409,
+    )
   }
   if (intake.resolved_kind) {
     if (intake.resolved_kind === destination) return intake
-    throw new ShareIntakeError('share_intake_resolution_conflict', 'This shared item was already assigned to a different completion path.', 409)
+    throw new ShareIntakeError(
+      'share_intake_resolution_conflict',
+      'This shared item was already assigned to a different completion path.',
+      409,
+    )
   }
   if (intake.status !== 'pending') {
     throw new ShareIntakeError('share_intake_already_consumed', 'The shared item was already completed.', 409)
   }
 
-  const updated = await DB.prepare(`UPDATE share_intakes
+  const updated = await DB.prepare(
+    `UPDATE share_intakes
     SET resolved_kind=?,resolved_at=datetime('now'),updated_at=datetime('now')
-    WHERE id=? AND kind='review' AND resolved_kind IS NULL AND status='pending'`)
-    .bind(destination, intake.id).run()
+    WHERE id=? AND kind='review' AND resolved_kind IS NULL AND status='pending'`,
+  )
+    .bind(destination, intake.id)
+    .run()
   const current = await loadShareIntake(DB, intake.id)
   if (!current) throw new ShareIntakeError('share_intake_not_found', 'The shared item is unavailable.', 404)
   if (current.resolved_kind === destination) return current
   if (!updated.meta.changes && current.resolved_kind) {
-    throw new ShareIntakeError('share_intake_resolution_conflict', 'This shared item was already assigned to a different completion path.', 409)
+    throw new ShareIntakeError(
+      'share_intake_resolution_conflict',
+      'This shared item was already assigned to a different completion path.',
+      409,
+    )
   }
-  throw new ShareIntakeError('share_intake_resolution_conflict', 'The shared item could not be assigned to that completion path.', 409)
+  throw new ShareIntakeError(
+    'share_intake_resolution_conflict',
+    'The shared item could not be assigned to that completion path.',
+    409,
+  )
 }
 
-export async function consumeShareIntake(DB: Bindings['DB'], id: string, target: {
-  recommendationId?: string | null
-  annotationId?: string | null
-}) {
+export async function consumeShareIntake(
+  DB: Bindings['DB'],
+  id: string,
+  target: {
+    recommendationId?: string | null
+    annotationId?: string | null
+  },
+) {
   const intake = await loadShareIntake(DB, id)
   if (!intake) throw new ShareIntakeError('share_intake_not_found', 'The shared item is unavailable.', 404)
   const completionKind = intake.effective_kind
   if (!completionKind) {
-    throw new ShareIntakeError('share_intake_intent_required', 'Choose whether this share is a source or a selected passage before completing it.', 409)
+    throw new ShareIntakeError(
+      'share_intake_intent_required',
+      'Choose whether this share is a source or a selected passage before completing it.',
+      409,
+    )
   }
 
-  const recommendationId = String(target.recommendationId || '').trim().slice(0, 120) || null
-  const annotationId = String(target.annotationId || '').trim().slice(0, 120) || null
-  const identityDedupSuffix = intake.source_identity_key && !/^(?:yt|book)_/.test(intake.source_identity_key)
-    ? intake.source_identity_key.slice(intake.source_identity_key.indexOf('_') + 1)
-    : null
+  const recommendationId =
+    String(target.recommendationId || '')
+      .trim()
+      .slice(0, 120) || null
+  const annotationId =
+    String(target.annotationId || '')
+      .trim()
+      .slice(0, 120) || null
+  const identityDedupSuffix =
+    intake.source_identity_key && !/^(?:yt|book)_/.test(intake.source_identity_key)
+      ? intake.source_identity_key.slice(intake.source_identity_key.indexOf('_') + 1)
+      : null
   if (completionKind === 'capture' && (!recommendationId || annotationId)) {
     throw new ShareIntakeError('share_capture_target_required', 'A captured source record is required.')
   }
@@ -214,17 +271,24 @@ export async function consumeShareIntake(DB: Bindings['DB'], id: string, target:
   }
 
   if (intake.status === 'consumed') {
-    const sameTarget = completionKind === 'capture'
-      ? intake.recommendation_id === recommendationId
-      : intake.annotation_id === annotationId
-    if (!sameTarget) throw new ShareIntakeError('share_intake_already_consumed', 'The shared item was already completed with a different target.', 409)
+    const sameTarget =
+      completionKind === 'capture'
+        ? intake.recommendation_id === recommendationId
+        : intake.annotation_id === annotationId
+    if (!sameTarget)
+      throw new ShareIntakeError(
+        'share_intake_already_consumed',
+        'The shared item was already completed with a different target.',
+        409,
+      )
     return intake
   }
 
   let updated: { meta: { changes: number } }
   if (completionKind === 'capture') {
     const candidate = intake.source_url || intake.shared_text || ''
-    updated = await DB.prepare(`UPDATE share_intakes
+    updated = await DB.prepare(
+      `UPDATE share_intakes
       SET status='consumed',recommendation_id=?,annotation_id=NULL,consumed_at=datetime('now'),updated_at=datetime('now')
       WHERE id=? AND status='pending'
         AND (kind='capture' OR (kind='review' AND resolved_kind='capture'))
@@ -238,18 +302,33 @@ export async function consumeShareIntake(DB: Bindings['DB'], id: string, target:
               OR json_extract(m.source_metadata_json,'$.raw_source')=?
               OR ${withoutUrlFragmentSql("json_extract(m.source_metadata_json,'$.raw_source')")}=?
             )
-        )`)
+        )`,
+    )
       .bind(
-        recommendationId, intake.id, recommendationId,
-        intake.source_url, intake.source_identity_url,
-        intake.source_url, intake.source_url, intake.source_identity_url, intake.source_identity_url,
-        intake.source_identity_key, intake.source_identity_key,
-        identityDedupSuffix, identityDedupSuffix, identityDedupSuffix,
-        intake.source_identity_key, identityDedupSuffix, identityDedupSuffix,
-        candidate, intake.source_identity_url,
-      ).run()
+        recommendationId,
+        intake.id,
+        recommendationId,
+        intake.source_url,
+        intake.source_identity_url,
+        intake.source_url,
+        intake.source_url,
+        intake.source_identity_url,
+        intake.source_identity_url,
+        intake.source_identity_key,
+        intake.source_identity_key,
+        identityDedupSuffix,
+        identityDedupSuffix,
+        identityDedupSuffix,
+        intake.source_identity_key,
+        identityDedupSuffix,
+        identityDedupSuffix,
+        candidate,
+        intake.source_identity_url,
+      )
+      .run()
   } else {
-    updated = await DB.prepare(`WITH valid_target AS (
+    updated = await DB.prepare(
+      `WITH valid_target AS (
         SELECT a.recommendation_id FROM source_annotations a
         JOIN recommendations r ON r.id=a.recommendation_id AND r.deleted_at IS NULL AND lower(COALESCE(r.status,''))!='deleted'
         JOIN recommendation_meta m ON m.recommendation_id=r.id AND a.branch_id=m.branch_id
@@ -263,25 +342,43 @@ export async function consumeShareIntake(DB: Bindings['DB'], id: string, target:
       SET status='consumed',recommendation_id=(SELECT recommendation_id FROM valid_target),annotation_id=?,consumed_at=datetime('now'),updated_at=datetime('now')
       WHERE id=? AND status='pending'
         AND (kind='anchor' OR (kind='review' AND resolved_kind='anchor'))
-        AND EXISTS (SELECT 1 FROM valid_target)`)
+        AND EXISTS (SELECT 1 FROM valid_target)`,
+    )
       .bind(
-        annotationId, intake.shared_text,
-        intake.source_url, intake.source_url, intake.source_identity_url, intake.source_identity_url, intake.source_identity_url,
-        intake.source_url, intake.source_identity_url,
-        intake.source_url, intake.source_url, intake.source_identity_url, intake.source_identity_url,
-        intake.source_identity_key, intake.source_identity_key,
-        identityDedupSuffix, identityDedupSuffix, identityDedupSuffix,
-        intake.source_identity_key, identityDedupSuffix, identityDedupSuffix,
-        annotationId, intake.id,
-      ).run()
+        annotationId,
+        intake.shared_text,
+        intake.source_url,
+        intake.source_url,
+        intake.source_identity_url,
+        intake.source_identity_url,
+        intake.source_identity_url,
+        intake.source_url,
+        intake.source_identity_url,
+        intake.source_url,
+        intake.source_url,
+        intake.source_identity_url,
+        intake.source_identity_url,
+        intake.source_identity_key,
+        intake.source_identity_key,
+        identityDedupSuffix,
+        identityDedupSuffix,
+        identityDedupSuffix,
+        intake.source_identity_key,
+        identityDedupSuffix,
+        identityDedupSuffix,
+        annotationId,
+        intake.id,
+      )
+      .run()
   }
 
   if (!updated.meta.changes) {
     const current = await loadShareIntake(DB, intake.id)
     if (current) {
-      const sameTarget = current.effective_kind === 'capture'
-        ? current.recommendation_id === recommendationId
-        : current.annotation_id === annotationId
+      const sameTarget =
+        current.effective_kind === 'capture'
+          ? current.recommendation_id === recommendationId
+          : current.annotation_id === annotationId
       if (current.status === 'consumed' && sameTarget) return current
       if (current.status === 'pending' && current.effective_kind === completionKind) {
         throw new ShareIntakeError(
@@ -292,7 +389,11 @@ export async function consumeShareIntake(DB: Bindings['DB'], id: string, target:
           409,
         )
       }
-      throw new ShareIntakeError('share_intake_already_consumed', 'The shared item was already completed with a different target.', 409)
+      throw new ShareIntakeError(
+        'share_intake_already_consumed',
+        'The shared item was already completed with a different target.',
+        409,
+      )
     }
     throw new ShareIntakeError('share_intake_not_found', 'The shared item is unavailable.', 404)
   }

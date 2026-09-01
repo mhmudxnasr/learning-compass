@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { readStudioCss } from './support/read-studio-css.ts'
 
 const theme = readFileSync(new URL('../../client/src/theme.ts', import.meta.url), 'utf8')
-const studio = readFileSync(new URL('../../client/src/studio.css', import.meta.url), 'utf8')
+const studio = readStudioCss()
 const settings = readFileSync(new URL('../../client/src/workspaces/SettingsWorkspace.tsx', import.meta.url), 'utf8')
 
 test('custom visual-system JSON reaches the global startup and heading seams', () => {
@@ -47,7 +48,10 @@ test('copied AI brief requests a premium whole-product visual system', () => {
   assert.match(settings, /Home, Library, Learn, Map, and Settings/)
   assert.match(settings, /Reject generic dashboard card grids/)
   assert.match(settings, /studio\|plex\|inter\|editorial\|newsreader\|jakarta\|system\|terminal\|custom/)
-  assert.match(studio, /:root\[data-theme="continuum"\] \.btn-surprise\s*\{[\s\S]*min-width:\s*145px;[\s\S]*min-height:\s*42px;/)
+  assert.match(
+    studio,
+    /:root\[data-theme=['"]continuum['"]\] \.btn-surprise\s*\{[\s\S]*min-width:\s*145px;[\s\S]*min-height:\s*42px;/,
+  )
   assert.match(studio, /border-radius:\s*999px;/)
 })
 

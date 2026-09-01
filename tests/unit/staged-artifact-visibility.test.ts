@@ -28,7 +28,10 @@ test('the visibility boundary preserves legacy and historical rows while hiding 
     insert.run('superseded', '{"publication_state":"superseded"}')
     insert.run('staged', '{"publication_state":"staged"}')
 
-    const visible = sqlite.prepare(`SELECT id FROM artifacts WHERE ${visibilityPredicate} ORDER BY id`).all().map((row: any) => row.id)
+    const visible = sqlite
+      .prepare(`SELECT id FROM artifacts WHERE ${visibilityPredicate} ORDER BY id`)
+      .all()
+      .map((row: any) => row.id)
     assert.deepEqual(visible, ['legacy', 'ready', 'superseded'])
   } finally {
     sqlite.close()

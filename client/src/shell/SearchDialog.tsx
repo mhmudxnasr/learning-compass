@@ -4,7 +4,11 @@ import { Icon } from '../components/Icon'
 
 const groupMeta: Record<string, { label: string; href: (item: any) => string }> = {
   recs: { label: 'Sources', href: (item) => `#/library/source/${encodeURIComponent(item.id)}` },
-  annotations: { label: 'Source anchors', href: (item) => `#/library/source/${encodeURIComponent(item.recommendation_id)}?annotation=${encodeURIComponent(item.id)}` },
+  annotations: {
+    label: 'Source anchors',
+    href: (item) =>
+      `#/library/source/${encodeURIComponent(item.recommendation_id)}?annotation=${encodeURIComponent(item.id)}`,
+  },
   threads: { label: 'Threads', href: (item) => `#/learn/thread/${encodeURIComponent(item.id)}` },
   notes: { label: 'Notes', href: (item) => `#/learn/note/${encodeURIComponent(item.id)}` },
   artifacts: { label: 'Files', href: (item) => `#/library/artifact/${encodeURIComponent(item.id)}` },
@@ -74,8 +78,11 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   }, [open, onClose])
 
   const groups = useMemo(
-    () => Object.entries(state.data?.groups || {}).filter(([key, items]) => groupMeta[key] && Array.isArray(items) && items.length) as Array<[string, any[]]>,
-    [state.data]
+    () =>
+      Object.entries(state.data?.groups || {}).filter(
+        ([key, items]) => groupMeta[key] && Array.isArray(items) && items.length,
+      ) as Array<[string, any[]]>,
+    [state.data],
   )
 
   const flatResults = useMemo(() => {
@@ -122,8 +129,8 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
     if (!dialog) return
     const focusable = Array.from(
       dialog.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
-      )
+        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"]), [contenteditable="true"]',
+      ),
     )
     if (!focusable.length) return
     const first = focusable[0]
@@ -157,10 +164,14 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
         aria-labelledby="search-dialog-title"
         onKeyDown={onKeyDown}
       >
-        <h2 id="search-dialog-title" class="visually-hidden">Search everything</h2>
+        <h2 id="search-dialog-title" class="visually-hidden">
+          Search everything
+        </h2>
         <header class="search-input">
           <Icon name="search" />
-          <label class="visually-hidden" for="search-query">Search sources, notes, Threads, files, and map</label>
+          <label class="visually-hidden" for="search-query">
+            Search sources, notes, Threads, files, and map
+          </label>
           <input
             id="search-query"
             autoFocus

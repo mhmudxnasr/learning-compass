@@ -28,30 +28,63 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 - Lite Visual v6 receipts are HMAC-attested. Batch replacement binds the exact ordered target set, manifest, signed aggregate audit, source, immutable workflow run, active durable job, mandatory R2 object verification, and current-pair supersession lineage. Replacements and their lease-free `awaiting_activation` jobs remain hidden in a staged corpus until one guarded D1 transaction activates every expected pair and completes those exact jobs; abort discards only staging, and failure before activation leaves the prior corpus fully visible.
 - The route registry in `client/src/app/router.ts` exposes five root destinations and 12 grouped modes. Library → Archive contains completed and excluded sources only; All sources, Reading journal, and Collections are retired product surfaces. Every remaining root and mode/focus surface must resolve to a real product surface; no generic fallback screens or tabs may expose only infrastructure.
 
-## Architecture Boundaries
+## Architecture boundaries
 
-- `src/`: Hono Cloudflare Worker, API routes, domain logic, and scheduled work.
-- `client/`: Vite + Preact + TypeScript application.
+- `src/index.ts`: Worker composition root. Mount middleware and route modules here; keep feature logic out of it.
+- `src/api/`: HTTP parsing, authorization boundaries, status codes, and response shaping. Route modules call domain or service functions instead of duplicating rules.
+- `src/services/` and `src/domain.ts`: reusable workflows, validation, storage orchestration, and product rules. These modules must not depend on client code.
+- `client/src/app/`: browser entry, route registry, and top-level composition.
+- `client/src/shell/`: navigation and cross-workspace shell behavior.
+- `client/src/workspaces/`: destination-level screens. A workspace may compose focused modules from `client/src/features/`, but feature modules must not import a workspace.
+- `client/src/styles/`: ordered CSS modules imported by `client/src/studio.css`; follow its local README before changing cascade order.
+- `browser-extension/`: a separate Manifest V3 capture client. It communicates only by opening the normal application capture route.
+- `scripts/`: checked-in release, recovery, migration, and analysis commands. A script must be repeatable and documented through `package.json` or its file header.
 - `schema.sql`: legacy/base schema.
 - `migrations/`: ordered, idempotent production migrations.
 - `tests/unit/`: domain and API contract tests.
+- `tests/integration/`: isolated Worker/D1 workflows run through `npm run test:integration`.
 - `tests/e2e/`: route, shell, and responsive acceptance tests.
+- `docs/`: active architecture, API, dependency, recovery, and release contracts. Historical release facts belong in `CURRENT_STATE.md` or `CHANGELOG.md`, not architecture docs.
 - Do not restore the removed template-string frontend, `schema_v2.sql`, generated `dist/`, backup bundles, or obsolete one-off scripts.
 - Preserve existing REST compatibility unless a migration and every active Hermes consumer are updated together.
 
-## Change Protocol
+## Coding conventions
+
+- Name Preact components and their files in `PascalCase`; name hooks `useSomething`; use `camelCase` for functions and variables and descriptive kebab-case for non-component assets.
+- Prefer one clear responsibility per file. New source files should normally stay below about 700 lines. Split by feature or ownership boundary when a file contains independently testable regions; do not split a coherent algorithm merely to meet a line count. Existing larger modules are refactor targets when their area is changed.
+- Keep public functions small enough that validation, state changes, and return values are visible without scanning unrelated code. Extract repeated domain decisions, not single-use wrappers.
+- Write comments for constraints, tradeoffs, and non-obvious reasons. Do not narrate the next line. Never leave commented-out implementations, TODO placeholders without an owner, or compatibility code without a documented caller.
+- Validate external input at the HTTP or integration boundary. Return stable, client-safe errors there; preserve the original cause when wrapping internal errors. Do not silently catch failures unless the fallback is intentional and explained.
+- Keep API payload types close to their owner and use the shared client in `client/src/api.ts`. Do not make ad hoc `fetch` calls from views when an API helper exists.
+- Put selectors with their owning workspace or feature. Do not append catch-all overrides to the end of the cascade; update the source rule and verify all supported viewports and themes.
+- Use the configured ESLint and Prettier rules. Do not disable a rule repository-wide to make one change pass; use a narrow suppression with a reason when the rule is genuinely inapplicable.
+
+## Repository maintenance contract
+
+When a human or AI assistant changes this repository:
+
+1. Update behavior tests in the same change. New domain logic needs unit coverage; route/storage seams need integration coverage; visible navigation or responsive behavior needs E2E coverage.
+2. Update `README.md`, `docs/architecture.md`, `docs/API.md`, `PROJECT_CONTEXT.md`, or focused docs whenever their contract changes. Add a short `CHANGELOG.md` entry that explains what changed and why.
+3. Run `npm run quality` before the broader verification set. It checks lint, dead files/dependencies, and formatting.
+4. Never leave dead exports, unused files, commented-out blocks, generated build output, prototypes, or temporary diagnostics in the repository.
+5. Keep dependencies current. Review `npm outdated` and `npm audit`; document any deliberate version hold in `docs/dependencies.md`, and remove packages when their last consumer disappears.
+6. Keep changes inside the owning layer. A client concern must not leak into Worker services, and automation must use allow-listed API contracts rather than D1 access.
+7. Do not deploy, mutate production data, rotate secrets, or send external notifications unless the current request explicitly authorizes it.
+
+## Change protocol
 
 When behavior changes, update its contract in the same task:
 
-| Change | Required companion updates |
-|---|---|
-| Product workflow or invariant | `PROJECT_CONTEXT.md`, relevant product/design docs, `CURRENT_STATE.md` |
-| API route or response | `docs/API.md`, tests, affected Hermes skills |
-| D1 schema | numbered migration, schema documentation, tests, affected Hermes skills |
-| UI destination/navigation | `client/src/app/router.ts`, E2E tests, `PRODUCT.md` or `DESIGN.md` when applicable |
-| Deployment/runtime | `README.md`, `docs/release-checklist.md`, Worker Ops skill |
-| Hermes workflow | all affected skills, `.hermes.md`, and durable Hermes memory if globally true |
-| Completed milestone or new blocker | `CURRENT_STATE.md` |
+| Change                                                | Required companion updates                                                         |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Product workflow or invariant                         | `PROJECT_CONTEXT.md`, relevant product/design docs, `CURRENT_STATE.md`             |
+| API route or response                                 | `docs/API.md`, tests, affected Hermes skills                                       |
+| D1 schema                                             | numbered migration, schema documentation, tests, affected Hermes skills            |
+| UI destination/navigation                             | `client/src/app/router.ts`, E2E tests, `PRODUCT.md` or `DESIGN.md` when applicable |
+| Deployment/runtime                                    | `README.md`, `docs/release-checklist.md`, Worker Ops skill                         |
+| Hermes workflow                                       | all affected skills, `.hermes.md`, and durable Hermes memory if globally true      |
+| Completed milestone or new blocker                    | `CURRENT_STATE.md`                                                                 |
+| Any user-visible, architectural, or dependency change | `CHANGELOG.md`                                                                     |
 
 Active Hermes files:
 
@@ -85,14 +118,14 @@ Active Hermes files:
 
 Do not update archived Taste Mapper bundles, Gemini/Antigravity skill copies, or unrelated agent systems.
 
-## Hermes Memory & Domain Rules
+## Hermes memory and domain rules
 
 Learning Compass Hermes permanently holds and enforces these project rules:
 
 - **Tone & Format**: English-first responses for all tasks. Direct, casual, brutally honest tone. ZERO emojis by default. Default to text-only responses; no visual outputs/diagrams unless explicitly requested.
 - **Action Principle**: Decisive execution over discussion ("Fix all that", "do it" = execute immediately).
 - **Reading Companions**: Huawei TGR-W09 tablet (192.168.1.10). Every source companion is always Arabic and generates linked HTML + PDF from one canonical body. It must preserve every important point and the detail needed to replace consuming the source. Use premium source-specific editorial design, comfortable Arabic typography, an accessible non-monochrome color system when useful, and concept-level visual decisions. Reject heading/paragraph dumps, image-only atlases, repeated cards, mockups, dashboards, transcript padding, and decorative visuals. Zero visuals is valid only when no concept becomes clearer by being seen. Verify deterministically; never vision-inspect renders.
-- **Mastered & Consumed Check**: ALWAYS verify `mastered` items and consumed recommendations before proposing/recommending content. NEVER recommend anything already read (e.g., *The 48 Laws of Power*, *Steal Like an Artist*, *Predictably Irrational*, *Thinking Fast and Slow*).
+- **Mastered & Consumed Check**: ALWAYS verify `mastered` items and consumed recommendations before proposing/recommending content. NEVER recommend anything already read (e.g., _The 48 Laws of Power_, _Steal Like an Artist_, _Predictably Irrational_, _Thinking Fast and Slow_).
 - **Islamic Content**: ZERO book-derived content (no books, audiobooks, explained books, or book-based lecture series). ONLY pure original lectures/khutbahs/talks by trusted Sunni scholars.
 - **Dopamine & Habit Neuroscience**: Fully mastered. HARD REJECT all "dopamine hits", "break habit loops", or "rewire your brain" content.
 - **Death Content**: Theoretical/philosophical/existential angles only (TMT, Kierkegaard, Becker). HARD REJECT clinical/palliative content (e.g. BJ Miller).
@@ -102,7 +135,7 @@ Learning Compass Hermes permanently holds and enforces these project rules:
 - **Feedback Policy**: NEVER auto-chain feedback processing into a new recommendation. Recommendations happen ONLY on explicit user request.
 - **Mandatory Branch Connection**: Every recommended, captured, or queued item MUST have a valid, verified knowledge branch connected to it with persisted `branch` and `super_category`/domain. Synthetic rounds are retired. Branch pill badges must render across all views.
 
-## External Agent Restriction
+## External agent restriction
 
 Never invoke Codex, Antigravity (AGY), or an equivalent external agent for code, prose, repository work, system changes, or Lite Visual assets unless Mahmood explicitly asks in the current request. Lite Visual has no image-agent exception: it is always code-only and Hermes owns the complete source, HTML, PDF, validation, publication, and verification path.
 
@@ -124,7 +157,7 @@ git diff --check
 - Release work: full suite and live smoke checks from `docs/release-checklist.md`.
 - Never claim a test, migration, synchronization, or deployment succeeded without observing it.
 
-## Performance and Process Safety
+## Performance and process safety
 
 - Avoid broad file reads, parallel dev servers, repeated full builds, and unbounded watchers.
 - E2E owns its Wrangler/Workerd/Playwright lifecycle. Confirm no processes remain after interrupted tests.

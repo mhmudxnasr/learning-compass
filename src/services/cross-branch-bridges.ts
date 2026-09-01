@@ -49,7 +49,9 @@ const endpoint = (row: any, side: 'source' | 'target') => ({
     domain_id: row[`${side}_domain_id`],
     domain: row[`${side}_domain`],
   },
-  anchor: row[`${side}_anchor_locator`] ? { locator: row[`${side}_anchor_locator`], excerpt: row[`${side}_anchor_excerpt`] || null } : null,
+  anchor: row[`${side}_anchor_locator`]
+    ? { locator: row[`${side}_anchor_locator`], excerpt: row[`${side}_anchor_excerpt`] || null }
+    : null,
 })
 
 export function normalizeUnitRelation(row: any, perspectiveUnitId?: string): NormalizedUnitRelation {
@@ -74,12 +76,17 @@ export function normalizeUnitRelation(row: any, perspectiveUnitId?: string): Nor
 }
 
 export async function loadNormalizedUnitRelations(db: D1Database, unitId: string) {
-  const rows = await db.prepare(`${relationSelect}
+  const rows = await db
+    .prepare(
+      `${relationSelect}
     WHERE (r.source_unit_id=? OR r.target_unit_id=?) AND r.status='active' AND r.review_state='accepted'
       AND su.status='accepted' AND tu.status='accepted'
       AND COALESCE(snb.id,srb.id) IS NOT NULL AND COALESCE(tnb.id,trb.id) IS NOT NULL
       AND sd.id IS NOT NULL AND td.id IS NOT NULL
-    ORDER BY r.created_at DESC`).bind(unitId, unitId).all<any>()
+    ORDER BY r.created_at DESC`,
+    )
+    .bind(unitId, unitId)
+    .all<any>()
   return (rows.results || []).map((row: any) => normalizeUnitRelation(row, unitId))
 }
 
@@ -95,12 +102,17 @@ export async function loadContradictionRelations(db: D1Database, reviewState?: s
 }
 
 export async function loadCrossBranchBridges(db: D1Database, branchId: string) {
-  const rows = await db.prepare(`${relationSelect}
+  const rows = await db
+    .prepare(
+      `${relationSelect}
     WHERE r.status='active' AND r.review_state='accepted' AND su.status='accepted' AND tu.status='accepted'
       AND (COALESCE(snb.id,srb.id)=? OR COALESCE(tnb.id,trb.id)=?)
       AND COALESCE(snb.id,srb.id) IS NOT NULL AND COALESCE(tnb.id,trb.id) IS NOT NULL
       AND sd.id IS NOT NULL AND td.id IS NOT NULL
-    ORDER BY r.created_at DESC`).bind(branchId, branchId).all<any>()
+    ORDER BY r.created_at DESC`,
+    )
+    .bind(branchId, branchId)
+    .all<any>()
   return (rows.results || [])
     .filter((row: any) => row.source_branch_id && row.target_branch_id && row.source_branch_id !== row.target_branch_id)
     .map((row: any) => normalizeUnitRelation(row))

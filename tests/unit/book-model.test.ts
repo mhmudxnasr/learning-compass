@@ -11,17 +11,23 @@ test('legacy client chapter normalization matches trimmed server keys and positi
       { chapter_title: 'Two', chapter_number: 2 },
     ],
   }
-  assert.deepEqual(bookChapters(book).map((chapter) => [chapter.key, chapter.number, chapter.completed]), [
-    ['book', 3, false],
-    ['chapter-1', 1, true],
-    ['chapter-2', 2, false],
-  ])
+  assert.deepEqual(
+    bookChapters(book).map((chapter) => [chapter.key, chapter.number, chapter.completed]),
+    [
+      ['book', 3, false],
+      ['chapter-1', 1, true],
+      ['chapter-2', 2, false],
+    ],
+  )
 })
 
 test('next chapter never reintroduces a filtered synthetic canonical fallback', () => {
   const book = {
     visual: {
-      chapters: [{ key: 'book', title: 'Synthetic', number: 0 }, { key: 'chapter-1', title: 'One', number: 1 }],
+      chapters: [
+        { key: 'book', title: 'Synthetic', number: 0 },
+        { key: 'chapter-1', title: 'One', number: 1 },
+      ],
       next_chapter: { key: 'book', title: 'Synthetic', number: 0 },
     },
   }

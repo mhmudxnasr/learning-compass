@@ -15,6 +15,6 @@ test('large Thread source sets stay within the D1 bind limit', () => {
 test('Thread artifact and NotebookLM lookups use bounded D1 batches', () => {
   const learningCore = readFileSync(new URL('../../src/api/learning-core.ts', import.meta.url), 'utf8')
   const notebook = readFileSync(new URL('../../src/services/notebooklm-learning.ts', import.meta.url), 'utf8')
-  assert.match(learningCore, /Promise\.all\(chunkForD1\(recIds\)/)
-  assert.match(notebook, /Promise\.all\(chunkForD1\(targets\)/)
+  assert.match(learningCore, /Promise\.all\(\s*chunkForD1\(recIds\)/)
+  assert.match(notebook, /Promise\.all\(\s*chunkForD1\(targets\)/)
 })

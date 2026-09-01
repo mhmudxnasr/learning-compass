@@ -26,10 +26,16 @@ test('every user-facing recall due projection excludes paused and retired cards'
   assert.match(forecast, /FROM srs_cards WHERE repair_status='active' AND due_at<=date\('now','\+30 days'\)/)
 
   const queue = source('src/services/capture-queue.ts')
-  assert.match(queue, /sc\.recommendation_id=r\.id AND sc\.repair_status='active' AND sc\.due_at IS NOT NULL AND sc\.due_at<=date\('now'\)/)
+  assert.match(
+    queue,
+    /sc\.recommendation_id=r\.id AND sc\.repair_status='active' AND sc\.due_at IS NOT NULL AND sc\.due_at<=date\('now'\)/,
+  )
 
   const recommendations = source('src/services/recommendation-enrichment.ts')
-  assert.match(recommendations, /CASE WHEN repair_status='active' AND due_at IS NOT NULL AND due_at<=date\('now'\) THEN 1 ELSE 0 END/)
+  assert.match(
+    recommendations,
+    /CASE WHEN repair_status='active' AND due_at IS NOT NULL AND due_at<=date\('now'\) THEN 1 ELSE 0 END/,
+  )
 })
 
 test('source and branch dossiers expose repair state while counting only active due cards', () => {

@@ -2,7 +2,7 @@ import { normalizeUrlForDedup } from '../lib.ts'
 import { validatePublicHttpUrl } from './public-url.ts'
 
 export const SOURCE_HEALTH_STATUSES = ['verified', 'restricted', 'unavailable', 'unknown', 'invalid'] as const
-export type SourceHealthStatus = typeof SOURCE_HEALTH_STATUSES[number]
+export type SourceHealthStatus = (typeof SOURCE_HEALTH_STATUSES)[number]
 export type SourceHealthPurpose = 'current' | 'replacement'
 
 export type SourceHealthCheck = {
@@ -61,11 +61,14 @@ const safeAttemptUrl = (value: unknown) => {
 
 const botChallengeResponse = (response: Response) => {
   const challenge = String(response.headers.get('cf-mitigated') || '').toLowerCase()
-  return challenge === 'challenge' || Boolean(
-    response.headers.get('x-captcha') ||
-    response.headers.get('x-datadome') ||
-    response.headers.get('x-sucuri-id') ||
-    response.headers.get('x-akamai-session-info')
+  return (
+    challenge === 'challenge' ||
+    Boolean(
+      response.headers.get('x-captcha') ||
+      response.headers.get('x-datadome') ||
+      response.headers.get('x-sucuri-id') ||
+      response.headers.get('x-akamai-session-info'),
+    )
   )
 }
 
@@ -94,7 +97,8 @@ async function fetchPublicSource(
     if (!REDIRECT_STATUSES.has(response.status)) return { response, finalUrl: current }
     const location = response.headers.get('location')
     await response.body?.cancel().catch(() => {})
-    if (!location || redirect === 5) throw new Error(redirect === 5 ? 'too_many_source_redirects' : 'invalid_source_redirect')
+    if (!location || redirect === 5)
+      throw new Error(redirect === 5 ? 'too_many_source_redirects' : 'invalid_source_redirect')
     current = validatePublicHttpUrl(new URL(location, current).toString())
   }
   throw new Error('too_many_source_redirects')
@@ -120,7 +124,10 @@ const classifyResponse = (response: Response, finalUrl: string): SourceHealthChe
  * authentication, throttling, bot challenges, server errors, and network
  * failures stay restricted/unknown.
  */
-export async function verifyPublicSourceUrl(value: unknown, options: VerificationOptions = {}): Promise<SourceHealthCheck> {
+export async function verifyPublicSourceUrl(
+  value: unknown,
+  options: VerificationOptions = {},
+): Promise<SourceHealthCheck> {
   const attemptedUrl = safeAttemptUrl(value)
   let publicUrl: string
   try {
@@ -165,9 +172,11 @@ export async function recordSourceHealthCheck(
   const attemptId = `source_check_${crypto.randomUUID()}`
   const checkedAt = new Date().toISOString()
   const statements = [
-    DB.prepare(`INSERT INTO source_health_attempts
+    DB.prepare(
+      `INSERT INTO source_health_attempts
       (id,recommendation_id,purpose,checked_url,status,http_status,final_url,error_code,checked_at)
-      VALUES (?,?,?,?,?,?,?,?,?)`).bind(
+      VALUES (?,?,?,?,?,?,?,?,?)`,
+    ).bind(
       attemptId,
       recommendationId,
       purpose,
@@ -180,7 +189,9 @@ export async function recordSourceHealthCheck(
     ),
   ]
   if (purpose === 'current') {
-    statements.push(DB.prepare(`INSERT INTO source_health
+    statements.push(
+      DB.prepare(
+        `INSERT INTO source_health
       (recommendation_id,checked_url,status,last_checked_at,http_status,final_url,error_code,updated_at)
       SELECT ?,?,?,?,?,?,?,datetime('now')
       WHERE EXISTS (
@@ -194,21 +205,23 @@ export async function recordSourceHealthCheck(
         http_status=excluded.http_status,
         final_url=excluded.final_url,
         error_code=excluded.error_code,
-        updated_at=datetime('now')`).bind(
-      recommendationId,
-      // The projection binds the verdict to the exact canonical identity that
-      // was read before the network check. Attempts retain the normalized URL;
-      // using the source literal here keeps SQL joins and stale-check selection
-      // correct for legacy URLs that still contain tracking parameters.
-      currentSourceUrl,
-      check.status,
-      checkedAt,
-      check.http_status ?? null,
-      check.final_url ?? null,
-      check.error_code ?? null,
-      recommendationId,
-      currentSourceUrl,
-    ))
+        updated_at=datetime('now')`,
+      ).bind(
+        recommendationId,
+        // The projection binds the verdict to the exact canonical identity that
+        // was read before the network check. Attempts retain the normalized URL;
+        // using the source literal here keeps SQL joins and stale-check selection
+        // correct for legacy URLs that still contain tracking parameters.
+        currentSourceUrl,
+        check.status,
+        checkedAt,
+        check.http_status ?? null,
+        check.final_url ?? null,
+        check.error_code ?? null,
+        recommendationId,
+        currentSourceUrl,
+      ),
+    )
   }
   await DB.batch(statements)
   return { ...check, attempt_id: attemptId, checked_at: checkedAt }
@@ -228,15 +241,25 @@ export async function checkAndRecordSourceHealth(
 export async function loadSourceHealth(DB: D1Database, recommendationId: string, currentSourceUrl: string, limit = 20) {
   const boundedLimit = Math.min(Math.max(Math.trunc(limit) || 20, 1), 20)
   const [health, attempts, replacements] = await Promise.all([
-    DB.prepare(`SELECT recommendation_id,checked_url,status,last_checked_at,http_status,final_url,error_code
-      FROM source_health WHERE recommendation_id=?`).bind(recommendationId).first<any>(),
-    DB.prepare(`SELECT id,purpose,checked_url,status,http_status,final_url,error_code,checked_at
-      FROM source_health_attempts WHERE recommendation_id=? ORDER BY checked_at DESC,id DESC LIMIT ?`)
-      .bind(recommendationId, boundedLimit).all<any>(),
-    DB.prepare(`SELECT id,previous_url,source_url,previous_dedup_key,source_dedup_key,
+    DB.prepare(
+      `SELECT recommendation_id,checked_url,status,last_checked_at,http_status,final_url,error_code
+      FROM source_health WHERE recommendation_id=?`,
+    )
+      .bind(recommendationId)
+      .first<any>(),
+    DB.prepare(
+      `SELECT id,purpose,checked_url,status,http_status,final_url,error_code,checked_at
+      FROM source_health_attempts WHERE recommendation_id=? ORDER BY checked_at DESC,id DESC LIMIT ?`,
+    )
+      .bind(recommendationId, boundedLimit)
+      .all<any>(),
+    DB.prepare(
+      `SELECT id,previous_url,source_url,previous_dedup_key,source_dedup_key,
         verification_attempt_id,verification_status,verification_http_status,verification_final_url,replaced_at
-      FROM source_url_replacements WHERE recommendation_id=? ORDER BY replaced_at DESC,id DESC LIMIT ?`)
-      .bind(recommendationId, boundedLimit).all<any>(),
+      FROM source_url_replacements WHERE recommendation_id=? ORDER BY replaced_at DESC,id DESC LIMIT ?`,
+    )
+      .bind(recommendationId, boundedLimit)
+      .all<any>(),
   ])
   return {
     health: health && sourceHealthMatchesCurrentUrl(health.checked_url, currentSourceUrl) ? health : null,
@@ -251,7 +274,8 @@ export async function loadSourceHealth(DB: D1Database, recommendationId: string,
  */
 export async function refreshScopedSourceHealth(DB: D1Database, limit = 8) {
   const boundedLimit = Math.min(Math.max(Math.trunc(limit) || 8, 1), 12)
-  const candidates = await DB.prepare(`WITH ranked_stages AS (
+  const candidates = await DB.prepare(
+    `WITH ranked_stages AS (
       SELECT s.id,s.thread_id,
         ROW_NUMBER() OVER (PARTITION BY s.thread_id ORDER BY s.position,s.id) stage_rank
       FROM learning_path_stages s
@@ -292,16 +316,27 @@ export async function refreshScopedSourceHealth(DB: D1Database, limit = 8) {
     FROM targets LEFT JOIN source_health h ON h.recommendation_id=targets.recommendation_id
     WHERE h.last_checked_at IS NULL OR h.checked_url!=targets.source_url OR datetime(h.last_checked_at)<datetime('now','-24 hours')
     ORDER BY targets.priority,COALESCE(h.last_checked_at,'') ASC,targets.recommendation_id
-    LIMIT ?`).bind(boundedLimit).all<any>()
+    LIMIT ?`,
+  )
+    .bind(boundedLimit)
+    .all<any>()
   const rows = candidates.results || []
   const checks: RecordedSourceHealthCheck[] = []
   for (let offset = 0; offset < rows.length; offset += 4) {
     const batch = rows.slice(offset, offset + 4)
-    checks.push(...await Promise.all(batch.map((row: any) => checkAndRecordSourceHealth(DB, String(row.recommendation_id), String(row.source_url), 'current'))))
+    checks.push(
+      ...(await Promise.all(
+        batch.map((row: any) =>
+          checkAndRecordSourceHealth(DB, String(row.recommendation_id), String(row.source_url), 'current'),
+        ),
+      )),
+    )
   }
   return {
     checked: checks.length,
-    statuses: Object.fromEntries(SOURCE_HEALTH_STATUSES.map((status) => [status, checks.filter((check) => check.status === status).length])),
+    statuses: Object.fromEntries(
+      SOURCE_HEALTH_STATUSES.map((status) => [status, checks.filter((check) => check.status === status).length]),
+    ),
     scope: ['queue', 'active_lesson', 'current_book'],
   }
 }

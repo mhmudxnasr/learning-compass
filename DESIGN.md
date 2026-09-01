@@ -2,74 +2,74 @@
 name: Continuum
 description: Warm editorial knowledge workspace for Learning Compass
 colors:
-  rail-bg: "#171513"
-  shell-bg: "#fcfaf6"
-  ledger-bg: "#fdfbf8"
-  canvas-bg: "#fefdfb"
-  surface-bg: "#fefdfb"
-  inspector-bg: "#fdfbf8"
-  ink: "#171513"
-  secondary: "#514b45"
-  muted: "#6c655e"
-  seams: "#e1d5ca"
-  coral: "#e55a42"
-  coral-soft: "#f8d8d0"
-  due: "#8a5b12"
-  danger: "#a8373f"
-  map: "#24757a"
+  rail-bg: '#171513'
+  shell-bg: '#fcfaf6'
+  ledger-bg: '#fdfbf8'
+  canvas-bg: '#fefdfb'
+  surface-bg: '#fefdfb'
+  inspector-bg: '#fdfbf8'
+  ink: '#171513'
+  secondary: '#514b45'
+  muted: '#6c655e'
+  seams: '#e1d5ca'
+  coral: '#e55a42'
+  coral-soft: '#f8d8d0'
+  due: '#8a5b12'
+  danger: '#a8373f'
+  map: '#24757a'
 typography:
   display:
-    fontFamily: "Manrope, Noto Sans Arabic, system-ui, sans-serif"
-    fontSize: "clamp(24px, 3.5vw, 36px)"
+    fontFamily: 'Manrope, Noto Sans Arabic, system-ui, sans-serif'
+    fontSize: 'clamp(24px, 3.5vw, 36px)'
     fontWeight: 650
     lineHeight: 1.18
   headline:
-    fontFamily: "Manrope, Noto Sans Arabic, system-ui, sans-serif"
-    fontSize: "clamp(18px, 2.5vw, 24px)"
+    fontFamily: 'Manrope, Noto Sans Arabic, system-ui, sans-serif'
+    fontSize: 'clamp(18px, 2.5vw, 24px)'
     fontWeight: 600
     lineHeight: 1.3
   title:
-    fontFamily: "Manrope, Noto Sans Arabic, system-ui, sans-serif"
-    fontSize: "16px"
+    fontFamily: 'Manrope, Noto Sans Arabic, system-ui, sans-serif'
+    fontSize: '16px'
     fontWeight: 600
     lineHeight: 1.4
   body:
-    fontFamily: "Manrope, Noto Sans Arabic, system-ui, sans-serif"
-    fontSize: "14px"
+    fontFamily: 'Manrope, Noto Sans Arabic, system-ui, sans-serif'
+    fontSize: '14px'
     fontWeight: 400
     lineHeight: 1.6
   reading:
-    fontFamily: "Manrope, Noto Sans Arabic, system-ui, sans-serif"
-    fontSize: "16px"
+    fontFamily: 'Manrope, Noto Sans Arabic, system-ui, sans-serif'
+    fontSize: '16px'
     fontWeight: 400
     lineHeight: 1.7
   mono:
-    fontFamily: "JetBrains Mono, IBM Plex Mono, ui-monospace, monospace"
-    fontSize: "12px"
+    fontFamily: 'JetBrains Mono, IBM Plex Mono, ui-monospace, monospace'
+    fontSize: '12px'
     fontWeight: 500
     lineHeight: 1.4
 rounded:
-  control: "14px"
-  card: "18px"
-  panel: "22px"
-  pill: "999px"
+  control: '14px'
+  card: '18px'
+  panel: '22px'
+  pill: '999px'
 spacing:
-  xs: "4px"
-  sm: "8px"
-  md: "16px"
-  lg: "24px"
-  xl: "32px"
+  xs: '4px'
+  sm: '8px'
+  md: '16px'
+  lg: '24px'
+  xl: '32px'
 components:
   button-primary:
-    backgroundColor: "{colors.coral}"
-    textColor: "#000000"
-    rounded: "{rounded.pill}"
-    padding: "8px 16px"
+    backgroundColor: '{colors.coral}'
+    textColor: '#000000'
+    rounded: '{rounded.pill}'
+    padding: '8px 16px'
   button-secondary:
-    backgroundColor: "{colors.surface-bg}"
-    textColor: "{colors.secondary}"
-    rounded: "{rounded.control}"
-    padding: "8px 16px"
+    backgroundColor: '{colors.surface-bg}'
+    textColor: '{colors.secondary}'
+    rounded: '{rounded.control}'
+    padding: '8px 16px'
 ---
 
 # Design system: Continuum
@@ -84,28 +84,28 @@ The visual references are functional. Linear informs shell precision and list de
 
 ### Composition contract
 
-* Desktop uses a 220px labeled root rail, a 58px command bar, a flexible working canvas, and an optional object inspector. Between 941px and 1180px, the rail contracts to 82px.
-* Ordinary workspaces use a bounded canvas. Atlas can remain edge-to-edge because the graph is its working surface.
-* Grouped modes live in the command bar. Filters stay inside the workspace that owns them.
-* Home leads with exactly one current lesson turn from every active Thread. Each directly completable turn carries one restrained Finish lesson action beside its passive materials; success confirms in place, animates through opacity and transform only, and replaces the row with the next ordered lesson without navigation. The active Queue source sits in a narrower contextual rail with its passive material links. Queue selection changes this context without starting a tracked session.
-* Original, HTML, PDF, and NotebookLM appear as compact icon-and-label controls beside the lesson or source they belong to. Their labels remain complete for assistive technology.
-* Original and NotebookLM controls say that they are online-only. A coherent verified companion pair can carry a nearby Keep offline control with exact bytes and honest ready, partial/evicted, superseded, storage-full, failed, refresh, and remove states; HTML and PDF are never presented as one offline pack when their pair identities differ. The saved pack also contains only the compact already-loaded owning record/path snapshot, and the actual artifact responses must still identify the expected current ready/passed pair before the service worker commits it.
-* Source health is a quiet advisory row, not a blocking alarm. Restricted and unknown states explain false-positive risk, a verified companion is offered only when a coherent pair exists, and replacement lives behind progressive disclosure with verify first and an explicit second confirmation.
-* Resurfacing and RSS stay visible below active work. They never compete with the next lesson in the first reading pass.
-* Library, Learn, Map, and Settings use the same page horizon, semantic controls, continuous ledgers, and surface-depth rules as Home. Root-specific workflows keep their own information architecture without introducing a second visual product.
-* Queue opens as a ranked Ledger by default. Gallery remains a saved alternate view, while both presentations preserve the same source order, branch identity, materials, and tracked Start/Resume boundary.
-* Typed object views, the inspector, Capture, Search, and other dialogs use the same Canvas, Surface, Inspector, Seam, and Coral roles as their owning workspace. An ambiguous Android URL-plus-prose share opens a focused two-choice dialog: whole-source Capture or exact selected passage, with the original title, URL, and text visible and a non-destructive Decide later exit.
-* At 940px and below, the rail becomes a sticky utility bar and five-item bottom dock. Content moves to one column without changing task order.
+- Desktop uses a 220px labeled root rail, a 58px command bar, a flexible working canvas, and an optional object inspector. Between 941px and 1180px, the rail contracts to 82px.
+- Ordinary workspaces use a bounded canvas. Atlas can remain edge-to-edge because the graph is its working surface.
+- Grouped modes live in the command bar. Filters stay inside the workspace that owns them.
+- Home leads with exactly one current lesson turn from every active Thread. Each directly completable turn carries one restrained Finish lesson action beside its passive materials; success confirms in place, animates through opacity and transform only, and replaces the row with the next ordered lesson without navigation. The active Queue source sits in a narrower contextual rail with its passive material links. Queue selection changes this context without starting a tracked session.
+- Original, HTML, PDF, and NotebookLM appear as compact icon-and-label controls beside the lesson or source they belong to. Their labels remain complete for assistive technology.
+- Original and NotebookLM controls say that they are online-only. A coherent verified companion pair can carry a nearby Keep offline control with exact bytes and honest ready, partial/evicted, superseded, storage-full, failed, refresh, and remove states; HTML and PDF are never presented as one offline pack when their pair identities differ. The saved pack also contains only the compact already-loaded owning record/path snapshot, and the actual artifact responses must still identify the expected current ready/passed pair before the service worker commits it.
+- Source health is a quiet advisory row, not a blocking alarm. Restricted and unknown states explain false-positive risk, a verified companion is offered only when a coherent pair exists, and replacement lives behind progressive disclosure with verify first and an explicit second confirmation.
+- Resurfacing and RSS stay visible below active work. They never compete with the next lesson in the first reading pass.
+- Library, Learn, Map, and Settings use the same page horizon, semantic controls, continuous ledgers, and surface-depth rules as Home. Root-specific workflows keep their own information architecture without introducing a second visual product.
+- Queue opens as a ranked Ledger by default. Gallery remains a saved alternate view, while both presentations preserve the same source order, branch identity, materials, and tracked Start/Resume boundary.
+- Typed object views, the inspector, Capture, Search, and other dialogs use the same Canvas, Surface, Inspector, Seam, and Coral roles as their owning workspace. An ambiguous Android URL-plus-prose share opens a focused two-choice dialog: whole-source Capture or exact selected passage, with the original title, URL, and text visible and a non-destructive Decide later exit.
+- At 940px and below, the rail becomes a sticky utility bar and five-item bottom dock. Content moves to one column without changing task order.
 
 ## Colors
 
 Attio Coral is the default Continuum theme. Preferences offers eight complete art directions rather than palette-only recolors: Continuum, Raycast Command, Superhuman Focus, Reader Study, Notion Minimal, Craft Journal, Arc Space, and Are.na Index. Each is an original Learning Compass interpretation of one premium product reference and binds a distinct semantic palette, loaded font system, reading measure, density, text scale, and corner system; individual Day/Night palettes and expert controls remain available below them.
 
-* Rail `#171513`, shell `#fcfaf6`, ledger `#fdfbf8`, canvas `#fefdfb`, surface `#fefdfb`, and inspector `#fdfbf8` form the default structural planes.
-* Ink `#171513`, secondary `#514b45`, and muted `#6c655e` define accessible default text levels.
-* Coral `#e55a42` marks focus, current work, selected navigation, and deliberate actions. Coral Soft `#f8d8d0` is its quiet selected surface.
-* Due `#8a5b12`, danger `#a8373f`, and map `#24757a` keep their semantic roles across themes.
-* Seam `#e1d5ca` separates regions. A 1px seam and a tonal plane change are the default structural treatment.
+- Rail `#171513`, shell `#fcfaf6`, ledger `#fdfbf8`, canvas `#fefdfb`, surface `#fefdfb`, and inspector `#fdfbf8` form the default structural planes.
+- Ink `#171513`, secondary `#514b45`, and muted `#6c655e` define accessible default text levels.
+- Coral `#e55a42` marks focus, current work, selected navigation, and deliberate actions. Coral Soft `#f8d8d0` is its quiet selected surface.
+- Due `#8a5b12`, danger `#a8373f`, and map `#24757a` keep their semantic roles across themes.
+- Seam `#e1d5ca` separates regions. A 1px seam and a tonal plane change are the default structural treatment.
 
 Shadows are reserved for context that floats or stays pinned while the canvas moves. The active Queue source may use a soft deep shadow; ordinary rows remain flat.
 
@@ -113,11 +113,11 @@ Shadows are reserved for context that floats or stays pinned while the canvas mo
 
 Studio Sans uses Manrope for interface, display, and default reading text. Noto Sans Arabic is the first Arabic fallback. JetBrains Mono carries compact metadata, indices, and keyboard commands. The complete preset systems also load IBM Plex Sans/Serif/Arabic, Newsreader, Plus Jakarta Sans, Literata, Noto Naskh Arabic, Inter, and Fira Code so a selected direction never silently collapses to a generic fallback. Other font systems remain selectable in Preferences and must preserve the same spacing and contrast rules.
 
-* Display text uses 600-650 weight, tight negative tracking, and short line lengths.
-* Section headings use 600 weight with a 1.15-1.3 line height.
-* Body text starts at 14px with a 1.6 line height. Long-form reading starts at 16px with a 1.7 line height and a 45-75ch measure.
-* Metadata uses 500 weight at 10-12px. Uppercase is allowed only for short locators and should keep restrained tracking.
-* Arabic text uses automatic or explicit RTL direction, Noto Sans Arabic, and at least a 1.7 line height. Mixed-language metadata stays in its natural direction.
+- Display text uses 600-650 weight, tight negative tracking, and short line lengths.
+- Section headings use 600 weight with a 1.15-1.3 line height.
+- Body text starts at 14px with a 1.6 line height. Long-form reading starts at 16px with a 1.7 line height and a 45-75ch measure.
+- Metadata uses 500 weight at 10-12px. Uppercase is allowed only for short locators and should keep restrained tracking.
+- Arabic text uses automatic or explicit RTL direction, Noto Sans Arabic, and at least a 1.7 line height. Mixed-language metadata stays in its natural direction.
 
 ## Layout and shape
 
@@ -128,6 +128,7 @@ Motion uses paint, opacity, and transform only. Route entry is a short 260ms fad
 ## Components
 
 ### Map Review branch dossier
+
 - **Composition:** A compact branch index, an editable central dossier, and a persistent signals-and-decision rail on desktop. Narrow screens preserve that order as index, decision rail, then dossier so consequential actions remain discoverable.
 - **Decision controls:** Keep active, Make first priority, Pause branch, and Archive branch remain visible together. Active uses Coral, priority uses Map, pause stays neutral, and archive uses Danger without making destructive treatment dominant.
 - **Signals:** Attention window, recent share, filed sources/notes/Units/recall, and priority alignment use live Worker projections. Signals explain decisions; they never become a separate Balance tab.
@@ -181,29 +182,34 @@ Motion uses paint, opacity, and transform only. Route entry is a short 260ms fad
 - **Responsive table:** Desktop keeps aligned ledger columns. Narrow screens hide the visual header, stack labeled cells, preserve 44px actions, and never require sideways scrolling; accessible cell labels retain the removed visual context.
 
 ### Buttons
+
 - **Shape:** Rounded rectangle with a 9px radius.
 - **Primary:** Solid Coral surface, black action text, pill geometry, and 8px 18px padding.
 - **Secondary:** Control Surface background, a 1px Seam border, and Secondary text.
 - **Hover / Focus:** Coral focus ring with a Canvas separation ring; subtle tonal background shift.
 
 ### Cards and ledger rows
+
 - **Corner Style:** 14px radius for cards; list rows inside a panel remain square to one another.
 - **Background:** Surface or Canvas according to depth.
 - **Border:** 1px solid Seam.
 - **Internal Padding:** 14px 18px.
 
 ### Inputs and search fields
+
 - **Style:** 1px Seam border, Control Surface background, 9px radius.
 - **Focus:** Coral border with a visible outer ring.
 
 ## Working rules
 
 ### Do
+
 - **Do** maintain strict WCAG AA contrast (≥4.5:1 text, ≥3:1 large text) across all themes.
 - **Do** ensure every interactive target on mobile and tablet is at least 44×44px.
 - **Do** use semantic CSS tokens for all colors, radii, and typography scales.
 
 ### Don't
+
 - **Don't** use multi-pixel colored side-tab borders (≥2px colored border-left/right) on cards or list items.
 - **Don't** animate layout properties like `width`, `height`, `margin`, or `padding` that trigger layout recalculations.
 - **Don't** add decorative chunky colored top-borders to rounded cards.

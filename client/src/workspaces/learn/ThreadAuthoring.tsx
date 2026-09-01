@@ -52,14 +52,17 @@ export function ThreadAuthoring({
     setWorking('lesson')
     setMessage('Adding lesson…')
     try {
-      await api(`/learning/core/threads/${encodeURIComponent(threadId)}/stages/${encodeURIComponent(stage.id)}/lessons`, {
-        method: 'POST',
-        body: JSON.stringify({
-          title: lessonTitle.trim(),
-          objective: lessonObjective.trim(),
-          position: stage.lessons.length,
-        }),
-      })
+      await api(
+        `/learning/core/threads/${encodeURIComponent(threadId)}/stages/${encodeURIComponent(stage.id)}/lessons`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            title: lessonTitle.trim(),
+            objective: lessonObjective.trim(),
+            position: stage.lessons.length,
+          }),
+        },
+      )
       setLessonTitle('')
       setLessonObjective('')
       setMessage('Lesson added to level.')
@@ -108,11 +111,7 @@ export function ThreadAuthoring({
                 rows={2}
               />
             </label>
-            <button
-              class="button secondary"
-              type="submit"
-              disabled={working === 'stage' || !stageTitle.trim()}
-            >
+            <button class="button secondary" type="submit" disabled={working === 'stage' || !stageTitle.trim()}>
               {working === 'stage' ? 'Adding Level…' : 'Add Level to Curriculum'}
             </button>
           </form>
@@ -154,7 +153,11 @@ export function ThreadAuthoring({
           </form>
         </div>
 
-        {message && <output class="folio-status" aria-live="polite">{message}</output>}
+        {message && (
+          <output class="folio-status" aria-live="polite">
+            {message}
+          </output>
+        )}
       </div>
     </details>
   )

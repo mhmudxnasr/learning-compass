@@ -2,9 +2,19 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { buildSourceMaterialLauncher } from '../../client/src/workspaces/learn/sourceMaterials.ts'
+import { readStudioCss } from './support/read-studio-css.ts'
 
-const threadView = readFileSync(new URL('../../client/src/workspaces/learn/LearnThreadView.tsx', import.meta.url), 'utf8')
-const studioCss = readFileSync(new URL('../../client/src/studio.css', import.meta.url), 'utf8')
+const threadView = [
+  'LearnThreadView.tsx',
+  'LearnThreadMaterials.tsx',
+  'ThreadSourceOrganizer.tsx',
+  'FindLessonMaterial.tsx',
+  'LearnLessonView.tsx',
+  'threadOfflinePacks.ts',
+]
+  .map((name) => readFileSync(new URL(`../../client/src/workspaces/learn/${name}`, import.meta.url), 'utf8'))
+  .join('\n')
+const studioCss = readStudioCss()
 
 test('Thread Resources searches the Library first and places sources on exact Levels or Lessons', () => {
   assert.match(threadView, /\/material-sources\?q=/)
@@ -23,19 +33,19 @@ test('Direct Thread, Level, and Lesson placements can be edited and explicitly r
   assert.match(threadView, /lesson\.sources \|\| \[\]/)
   assert.match(threadView, /const endpoint = placementEndpoint\(threadId, placement\)/)
   assert.match(threadView, /method: 'PATCH'/)
-  assert.match(threadView, /window\.confirm\(`Remove/)
+  assert.match(threadView, /window\.confirm\(\s*`Remove/)
   assert.match(threadView, /method: 'DELETE'/)
   assert.match(threadView, /The Library source will be kept/)
   assert.match(threadView, /const expectedContribution = contribution\.trim\(\)/)
   assert.match(threadView, /expected_contribution: expectedContribution/)
   assert.doesNotMatch(threadView, /expected_contribution: contribution\.trim\(\) \|\| null/)
-  assert.match(threadView, /placeholder="Why it belongs here" required/)
+  assert.match(threadView, /placeholder="Why it belongs here"\s+required/)
   assert.match(threadView, /disabled=\{working !== null \|\| !contribution\.trim\(\)\}/)
 })
 
 test('Find material remains a reviewable request with a distinct Library attach action', () => {
   assert.match(threadView, />Find material for this lesson</)
-  assert.match(threadView, /It never attaches, queues, starts, or advances learning/)
+  assert.match(threadView, /It never attaches, queues, starts, or\s+advances learning/)
   assert.match(threadView, /\/material-request/)
   assert.match(threadView, /Review source · online only/)
   assert.match(threadView, /Attach saved Library source/)

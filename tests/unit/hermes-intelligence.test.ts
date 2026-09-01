@@ -15,8 +15,14 @@ test('Hermes evaluator only emits proposal types the approval route can apply', 
     best_creators: [{ creator: 'Strong Creator', total: 3, average_score: 9 }],
   } as any)
 
-  assert.deepEqual(candidates.map((item) => item.change_type), ['quality_rule', 'pattern_hypothesis'])
-  assert.equal(candidates.every((item) => isSupportedProposalType(item.change_type)), true)
+  assert.deepEqual(
+    candidates.map((item) => item.change_type),
+    ['quality_rule', 'pattern_hypothesis'],
+  )
+  assert.equal(
+    candidates.every((item) => isSupportedProposalType(item.change_type)),
+    true,
+  )
 })
 
 test('memory ownership safeguards preserve profile and live learning state as canonical', () => {

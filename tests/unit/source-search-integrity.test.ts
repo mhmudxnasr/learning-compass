@@ -5,9 +5,17 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createServer } from 'vite'
 
-const vite = await createServer({ root: fileURLToPath(new URL('../..', import.meta.url)), configFile: false, server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' })
+const vite = await createServer({
+  root: fileURLToPath(new URL('../..', import.meta.url)),
+  configFile: false,
+  server: { middlewareMode: true },
+  appType: 'custom',
+  logLevel: 'silent',
+})
 const { default: searchApp } = await vite.ssrLoadModule('/src/api/search.ts')
-test.after(async () => { await vite.close() })
+test.after(async () => {
+  await vite.close()
+})
 
 class SearchSqliteD1 {
   private readonly sqlite: DatabaseSync
@@ -23,8 +31,8 @@ class SearchSqliteD1 {
         statement.args = args
         return statement
       },
-      all: async () => ({ results: this.sqlite.prepare(sql).all(...statement.args as any[]) }),
-      first: async () => this.sqlite.prepare(sql).get(...statement.args as any[]) || null,
+      all: async () => ({ results: this.sqlite.prepare(sql).all(...(statement.args as any[])) }),
+      first: async () => this.sqlite.prepare(sql).get(...(statement.args as any[])) || null,
     }
     return statement
   }
@@ -107,10 +115,13 @@ test('evidence retrieval hides archived annotations and active anchors with stal
   const { sqlite, DB } = searchFixture()
   try {
     const response = await searchApp.request('/evidence?q=Needle', {}, { DB } as any)
-    const body = await response.json() as any
+    const body = (await response.json()) as any
     assert.equal(response.status, 200)
     assert.equal(body.total, 1)
-    assert.deepEqual(body.results.map((row: any) => row.id), ['valid'])
+    assert.deepEqual(
+      body.results.map((row: any) => row.id),
+      ['valid'],
+    )
     assert.equal(body.results[0].source_url, 'https://example.com/valid')
   } finally {
     sqlite.close()
@@ -121,9 +132,12 @@ test('broad Search revalidates both direct and indexed annotations before return
   const { sqlite, DB } = searchFixture()
   try {
     const response = await searchApp.request('/?q=Needle', {}, { DB } as any)
-    const body = await response.json() as any
+    const body = (await response.json()) as any
     assert.equal(response.status, 200)
-    assert.deepEqual(body.groups.annotations.map((row: any) => row.id), ['valid'])
+    assert.deepEqual(
+      body.groups.annotations.map((row: any) => row.id),
+      ['valid'],
+    )
     assert.deepEqual(body.groups.annotations[0].selector, { url: 'https://example.com/valid#claim' })
   } finally {
     sqlite.close()
@@ -132,7 +146,10 @@ test('broad Search revalidates both direct and indexed annotations before return
 
 test('maintenance rebuild indexes only active annotations with current canonical branch and domain ownership', () => {
   const maintenance = readFileSync(new URL('../../src/services/maintenance.ts', import.meta.url), 'utf8')
-  const annotationProjection = maintenance.slice(maintenance.indexOf("SELECT 'annotation'"), maintenance.indexOf("WHERE a.status='active'") + 24)
+  const annotationProjection = maintenance.slice(
+    maintenance.indexOf("SELECT 'annotation'"),
+    maintenance.indexOf("WHERE a.status='active'") + 24,
+  )
   assert.match(annotationProjection, /r\.deleted_at IS NULL/)
   assert.match(annotationProjection, /m\.branch_id=a\.branch_id/)
   assert.match(annotationProjection, /lower\(COALESCE\(b\.status,''\)\)!='pruned'/)

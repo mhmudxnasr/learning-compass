@@ -33,13 +33,23 @@ export function directionForText(text: string): 'rtl' | 'ltr' | 'auto' {
 }
 
 export const FSRS_SCHEDULER_VERSION = 'fsrs-6-ts-fsrs-5.4.1'
-export type ReviewState = { difficulty: number; stability: number; repetitions: number; lapses?: number; learningSteps?: number; scheduledDays?: number; fsrsState?: number; dueAt?: string | null; lastReviewedAt?: string | null }
+export type ReviewState = {
+  difficulty: number
+  stability: number
+  repetitions: number
+  lapses?: number
+  learningSteps?: number
+  scheduledDays?: number
+  fsrsState?: number
+  dueAt?: string | null
+  lastReviewedAt?: string | null
+}
 
 export function scheduleReview(state: ReviewState, grade: number, now = new Date(), targetRetention = 90) {
   const rating = grade <= 1 ? Rating.Again : grade === 2 ? Rating.Hard : grade === 5 ? Rating.Easy : Rating.Good
   const card: CardInput = {
     due: state.dueAt || now,
-    stability: state.repetitions > 0 ? Math.max(.01, Number(state.stability || 1)) : 0,
+    stability: state.repetitions > 0 ? Math.max(0.01, Number(state.stability || 1)) : 0,
     difficulty: state.repetitions > 0 ? Math.max(1, Math.min(10, Number(state.difficulty || 5))) : 0,
     elapsed_days: 0,
     scheduled_days: Math.max(0, Number(state.scheduledDays ?? 0)),
@@ -49,7 +59,14 @@ export function scheduleReview(state: ReviewState, grade: number, now = new Date
     state: state.repetitions > 0 ? (state.fsrsState ?? State.Review) : State.New,
     last_review: state.lastReviewedAt || undefined,
   }
-  const scheduler = fsrs(generatorParameters({ request_retention: Math.max(.7, Math.min(.97, targetRetention / 100)), maximum_interval: 1825, enable_fuzz: false, enable_short_term: false }))
+  const scheduler = fsrs(
+    generatorParameters({
+      request_retention: Math.max(0.7, Math.min(0.97, targetRetention / 100)),
+      maximum_interval: 1825,
+      enable_fuzz: false,
+      enable_short_term: false,
+    }),
+  )
   const next = scheduler.next(card, now, rating).card
   return {
     difficulty: next.difficulty,
@@ -65,14 +82,20 @@ export function scheduleReview(state: ReviewState, grade: number, now = new Date
   }
 }
 
-export const VALID_RECOMMENDATION_MODES = ['note_answer', 'blind_spot_bridge', 'counter_evidence', 'academic_paper', 'auto'] as const
-export type RecommendationMode = typeof VALID_RECOMMENDATION_MODES[number]
+export const VALID_RECOMMENDATION_MODES = [
+  'note_answer',
+  'blind_spot_bridge',
+  'counter_evidence',
+  'academic_paper',
+  'auto',
+] as const
+export type RecommendationMode = (typeof VALID_RECOMMENDATION_MODES)[number]
 
 export const VALID_ENERGY_LEVELS = ['quick_scan', 'medium_focus', 'deep_focus'] as const
-export type EnergyLevel = typeof VALID_ENERGY_LEVELS[number]
+export type EnergyLevel = (typeof VALID_ENERGY_LEVELS)[number]
 
 export const VALID_FORMAT_PREFERENCES = ['paper', 'article', 'podcast', 'book', 'video', 'any'] as const
-export type FormatPreference = typeof VALID_FORMAT_PREFERENCES[number]
+export type FormatPreference = (typeof VALID_FORMAT_PREFERENCES)[number]
 
 export function formatNoteAnchors(reflections: Array<{ reflection?: string }>): string[] {
   return reflections
@@ -82,8 +105,16 @@ export function formatNoteAnchors(reflections: Array<{ reflection?: string }>): 
     .map((text) => (text.length > 180 ? text.slice(0, 180) + '...' : text))
 }
 
-export function selectCurationMode(requestedMode?: string, hasNoteAnchors = false, seed = Date.now()): RecommendationMode {
-  if (requestedMode && (VALID_RECOMMENDATION_MODES as readonly string[]).includes(requestedMode) && requestedMode !== 'auto') {
+export function selectCurationMode(
+  requestedMode?: string,
+  hasNoteAnchors = false,
+  seed = Date.now(),
+): RecommendationMode {
+  if (
+    requestedMode &&
+    (VALID_RECOMMENDATION_MODES as readonly string[]).includes(requestedMode) &&
+    requestedMode !== 'auto'
+  ) {
     return requestedMode as RecommendationMode
   }
   const modes: RecommendationMode[] = ['blind_spot_bridge', 'academic_paper', 'counter_evidence']
@@ -93,8 +124,14 @@ export function selectCurationMode(requestedMode?: string, hasNoteAnchors = fals
 }
 
 export function adaptAndNormalizeWeights(
-  currentWeights: Array<{ id: string; dimension: string; baseline_weight: number; current_weight: number; evidence_count: number }>,
-  evidenceDeltas: Record<string, number>
+  currentWeights: Array<{
+    id: string
+    dimension: string
+    baseline_weight: number
+    current_weight: number
+    evidence_count: number
+  }>,
+  evidenceDeltas: Record<string, number>,
 ) {
   const updated = currentWeights.map((item) => {
     const delta = evidenceDeltas[item.dimension] || 0
@@ -150,7 +187,10 @@ export function cleanRawSourceText(rawText: string, sourceType: 'youtube' | 'pdf
   } else if (sourceType === 'web') {
     // Remove HTML tags if present and strip boilerplate UI lines
     cleaned = cleaned.replace(/<[^>]+>/g, ' ')
-    cleaned = cleaned.replace(/^(?:Cookie Policy|Privacy Policy|Terms of Service|Subscribe|Share this article).*$/gm, '')
+    cleaned = cleaned.replace(
+      /^(?:Cookie Policy|Privacy Policy|Terms of Service|Subscribe|Share this article).*$/gm,
+      '',
+    )
   }
 
   // Normalize excessive newlines and whitespace

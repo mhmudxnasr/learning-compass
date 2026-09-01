@@ -33,18 +33,29 @@ export const defaultDeliveryContext: DeliveryContext = {
   depth_tier: 'adaptive',
 }
 
-const oneOf = <T extends string>(value: unknown, values: readonly T[], fallback: T): T => values.includes(value as T) ? value as T : fallback
+const oneOf = <T extends string>(value: unknown, values: readonly T[], fallback: T): T =>
+  values.includes(value as T) ? (value as T) : fallback
 
 export function normalizeDeliveryContext(value: unknown): DeliveryContext {
-  const input = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+  const input = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
   const modes = Array.isArray(input.delivery_modes)
-    ? [...new Set(input.delivery_modes.filter((mode): mode is DeliveryMode => ['read', 'watch', 'listen', 'practice'].includes(String(mode))))]
+    ? [
+        ...new Set(
+          input.delivery_modes.filter((mode): mode is DeliveryMode =>
+            ['read', 'watch', 'listen', 'practice'].includes(String(mode)),
+          ),
+        ),
+      ]
     : []
   return {
     effort: oneOf(input.effort, ['light', 'moderate', 'deep'] as const, defaultDeliveryContext.effort),
     language: oneOf(input.language, ['any', 'en', 'ar'] as const, defaultDeliveryContext.language),
     delivery_modes: modes,
-    depth_tier: oneOf(input.depth_tier, ['adaptive', 'introductory', 'intermediate', 'advanced'] as const, defaultDeliveryContext.depth_tier),
+    depth_tier: oneOf(
+      input.depth_tier,
+      ['adaptive', 'introductory', 'intermediate', 'advanced'] as const,
+      defaultDeliveryContext.depth_tier,
+    ),
   }
 }
 
@@ -60,18 +71,30 @@ export function deliveryContextFromQuery(query: (key: string) => string | undefi
   return requestDeliveryContext({
     effort: query('effort'),
     language: query('language'),
-    delivery_modes: modes == null ? undefined : modes.split(',').map((item) => item.trim()).filter(Boolean),
+    delivery_modes:
+      modes == null
+        ? undefined
+        : modes
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean),
     depth_tier: query('depth_tier'),
   })
 }
 
 async function adaptiveDepthReceipt(DB: D1Database): Promise<AdaptiveDepthReceipt> {
   const [lessons, feedback] = await Promise.all([
-    DB.prepare(`SELECT COUNT(*) count FROM thread_lessons WHERE status='completed'`).first<{ count: number }>().catch(() => null),
-    DB.prepare(`SELECT
+    DB.prepare(`SELECT COUNT(*) count FROM thread_lessons WHERE status='completed'`)
+      .first<{ count: number }>()
+      .catch(() => null),
+    DB.prepare(
+      `SELECT
       SUM(CASE WHEN reason_tags_json LIKE '%"too_shallow"%' THEN 1 ELSE 0 END) too_shallow,
       SUM(CASE WHEN reason_tags_json LIKE '%"too_deep"%' THEN 1 ELSE 0 END) too_deep
-      FROM compass_feedback`).first<{ too_shallow: number; too_deep: number }>().catch(() => null),
+      FROM compass_feedback`,
+    )
+      .first<{ too_shallow: number; too_deep: number }>()
+      .catch(() => null),
   ])
   const completed = Number(lessons?.count || 0)
   const tooShallow = Number(feedback?.too_shallow || 0)
@@ -90,10 +113,14 @@ async function adaptiveDepthReceipt(DB: D1Database): Promise<AdaptiveDepthReceip
 
 export async function resolveDeliveryContext(DB: D1Database, requested?: unknown): Promise<ResolvedDeliveryContext> {
   const explicitRequest = requestDeliveryContext(requested)
-  const savedRow = await DB.prepare(`SELECT value_json FROM user_settings WHERE setting_key='delivery_context'`).first<{ value_json: string }>().catch(() => null)
+  const savedRow = await DB.prepare(`SELECT value_json FROM user_settings WHERE setting_key='delivery_context'`)
+    .first<{ value_json: string }>()
+    .catch(() => null)
   let saved: DeliveryContext | null = null
   if (savedRow?.value_json) {
-    try { saved = normalizeDeliveryContext(JSON.parse(savedRow.value_json)) } catch {}
+    try {
+      saved = normalizeDeliveryContext(JSON.parse(savedRow.value_json))
+    } catch {}
   }
   const context = explicitRequest || saved || defaultDeliveryContext
   const adaptiveDepth = await adaptiveDepthReceipt(DB)
@@ -105,12 +132,15 @@ export async function resolveDeliveryContext(DB: D1Database, requested?: unknown
   }
 }
 
-const candidateModes = (candidate: any): string[] => Array.isArray(candidate?.delivery_modes) ? candidate.delivery_modes.map(String) : []
+const candidateModes = (candidate: any): string[] =>
+  Array.isArray(candidate?.delivery_modes) ? candidate.delivery_modes.map(String) : []
 
 export function deliveryMatch(candidate: any, resolved: ResolvedDeliveryContext) {
   const checks: Array<boolean | null> = [
     candidate?.effort ? String(candidate.effort) === resolved.context.effort : null,
-    candidate?.language && resolved.context.language !== 'any' ? String(candidate.language) === resolved.context.language : null,
+    candidate?.language && resolved.context.language !== 'any'
+      ? String(candidate.language) === resolved.context.language
+      : null,
     candidateModes(candidate).length && resolved.context.delivery_modes.length
       ? candidateModes(candidate).some((mode) => resolved.context.delivery_modes.includes(mode as DeliveryMode))
       : null,
@@ -119,7 +149,7 @@ export function deliveryMatch(candidate: any, resolved: ResolvedDeliveryContext)
   const known = checks.filter((value): value is boolean => value !== null)
   return {
     matches: known.length === 0 || known.every(Boolean),
-    score: known.length ? known.filter(Boolean).length / known.length : .5,
+    score: known.length ? known.filter(Boolean).length / known.length : 0.5,
     compared_fields: known.length,
     advisory_only: true,
   }

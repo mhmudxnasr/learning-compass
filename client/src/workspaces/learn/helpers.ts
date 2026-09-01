@@ -9,40 +9,52 @@ export function formatDate(value?: string | null) {
 }
 
 export function statusLabel(value?: string | null) {
-  return ({
-    active: 'In progress',
-    paused: 'Paused',
-    completed: 'Completed',
-    abandoned: 'Archived',
-    draft: 'Planned',
-    available: 'Available',
-    in_progress: 'In progress',
-    locked: 'Locked',
-    waived: 'Waived',
-  } as Record<string, string>)[value || ''] || labelize(value || 'Not recorded')
+  return (
+    (
+      {
+        active: 'In progress',
+        paused: 'Paused',
+        completed: 'Completed',
+        abandoned: 'Archived',
+        draft: 'Planned',
+        available: 'Available',
+        in_progress: 'In progress',
+        locked: 'Locked',
+        waived: 'Waived',
+      } as Record<string, string>
+    )[value || ''] || labelize(value || 'Not recorded')
+  )
 }
 
 export function roleLabel(value?: string | null) {
-  return ({
-    foundation: 'Foundation',
-    case: 'Case study',
-    companion: 'Reading companion',
-    reference: 'Reference',
-    primary: 'Primary',
-    supporting: 'Supporting',
-  } as Record<string, string>)[value || ''] || labelize(value || 'Reference')
+  return (
+    (
+      {
+        foundation: 'Foundation',
+        case: 'Case study',
+        companion: 'Reading companion',
+        reference: 'Reference',
+        primary: 'Primary',
+        supporting: 'Supporting',
+      } as Record<string, string>
+    )[value || ''] || labelize(value || 'Reference')
+  )
 }
 
 export function itemLabel(value?: string | null) {
-  return ({
-    concept: 'Concept',
-    source_role: 'Source study',
-    companion: 'Companion study',
-    recall_prompt: 'Free recall',
-    exercise: 'Exercise',
-    application: 'Application',
-    reflection: 'Reflection',
-  } as Record<string, string>)[value || ''] || labelize(value || 'Item')
+  return (
+    (
+      {
+        concept: 'Concept',
+        source_role: 'Source study',
+        companion: 'Companion study',
+        recall_prompt: 'Free recall',
+        exercise: 'Exercise',
+        application: 'Application',
+        reflection: 'Reflection',
+      } as Record<string, string>
+    )[value || ''] || labelize(value || 'Item')
+  )
 }
 
 export function directionValue(value?: string | null): 'auto' | 'ltr' | 'rtl' {

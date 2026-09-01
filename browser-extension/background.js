@@ -1,15 +1,18 @@
-const DEFAULT_ORIGIN = 'http://localhost:8787'
+import { DEFAULT_APP_ORIGIN } from './config.js'
+
+async function loadOrigin() {
+  const saved = await chrome.storage.local.get({ appOrigin: DEFAULT_APP_ORIGIN })
+  return String(saved.appOrigin || DEFAULT_APP_ORIGIN).replace(/\/$/, '')
+}
 
 async function openCapture(source) {
-  const saved = await chrome.storage.local.get({ appOrigin: DEFAULT_ORIGIN })
-  const origin = String(saved.appOrigin || DEFAULT_ORIGIN).replace(/\/$/, '')
+  const origin = await loadOrigin()
   const href = `${origin}/#/home?capture=${encodeURIComponent(source)}`
   await chrome.tabs.create({ url: href })
 }
 
 async function openAnchor({ sourceUrl, quote, title = '' }) {
-  const saved = await chrome.storage.local.get({ appOrigin: DEFAULT_ORIGIN })
-  const origin = String(saved.appOrigin || DEFAULT_ORIGIN).replace(/\/$/, '')
+  const origin = await loadOrigin()
   const params = new URLSearchParams({ mode: 'practice', focus: 'notes', anchor_url: sourceUrl, anchor_quote: quote })
   if (title) params.set('anchor_title', title)
   const href = `${origin}/#/learn?${params.toString()}`
@@ -17,15 +20,27 @@ async function openAnchor({ sourceUrl, quote, title = '' }) {
 }
 
 async function openAnchorLimitError(selectionLength) {
-  const saved = await chrome.storage.local.get({ appOrigin: DEFAULT_ORIGIN })
-  const origin = String(saved.appOrigin || DEFAULT_ORIGIN).replace(/\/$/, '')
-  const params = new URLSearchParams({ mode: 'practice', focus: 'notes', anchor_error: 'selection_too_large', anchor_length: String(selectionLength) })
+  const origin = await loadOrigin()
+  const params = new URLSearchParams({
+    mode: 'practice',
+    focus: 'notes',
+    anchor_error: 'selection_too_large',
+    anchor_length: String(selectionLength),
+  })
   await chrome.tabs.create({ url: `${origin}/#/learn?${params.toString()}` })
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({ id: 'capture-page', title: 'Capture page to Learning Compass', contexts: ['page', 'link'] })
-  chrome.contextMenus.create({ id: 'capture-selection', title: 'Anchor selection in Learning Compass', contexts: ['selection'] })
+  chrome.contextMenus.create({
+    id: 'capture-page',
+    title: 'Capture page to Learning Compass',
+    contexts: ['page', 'link'],
+  })
+  chrome.contextMenus.create({
+    id: 'capture-selection',
+    title: 'Anchor selection in Learning Compass',
+    contexts: ['selection'],
+  })
 })
 
 chrome.action.onClicked.addListener(async (tab) => {

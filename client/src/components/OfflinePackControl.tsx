@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { formatBytes } from '../workspaces/library/types'
-import { coherentOfflineResources, getOfflinePackStatus, offlinePackSize, offlinePackVersion, removeOfflinePack, saveOfflinePack, type OfflinePackResource, type OfflinePackScope, type OfflinePackState } from '../offlinePacks'
+import {
+  coherentOfflineResources,
+  getOfflinePackStatus,
+  offlinePackSize,
+  offlinePackVersion,
+  removeOfflinePack,
+  saveOfflinePack,
+  type OfflinePackResource,
+  type OfflinePackScope,
+  type OfflinePackState,
+} from '../offlinePacks'
 
 export function OfflinePackControl({
   packId,
@@ -25,16 +35,24 @@ export function OfflinePackControl({
   useEffect(() => {
     const sequence = ++requestSequence.current
     setStatus({ supported: true, state: 'not-downloaded' })
-    if (version) void getOfflinePackStatus(packId, version).then((next) => {
-      if (sequence === requestSequence.current) setStatus(next)
-    })
-    return () => { requestSequence.current += 1 }
+    if (version)
+      void getOfflinePackStatus(packId, version).then((next) => {
+        if (sequence === requestSequence.current) setStatus(next)
+      })
+    return () => {
+      requestSequence.current += 1
+    }
   }, [packId, version])
 
   if (!version) {
-    return compact
-      ? <span class="offline-pack-unavailable">No verified HTML/PDF pair</span>
-      : <div class="offline-pack-control is-unavailable"><strong>Offline pack unavailable</strong><small>A complete verified HTML/PDF pair is required.</small></div>
+    return compact ? (
+      <span class="offline-pack-unavailable">No verified HTML/PDF pair</span>
+    ) : (
+      <div class="offline-pack-control is-unavailable">
+        <strong>Offline pack unavailable</strong>
+        <small>A complete verified HTML/PDF pair is required.</small>
+      </div>
+    )
   }
 
   const ready = status.state === 'ready'
@@ -58,22 +76,44 @@ export function OfflinePackControl({
     }
   }
   const expectedSizeCopy = expectedSize ? formatBytes(expectedSize) : ''
-  const stateCopy = status.state === 'ready'
-    ? `Ready offline${status.sizeBytes ? ` · ${formatBytes(status.sizeBytes)}` : ''}`
-    : status.state === 'superseded' ? `Superseded · refresh${expectedSizeCopy ? ` ${expectedSizeCopy}` : ''}`
-      : status.state === 'partial' ? `Partial · some files were evicted${expectedSizeCopy ? ` · full pack ${expectedSizeCopy}` : ''}`
-        : status.state === 'storage-full' ? `Storage full${expectedSizeCopy ? ` · ${expectedSizeCopy} required` : ''}`
-          : status.state === 'downloading' ? `Downloading${expectedSizeCopy ? ` ${expectedSizeCopy}` : ''}…`
-            : status.state === 'error' ? status.error || 'Download failed'
-              : `${availableResources.length} files${expectedSizeCopy ? ` · ${expectedSizeCopy}` : ''}`
+  const stateCopy =
+    status.state === 'ready'
+      ? `Ready offline${status.sizeBytes ? ` · ${formatBytes(status.sizeBytes)}` : ''}`
+      : status.state === 'superseded'
+        ? `Superseded · refresh${expectedSizeCopy ? ` ${expectedSizeCopy}` : ''}`
+        : status.state === 'partial'
+          ? `Partial · some files were evicted${expectedSizeCopy ? ` · full pack ${expectedSizeCopy}` : ''}`
+          : status.state === 'storage-full'
+            ? `Storage full${expectedSizeCopy ? ` · ${expectedSizeCopy} required` : ''}`
+            : status.state === 'downloading'
+              ? `Downloading${expectedSizeCopy ? ` ${expectedSizeCopy}` : ''}…`
+              : status.state === 'error'
+                ? status.error || 'Download failed'
+                : `${availableResources.length} files${expectedSizeCopy ? ` · ${expectedSizeCopy}` : ''}`
 
   const stored = status.stored === true || ['ready', 'partial', 'superseded'].includes(status.state)
 
-  return <div class={`offline-pack-control${compact ? ' is-compact' : ''} state-${status.state}`}>
-    <div><strong>{ready ? 'Kept offline' : 'Offline pack'}</strong><small role="status">{stateCopy}</small></div>
-    <div class="offline-pack-actions">
-      <button type="button" class="folio-button" onClick={download} disabled={working !== null || status.supported === false}>{working === 'download' ? 'Downloading…' : stored ? 'Refresh offline' : 'Keep offline'}</button>
-      {stored && <button type="button" class="folio-button" onClick={remove} disabled={working !== null}>{working === 'remove' ? 'Removing…' : 'Remove'}</button>}
+  return (
+    <div class={`offline-pack-control${compact ? ' is-compact' : ''} state-${status.state}`}>
+      <div>
+        <strong>{ready ? 'Kept offline' : 'Offline pack'}</strong>
+        <small role="status">{stateCopy}</small>
+      </div>
+      <div class="offline-pack-actions">
+        <button
+          type="button"
+          class="folio-button"
+          onClick={download}
+          disabled={working !== null || status.supported === false}
+        >
+          {working === 'download' ? 'Downloading…' : stored ? 'Refresh offline' : 'Keep offline'}
+        </button>
+        {stored && (
+          <button type="button" class="folio-button" onClick={remove} disabled={working !== null}>
+            {working === 'remove' ? 'Removing…' : 'Remove'}
+          </button>
+        )}
+      </div>
     </div>
-  </div>
+  )
 }

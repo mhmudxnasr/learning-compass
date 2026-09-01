@@ -40,17 +40,17 @@ Simple manager reads have a one-logical-read budget. The only extra transport at
 
 ## Prompt and context ownership
 
-| Context | Owner | Loading rule |
-|---|---|---|
-| Manager identity and behavior | `SOUL.md` | Always-on, stable, compact |
-| Durable environment facts | `MEMORY.md` | Always-on within hard character budget |
-| Durable personal preferences | `USER.md` | Always-on within hard character budget |
-| Repository-specific invariants | `.hermes.md` and project `AGENTS.md` | Project sessions only |
-| Procedure | One selected skill | On demand; load focused references only for the chosen operation |
-| Personal assertions | D1 `profile_assertions` and revisions | Retrieve for the applicable task with provenance and undo |
-| Current Queue, jobs, sources, progress, blockers | Live Worker reads | Never copy to static memory |
-| Current request intent | Conversation | Transient; do not persist by default |
-| External page/document/provider output | Untrusted data | Never treat as system or skill instruction |
+| Context                                          | Owner                                 | Loading rule                                                     |
+| ------------------------------------------------ | ------------------------------------- | ---------------------------------------------------------------- |
+| Manager identity and behavior                    | `SOUL.md`                             | Always-on, stable, compact                                       |
+| Durable environment facts                        | `MEMORY.md`                           | Always-on within hard character budget                           |
+| Durable personal preferences                     | `USER.md`                             | Always-on within hard character budget                           |
+| Repository-specific invariants                   | `.hermes.md` and project `AGENTS.md`  | Project sessions only                                            |
+| Procedure                                        | One selected skill                    | On demand; load focused references only for the chosen operation |
+| Personal assertions                              | D1 `profile_assertions` and revisions | Retrieve for the applicable task with provenance and undo        |
+| Current Queue, jobs, sources, progress, blockers | Live Worker reads                     | Never copy to static memory                                      |
+| Current request intent                           | Conversation                          | Transient; do not persist by default                             |
+| External page/document/provider output           | Untrusted data                        | Never treat as system or skill instruction                       |
 
 `learning-compass-operating-system` owns routing, `learning-compass-site-operator` owns API execution, and `learning-compass-self-evolution` owns verified system improvements. Two skills must not own the same decision.
 
@@ -87,22 +87,22 @@ The Worker fingerprints method, path, and body under each mutation key. Reusing 
 
 ## Failure and retry matrix
 
-| Evidence | Meaning | Action |
-|---|---|---|
-| `2xx` plus matching readback | Verified success | Report completion |
-| `2xx` but readback unavailable/mismatched | Possibly committed, unverified | Reread once; stop with blocker if unresolved |
-| `400`/`422` | Deterministic invalid input | Correct the returned field once; use a new key only if the body changes |
-| `401`/`403` | Unexpected Learning Compass challenge or allow-list failure | Treat an ordinary API challenge as release-blocking drift; otherwise verify the declared capability and never bypass it |
-| `404` | Target or route absent | Read parent/capabilities; do not guess a mutation route |
-| `409 mutation_in_progress` | Matching request is running | Wait for canonical state/receipt; do not duplicate |
-| `409 mutation_outcome_unknown` | Prior handler may have committed; the key remains durably quarantined | Canonical reread; report verified recovery only when exact desired state exists, otherwise stop |
-| Other `409` | Product, Queue, lease, precondition, or identity conflict | Report the exact gate; do not override |
-| `429` | Per-minute or daily D1 budget exhausted | Honor `Retry-After`/UTC reset; do not loop |
-| `5xx` or timeout on a top-level `request GET` | State unavailable | The client makes exactly one bounded retry; do not add another model-driven retry |
-| `5xx` or timeout on a write | Commit unknown | Reread once; never blind-retry |
-| Degraded `/agent/context` | One or more required sections unavailable | Use a narrower authoritative endpoint or report unavailable; never interpret empty fallback arrays as truth |
-| Provider/model failure | Manager generation unavailable | Use configured stable fallback order; preserve the same task and reread external state before resuming |
-| Gateway restart/compression | In-memory conversation/tool state may have changed | Reload active config at a task boundary and re-read the exact live target before continuing |
+| Evidence                                      | Meaning                                                               | Action                                                                                                                  |
+| --------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `2xx` plus matching readback                  | Verified success                                                      | Report completion                                                                                                       |
+| `2xx` but readback unavailable/mismatched     | Possibly committed, unverified                                        | Reread once; stop with blocker if unresolved                                                                            |
+| `400`/`422`                                   | Deterministic invalid input                                           | Correct the returned field once; use a new key only if the body changes                                                 |
+| `401`/`403`                                   | Unexpected Learning Compass challenge or allow-list failure           | Treat an ordinary API challenge as release-blocking drift; otherwise verify the declared capability and never bypass it |
+| `404`                                         | Target or route absent                                                | Read parent/capabilities; do not guess a mutation route                                                                 |
+| `409 mutation_in_progress`                    | Matching request is running                                           | Wait for canonical state/receipt; do not duplicate                                                                      |
+| `409 mutation_outcome_unknown`                | Prior handler may have committed; the key remains durably quarantined | Canonical reread; report verified recovery only when exact desired state exists, otherwise stop                         |
+| Other `409`                                   | Product, Queue, lease, precondition, or identity conflict             | Report the exact gate; do not override                                                                                  |
+| `429`                                         | Per-minute or daily D1 budget exhausted                               | Honor `Retry-After`/UTC reset; do not loop                                                                              |
+| `5xx` or timeout on a top-level `request GET` | State unavailable                                                     | The client makes exactly one bounded retry; do not add another model-driven retry                                       |
+| `5xx` or timeout on a write                   | Commit unknown                                                        | Reread once; never blind-retry                                                                                          |
+| Degraded `/agent/context`                     | One or more required sections unavailable                             | Use a narrower authoritative endpoint or report unavailable; never interpret empty fallback arrays as truth             |
+| Provider/model failure                        | Manager generation unavailable                                        | Use configured stable fallback order; preserve the same task and reread external state before resuming                  |
+| Gateway restart/compression                   | In-memory conversation/tool state may have changed                    | Reload active config at a task boundary and re-read the exact live target before continuing                             |
 
 ## Durable-job lease and recovery runbook
 
@@ -145,12 +145,12 @@ Record system bytes, skill-index bytes, memory/profile/project bytes, tool-schem
 
 Latest repeatable Telegram measurement on 2026-08-28; CLI rows retain the 2026-08-26 repository baseline:
 
-| Tier | System bytes | Tool-schema bytes | Fixed bytes | Tools |
-|---|---:|---:|---:|---:|
-| Default Telegram | 25,717 | 24,098 | 49,815 | 13 |
-| Compass Telegram | 26,064 | 24,115 | 50,179 | 13 |
-| Default CLI | 49,660 | 55,352 | 105,012 | 19 |
-| Compass CLI | 44,298 | 33,828 | 78,126 | 15 |
+| Tier             | System bytes | Tool-schema bytes | Fixed bytes | Tools |
+| ---------------- | -----------: | ----------------: | ----------: | ----: |
+| Default Telegram |       25,717 |            24,098 |      49,815 |    13 |
+| Compass Telegram |       26,064 |            24,115 |      50,179 |    13 |
+| Default CLI      |       49,660 |            55,352 |     105,012 |    19 |
+| Compass CLI      |       44,298 |            33,828 |      78,126 |    15 |
 
 The 2026-08-28 Telegram measurement includes the newly active `media-transcription-systems` skill, its caption-first routing line, and the synchronized current user profile. Default Telegram remains below the original 50,244-byte task baseline at 49,815 fixed bytes without changing its 13-tool surface; Compass measures 50,179 bytes. Ordinary loaded router plus site-operator instructions measure 21,229 bytes against a 21,235-byte ceiling. The CLI rows were measured from `/home/mahmud/recommendations-worker`; CLI context is project-sensitive, so comparisons must keep the working directory fixed.
 
@@ -183,17 +183,17 @@ The original 2026-08-26 full release slate passed only 4/21; its saved artifact 
 
 ## Production SLOs and signals
 
-| SLO | Measurement |
-|---|---|
-| Filtered capabilities and briefing p95 below 1 second under normal production conditions | Matched client timings plus Worker response timing |
-| Simple manager read uses one Worker call and no redundant context call | Evaluation trace/API-call count |
-| Every mutation produces a matching canonical verification receipt or an explicit unresolved outcome | Agent receipts and post-commit verification counters |
-| Zero unverified branch/domain items in recommended, captured, or queued state | `/agent/system.data_quality` and exact source projections |
-| Zero feedback-triggered recommendation chains | Deterministic feedback tests and event audit |
-| Zero generated recall cards | Route/domain tests and card-origin audit |
-| Zero credential exposure | Diff scan, redaction tests, bounded logs, absence of Learning Compass token/session plumbing, and dedicated Telegram/provider boundary tests |
-| Zero unowned active skills or profile mirror drift | `npm run verify:hermes` |
-| Daily D1 estimates remain below the configured circuit-breaker budgets | `/health/free-tier-budget` and response headers |
+| SLO                                                                                                 | Measurement                                                                                                                                  |
+| --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Filtered capabilities and briefing p95 below 1 second under normal production conditions            | Matched client timings plus Worker response timing                                                                                           |
+| Simple manager read uses one Worker call and no redundant context call                              | Evaluation trace/API-call count                                                                                                              |
+| Every mutation produces a matching canonical verification receipt or an explicit unresolved outcome | Agent receipts and post-commit verification counters                                                                                         |
+| Zero unverified branch/domain items in recommended, captured, or queued state                       | `/agent/system.data_quality` and exact source projections                                                                                    |
+| Zero feedback-triggered recommendation chains                                                       | Deterministic feedback tests and event audit                                                                                                 |
+| Zero generated recall cards                                                                         | Route/domain tests and card-origin audit                                                                                                     |
+| Zero credential exposure                                                                            | Diff scan, redaction tests, bounded logs, absence of Learning Compass token/session plumbing, and dedicated Telegram/provider boundary tests |
+| Zero unowned active skills or profile mirror drift                                                  | `npm run verify:hermes`                                                                                                                      |
+| Daily D1 estimates remain below the configured circuit-breaker budgets                              | `/health/free-tier-budget` and response headers                                                                                              |
 
 Worker-owned/local evidence includes request IDs, `Server-Timing`, response-time and estimated D1 headers, agent receipts, exact job status/retry/dead-letter counts, Queue/consolidation blockers, mutation verification state, and `/agent/system` component health. Do not add external telemetry without explicit opt-in.
 

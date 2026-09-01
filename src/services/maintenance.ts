@@ -25,7 +25,8 @@ export type MaintenanceReceipt = {
   steps: MaintenanceStep[]
 }
 
-const message = (error: unknown) => error instanceof Error ? error.message : String(error || 'Unknown maintenance failure')
+const message = (error: unknown) =>
+  error instanceof Error ? error.message : String(error || 'Unknown maintenance failure')
 
 async function step(name: string, action: () => Promise<Record<string, unknown> | void>): Promise<MaintenanceStep> {
   const started = Date.now()
@@ -40,7 +41,10 @@ async function step(name: string, action: () => Promise<Record<string, unknown> 
 async function refreshFeeds(DB: D1Database) {
   const results = await syncAllFeeds(DB)
   const failures = results.filter((item: any) => item?.error)
-  if (failures.length) throw new Error(`${failures.length} feed refresh${failures.length === 1 ? '' : 'es'} failed: ${failures.map((item: any) => item.error).join('; ')}`)
+  if (failures.length)
+    throw new Error(
+      `${failures.length} feed refresh${failures.length === 1 ? '' : 'es'} failed: ${failures.map((item: any) => item.error).join('; ')}`,
+    )
   return {
     feeds: results.length,
     imported: results.reduce((sum: number, item: any) => sum + Number(item?.imported || 0), 0),
@@ -60,12 +64,24 @@ async function rebuildSearch(DB: D1Database) {
   const indexedAt = new Date().toISOString()
   await DB.batch([
     DB.prepare("DELETE FROM search_idx WHERE source IN ('rec','node','unit','note','assertion','memory','annotation')"),
-    DB.prepare("INSERT INTO search_idx(source,ref_id,text) SELECT 'rec',id,TRIM(COALESCE(video_title,'') || ' ' || COALESCE(creator,'') || ' ' || COALESCE(why_this,'') || ' ' || COALESCE(user_review,'')) FROM recommendations WHERE deleted_at IS NULL"),
-    DB.prepare("INSERT INTO search_idx(source,ref_id,text) SELECT 'node',id,TRIM(COALESCE(label,'') || ' ' || COALESCE(meta_json,'')) FROM tree_nodes"),
-    DB.prepare("INSERT INTO search_idx(source,ref_id,text) SELECT 'unit',id,TRIM(COALESCE(statement,'') || ' ' || COALESCE(user_synthesis,'')) FROM learning_units"),
-    DB.prepare("INSERT INTO search_idx(source,ref_id,text) SELECT 'note',n.id,TRIM(COALESCE(n.title,'') || ' ' || COALESCE(GROUP_CONCAT(s.content,' '),'')) FROM notes n LEFT JOIN note_sections s ON s.note_id=n.id GROUP BY n.id"),
-    DB.prepare("INSERT INTO search_idx(source,ref_id,text) SELECT 'assertion',assertion_key,TRIM(assertion_key || ' ' || COALESCE(value_json,'')) FROM profile_assertions WHERE status='active'"),
-    DB.prepare("INSERT INTO search_idx(source,ref_id,text) SELECT 'memory',id,TRIM(COALESCE(memory_key,'') || ' ' || COALESCE(value_json,'')) FROM hermes_memory WHERE status IN ('active','approved')"),
+    DB.prepare(
+      "INSERT INTO search_idx(source,ref_id,text) SELECT 'rec',id,TRIM(COALESCE(video_title,'') || ' ' || COALESCE(creator,'') || ' ' || COALESCE(why_this,'') || ' ' || COALESCE(user_review,'')) FROM recommendations WHERE deleted_at IS NULL",
+    ),
+    DB.prepare(
+      "INSERT INTO search_idx(source,ref_id,text) SELECT 'node',id,TRIM(COALESCE(label,'') || ' ' || COALESCE(meta_json,'')) FROM tree_nodes",
+    ),
+    DB.prepare(
+      "INSERT INTO search_idx(source,ref_id,text) SELECT 'unit',id,TRIM(COALESCE(statement,'') || ' ' || COALESCE(user_synthesis,'')) FROM learning_units",
+    ),
+    DB.prepare(
+      "INSERT INTO search_idx(source,ref_id,text) SELECT 'note',n.id,TRIM(COALESCE(n.title,'') || ' ' || COALESCE(GROUP_CONCAT(s.content,' '),'')) FROM notes n LEFT JOIN note_sections s ON s.note_id=n.id GROUP BY n.id",
+    ),
+    DB.prepare(
+      "INSERT INTO search_idx(source,ref_id,text) SELECT 'assertion',assertion_key,TRIM(assertion_key || ' ' || COALESCE(value_json,'')) FROM profile_assertions WHERE status='active'",
+    ),
+    DB.prepare(
+      "INSERT INTO search_idx(source,ref_id,text) SELECT 'memory',id,TRIM(COALESCE(memory_key,'') || ' ' || COALESCE(value_json,'')) FROM hermes_memory WHERE status IN ('active','approved')",
+    ),
     DB.prepare(`INSERT INTO search_idx(source,ref_id,text)
       SELECT 'annotation',a.id,TRIM(COALESCE(a.quote,'') || ' ' || COALESCE(a.context_before,'') || ' ' || COALESCE(a.context_after,'') || ' ' || COALESCE(a.language,''))
       FROM source_annotations a
@@ -81,7 +97,8 @@ async function rebuildSearch(DB: D1Database) {
 }
 
 async function surfaceNeglectedBranches(DB: D1Database) {
-  const stale = await DB.prepare(`
+  const stale = await DB.prepare(
+    `
     SELECT m.branch_id,n.label,MAX(r.consumed_date) last_consumed
     FROM recommendation_meta m
     JOIN recommendations r ON r.id=m.recommendation_id
@@ -89,21 +106,30 @@ async function surfaceNeglectedBranches(DB: D1Database) {
     WHERE m.branch_id IS NOT NULL AND r.status='consumed' AND r.consumed_date IS NOT NULL AND n.status!='pruned'
     GROUP BY m.branch_id,n.label
     HAVING MAX(r.consumed_date) < date('now','-30 days')
-  `).all<{ branch_id: string; label: string; last_consumed: string }>()
+  `,
+  ).all<{ branch_id: string; label: string; last_consumed: string }>()
   let created = 0
   for (const branch of stale.results || []) {
-    const candidate = await DB.prepare(`
+    const candidate = await DB.prepare(
+      `
       SELECT r.id FROM recommendations r
       JOIN recommendation_meta m ON m.recommendation_id=r.id
       WHERE m.branch_id=? AND r.status='consumed' AND r.user_rating IN ('love','like')
       ORDER BY r.consumed_date DESC,r.id DESC LIMIT 1
-    `).bind(branch.branch_id).first<{ id: string }>()
+    `,
+    )
+      .bind(branch.branch_id)
+      .first<{ id: string }>()
     if (!candidate) continue
-    const result = await DB.prepare(`
+    const result = await DB.prepare(
+      `
       INSERT INTO resurfacing(recommendation_id,stage,due_at,notes)
       SELECT ?,'stale',date('now'),?
       WHERE NOT EXISTS (SELECT 1 FROM resurfacing WHERE recommendation_id=? AND resolved_at IS NULL)
-    `).bind(candidate.id, `Branch ${branch.label} has been inactive for 30 days.`, candidate.id).run()
+    `,
+    )
+      .bind(candidate.id, `Branch ${branch.label} has been inactive for 30 days.`, candidate.id)
+      .run()
     created += Number(result.meta?.changes || 0)
   }
   return { stale_branches: stale.results?.length || 0, resurfacing_created: created }
@@ -113,22 +139,36 @@ async function persistReceipt(DB: D1Database, receipt: MaintenanceReceipt) {
   const id = `maintenance_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`
   const payload = JSON.stringify(receipt)
   const statements = [
-    DB.prepare(`INSERT INTO agent_receipts(id,request_id,agent_name,intent,target,status_code,verified,receipt_json)
-      VALUES (?,?,'worker-maintenance','maintenance_run','worker-maintenance',?,?,?)`)
-      .bind(id, id, receipt.ok ? 200 : 500, receipt.ok ? 1 : 0, payload),
-    DB.prepare("INSERT OR REPLACE INTO kv_store(key,value) VALUES ('maintenance_last_run',?)").bind(receipt.completed_at),
+    DB.prepare(
+      `INSERT INTO agent_receipts(id,request_id,agent_name,intent,target,status_code,verified,receipt_json)
+      VALUES (?,?,'worker-maintenance','maintenance_run','worker-maintenance',?,?,?)`,
+    ).bind(id, id, receipt.ok ? 200 : 500, receipt.ok ? 1 : 0, payload),
+    DB.prepare("INSERT OR REPLACE INTO kv_store(key,value) VALUES ('maintenance_last_run',?)").bind(
+      receipt.completed_at,
+    ),
     DB.prepare("INSERT OR REPLACE INTO kv_store(key,value) VALUES ('maintenance_last_receipt',?)").bind(payload),
   ]
-  if (receipt.ok) statements.push(DB.prepare("INSERT OR REPLACE INTO kv_store(key,value) VALUES ('maintenance_last_success',?)").bind(receipt.completed_at))
+  if (receipt.ok)
+    statements.push(
+      DB.prepare("INSERT OR REPLACE INTO kv_store(key,value) VALUES ('maintenance_last_success',?)").bind(
+        receipt.completed_at,
+      ),
+    )
   await DB.batch(statements)
   if (!receipt.ok) {
     const failures = receipt.steps.filter((item) => item.status === 'failed')
-    const body = failures.map((item) => `${item.name}: ${item.error}`).join('\n').slice(0, 4000)
+    const body = failures
+      .map((item) => `${item.name}: ${item.error}`)
+      .join('\n')
+      .slice(0, 4000)
     const fingerprint = `maintenance:${receipt.completed_at.slice(0, 10)}`
-    await DB.prepare(`INSERT INTO hermes_alerts(id,kind,severity,title,body,fingerprint)
+    await DB.prepare(
+      `INSERT INTO hermes_alerts(id,kind,severity,title,body,fingerprint)
       SELECT ?,'maintenance_failure','critical','Scheduled maintenance needs attention',?,?
-      WHERE NOT EXISTS (SELECT 1 FROM hermes_alerts WHERE fingerprint=? AND acknowledged_at IS NULL)`)
-      .bind(`alert_${crypto.randomUUID()}`, body, fingerprint, fingerprint).run()
+      WHERE NOT EXISTS (SELECT 1 FROM hermes_alerts WHERE fingerprint=? AND acknowledged_at IS NULL)`,
+    )
+      .bind(`alert_${crypto.randomUUID()}`, body, fingerprint, fingerprint)
+      .run()
   }
 }
 

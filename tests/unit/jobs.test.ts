@@ -50,7 +50,10 @@ test('staged Visual Lite releases its exact workflow lease while awaiting corpus
   assert.match(completion, /receipt_sha256: stagedPair\.receipt_sha256/)
   assert.match(completion, /SET status='awaiting_activation'/)
   assert.match(completion, /lease_owner=NULL,lease_expires_at=NULL/)
-  assert.match(completion, /WHERE id=\? AND workflow_run_id=\? AND workflow_step='publish_pair' AND status='running' AND lease_owner=\?/)
+  assert.match(
+    completion,
+    /WHERE id=\? AND workflow_run_id=\? AND workflow_step='publish_pair' AND status='running' AND lease_owner=\?/,
+  )
   assert.match(completion, /status: 'awaiting_activation'/)
 })
 

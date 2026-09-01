@@ -33,9 +33,16 @@ export const REQUIRED_RELEASE_SCHEMA = [
 
 export const REQUIRED_RELEASE_COLUMNS = {
   srs_cards: [
-    'annotation_id', 'repair_status', 'repair_lapses_acknowledged', 'content_revision',
-    'scheduler_revision', 'status_revision', 'last_recall_mutation_id',
-    'content_updated_at', 'paused_at', 'retired_at',
+    'annotation_id',
+    'repair_status',
+    'repair_lapses_acknowledged',
+    'content_revision',
+    'scheduler_revision',
+    'status_revision',
+    'last_recall_mutation_id',
+    'content_updated_at',
+    'paused_at',
+    'retired_at',
   ],
   thread_lesson_sources: ['expected_contribution', 'updated_at'],
   compass_picks: ['workflow_scope', 'workflow_request_id'],
@@ -44,18 +51,22 @@ export const REQUIRED_RELEASE_COLUMNS = {
 } as const
 
 export async function loadReleaseContractHealth(env: Bindings) {
-  const schema = await env.DB.prepare(`SELECT name FROM sqlite_schema WHERE name IN (${REQUIRED_RELEASE_SCHEMA.map(() => '?').join(',')})`)
+  const schema = await env.DB.prepare(
+    `SELECT name FROM sqlite_schema WHERE name IN (${REQUIRED_RELEASE_SCHEMA.map(() => '?').join(',')})`,
+  )
     .bind(...REQUIRED_RELEASE_SCHEMA)
     .all<{ name: string }>()
   const present = new Set((schema.results || []).map((row) => row.name))
   const missingSchema = REQUIRED_RELEASE_SCHEMA.filter((name) => !present.has(name))
-  const columnChecks = Object.entries(REQUIRED_RELEASE_COLUMNS).map(([table]) =>
-    `SELECT '${table}' table_name,name FROM pragma_table_info('${table}')`).join(' UNION ALL ')
+  const columnChecks = Object.entries(REQUIRED_RELEASE_COLUMNS)
+    .map(([table]) => `SELECT '${table}' table_name,name FROM pragma_table_info('${table}')`)
+    .join(' UNION ALL ')
   const columns = await env.DB.prepare(columnChecks).all<{ table_name: string; name: string }>()
   const presentColumns = new Set((columns.results || []).map((row) => `${row.table_name}.${row.name}`))
   const expectedColumns = Object.values(REQUIRED_RELEASE_COLUMNS).reduce((total, names) => total + names.length, 0)
   const missingColumns = Object.entries(REQUIRED_RELEASE_COLUMNS).flatMap(([table, names]) =>
-    names.map((name) => `${table}.${name}`).filter((identity) => !presentColumns.has(identity)))
+    names.map((name) => `${table}.${name}`).filter((identity) => !presentColumns.has(identity)),
+  )
   const bindings = {
     d1: Boolean(env.DB),
     r2: Boolean(env.ARTIFACTS),
@@ -63,12 +74,23 @@ export async function loadReleaseContractHealth(env: Bindings) {
     ai: Boolean(env.AI),
     vectorize: Boolean(env.COMPASS_VECTORS),
   }
-  const missingBindings = Object.entries(bindings).filter(([, configured]) => !configured).map(([name]) => name)
-  const signingSecretConfigured = typeof env.LITE_VISUAL_RECEIPT_SIGNING_KEY === 'string'
-    && env.LITE_VISUAL_RECEIPT_SIGNING_KEY.trim().length >= 32
+  const missingBindings = Object.entries(bindings)
+    .filter(([, configured]) => !configured)
+    .map(([name]) => name)
+  const signingSecretConfigured =
+    typeof env.LITE_VISUAL_RECEIPT_SIGNING_KEY === 'string' && env.LITE_VISUAL_RECEIPT_SIGNING_KEY.trim().length >= 32
   return {
-    ok: missingSchema.length === 0 && missingColumns.length === 0 && missingBindings.length === 0 && signingSecretConfigured,
-    schema: { expected: REQUIRED_RELEASE_SCHEMA.length, missing: missingSchema, expected_columns: expectedColumns, missing_columns: missingColumns },
+    ok:
+      missingSchema.length === 0 &&
+      missingColumns.length === 0 &&
+      missingBindings.length === 0 &&
+      signingSecretConfigured,
+    schema: {
+      expected: REQUIRED_RELEASE_SCHEMA.length,
+      missing: missingSchema,
+      expected_columns: expectedColumns,
+      missing_columns: missingColumns,
+    },
     bindings,
     signing_secret_configured: signingSecretConfigured,
   }

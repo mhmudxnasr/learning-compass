@@ -68,11 +68,29 @@ test('recall mutation preconditions require the complete exact numeric state tok
   assert.equal(parseRecallMutationPrecondition({ ...mutationState, expected_scheduler_revision: undefined }), null)
   assert.equal(parseRecallMutationPrecondition({ ...mutationState, expected_content_revision: '2' }), null)
   assert.equal(parseRecallMutationPrecondition({ ...mutationState, expected_repair_status: 'active-ish' }), null)
-  assert.equal(recallMutationStateMatches({ content_revision: 2, scheduler_revision: 4, status_revision: 3, repair_status: 'paused' }, expected!), true)
-  assert.equal(recallMutationStateMatches({ content_revision: 2, scheduler_revision: 5, status_revision: 3, repair_status: 'paused' }, expected!), false)
-  assert.deepEqual(recallMutationState({ content_revision: 5, scheduler_revision: 6, status_revision: 7, repair_status: 'retired' }), {
-    content_revision: 5, scheduler_revision: 6, status_revision: 7, repair_status: 'retired',
-  })
+  assert.equal(
+    recallMutationStateMatches(
+      { content_revision: 2, scheduler_revision: 4, status_revision: 3, repair_status: 'paused' },
+      expected!,
+    ),
+    true,
+  )
+  assert.equal(
+    recallMutationStateMatches(
+      { content_revision: 2, scheduler_revision: 5, status_revision: 3, repair_status: 'paused' },
+      expected!,
+    ),
+    false,
+  )
+  assert.deepEqual(
+    recallMutationState({ content_revision: 5, scheduler_revision: 6, status_revision: 7, repair_status: 'retired' }),
+    {
+      content_revision: 5,
+      scheduler_revision: 6,
+      status_revision: 7,
+      repair_status: 'retired',
+    },
+  )
 })
 
 test('agent recall mutations advertise and require the complete concurrency token', () => {
@@ -85,7 +103,12 @@ test('agent recall mutations advertise and require the complete concurrency toke
   const catalog = buildCapabilityCatalog(routes)
   for (const capability of catalog) {
     const schema = capability.request_body_schema as any
-    for (const field of ['expected_content_revision', 'expected_scheduler_revision', 'expected_status_revision', 'expected_repair_status']) {
+    for (const field of [
+      'expected_content_revision',
+      'expected_scheduler_revision',
+      'expected_status_revision',
+      'expected_repair_status',
+    ]) {
       assert.ok(schema.required.includes(field), `${capability.path} must require ${field}`)
       assert.ok(schema.properties[field], `${capability.path} must define ${field}`)
     }
@@ -115,7 +138,10 @@ test('recall repair schema and API preserve provenance and append-only history',
   assert.doesNotMatch(api, /DELETE FROM srs_review_events[\s\S]*Recall card reset failed/)
   assert.match(api, /loadSourceAnnotationEvidence/)
   assert.match(api, /const sourceAnchor = annotation\?\.locator/)
-  assert.match(api, /WHERE id = \? AND content_revision=\? AND scheduler_revision=\? AND status_revision=\? AND repair_status=\?/)
+  assert.match(
+    api,
+    /WHERE id = \? AND content_revision=\? AND scheduler_revision=\? AND status_revision=\? AND repair_status=\?/,
+  )
   assert.match(api, /DB\.batch\(\[/)
   assert.match(api, /recall_state_conflict/)
   assert.match(api, /last_recall_mutation_id/)

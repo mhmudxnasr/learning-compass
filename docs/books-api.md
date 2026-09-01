@@ -33,9 +33,7 @@ Request:
 
 ```json
 {
-  "chapters": [
-    { "key": "ch-01", "title": "Chapter title", "number": 1, "completed": false }
-  ]
+  "chapters": [{ "key": "ch-01", "title": "Chapter title", "number": 1, "completed": false }]
 }
 ```
 

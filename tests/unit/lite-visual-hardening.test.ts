@@ -13,12 +13,14 @@ const profileExtractor = '/home/mahmud/.hermes/profiles/compass/skills/lite-visu
 const browserRenderer = '/home/mahmud/.hermes/skills/lite-visual/scripts/render_page.mjs'
 const profileBrowserRenderer = '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/render_page.mjs'
 const publicUrlValidator = '/home/mahmud/.hermes/skills/lite-visual/scripts/validate_public_url.py'
-const profilePublicUrlValidator = '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/validate_public_url.py'
+const profilePublicUrlValidator =
+  '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/validate_public_url.py'
 const profileValidator = '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/validate_artifact.py'
 const scopeBuilder = '/home/mahmud/.hermes/skills/lite-visual/scripts/build_source_scope.py'
 const profileScopeBuilder = '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/build_source_scope.py'
 const exactSourceEmbedder = '/home/mahmud/.hermes/skills/lite-visual/scripts/embed_exact_source.py'
-const profileExactSourceEmbedder = '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/embed_exact_source.py'
+const profileExactSourceEmbedder =
+  '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/embed_exact_source.py'
 const runner = '/home/mahmud/.hermes/skills/lite-visual/scripts/run_workflow.py'
 const profileRunner = '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/run_workflow.py'
 
@@ -57,7 +59,10 @@ test('exact-source embedding isolates adjacent numeric runs from RTL reversal', 
   const code = `import importlib.util; s=importlib.util.spec_from_file_location('e','${exactSourceEmbedder}'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); print(m.exact_html('عاش 70 80 سنة وقرأ 24-25 ثم 4000، <مرة>'))`
   const result = spawnSync('python3', ['-c', code], { encoding: 'utf8' })
   assert.equal(result.status, 0, result.stderr)
-  assert.equal(result.stdout.trim(), 'عاش <bdi dir="ltr">70 80</bdi> سنة وقرأ <bdi dir="ltr">24-25</bdi> ثم <bdi dir="ltr">4000،</bdi> &lt;مرة&gt;')
+  assert.equal(
+    result.stdout.trim(),
+    'عاش <bdi dir="ltr">70 80</bdi> سنة وقرأ <bdi dir="ltr">24-25</bdi> ثم <bdi dir="ltr">4000،</bdi> &lt;مرة&gt;',
+  )
 })
 
 test('uploader identity preflight rejects a record from another capture before uploads', () => {
@@ -93,7 +98,11 @@ test('source-scope builder defaults to a fine 120-word inventory and leaves expl
     assert.equal(scope.spans.length, 3)
     assert.equal(scope.spans.at(-1).word_end, 241)
     assert.ok(scope.spans.every((span: any) => span.word_end - span.word_start <= 120))
-    assert.ok(scope.spans.every((span: any, index: number) => index === 0 || span.word_start === scope.spans[index - 1].word_end))
+    assert.ok(
+      scope.spans.every(
+        (span: any, index: number) => index === 0 || span.word_start === scope.spans[index - 1].word_end,
+      ),
+    )
     assert.ok(scope.spans.every((span: any) => span.summary.startsWith('AUTHOR_REQUIRED')))
   } finally {
     rmSync(directory, { recursive: true, force: true })

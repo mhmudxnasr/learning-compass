@@ -2,25 +2,46 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { chapterMetadataFromArtifact } from '../../src/services/book-projection.ts'
+import { readStudioCss } from './support/read-studio-css.ts'
 
 const recommendations = readFileSync(new URL('../../src/api/recommendations.ts', import.meta.url), 'utf8')
 const capture = readFileSync(new URL('../../src/api/capture.ts', import.meta.url), 'utf8')
 const booksView = readFileSync(new URL('../../client/src/workspaces/library/BooksView.tsx', import.meta.url), 'utf8')
-const libraryViews = readFileSync(new URL('../../client/src/workspaces/library/LibraryViews.tsx', import.meta.url), 'utf8')
+const libraryViews = readFileSync(
+  new URL('../../client/src/workspaces/library/LibraryViews.tsx', import.meta.url),
+  'utf8',
+)
 const canonApi = readFileSync(new URL('../../src/api/canon.ts', import.meta.url), 'utf8')
 const canonView = readFileSync(new URL('../../client/src/workspaces/learn/LearnCanonView.tsx', import.meta.url), 'utf8')
-const studioCss = readFileSync(new URL('../../client/src/studio.css', import.meta.url), 'utf8')
+const studioCss = readStudioCss()
 const primaryMigration = readFileSync(new URL('../../migrations/0052_pin_primary_book.sql', import.meta.url), 'utf8')
 
 test('all book mutations share the canonical nullable-status non-deleted predicate', () => {
-  assert.match(recommendations, /export const bookVisibilityPredicate = \(alias = 'r'\) => `\(\$\{alias\}\.status IS NULL OR \$\{alias\}\.status!='deleted'\) AND \$\{alias\}\.deleted_at IS NULL`/)
+  assert.match(
+    recommendations,
+    /export const bookVisibilityPredicate = \(alias = 'r'\) =>\s*`\(\$\{alias\}\.status IS NULL OR \$\{alias\}\.status!='deleted'\) AND \$\{alias\}\.deleted_at IS NULL`/,
+  )
   assert.equal(recommendations.split("bookVisibilityPredicate('r')").length - 1, 4)
-  assert.match(recommendations, /JOIN tree_nodes n ON n\.id=m\.branch_id[\s\S]*lower\(COALESCE\(n\.status,''\)\)!='pruned'/)
+  assert.match(
+    recommendations,
+    /JOIN tree_nodes n ON n\.id=m\.branch_id[\s\S]*lower\(COALESCE\(n\.status,''\)\)!='pruned'/,
+  )
 })
 
 test('artifact chapter metadata accepts owned positive chapters and rejects synthetic or mismatched keys', () => {
-  assert.deepEqual(chapterMetadataFromArtifact({ chapter_key: 'chapter-4', chapter_title: ' Four ', chapter_number: 4 }, 'chapter-4', 9), { key: 'chapter-4', title: 'Four', position: 4 })
-  assert.deepEqual(chapterMetadataFromArtifact({ chapter_key: 'appendix', title: 'Appendix' }, 'appendix', 9), { key: 'appendix', title: 'Appendix', position: 9 })
+  assert.deepEqual(
+    chapterMetadataFromArtifact(
+      { chapter_key: 'chapter-4', chapter_title: ' Four ', chapter_number: 4 },
+      'chapter-4',
+      9,
+    ),
+    { key: 'chapter-4', title: 'Four', position: 4 },
+  )
+  assert.deepEqual(chapterMetadataFromArtifact({ chapter_key: 'appendix', title: 'Appendix' }, 'appendix', 9), {
+    key: 'appendix',
+    title: 'Appendix',
+    position: 9,
+  })
   assert.equal(chapterMetadataFromArtifact({ chapter_key: 'book', chapter_number: 0 }, 'book', 1), null)
   assert.equal(chapterMetadataFromArtifact({ chapter_key: 'chapter-4', chapter_number: 4 }, 'other', 1), null)
 })
@@ -30,18 +51,27 @@ test('primary book selection is explicit after one deterministic migration', () 
   assert.doesNotMatch(recommendations, /fallbackPrimaryBookId/)
   assert.doesNotMatch(capture, /fallbackPrimary/)
   assert.match(primaryMigration, /ORDER BY r\.updated_at DESC, r\.created_at DESC, r\.id DESC/)
-  assert.match(primaryMigration, /json_object\('book_primary', CASE WHEN recommendation_id = \(SELECT id FROM chosen\) THEN 1 ELSE 0 END\)/)
+  assert.match(
+    primaryMigration,
+    /json_object\('book_primary', CASE WHEN recommendation_id = \(SELECT id FROM chosen\) THEN 1 ELSE 0 END\)/,
+  )
 })
 
 test('pinning is atomic, leaves reading and Queue states intact, and clears tombstone pins', () => {
   assert.match(recommendations, /if \(body\.primary === true\) \{[\s\S]*await c\.env\.DB\.batch/)
-  assert.match(recommendations, /WHERE recommendation_id IN \(SELECT id FROM recommendations WHERE content_type='book'\)/)
+  assert.match(
+    recommendations,
+    /WHERE recommendation_id IN \(SELECT id FROM recommendations WHERE content_type='book'\)/,
+  )
   assert.match(recommendations, /source_metadata_json=json_patch[\s\S]*updated_at=datetime\('now'\)/)
   assert.match(recommendations, /queue_state: book\.learning_state \|\| 'captured'/)
 })
 
 test('Books read fan-out is concurrent without synthetic round balance work', () => {
-  assert.match(recommendations, /const \[artifacts, jobs, canonMembershipRows, threadRows, chapterResult\] = await Promise\.all/)
+  assert.match(
+    recommendations,
+    /const \[artifacts, jobs, canonMembershipRows, threadRows, chapterResult\] = await Promise\.all/,
+  )
   assert.doesNotMatch(recommendations, /needsBalance \? buildLearningBalance/)
   assert.doesNotMatch(recommendations, /artifactsByBook\.set\([^\n]+\.\.\./)
   assert.doesNotMatch(recommendations, /chaptersByBook\.set\([^\n]+\.\.\./)
@@ -49,7 +79,10 @@ test('Books read fan-out is concurrent without synthetic round balance work', ()
 
 test('neutral dequeue is conditional and cannot rewrite exclusion truth', () => {
   assert.match(capture, /item\.status !== 'active'[\s\S]*\['queued', 'in_progress'\]/)
-  assert.match(capture, /learning_state IN \('queued','in_progress'\)[\s\S]*r\.status='active'[\s\S]*r\.deleted_at IS NULL/)
+  assert.match(
+    capture,
+    /learning_state IN \('queued','in_progress'\)[\s\S]*r\.status='active'[\s\S]*r\.deleted_at IS NULL/,
+  )
 })
 
 test('Books UI renders all Canon memberships and centralizes companion routes', () => {
@@ -57,7 +90,7 @@ test('Books UI renders all Canon memberships and centralizes companion routes', 
   assert.doesNotMatch(booksView, /canon_memberships\) \? book\.canon_memberships\[0\]/)
   assert.match(booksView, /artifactLink\(chapter\.html\)/)
   assert.match(booksView, /artifactLink\(chapter\.pdf\)/)
-  assert.match(booksView, /<ReadingFormatLinks book=\{book\} chapter=\{chapter\}\/\>/)
+  assert.match(booksView, /<ReadingFormatLinks\s+book=\{book\}\s+chapter=\{chapter\}\s*\/>/)
   assert.match(booksView, /branchInfo\.linkable/)
 })
 

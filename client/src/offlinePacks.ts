@@ -29,7 +29,8 @@ export type OfflinePackRequest = {
 
 export type OfflinePackState = {
   supported: boolean
-  state: 'unavailable' | 'not-downloaded' | 'downloading' | 'ready' | 'partial' | 'superseded' | 'storage-full' | 'error'
+  state:
+    'unavailable' | 'not-downloaded' | 'downloading' | 'ready' | 'partial' | 'superseded' | 'storage-full' | 'error'
   packId?: string
   title?: string
   version?: string
@@ -67,21 +68,27 @@ export function coherentOfflineResources(resources: OfflinePackResource[]) {
   }
   const acceptedGroups = new Set(
     [...groups.entries()]
-      .filter(([, items]) => items.length === 2
-        && items.filter((item) => item.role === 'html').length === 1
-        && items.filter((item) => item.role === 'pdf').length === 1
-        && new Set(items.map((item) => item.pairId)).size === 1)
+      .filter(
+        ([, items]) =>
+          items.length === 2 &&
+          items.filter((item) => item.role === 'html').length === 1 &&
+          items.filter((item) => item.role === 'pdf').length === 1 &&
+          new Set(items.map((item) => item.pairId)).size === 1,
+      )
       .map(([key]) => key),
   )
   if (!acceptedGroups.size) return []
-  return unique.filter((resource) => resource.role === 'data' || acceptedGroups.has(String(resource.groupId || resource.pairId || '').trim()))
+  return unique.filter(
+    (resource) =>
+      resource.role === 'data' || acceptedGroups.has(String(resource.groupId || resource.pairId || '').trim()),
+  )
 }
 
 function artifactMetadata(artifact?: OfflinePackArtifact | null) {
   if (artifact?.metadata && typeof artifact.metadata === 'object') return artifact.metadata
   try {
     const parsed = JSON.parse(String(artifact?.metadata_json || '{}'))
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
   } catch {
     return {}
   }
@@ -98,41 +105,90 @@ export function offlinePairResources(
   const htmlPair = String(htmlMetadata.pair_id || '').trim()
   const pdfPair = String(pdfMetadata.pair_id || '').trim()
   if (!html?.id || !pdf?.id || !htmlPair || htmlPair !== pdfPair) return []
-  if (String(htmlMetadata.role || '').trim().toLowerCase() !== 'html' || String(pdfMetadata.role || '').trim().toLowerCase() !== 'pdf') return []
-  const publicationStates = [htmlMetadata.publication_state, pdfMetadata.publication_state]
-    .map((state) => String(state || '').trim().toLowerCase())
-  const validationStates = [htmlMetadata.validation_status, pdfMetadata.validation_status]
-    .map((state) => String(state || '').trim().toLowerCase())
-  if (publicationStates.some((state) => state !== 'ready') || validationStates.some((state) => state !== 'passed')) return []
+  if (
+    String(htmlMetadata.role || '')
+      .trim()
+      .toLowerCase() !== 'html' ||
+    String(pdfMetadata.role || '')
+      .trim()
+      .toLowerCase() !== 'pdf'
+  )
+    return []
+  const publicationStates = [htmlMetadata.publication_state, pdfMetadata.publication_state].map((state) =>
+    String(state || '')
+      .trim()
+      .toLowerCase(),
+  )
+  const validationStates = [htmlMetadata.validation_status, pdfMetadata.validation_status].map((state) =>
+    String(state || '')
+      .trim()
+      .toLowerCase(),
+  )
+  if (publicationStates.some((state) => state !== 'ready') || validationStates.some((state) => state !== 'passed'))
+    return []
   const htmlSize = Number(html.size_bytes || 0)
   const pdfSize = Number(pdf.size_bytes || 0)
   if (!Number.isSafeInteger(htmlSize) || htmlSize < 1 || !Number.isSafeInteger(pdfSize) || pdfSize < 1) return []
-  const htmlRevision = String(htmlMetadata.revision || htmlMetadata.receipt_sha256 || htmlMetadata.validation_receipt_sha256 || '').trim()
-  const pdfRevision = String(pdfMetadata.revision || pdfMetadata.receipt_sha256 || pdfMetadata.validation_receipt_sha256 || '').trim()
+  const htmlRevision = String(
+    htmlMetadata.revision || htmlMetadata.receipt_sha256 || htmlMetadata.validation_receipt_sha256 || '',
+  ).trim()
+  const pdfRevision = String(
+    pdfMetadata.revision || pdfMetadata.receipt_sha256 || pdfMetadata.validation_receipt_sha256 || '',
+  ).trim()
   const group = String(groupId || htmlMetadata.chapter_key || htmlPair).trim()
   return [
-    { url: `/artifacts/${encodeURIComponent(String(html.id))}/view`, role: 'html', artifactId: String(html.id), pairId: htmlPair, groupId: group, revision: htmlRevision, sizeBytes: htmlSize },
-    { url: `/artifacts/${encodeURIComponent(String(pdf.id))}`, role: 'pdf', artifactId: String(pdf.id), pairId: pdfPair, groupId: group, revision: pdfRevision, sizeBytes: pdfSize },
+    {
+      url: `/artifacts/${encodeURIComponent(String(html.id))}/view`,
+      role: 'html',
+      artifactId: String(html.id),
+      pairId: htmlPair,
+      groupId: group,
+      revision: htmlRevision,
+      sizeBytes: htmlSize,
+    },
+    {
+      url: `/artifacts/${encodeURIComponent(String(pdf.id))}`,
+      role: 'pdf',
+      artifactId: String(pdf.id),
+      pairId: pdfPair,
+      groupId: group,
+      revision: pdfRevision,
+      sizeBytes: pdfSize,
+    },
   ]
 }
 
 export function offlinePackVersion(resources: OfflinePackResource[]) {
   return coherentOfflineResources(resources)
-    .map((resource) => [resource.url, resource.role, resource.artifactId || '', resource.pairId || '', resource.revision || '', Number(resource.sizeBytes || 0)].join(':'))
+    .map((resource) =>
+      [
+        resource.url,
+        resource.role,
+        resource.artifactId || '',
+        resource.pairId || '',
+        resource.revision || '',
+        Number(resource.sizeBytes || 0),
+      ].join(':'),
+    )
     .sort()
     .join('|')
 }
 
 export function offlinePackSize(resources: OfflinePackResource[]) {
-  return coherentOfflineResources(resources).reduce((total, resource) => total + Math.max(0, Number(resource.sizeBytes || 0)), 0)
+  return coherentOfflineResources(resources).reduce(
+    (total, resource) => total + Math.max(0, Number(resource.sizeBytes || 0)),
+    0,
+  )
 }
 
 const stableSnapshotJson = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(stableSnapshotJson).join(',')}]`
-  if (value && typeof value === 'object') return `{${Object.entries(value as Record<string, unknown>)
-    .filter(([, item]) => item !== undefined)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, item]) => `${JSON.stringify(key)}:${stableSnapshotJson(item)}`).join(',')}}`
+  if (value && typeof value === 'object')
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableSnapshotJson(item)}`)
+      .join(',')}}`
   return JSON.stringify(value) ?? 'null'
 }
 
@@ -162,7 +218,11 @@ export function offlineDataResource(url: string, groupId: string, snapshot: unkn
 }
 
 async function serviceWorkerRequest(message: OfflinePackMessage): Promise<OfflinePackState> {
-  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator) || !window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+  if (
+    typeof navigator === 'undefined' ||
+    !('serviceWorker' in navigator) ||
+    (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1')
+  ) {
     return { supported: false, state: 'unavailable' }
   }
   try {
@@ -172,7 +232,10 @@ async function serviceWorkerRequest(message: OfflinePackMessage): Promise<Offlin
     return await new Promise<OfflinePackState>((resolve) => {
       const channel = new MessageChannel()
       const timeoutMs = message.action === 'offline-pack:save' ? 300000 : 30000
-      const timeout = window.setTimeout(() => resolve({ supported: true, state: 'error', error: 'Offline storage did not respond.' }), timeoutMs)
+      const timeout = window.setTimeout(
+        () => resolve({ supported: true, state: 'error', error: 'Offline storage did not respond.' }),
+        timeoutMs,
+      )
       channel.port1.onmessage = (event) => {
         window.clearTimeout(timeout)
         resolve(event.data as OfflinePackState)
@@ -180,7 +243,11 @@ async function serviceWorkerRequest(message: OfflinePackMessage): Promise<Offlin
       worker.postMessage(message, [channel.port2])
     })
   } catch (error) {
-    return { supported: true, state: 'error', error: error instanceof Error ? error.message : 'Offline storage is unavailable.' }
+    return {
+      supported: true,
+      state: 'error',
+      error: error instanceof Error ? error.message : 'Offline storage is unavailable.',
+    }
   }
 }
 
@@ -188,7 +255,9 @@ export function getOfflinePackStatus(packId: string, expectedVersion: string) {
   return serviceWorkerRequest({ action: 'offline-pack:status', packId, expectedVersion })
 }
 
-export function saveOfflinePack(pack: Omit<OfflinePackRequest, 'resources' | 'version'> & { resources: OfflinePackResource[]; version?: string }) {
+export function saveOfflinePack(
+  pack: Omit<OfflinePackRequest, 'resources' | 'version'> & { resources: OfflinePackResource[]; version?: string },
+) {
   const resources = coherentOfflineResources(pack.resources)
   const request: OfflinePackRequest = { ...pack, resources, version: pack.version || offlinePackVersion(resources) }
   return serviceWorkerRequest({ action: 'offline-pack:save', pack: request })

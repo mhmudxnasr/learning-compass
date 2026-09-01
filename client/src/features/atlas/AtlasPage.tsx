@@ -1,7 +1,24 @@
 import cytoscape, { Core, ElementDefinition, Position } from 'cytoscape'
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { api } from '../../api'
-import { AtlasEdge, AtlasModel, AtlasNode, FrontierState, branchSubtreeIds, clusterFor, createAtlasModel, frontierLabels, initialVisibleIds, isolatedVisibleIds, nodeAncestry, nodeTitle, nodeTypeBadge, toggleSubtree, visibleIdsForDepth, visibleIdsForFrontier } from './model'
+import {
+  AtlasEdge,
+  AtlasModel,
+  AtlasNode,
+  FrontierState,
+  branchSubtreeIds,
+  clusterFor,
+  createAtlasModel,
+  frontierLabels,
+  initialVisibleIds,
+  isolatedVisibleIds,
+  nodeAncestry,
+  nodeTitle,
+  nodeTypeBadge,
+  toggleSubtree,
+  visibleIdsForDepth,
+  visibleIdsForFrontier,
+} from './model'
 
 const palette = [
   '#244f3b', // Cypress
@@ -12,7 +29,11 @@ const palette = [
   '#75684f', // Bark
 ]
 
-const svgIcon = (path: string) => <svg viewBox="0 0 24 24" aria-hidden="true"><path d={path} /></svg>
+const svgIcon = (path: string) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d={path} />
+  </svg>
+)
 const svgNs = 'http://www.w3.org/2000/svg'
 
 function mixColors(foreground: string, background: string, foregroundWeight: number): string {
@@ -26,6 +47,26 @@ function mixColors(foreground: string, background: string, foregroundWeight: num
   const back = parse(background)
   if (!front || !back) return background
   return `rgb(${front.map((channel, index) => Math.round(channel * foregroundWeight + back[index] * (1 - foregroundWeight))).join(', ')})`
+}
+
+function moveViewport(cy: Core | null, action: 'in' | 'out' | 'fit', reducedMotion: boolean) {
+  if (!cy) return
+  cy.stop()
+  if (action === 'fit') {
+    cy.animate(
+      { fit: { eles: cy.elements(), padding: cy.width() < 600 ? 24 : 72 } },
+      { duration: reducedMotion ? 0 : 440, easing: 'ease-out-cubic' },
+    )
+    return
+  }
+  const currentZoom = cy.zoom()
+  const zoomFactor = action === 'in' ? 1.6 : 1 / 1.6
+  const targetZoom = Math.min(cy.maxZoom(), Math.max(cy.minZoom(), currentZoom * zoomFactor))
+  const pan = cy.pan()
+  const center = { x: cy.width() / 2, y: cy.height() / 2 }
+  const modelCenter = { x: (center.x - pan.x) / currentZoom, y: (center.y - pan.y) / currentZoom }
+  const targetPan = { x: center.x - modelCenter.x * targetZoom, y: center.y - modelCenter.y * targetZoom }
+  cy.animate({ zoom: targetZoom, pan: targetPan }, { duration: reducedMotion ? 0 : 360, easing: 'ease-out-cubic' })
 }
 
 const ATLAS_DEFAULTS = {
@@ -93,7 +134,10 @@ function initialGalaxyLayout(model: AtlasModel, visible: Set<string>): Map<strin
 function childPosition(model: AtlasModel, nodeId: string, parent: Position): Position {
   const node = model.byId.get(nodeId)
   const siblings = node?.parent_id ? model.children.get(node.parent_id) || [] : []
-  const index = Math.max(0, siblings.findIndex((item) => item.id === nodeId))
+  const index = Math.max(
+    0,
+    siblings.findIndex((item) => item.id === nodeId),
+  )
   const perRing = 8
   const ring = Math.floor(index / perRing)
   const count = Math.min(perRing, Math.max(1, siblings.length - ring * perRing))
@@ -153,9 +197,15 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
   const [reducedMotion, setReducedMotion] = useState(false)
   const [settingsStatus, setSettingsStatus] = useState('')
 
-  useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
-  useEffect(() => { atlasRef.current = atlas }, [atlas])
-  useEffect(() => { onSelectRef.current = onSelect }, [onSelect])
+  useEffect(() => {
+    selectedIdRef.current = selectedId
+  }, [selectedId])
+  useEffect(() => {
+    atlasRef.current = atlas
+  }, [atlas])
+  useEffect(() => {
+    onSelectRef.current = onSelect
+  }, [onSelect])
   useEffect(() => {
     const onThemeChange = () => setThemeTick((t) => t + 1)
     window.addEventListener('themechange', onThemeChange)
@@ -174,7 +224,10 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
   }, [])
 
   const model = useMemo(() => createAtlasModel(raw?.nodes, raw?.edges), [raw])
-  const colors = useMemo(() => new Map([...model.clusters.keys()].sort().map((name, index) => [name, palette[index % palette.length]])), [model])
+  const colors = useMemo(
+    () => new Map([...model.clusters.keys()].sort().map((name, index) => [name, palette[index % palette.length]])),
+    [model],
+  )
 
   const filteredVisible = useMemo(() => {
     let current = visible
@@ -188,12 +241,16 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
   }, [visible, isolateId, clusterFilter, frontierFilter, model])
 
   const selected = selectedId ? model.byId.get(selectedId) : undefined
-  const ancestry = useMemo(() => selectedId ? nodeAncestry(model, selectedId) : [], [model, selectedId])
+  const ancestry = useMemo(() => (selectedId ? nodeAncestry(model, selectedId) : []), [model, selectedId])
 
   const searchResults = useMemo(() => {
     if (!query.trim()) return []
     const q = query.trim().toLowerCase()
-    return model.nodes.filter((node) => nodeTitle(node).toLowerCase().includes(q) || clusterFor(model, node.id).toLowerCase().includes(q)).slice(0, 10)
+    return model.nodes
+      .filter(
+        (node) => nodeTitle(node).toLowerCase().includes(q) || clusterFor(model, node.id).toLowerCase().includes(q),
+      )
+      .slice(0, 10)
   }, [model, query])
 
   const branchGroups = useMemo(() => {
@@ -215,7 +272,9 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
       .then((graph) => {
         if (cancelled) return
         setRaw(graph)
-        api<{ branches?: Array<Pick<AtlasNode, 'id' | 'frontier_state' | 'frontier_reasons'>> }>('/learning/balance?window=90')
+        api<{ branches?: Array<Pick<AtlasNode, 'id' | 'frontier_state' | 'frontier_reasons'>> }>(
+          '/learning/balance?window=90',
+        )
           .then((balance) => {
             if (cancelled) return
             setRaw((current) => {
@@ -238,17 +297,23 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
         setAtlas(next)
       })
       .catch(() => setSettingsStatus('Map preferences could not be loaded. Defaults are active.'))
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
-    if (model.nodes.length) setVisible((current) => current.size ? current : initialVisibleIds(model))
+    if (model.nodes.length) setVisible((current) => (current.size ? current : initialVisibleIds(model)))
   }, [model])
 
   const physicsSimRef = useRef<{
     start: (alpha?: number) => void
     stop: () => void
   } | null>(null)
+  const viewport = useCallback(
+    (action: 'in' | 'out' | 'fit') => moveViewport(cyRef.current, action, reducedMotion),
+    [reducedMotion],
+  )
 
   useEffect(() => {
     if (!canvasRef.current || !model.nodes.length) return
@@ -263,10 +328,11 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
     const surface = compStyle.getPropertyValue('--studio-canvas').trim() || '#ffffff'
     const line = compStyle.getPropertyValue('--studio-seam').trim() || '#e2ddd2'
     const accent = compStyle.getPropertyValue('--studio-cypress').trim() || '#204936'
-    const ns = atlas.node_size
-    const lt = atlas.link_thickness
-    const blt = atlas.branch_link_thickness
-    const arrows = atlas.arrows
+    const currentAtlas = atlasRef.current
+    const ns = currentAtlas.node_size
+    const lt = currentAtlas.link_thickness
+    const blt = currentAtlas.branch_link_thickness
+    const arrows = currentAtlas.arrows
 
     let cy = cyRef.current
 
@@ -281,20 +347,22 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
           const hiddenCount = (model.children.get(id) || []).filter((c) => !filteredVisible.has(c.id)).length
           const title = nodeTitle(node)
           const pos = positionCacheRef.current.get(id) || initPosMap.get(id) || { x: 0, y: 0 }
-          return [{
-            data: {
-              id: node.id,
-              label: title,
-              displayLabel: title,
-              cluster,
-              hiddenCount,
-              color: colors.get(cluster) || palette[0],
-               type: node.type,
-              frontier: node.frontier_state || '',
+          return [
+            {
+              data: {
+                id: node.id,
+                label: title,
+                displayLabel: title,
+                cluster,
+                hiddenCount,
+                color: colors.get(cluster) || palette[0],
+                type: node.type,
+                frontier: node.frontier_state || '',
+              },
+              position: pos,
+              classes: `type-${node.type} frontier-${node.frontier_state || 'none'} ${hiddenCount > 0 ? 'has-hidden' : ''} entering`,
             },
-            position: pos,
-            classes: `type-${node.type} frontier-${node.frontier_state || 'none'} ${hiddenCount > 0 ? 'has-hidden' : ''} entering`,
-          }]
+          ]
         }),
         ...model.edges
           .filter((edge) => filteredVisible.has(edge.source_id) && filteredVisible.has(edge.target_id))
@@ -343,7 +411,8 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
               'text-border-color': line,
               'text-border-opacity': 0.7,
               'text-opacity': 1,
-              'transition-property': 'background-color, border-color, border-width, opacity, width, height, overlay-opacity, overlay-padding',
+              'transition-property':
+                'background-color, border-color, border-width, opacity, width, height, overlay-opacity, overlay-padding',
               'transition-duration': '220ms',
               'transition-timing-function': 'ease-out',
             },
@@ -500,16 +569,16 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
           if (!node) continue
           const cluster = clusterFor(model, id)
           const title = nodeTitle(node)
-          let spawnPos = { x: 0, y: 0 }
-          if (node.parent_id && cy.getElementById(node.parent_id).length) {
-            const pPos = cy.getElementById(node.parent_id).position()
-            const jitter = stableJitter(id, 28)
-            spawnPos = reducedMotion || !atlasRef.current.animate
-              ? childPosition(model, id, pPos)
-              : { x: pPos.x + jitter.x, y: pPos.y + jitter.y }
-          } else {
-            spawnPos = positionCacheRef.current.get(id) || initPosMap.get(id) || stableJitter(id, 40)
-          }
+          const spawnPos =
+            node.parent_id && cy.getElementById(node.parent_id).length
+              ? (() => {
+                  const pPos = cy.getElementById(node.parent_id).position()
+                  const jitter = stableJitter(id, 28)
+                  return reducedMotion || !atlasRef.current.animate
+                    ? childPosition(model, id, pPos)
+                    : { x: pPos.x + jitter.x, y: pPos.y + jitter.y }
+                })()
+              : positionCacheRef.current.get(id) || initPosMap.get(id) || stableJitter(id, 40)
 
           toAdd.push({
             data: {
@@ -569,7 +638,9 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
         entering.removeClass('entering')
       } else {
         const reveal = (selector: string, delay: number) => {
-          entranceTimers.push(window.setTimeout(() => cy.elements(`${selector}.entering`).removeClass('entering'), delay))
+          entranceTimers.push(
+            window.setTimeout(() => cy.elements(`${selector}.entering`).removeClass('entering'), delay),
+          )
         }
         reveal('node[type = "category"], node[type = "root"]', 30)
         reveal('node[type = "branch"]', 110)
@@ -642,7 +713,10 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
         const circle = document.createElementNS(svgNs, 'circle')
         circle.setAttribute('cx', String(p.x))
         circle.setAttribute('cy', String(p.y))
-        circle.setAttribute('r', String(minimapScale * (isSelected ? 1.8 : (n.data('type') === 'category' ? 1.35 : 0.72))))
+        circle.setAttribute(
+          'r',
+          String(minimapScale * (isSelected ? 1.8 : n.data('type') === 'category' ? 1.35 : 0.72)),
+        )
         circle.setAttribute('fill', color)
         circle.setAttribute('opacity', isSelected ? '1' : '0.85')
         minimapRef.current?.appendChild(circle)
@@ -773,44 +847,52 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
 
       const partList = [...particles.values()]
       const count = partList.length
-      const activeEdges = model.edges.filter((edge) => filteredVisible.has(edge.source_id) && filteredVisible.has(edge.target_id))
+      const activeEdges = model.edges.filter(
+        (edge) => filteredVisible.has(edge.source_id) && filteredVisible.has(edge.target_id),
+      )
 
       const prefs = atlasRef.current
-      const repelBase = (2200 * (prefs.repel_force / 20.0)) * simAlpha
+      const repelBase = 2200 * (prefs.repel_force / 20.0) * simAlpha
       const applyPairForces = (pA: Particle, pB: Particle) => {
-          let dx = pB.x - pA.x
-          let dy = pB.y - pA.y
-          if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
-            const jitter = stableJitter(`${pA.id}:${pB.id}`, 6)
-            dx = jitter.x
-            dy = jitter.y
-          }
-          const distSq = dx * dx + dy * dy + 100
-          const dist = Math.sqrt(distSq)
-          const force = repelBase / distSq
-          const fx = (dx / dist) * force
-          const fy = (dy / dist) * force
+        let dx = pB.x - pA.x
+        let dy = pB.y - pA.y
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+          const jitter = stableJitter(`${pA.id}:${pB.id}`, 6)
+          dx = jitter.x
+          dy = jitter.y
+        }
+        const distSq = dx * dx + dy * dy + 100
+        const dist = Math.sqrt(distSq)
+        const force = repelBase / distSq
+        const fx = (dx / dist) * force
+        const fy = (dy / dist) * force
 
-          if (!pA.pinned) { pA.vx -= fx / pA.mass; pA.vy -= fy / pA.mass }
-          if (!pB.pinned) { pB.vx += fx / pB.mass; pB.vy += fy / pB.mass }
+        if (!pA.pinned) {
+          pA.vx -= fx / pA.mass
+          pA.vy -= fy / pA.mass
+        }
+        if (!pB.pinned) {
+          pB.vx += fx / pB.mass
+          pB.vy += fy / pB.mass
+        }
 
-          const boxDx = pB.x - pA.x
-          const boxDy = (pB.y + pB.labelOffsetY) - (pA.y + pA.labelOffsetY)
-          const minX = pA.halfWidth + pB.halfWidth + 18
-          const minY = pA.halfHeight + pB.halfHeight + 12
-          const overlapX = minX - Math.abs(boxDx)
-          const overlapY = minY - Math.abs(boxDy)
-          if (overlapX > 0 && overlapY > 0) {
-            if (overlapX / minX < overlapY / minY) {
-              const forceX = (boxDx >= 0 ? 1 : -1) * overlapX * 0.2 * simAlpha
-              if (!pA.pinned) pA.vx -= forceX / pA.mass
-              if (!pB.pinned) pB.vx += forceX / pB.mass
-            } else {
-              const forceY = (boxDy >= 0 ? 1 : -1) * overlapY * 0.22 * simAlpha
-              if (!pA.pinned) pA.vy -= forceY / pA.mass
-              if (!pB.pinned) pB.vy += forceY / pB.mass
-            }
+        const boxDx = pB.x - pA.x
+        const boxDy = pB.y + pB.labelOffsetY - (pA.y + pA.labelOffsetY)
+        const minX = pA.halfWidth + pB.halfWidth + 18
+        const minY = pA.halfHeight + pB.halfHeight + 12
+        const overlapX = minX - Math.abs(boxDx)
+        const overlapY = minY - Math.abs(boxDy)
+        if (overlapX > 0 && overlapY > 0) {
+          if (overlapX / minX < overlapY / minY) {
+            const forceX = (boxDx >= 0 ? 1 : -1) * overlapX * 0.2 * simAlpha
+            if (!pA.pinned) pA.vx -= forceX / pA.mass
+            if (!pB.pinned) pB.vx += forceX / pB.mass
+          } else {
+            const forceY = (boxDy >= 0 ? 1 : -1) * overlapY * 0.22 * simAlpha
+            if (!pA.pinned) pA.vy -= forceY / pA.mass
+            if (!pB.pinned) pB.vy += forceY / pB.mass
           }
+        }
       }
 
       if (count <= 320) {
@@ -846,14 +928,21 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
         const dx = pB.x - pA.x
         const dy = pB.y - pA.y
         const dist = Math.hypot(dx, dy) || 1
-        const targetLen = (edge.relation_type === 'hierarchy' ? 120 : 160) + Math.min(50, (pA.halfWidth + pB.halfWidth) * 0.12)
+        const targetLen =
+          (edge.relation_type === 'hierarchy' ? 120 : 160) + Math.min(50, (pA.halfWidth + pB.halfWidth) * 0.12)
         const delta = dist - targetLen
         const force = Math.max(-6, Math.min(6, delta * linkBase))
         const fx = (dx / dist) * force
         const fy = (dy / dist) * force
 
-        if (!pA.pinned) { pA.vx += fx / pA.mass; pA.vy += fy / pA.mass }
-        if (!pB.pinned) { pB.vx -= fx / pB.mass; pB.vy -= fy / pB.mass }
+        if (!pA.pinned) {
+          pA.vx += fx / pA.mass
+          pA.vy += fy / pA.mass
+        }
+        if (!pB.pinned) {
+          pB.vx -= fx / pB.mass
+          pB.vy -= fy / pB.mass
+        }
       }
 
       const centerPull = 0.0014 * prefs.center_force * simAlpha
@@ -1065,7 +1154,7 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
       clearTimeout(minimapTimer)
       entranceTimers.forEach(clearTimeout)
     }
-  }, [model, filteredVisible, colors, themeTick, reducedMotion])
+  }, [model, filteredVisible, colors, themeTick, reducedMotion, viewport])
 
   useEffect(() => {
     const cy = cyRef.current
@@ -1080,11 +1169,14 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
     return () => observer.disconnect()
   }, [raw])
 
-  useEffect(() => () => {
-    physicsSimRef.current?.stop()
-    cyRef.current?.destroy()
-    cyRef.current = null
-  }, [])
+  useEffect(
+    () => () => {
+      physicsSimRef.current?.stop()
+      cyRef.current?.destroy()
+      cyRef.current = null
+    },
+    [],
+  )
 
   useEffect(() => {
     const cy = cyRef.current
@@ -1160,10 +1252,21 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
     const logZoom = Math.log10(Math.max(zoom, 0.01))
     const textOpacity = Math.max(0.38, Math.min(1, (logZoom - atlas.text_fade_threshold + 0.4) / 0.7))
     const leafOpacity = Math.max(0, Math.min(textOpacity, (zoom - 0.48) / 0.42))
-    cy.nodes('[type = "leaf"]').style({ 'text-opacity': leafOpacity, 'text-background-opacity': leafOpacity * 0.92, 'text-border-opacity': leafOpacity * 0.7 })
-    cy.nodes('[type = "branch"]').style({ 'text-opacity': Math.max(0.68, textOpacity), 'text-background-opacity': 0.92, 'text-border-opacity': 0.7 })
-    cy.nodes('[type = "category"], [type = "root"]').style({ 'text-opacity': 1, 'text-background-opacity': 0.96, 'text-border-opacity': 0.7 })
-
+    cy.nodes('[type = "leaf"]').style({
+      'text-opacity': leafOpacity,
+      'text-background-opacity': leafOpacity * 0.92,
+      'text-border-opacity': leafOpacity * 0.7,
+    })
+    cy.nodes('[type = "branch"]').style({
+      'text-opacity': Math.max(0.68, textOpacity),
+      'text-background-opacity': 0.92,
+      'text-border-opacity': 0.7,
+    })
+    cy.nodes('[type = "category"], [type = "root"]').style({
+      'text-opacity': 1,
+      'text-background-opacity': 0.96,
+      'text-border-opacity': 0.7,
+    })
   }, [atlas, reducedMotion, themeTick])
 
   useEffect(() => {
@@ -1194,34 +1297,41 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
   const saveTimeoutRef = useRef<number | null>(null)
   const pendingAtlasPatchRef = useRef<Partial<AtlasPrefs>>({})
 
-  const focusNode = (id: string, clearFilters = false) => {
-    if (!model.byId.has(id)) return
-    if (clearFilters) {
-      setBranchFocus('all')
-      setClusterFilter('all')
-      setFrontierFilter('all')
-      setIsolateId(null)
-    }
-    setVisible((current) => {
-      const next = new Set(current)
-      for (const node of nodeAncestry(model, id)) next.add(node.id)
-      next.add(id)
-      return next
-    })
-    selectedIdRef.current = id
-    setSelectedId(id)
-    onSelectRef.current?.(id)
-    setQuery('')
-    requestAnimationFrame(() => {
-      const node = cyRef.current?.getElementById(id)
-      if (node?.length) cyRef.current?.animate({ center: { eles: node }, zoom: Math.max(cyRef.current.zoom(), 1.2) }, { duration: reducedMotion ? 0 : 420, easing: 'ease-out-cubic' })
-    })
-  }
+  const focusNode = useCallback(
+    (id: string, clearFilters = false) => {
+      if (!model.byId.has(id)) return
+      if (clearFilters) {
+        setBranchFocus('all')
+        setClusterFilter('all')
+        setFrontierFilter('all')
+        setIsolateId(null)
+      }
+      setVisible((current) => {
+        const next = new Set(current)
+        for (const node of nodeAncestry(model, id)) next.add(node.id)
+        next.add(id)
+        return next
+      })
+      selectedIdRef.current = id
+      setSelectedId(id)
+      onSelectRef.current?.(id)
+      setQuery('')
+      requestAnimationFrame(() => {
+        const node = cyRef.current?.getElementById(id)
+        if (node?.length)
+          cyRef.current?.animate(
+            { center: { eles: node }, zoom: Math.max(cyRef.current.zoom(), 1.2) },
+            { duration: reducedMotion ? 0 : 420, easing: 'ease-out-cubic' },
+          )
+      })
+    },
+    [model, reducedMotion],
+  )
 
   useEffect(() => {
     if (!initialSelectedId || !model.byId.has(initialSelectedId) || selectedIdRef.current === initialSelectedId) return
     focusNode(initialSelectedId, true)
-  }, [initialSelectedId, model])
+  }, [focusNode, initialSelectedId, model])
 
   const updateAtlas = (patch: Partial<AtlasPrefs>) => {
     const next = { ...atlasRef.current, ...patch }
@@ -1240,12 +1350,15 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
     }, 400)
   }
 
-  useEffect(() => () => {
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-    if (Object.keys(pendingAtlasPatchRef.current).length) {
-      api('/settings/atlas', { method: 'PUT', body: JSON.stringify(pendingAtlasPatchRef.current) }).catch(() => {})
-    }
-  }, [])
+  useEffect(
+    () => () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+      if (Object.keys(pendingAtlasPatchRef.current).length) {
+        api('/settings/atlas', { method: 'PUT', body: JSON.stringify(pendingAtlasPatchRef.current) }).catch(() => {})
+      }
+    },
+    [],
+  )
 
   const resetAtlas = () => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
@@ -1259,30 +1372,6 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
       .then(() => setSettingsStatus('Map defaults restored.'))
       .catch(() => setSettingsStatus('Map defaults were not saved. Try again.'))
     if (cyRef.current) viewport('fit')
-  }
-
-  const viewport = (action: 'in' | 'out' | 'fit') => {
-    const cy = cyRef.current
-    if (!cy) return
-    cy.stop()
-    if (action === 'fit') {
-      cy.animate(
-        { fit: { eles: cy.elements(), padding: cy.width() < 600 ? 24 : 72 } },
-        { duration: reducedMotion ? 0 : 440, easing: 'ease-out-cubic' }
-      )
-      return
-    }
-    const currentZoom = cy.zoom()
-    const zoomFactor = action === 'in' ? 1.6 : (1 / 1.6)
-    const targetZoom = Math.min(cy.maxZoom(), Math.max(cy.minZoom(), currentZoom * zoomFactor))
-    const pan = cy.pan()
-    const center = { x: cy.width() / 2, y: cy.height() / 2 }
-    const modelCenter = { x: (center.x - pan.x) / currentZoom, y: (center.y - pan.y) / currentZoom }
-    const targetPan = { x: center.x - modelCenter.x * targetZoom, y: center.y - modelCenter.y * targetZoom }
-    cy.animate(
-      { zoom: targetZoom, pan: targetPan },
-      { duration: reducedMotion ? 0 : 360, easing: 'ease-out-cubic' }
-    )
   }
 
   const exportPng = () => {
@@ -1301,7 +1390,14 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
       const activeTag = (target?.tagName || '').toLowerCase()
-      if (e.ctrlKey || e.metaKey || e.altKey || target?.isContentEditable || ['input', 'textarea', 'select', 'button', 'a'].includes(activeTag)) return
+      if (
+        e.ctrlKey ||
+        e.metaKey ||
+        e.altKey ||
+        target?.isContentEditable ||
+        ['input', 'textarea', 'select', 'button', 'a'].includes(activeTag)
+      )
+        return
 
       if (e.key === '=' || e.key === '+') {
         e.preventDefault()
@@ -1322,7 +1418,7 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [reducedMotion])
+  }, [viewport])
 
   const handleCanvasKeyDown = (event: KeyboardEvent) => {
     const ids = [...filteredVisible]
@@ -1330,10 +1426,14 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
     const current = Math.max(0, ids.indexOf(selectedIdRef.current))
     if (['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
       event.preventDefault()
-      const next = event.key === 'Home' ? 0
-        : event.key === 'End' ? ids.length - 1
-          : event.key === 'ArrowRight' || event.key === 'ArrowDown' ? (current + 1) % ids.length
-            : (current - 1 + ids.length) % ids.length
+      const next =
+        event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? ids.length - 1
+            : event.key === 'ArrowRight' || event.key === 'ArrowDown'
+              ? (current + 1) % ids.length
+              : (current - 1 + ids.length) % ids.length
       focusNode(ids[next])
     } else if (event.key === 'Enter' && selectedIdRef.current) {
       event.preventDefault()
@@ -1394,12 +1494,16 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
       document.exitFullscreen().catch(() => {})
       setIsFullscreen(false)
     } else {
-      el.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {})
+      el.requestFullscreen()
+        .then(() => setIsFullscreen(true))
+        .catch(() => {})
     }
   }
 
   useEffect(() => {
-    const onFsChange = () => { if (!document.fullscreenElement) setIsFullscreen(false) }
+    const onFsChange = () => {
+      if (!document.fullscreenElement) setIsFullscreen(false)
+    }
     document.addEventListener('fullscreenchange', onFsChange)
     return () => document.removeEventListener('fullscreenchange', onFsChange)
   }, [])
@@ -1410,10 +1514,15 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
     const matrix = svg?.getScreenCTM()
     if (!cy || !svg || !matrix) return
     const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse())
-    cy.animate({ pan: {
-      x: cy.width() / 2 - point.x * cy.zoom(),
-      y: cy.height() / 2 - point.y * cy.zoom(),
-    } }, { duration: reducedMotion ? 0 : 220, easing: 'ease-out-cubic' })
+    cy.animate(
+      {
+        pan: {
+          x: cy.width() / 2 - point.x * cy.zoom(),
+          y: cy.height() / 2 - point.y * cy.zoom(),
+        },
+      },
+      { duration: reducedMotion ? 0 : 220, easing: 'ease-out-cubic' },
+    )
   }
 
   const tabs = ['filters', 'display', 'physics'] as const
@@ -1426,12 +1535,37 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
     requestAnimationFrame(() => document.getElementById(`atlas-tab-${next}`)?.focus())
   }
 
-  if (error) return <div class="error-state"><strong>Couldn’t load the Atlas.</strong><span>{error}</span><button type="button" onClick={() => location.reload()}>Retry</button></div>
-  if (!raw) return <div class="atlas-loading"><div /><span>Mapping knowledge clusters…</span></div>
-  if (!model.nodes.length) return <div class="empty-state atlas-empty-state"><h1 class="visually-hidden">Atlas</h1><span class="empty-rule" /><h2>The Atlas has no mapped nodes</h2><p>Processed notes and branch changes will form your first constellation.</p></div>
+  if (error)
+    return (
+      <div class="error-state">
+        <strong>Couldn’t load the Atlas.</strong>
+        <span>{error}</span>
+        <button type="button" onClick={() => location.reload()}>
+          Retry
+        </button>
+      </div>
+    )
+  if (!raw)
+    return (
+      <div class="atlas-loading">
+        <div />
+        <span>Mapping knowledge clusters…</span>
+      </div>
+    )
+  if (!model.nodes.length)
+    return (
+      <div class="empty-state atlas-empty-state">
+        <h1 class="visually-hidden">Atlas</h1>
+        <span class="empty-rule" />
+        <h2>The Atlas has no mapped nodes</h2>
+        <p>Processed notes and branch changes will form your first constellation.</p>
+      </div>
+    )
 
   return (
-    <div class={`atlas atlas-canvas-view ${isFullscreen ? 'atlas-fullscreen' : ''} ${atlas.animate && !reducedMotion ? 'atlas-motion' : ''}`}>
+    <div
+      class={`atlas atlas-canvas-view ${isFullscreen ? 'atlas-fullscreen' : ''} ${atlas.animate && !reducedMotion ? 'atlas-motion' : ''}`}
+    >
       <h1 class="visually-hidden">Atlas</h1>
       <div class="atlas-stage">
         <div class="atlas-canvas-shell">
@@ -1511,7 +1645,7 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
                   class={`atlas-breadcrumb-btn atlas-focus-neighborhood ${isolateId ? 'active' : ''}`}
                   onClick={() => {
                     fitPendingRef.current = true
-                    setIsolateId((current) => current ? null : selectedId)
+                    setIsolateId((current) => (current ? null : selectedId))
                   }}
                   aria-pressed={Boolean(isolateId)}
                 >
@@ -1522,7 +1656,11 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
           )}
 
           {showControls && (
-            <aside id="atlas-control-center" class="atlas-controls-panel" aria-label="Map filters, appearance, and forces">
+            <aside
+              id="atlas-control-center"
+              class="atlas-controls-panel"
+              aria-label="Map filters, appearance, and forces"
+            >
               <div class="atlas-controls-panel-head">
                 <h3>Graph Control Center</h3>
                 <button
@@ -1579,9 +1717,16 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
 
               <div class="atlas-controls-panel-body">
                 {activeTab === 'filters' && (
-                  <div id="atlas-panel-filters" role="tabpanel" aria-labelledby="atlas-tab-filters" class="atlas-tab-panel">
+                  <div
+                    id="atlas-panel-filters"
+                    role="tabpanel"
+                    aria-labelledby="atlas-tab-filters"
+                    class="atlas-tab-panel"
+                  >
                     <div class="atlas-panel-field">
-                      <label class="atlas-field-label" for="atlas-node-search">Search nodes</label>
+                      <label class="atlas-field-label" for="atlas-node-search">
+                        Search nodes
+                      </label>
                       <div class="atlas-search">
                         <span>{svgIcon('m21 21-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z')}</span>
                         <input
@@ -1591,11 +1736,22 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
                           onInput={(event) => setQuery((event.target as HTMLInputElement).value)}
                           placeholder="Type to filter or highlight…"
                         />
-                        {query && <button type="button" onClick={() => setQuery('')} aria-label="Clear search">×</button>}
+                        {query && (
+                          <button type="button" onClick={() => setQuery('')} aria-label="Clear search">
+                            ×
+                          </button>
+                        )}
                         {searchResults.length > 0 && (
                           <div class="atlas-search-results">
                             {searchResults.map((node) => (
-                              <button type="button" key={node.id} onClick={() => { focusNode(node.id, true); setShowControls(false) }}>
+                              <button
+                                type="button"
+                                key={node.id}
+                                onClick={() => {
+                                  focusNode(node.id, true)
+                                  setShowControls(false)
+                                }}
+                              >
                                 <span>{nodeTypeBadge(node)}</span>
                                 <strong>{nodeTitle(node)}</strong>
                                 <small>{clusterFor(model, node.id)}</small>
@@ -1642,28 +1798,49 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
                       >
                         <option value="all">All domains</option>
                         {[...model.clusters.keys()].sort().map((name) => (
-                          <option key={name} value={name}>{name}</option>
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
                         ))}
                       </select>
                     </div>
 
                     <div class="atlas-panel-field">
                       <label class="atlas-field-label">Knowledge Frontier</label>
-                      <select class="atlas-panel-select" aria-label="Filter by knowledge frontier" value={frontierFilter} onChange={(event) => {
-                        setIsolateId(null)
-                        setSelectedId('')
-                        setFrontierFilter((event.target as HTMLSelectElement).value as FrontierState | 'all')
-                      }}>
+                      <select
+                        class="atlas-panel-select"
+                        aria-label="Filter by knowledge frontier"
+                        value={frontierFilter}
+                        onChange={(event) => {
+                          setIsolateId(null)
+                          setSelectedId('')
+                          setFrontierFilter((event.target as HTMLSelectElement).value as FrontierState | 'all')
+                        }}
+                      >
                         <option value="all">All frontier states</option>
-                        {(Object.keys(frontierLabels) as FrontierState[]).map((state) => <option key={state} value={state}>{frontierLabels[state]}</option>)}
+                        {(Object.keys(frontierLabels) as FrontierState[]).map((state) => (
+                          <option key={state} value={state}>
+                            {frontierLabels[state]}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
                     <div class="atlas-quick-row">
-                      <button type="button" class="atlas-quick-btn" onClick={collapseAll} title="Collapse all leaves to branches">
+                      <button
+                        type="button"
+                        class="atlas-quick-btn"
+                        onClick={collapseAll}
+                        title="Collapse all leaves to branches"
+                      >
                         Collapse all
                       </button>
-                      <button type="button" class="atlas-quick-btn" onClick={expandAll} title="Expand all leaves across map">
+                      <button
+                        type="button"
+                        class="atlas-quick-btn"
+                        onClick={expandAll}
+                        title="Expand all leaves across map"
+                      >
                         Expand all
                       </button>
                     </div>
@@ -1671,7 +1848,10 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
                     <button
                       type="button"
                       class={`atlas-panel-btn ${showListDrawer ? 'active' : ''}`}
-                      onClick={() => { setShowListDrawer((v) => !v); setShowControls(false) }}
+                      onClick={() => {
+                        setShowListDrawer((v) => !v)
+                        setShowControls(false)
+                      }}
                     >
                       {svgIcon('M4 6h16M4 12h16M4 18h16')}
                       <span>Browse visible list ({filteredVisible.size})</span>
@@ -1680,7 +1860,12 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
                 )}
 
                 {activeTab === 'display' && (
-                  <div id="atlas-panel-display" role="tabpanel" aria-labelledby="atlas-tab-display" class="atlas-tab-panel">
+                  <div
+                    id="atlas-panel-display"
+                    role="tabpanel"
+                    aria-labelledby="atlas-tab-display"
+                    class="atlas-tab-panel"
+                  >
                     <div class="setting-row">
                       <div>
                         <strong>Dim unrelated nodes on focus</strong>
@@ -1732,7 +1917,9 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
                         max={3.0}
                         step={0.05}
                         value={atlas.node_size}
-                        onInput={(event) => updateAtlas({ node_size: Number((event.target as HTMLInputElement).value) })}
+                        onInput={(event) =>
+                          updateAtlas({ node_size: Number((event.target as HTMLInputElement).value) })
+                        }
                       />
                     </label>
 
@@ -1748,7 +1935,9 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
                         max={1}
                         step={0.05}
                         value={atlas.text_fade_threshold}
-                        onInput={(event) => updateAtlas({ text_fade_threshold: Number((event.target as HTMLInputElement).value) })}
+                        onInput={(event) =>
+                          updateAtlas({ text_fade_threshold: Number((event.target as HTMLInputElement).value) })
+                        }
                       />
                     </label>
 
@@ -1764,7 +1953,9 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
                         max={5}
                         step={0.1}
                         value={atlas.link_thickness}
-                        onInput={(event) => updateAtlas({ link_thickness: Number((event.target as HTMLInputElement).value) })}
+                        onInput={(event) =>
+                          updateAtlas({ link_thickness: Number((event.target as HTMLInputElement).value) })
+                        }
                       />
                     </label>
 
@@ -1780,14 +1971,21 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
                         max={5}
                         step={0.1}
                         value={atlas.branch_link_thickness}
-                        onInput={(event) => updateAtlas({ branch_link_thickness: Number((event.target as HTMLInputElement).value) })}
+                        onInput={(event) =>
+                          updateAtlas({ branch_link_thickness: Number((event.target as HTMLInputElement).value) })
+                        }
                       />
                     </label>
                   </div>
                 )}
 
                 {activeTab === 'physics' && (
-                  <div id="atlas-panel-physics" role="tabpanel" aria-labelledby="atlas-tab-physics" class="atlas-tab-panel">
+                  <div
+                    id="atlas-panel-physics"
+                    role="tabpanel"
+                    aria-labelledby="atlas-tab-physics"
+                    class="atlas-tab-panel"
+                  >
                     <label class="type-range">
                       <span class="type-range-label">
                         <strong>Repel force (Charge)</strong>
@@ -1852,33 +2050,65 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
                 )}
 
                 <div class="atlas-control-stats">
-                  <span><strong>{filteredVisible.size}</strong> in view</span>
+                  <span>
+                    <strong>{filteredVisible.size}</strong> in view
+                  </span>
                   <span class="sep">·</span>
-                  <span><strong>{model.nodes.length}</strong> total nodes</span>
+                  <span>
+                    <strong>{model.nodes.length}</strong> total nodes
+                  </span>
                   <span class="sep">·</span>
-                  <span><strong>{model.edges.length}</strong> links</span>
+                  <span>
+                    <strong>{model.edges.length}</strong> links
+                  </span>
                 </div>
-                {settingsStatus && <div class="atlas-settings-status" role="status">{settingsStatus}</div>}
+                {settingsStatus && (
+                  <div class="atlas-settings-status" role="status">
+                    {settingsStatus}
+                  </div>
+                )}
               </div>
             </aside>
           )}
 
-          <div ref={canvasRef} class="atlas-canvas" role="region" tabIndex={0} onKeyDown={handleCanvasKeyDown} aria-describedby="atlas-canvas-instructions" aria-label="Interactive visual knowledge map" />
-          <p id="atlas-canvas-instructions" class="visually-hidden">Tap a node to select it and double-tap to expand or collapse it. With the map focused, use arrow keys to move through visible nodes and Enter to expand or collapse the selected node. Drag to pan or scroll to zoom.</p>
+          <div
+            ref={canvasRef}
+            class="atlas-canvas"
+            role="region"
+            tabIndex={0}
+            onKeyDown={handleCanvasKeyDown}
+            aria-describedby="atlas-canvas-instructions"
+            aria-label="Interactive visual knowledge map"
+          />
+          <p id="atlas-canvas-instructions" class="visually-hidden">
+            Tap a node to select it and double-tap to expand or collapse it. With the map focused, use arrow keys to
+            move through visible nodes and Enter to expand or collapse the selected node. Drag to pan or scroll to zoom.
+          </p>
 
           {!filteredVisible.size && (
             <div class="atlas-filter-empty" role="status">
               <strong>No nodes match these filters</strong>
               <span>Clear the domain and frontier filters to restore the map.</span>
-              <button type="button" onClick={clearMapFilters}>Clear filters</button>
+              <button type="button" onClick={clearMapFilters}>
+                Clear filters
+              </button>
             </div>
           )}
 
           {showListDrawer && (
             <aside id="atlas-node-drawer" class="atlas-node-drawer" aria-label="Visible Atlas nodes">
               <div class="atlas-drawer-header">
-                <h3>Nodes in view <span>({filteredVisible.size})</span></h3>
-                <button type="button" class="icon-button" onClick={() => setShowListDrawer(false)} aria-label="Close node list">×</button>
+                <h3>
+                  Nodes in view <span>({filteredVisible.size})</span>
+                </h3>
+                <button
+                  type="button"
+                  class="icon-button"
+                  onClick={() => setShowListDrawer(false)}
+                  aria-label="Close node list"
+                >
+                  ×
+                </button>
               </div>
               <div class="atlas-drawer-list" role="list">
                 {[...filteredVisible].map((id) => {
@@ -1894,7 +2124,10 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
                       >
                         <span class="atlas-node-badge">{nodeTypeBadge(node)}</span>
                         <strong class="atlas-node-title">{nodeTitle(node)}</strong>
-                        <small class="atlas-node-cluster">{clusterFor(model, id)}{node.frontier_state ? ` · ${frontierLabels[node.frontier_state]}` : ''}</small>
+                        <small class="atlas-node-cluster">
+                          {clusterFor(model, id)}
+                          {node.frontier_state ? ` · ${frontierLabels[node.frontier_state]}` : ''}
+                        </small>
                       </button>
                     </div>
                   )
@@ -1912,15 +2145,29 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
             ))}
           </div>
 
-          <button type="button" class="atlas-minimap" aria-label="Recenter map from overview" onClick={centerFromMinimap}>
+          <button
+            type="button"
+            class="atlas-minimap"
+            aria-label="Recenter map from overview"
+            onClick={centerFromMinimap}
+          >
             <span class="atlas-minimap-label">Minimap</span>
             <svg ref={minimapRef} aria-hidden="true" />
           </button>
 
           <div class="atlas-zoom-controls" aria-label="Map zoom and export controls">
-            <button type="button" onClick={() => viewport('in')} aria-label="Zoom in" title="Zoom in (+)">+</button>
-            <button type="button" onClick={() => viewport('out')} aria-label="Zoom out" title="Zoom out (−)">−</button>
-            <button type="button" onClick={() => viewport('fit')} aria-label="Fit graph to view" title="Fit to view (0 / F)">
+            <button type="button" onClick={() => viewport('in')} aria-label="Zoom in" title="Zoom in (+)">
+              +
+            </button>
+            <button type="button" onClick={() => viewport('out')} aria-label="Zoom out" title="Zoom out (−)">
+              −
+            </button>
+            <button
+              type="button"
+              onClick={() => viewport('fit')}
+              aria-label="Fit graph to view"
+              title="Fit to view (0 / F)"
+            >
               {svgIcon('M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5')}
             </button>
             <button type="button" onClick={exportPng} aria-label="Export map image as PNG" title="Export PNG image">
@@ -1935,13 +2182,16 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
             >
               {isFullscreen
                 ? svgIcon('M4 14h6v6M14 10h6V4M20 14h-6v6M10 4H4v6')
-                : svgIcon('M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7')
-              }
+                : svgIcon('M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7')}
             </button>
-            <span ref={zoomLabelRef} class="atlas-zoom-percentage">100%</span>
+            <span ref={zoomLabelRef} class="atlas-zoom-percentage">
+              100%
+            </span>
           </div>
 
-          <div class="visually-hidden" aria-live="polite">{selected ? `Selected ${nodeTitle(selected)}.` : 'No Atlas node selected.'}</div>
+          <div class="visually-hidden" aria-live="polite">
+            {selected ? `Selected ${nodeTitle(selected)}.` : 'No Atlas node selected.'}
+          </div>
         </div>
       </div>
     </div>

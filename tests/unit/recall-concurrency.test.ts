@@ -10,28 +10,41 @@ let vite: ViteDevServer
 
 test.before(async () => {
   const root = fileURLToPath(new URL('../..', import.meta.url))
-  vite = await createServer({ root, configFile: false, server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' })
+  vite = await createServer({
+    root,
+    configFile: false,
+    server: { middlewareMode: true },
+    appType: 'custom',
+    logLevel: 'silent',
+  })
   app = (await vite.ssrLoadModule('/src/api/learning.ts')).default
 })
 
-test.after(async () => { await vite.close() })
+test.after(async () => {
+  await vite.close()
+})
 
 class SqliteD1 {
   private readonly sqlite: DatabaseSync
 
-  constructor(sqlite: DatabaseSync) { this.sqlite = sqlite }
+  constructor(sqlite: DatabaseSync) {
+    this.sqlite = sqlite
+  }
 
   prepare(sql: string) {
     const execute = () => {
-      const result = this.sqlite.prepare(sql).run(...statement.args as any[])
+      const result = this.sqlite.prepare(sql).run(...(statement.args as any[]))
       return { meta: { changes: Number(result.changes) } }
     }
     const statement: any = {
       sql,
       args: [] as unknown[],
-      bind: (...args: unknown[]) => { statement.args = args; return statement },
-      first: async <T>() => this.sqlite.prepare(sql).get(...statement.args as any[]) as T || null,
-      all: async <T>() => ({ results: this.sqlite.prepare(sql).all(...statement.args as any[]) as T[] }),
+      bind: (...args: unknown[]) => {
+        statement.args = args
+        return statement
+      },
+      first: async <T>() => (this.sqlite.prepare(sql).get(...(statement.args as any[])) as T) || null,
+      all: async <T>() => ({ results: this.sqlite.prepare(sql).all(...(statement.args as any[])) as T[] }),
       run: async () => execute(),
       execute,
     }
@@ -94,16 +107,37 @@ function fixture() {
     );
   `)
   sqlite.exec(readFileSync(new URL('../../migrations/0069_recall_repair.sql', import.meta.url), 'utf8'))
-  sqlite.prepare(`INSERT INTO srs_cards
+  sqlite
+    .prepare(
+      `INSERT INTO srs_cards
     (id,question,answer,topic,due_at,difficulty,stability,interval_days,repetitions,lapses,learning_steps,scheduled_days,fsrs_state,scheduler_version)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-      'card-1', 'ما الفكرة الأساسية؟', 'هذه إجابة عربية واضحة للاختبار.', 'test', '2026-08-30', 5, 1, 1, 0, 0, 0, 0, 0, 'fsrs-6-ts-fsrs-5.4.1',
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    )
+    .run(
+      'card-1',
+      'ما الفكرة الأساسية؟',
+      'هذه إجابة عربية واضحة للاختبار.',
+      'test',
+      '2026-08-30',
+      5,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      'fsrs-6-ts-fsrs-5.4.1',
     )
   return { sqlite, DB: new SqliteD1(sqlite) as unknown as D1Database }
 }
 
 function state(sqlite: DatabaseSync) {
-  const card = sqlite.prepare(`SELECT content_revision,scheduler_revision,status_revision,repair_status FROM srs_cards WHERE id='card-1'`).get() as any
+  const card = sqlite
+    .prepare(
+      `SELECT content_revision,scheduler_revision,status_revision,repair_status FROM srs_cards WHERE id='card-1'`,
+    )
+    .get() as any
   return {
     expected_content_revision: Number(card.content_revision),
     expected_scheduler_revision: Number(card.scheduler_revision),
@@ -113,11 +147,15 @@ function state(sqlite: DatabaseSync) {
 }
 
 function mutate(path: string, method: 'POST' | 'PUT', body: Record<string, unknown>, DB: D1Database) {
-  return app.request(`https://app.test${path}`, {
-    method,
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  }, { DB })
+  return app.request(
+    `https://app.test${path}`,
+    {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+    { DB },
+  )
 }
 
 test('recall mutations reject missing and non-numeric state tokens before writing', async () => {
@@ -125,16 +163,26 @@ test('recall mutations reject missing and non-numeric state tokens before writin
   try {
     const missing = await mutate('/srs/review', 'POST', { card_id: 'card-1', grade: 3 }, DB)
     assert.equal(missing.status, 400)
-    assert.equal((await missing.json() as any).error, 'recall_precondition_required')
+    assert.equal(((await missing.json()) as any).error, 'recall_precondition_required')
 
-    const stringRevision = await mutate('/srs/review', 'POST', {
-      card_id: 'card-1', grade: 3, ...state(sqlite), expected_content_revision: '1',
-    }, DB)
+    const stringRevision = await mutate(
+      '/srs/review',
+      'POST',
+      {
+        card_id: 'card-1',
+        grade: 3,
+        ...state(sqlite),
+        expected_content_revision: '1',
+      },
+      DB,
+    )
     assert.equal(stringRevision.status, 400)
-    assert.equal((await stringRevision.json() as any).error, 'recall_precondition_required')
+    assert.equal(((await stringRevision.json()) as any).error, 'recall_precondition_required')
     assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM srs_review_events').get() as any).count, 0)
     assert.equal(state(sqlite).expected_scheduler_revision, 1)
-  } finally { sqlite.close() }
+  } finally {
+    sqlite.close()
+  }
 })
 
 test('a semantic repair racing a review has one winner and one matching history event', async () => {
@@ -143,25 +191,39 @@ test('a semantic repair racing a review has one winner and one matching history 
     const expected = state(sqlite)
     const [review, semantic] = await Promise.all([
       mutate('/srs/review', 'POST', { card_id: 'card-1', grade: 3, ...expected }, DB),
-      mutate('/srs/cards/card-1', 'PUT', {
-        question: 'ما الفكرة المصححة؟', answer: 'هذه إجابة عربية مصححة وواضحة.', change_kind: 'semantic', ...expected,
-      }, DB),
+      mutate(
+        '/srs/cards/card-1',
+        'PUT',
+        {
+          question: 'ما الفكرة المصححة؟',
+          answer: 'هذه إجابة عربية مصححة وواضحة.',
+          change_kind: 'semantic',
+          ...expected,
+        },
+        DB,
+      ),
     ])
 
     assert.deepEqual([review.status, semantic.status].sort(), [200, 409])
-    const conflict = review.status === 409 ? await review.json() as any : await semantic.json() as any
+    const conflict = review.status === 409 ? ((await review.json()) as any) : ((await semantic.json()) as any)
     assert.equal(conflict.error, 'recall_state_conflict')
     assert.equal(conflict.current.scheduler_revision, 2)
 
     const reviewEvents = Number((sqlite.prepare('SELECT COUNT(*) AS count FROM srs_review_events').get() as any).count)
-    const repairEvents = Number((sqlite.prepare('SELECT COUNT(*) AS count FROM srs_card_repair_events').get() as any).count)
+    const repairEvents = Number(
+      (sqlite.prepare('SELECT COUNT(*) AS count FROM srs_card_repair_events').get() as any).count,
+    )
     assert.equal(reviewEvents + repairEvents, 1)
-    const card = sqlite.prepare(`SELECT content_revision,scheduler_revision FROM srs_cards WHERE id='card-1'`).get() as any
+    const card = sqlite
+      .prepare(`SELECT content_revision,scheduler_revision FROM srs_cards WHERE id='card-1'`)
+      .get() as any
     assert.equal(card.scheduler_revision, 2)
     assert.equal(card.content_revision, semantic.status === 200 ? 2 : 1)
     assert.equal(repairEvents, semantic.status === 200 ? 1 : 0)
     assert.equal(reviewEvents, review.status === 200 ? 1 : 0)
-  } finally { sqlite.close() }
+  } finally {
+    sqlite.close()
+  }
 })
 
 test('concurrent wording repairs cannot cross content or append orphan repair history', async () => {
@@ -169,18 +231,39 @@ test('concurrent wording repairs cannot cross content or append orphan repair hi
   try {
     const expected = state(sqlite)
     const [first, second] = await Promise.all([
-      mutate('/srs/cards/card-1', 'PUT', {
-        question: 'ما الصياغة الأولى؟', answer: 'هذه صياغة عربية أولى للاختبار.', change_kind: 'wording', ...expected,
-      }, DB),
-      mutate('/srs/cards/card-1', 'PUT', {
-        question: 'ما الصياغة الثانية؟', answer: 'هذه صياغة عربية ثانية للاختبار.', change_kind: 'wording', ...expected,
-      }, DB),
+      mutate(
+        '/srs/cards/card-1',
+        'PUT',
+        {
+          question: 'ما الصياغة الأولى؟',
+          answer: 'هذه صياغة عربية أولى للاختبار.',
+          change_kind: 'wording',
+          ...expected,
+        },
+        DB,
+      ),
+      mutate(
+        '/srs/cards/card-1',
+        'PUT',
+        {
+          question: 'ما الصياغة الثانية؟',
+          answer: 'هذه صياغة عربية ثانية للاختبار.',
+          change_kind: 'wording',
+          ...expected,
+        },
+        DB,
+      ),
     ])
     assert.deepEqual([first.status, second.status].sort(), [200, 409])
-    assert.equal((sqlite.prepare('SELECT content_revision FROM srs_cards WHERE id=?').get('card-1') as any).content_revision, 2)
+    assert.equal(
+      (sqlite.prepare('SELECT content_revision FROM srs_cards WHERE id=?').get('card-1') as any).content_revision,
+      2,
+    )
     assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM srs_card_repair_events').get() as any).count, 1)
     assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM srs_review_events').get() as any).count, 0)
-  } finally { sqlite.close() }
+  } finally {
+    sqlite.close()
+  }
 })
 
 test('status and reset compare the full state and advance independent revisions', async () => {
@@ -193,7 +276,7 @@ test('status and reset compare the full state and advance independent revisions'
 
     const staleReset = await mutate('/srs/cards/card-1/reset', 'POST', { confirm: true, ...initial }, DB)
     assert.equal(staleReset.status, 409)
-    assert.equal((await staleReset.json() as any).error, 'recall_state_conflict')
+    assert.equal(((await staleReset.json()) as any).error, 'recall_state_conflict')
     assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM srs_card_repair_events').get() as any).count, 1)
 
     const pausedState = state(sqlite)
@@ -206,29 +289,45 @@ test('status and reset compare the full state and advance independent revisions'
     assert.equal(staleNoop.status, 409)
     const freshNoop = await mutate('/srs/cards/card-1/status', 'POST', { status: 'paused', ...state(sqlite) }, DB)
     assert.equal(freshNoop.status, 200)
-    assert.equal((await freshNoop.json() as any).changed, false)
-  } finally { sqlite.close() }
+    assert.equal(((await freshNoop.json()) as any).changed, false)
+  } finally {
+    sqlite.close()
+  }
 })
 
 test('review and repair event failures roll back their card writes', async () => {
   const { sqlite, DB } = fixture()
   try {
     const initial = state(sqlite)
-    sqlite.exec(`CREATE TRIGGER fail_review_event BEFORE INSERT ON srs_review_events BEGIN SELECT RAISE(ABORT,'forced review history failure'); END;`)
+    sqlite.exec(
+      `CREATE TRIGGER fail_review_event BEFORE INSERT ON srs_review_events BEGIN SELECT RAISE(ABORT,'forced review history failure'); END;`,
+    )
     const review = await mutate('/srs/review', 'POST', { card_id: 'card-1', grade: 3, ...initial }, DB)
     assert.equal(review.status, 500)
     assert.deepEqual(state(sqlite), initial)
     assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM srs_review_events').get() as any).count, 0)
 
     sqlite.exec('DROP TRIGGER fail_review_event;')
-    sqlite.exec(`CREATE TRIGGER fail_repair_event BEFORE INSERT ON srs_card_repair_events BEGIN SELECT RAISE(ABORT,'forced repair history failure'); END;`)
-    const repair = await mutate('/srs/cards/card-1', 'PUT', {
-      question: 'ما المعنى الجديد؟', answer: 'هذه إجابة عربية جديدة ومتكاملة.', change_kind: 'semantic', ...initial,
-    }, DB)
+    sqlite.exec(
+      `CREATE TRIGGER fail_repair_event BEFORE INSERT ON srs_card_repair_events BEGIN SELECT RAISE(ABORT,'forced repair history failure'); END;`,
+    )
+    const repair = await mutate(
+      '/srs/cards/card-1',
+      'PUT',
+      {
+        question: 'ما المعنى الجديد؟',
+        answer: 'هذه إجابة عربية جديدة ومتكاملة.',
+        change_kind: 'semantic',
+        ...initial,
+      },
+      DB,
+    )
     assert.equal(repair.status, 500)
     assert.deepEqual(state(sqlite), initial)
     const card = sqlite.prepare(`SELECT question FROM srs_cards WHERE id='card-1'`).get() as any
     assert.equal(card.question, 'ما الفكرة الأساسية؟')
     assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM srs_card_repair_events').get() as any).count, 0)
-  } finally { sqlite.close() }
+  } finally {
+    sqlite.close()
+  }
 })

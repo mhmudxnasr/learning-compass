@@ -17,9 +17,21 @@ test('Cairo day follows Africa/Cairo rather than UTC', () => {
 test('daily selection returns one ranked eligible source and enforces seven-day suppression in SQL', async () => {
   const statements: string[] = []
   const base = {
-    creator: null, content_type: 'article', source_url: 'https://example.com', user_rating: 'like', consumed_date: '2025-01-01',
-    resurfacing_id: 1, stage: '30d', due_at: '2026-01-01', branch_id: 'branch-1', branch_label: 'Systems', branch_status: 'love',
-    domain_id: 'cat-tools', domain_label: 'Tools', html_artifact_id: null, pdf_artifact_id: null,
+    creator: null,
+    content_type: 'article',
+    source_url: 'https://example.com',
+    user_rating: 'like',
+    consumed_date: '2025-01-01',
+    resurfacing_id: 1,
+    stage: '30d',
+    due_at: '2026-01-01',
+    branch_id: 'branch-1',
+    branch_label: 'Systems',
+    branch_status: 'love',
+    domain_id: 'cat-tools',
+    domain_label: 'Tools',
+    html_artifact_id: null,
+    pdf_artifact_id: null,
   }
   const DB = {
     prepare(sql: string) {
@@ -27,10 +39,12 @@ test('daily selection returns one ranked eligible source and enforces seven-day 
       const statement: any = {
         bind: () => statement,
         first: async () => null,
-        all: async () => ({ results: [
-          { ...base, recommendation_id: 'plain', title: 'Plain', starred: 0, presentation_count: 0 },
-          { ...base, recommendation_id: 'starred', title: 'Starred', starred: 1, presentation_count: 8 },
-        ] }),
+        all: async () => ({
+          results: [
+            { ...base, recommendation_id: 'plain', title: 'Plain', starred: 0, presentation_count: 0 },
+            { ...base, recommendation_id: 'starred', title: 'Starred', starred: 1, presentation_count: 8 },
+          ],
+        }),
       }
       return statement
     },
@@ -55,16 +69,23 @@ test('resurfacing actions only update presentation and resurfacing rows', async 
       const statement: any = {
         sql,
         args: [] as unknown[],
-        bind(...args: unknown[]) { statement.args = args; return statement },
+        bind(...args: unknown[]) {
+          statement.args = args
+          return statement
+        },
         first: async () => {
-          if (sql.includes('SELECT id,recommendation_id,cairo_day,action')) return { id: 'event-1', recommendation_id: 'rec-1', cairo_day: '2026-01-10', action: null }
+          if (sql.includes('SELECT id,recommendation_id,cairo_day,action'))
+            return { id: 'event-1', recommendation_id: 'rec-1', cairo_day: '2026-01-10', action: null }
           if (sql.includes('SELECT id FROM resurfacing')) return { id: 42 }
           return null
         },
       }
       return statement
     },
-    async batch(statements: Array<{ sql: string; args: unknown[] }>) { batches.push(statements); return [] },
+    async batch(statements: Array<{ sql: string; args: unknown[] }>) {
+      batches.push(statements)
+      return []
+    },
   }
 
   const result = await actOnResurfacing(DB as any, 'event-1', 'reviewed')
@@ -84,7 +105,10 @@ test('presentation idempotency is scoped to each source and Cairo day', () => {
 test('an acted presentation cannot be reused for another overdue stage that day', async () => {
   const DB = {
     prepare() {
-      const statement: any = { bind: () => statement, first: async () => ({ id: 'event-1', recommendation_id: 'rec-1', cairo_day: '2026-01-10', action: 'reviewed' }) }
+      const statement: any = {
+        bind: () => statement,
+        first: async () => ({ id: 'event-1', recommendation_id: 'rec-1', cairo_day: '2026-01-10', action: 'reviewed' }),
+      }
       return statement
     },
   }

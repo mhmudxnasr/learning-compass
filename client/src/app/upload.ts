@@ -39,7 +39,7 @@ export async function uploadArtifact(file: File, metadata?: Record<string, unkno
     throw error instanceof Error ? error : new Error('The file upload could not start.')
   }
 
-  const body = await response.json().catch(() => ({})) as Partial<UploadArtifactResult> & { error?: string }
+  const body = (await response.json().catch(() => ({}))) as Partial<UploadArtifactResult> & { error?: string }
   if (!response.ok || !body.id) {
     throw new UploadError(body.error || `Upload failed (${response.status})`, response.status, body)
   }

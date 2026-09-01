@@ -2,7 +2,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
-import { recordSourceHealthCheck, refreshScopedSourceHealth, sourceHealthMatchesCurrentUrl, verifyPublicSourceUrl } from '../../src/services/source-health.ts'
+import {
+  recordSourceHealthCheck,
+  refreshScopedSourceHealth,
+  sourceHealthMatchesCurrentUrl,
+  verifyPublicSourceUrl,
+} from '../../src/services/source-health.ts'
 
 test('source verifier accepts a directly reachable public source', async () => {
   const calls: Array<{ url: string; method: string }> = []
@@ -81,7 +86,9 @@ test('source verifier rejects a redirect to a private target', async () => {
 
 test('source verifier leaves network failures unknown', async () => {
   const result = await verifyPublicSourceUrl('https://example.com/timeout', {
-    fetcher: async () => { throw new Error('network detail that must not be persisted') },
+    fetcher: async () => {
+      throw new Error('network detail that must not be persisted')
+    },
   })
 
   assert.equal(result.status, 'unknown')
@@ -125,8 +132,8 @@ class SourceHealthSqliteD1 {
         statement.args = args
         return statement
       },
-      all: async () => ({ results: this.sqlite.prepare(sql).all(...statement.args as any[]) }),
-      first: async () => this.sqlite.prepare(sql).get(...statement.args as any[]) || null,
+      all: async () => ({ results: this.sqlite.prepare(sql).all(...(statement.args as any[])) }),
+      first: async () => this.sqlite.prepare(sql).get(...(statement.args as any[])) || null,
     }
     return statement
   }
@@ -135,7 +142,7 @@ class SourceHealthSqliteD1 {
     this.sqlite.exec('BEGIN')
     try {
       const results = statements.map((statement) => {
-        const result = this.sqlite.prepare(statement.sql).run(...statement.args as any[])
+        const result = this.sqlite.prepare(statement.sql).run(...(statement.args as any[]))
         return { meta: { changes: Number(result.changes || 0) } }
       })
       this.sqlite.exec('COMMIT')
@@ -167,12 +174,18 @@ test('current checks persist both the bounded attempt and latest projection', as
 
 test('the latest projection binds a normalized verification to the exact current source identity', async () => {
   const DB = new RecordingDatabase()
-  await recordSourceHealthCheck(DB as any, 'rec-legacy', 'current', {
-    status: 'verified',
-    checked_url: 'https://example.com/lesson',
-    http_status: 200,
-    final_url: 'https://example.com/lesson',
-  }, 'https://example.com/lesson?utm_source=legacy')
+  await recordSourceHealthCheck(
+    DB as any,
+    'rec-legacy',
+    'current',
+    {
+      status: 'verified',
+      checked_url: 'https://example.com/lesson',
+      http_status: 200,
+      final_url: 'https://example.com/lesson',
+    },
+    'https://example.com/lesson?utm_source=legacy',
+  )
 
   assert.equal(DB.batches[0][0].args[3], 'https://example.com/lesson')
   assert.equal(DB.batches[0][1].args[1], 'https://example.com/lesson?utm_source=legacy')
@@ -186,20 +199,54 @@ test('a stale check attempt cannot replace the latest projection for a newly cha
     INSERT INTO recommendations(id,video_url,status) VALUES ('rec-1','https://example.com/old','active');
   `)
   const DB = new SourceHealthSqliteD1(sqlite) as unknown as D1Database
-  await recordSourceHealthCheck(DB, 'rec-1', 'current', {
-    status: 'verified', checked_url: 'https://example.com/old', http_status: 200, final_url: 'https://example.com/old',
-  }, 'https://example.com/old')
+  await recordSourceHealthCheck(
+    DB,
+    'rec-1',
+    'current',
+    {
+      status: 'verified',
+      checked_url: 'https://example.com/old',
+      http_status: 200,
+      final_url: 'https://example.com/old',
+    },
+    'https://example.com/old',
+  )
   sqlite.prepare("UPDATE recommendations SET video_url='https://example.com/new' WHERE id='rec-1'").run()
-  await recordSourceHealthCheck(DB, 'rec-1', 'current', {
-    status: 'verified', checked_url: 'https://example.com/new', http_status: 200, final_url: 'https://example.com/new',
-  }, 'https://example.com/new')
-  await recordSourceHealthCheck(DB, 'rec-1', 'current', {
-    status: 'unavailable', checked_url: 'https://example.com/old', http_status: 404, final_url: 'https://example.com/old', error_code: 'not_found',
-  }, 'https://example.com/old')
+  await recordSourceHealthCheck(
+    DB,
+    'rec-1',
+    'current',
+    {
+      status: 'verified',
+      checked_url: 'https://example.com/new',
+      http_status: 200,
+      final_url: 'https://example.com/new',
+    },
+    'https://example.com/new',
+  )
+  await recordSourceHealthCheck(
+    DB,
+    'rec-1',
+    'current',
+    {
+      status: 'unavailable',
+      checked_url: 'https://example.com/old',
+      http_status: 404,
+      final_url: 'https://example.com/old',
+      error_code: 'not_found',
+    },
+    'https://example.com/old',
+  )
 
-  const current = sqlite.prepare("SELECT checked_url,status,http_status FROM source_health WHERE recommendation_id='rec-1'").get() as any
+  const current = sqlite
+    .prepare("SELECT checked_url,status,http_status FROM source_health WHERE recommendation_id='rec-1'")
+    .get() as any
   assert.deepEqual({ ...current }, { checked_url: 'https://example.com/new', status: 'verified', http_status: 200 })
-  assert.equal((sqlite.prepare("SELECT COUNT(*) count FROM source_health_attempts WHERE recommendation_id='rec-1'").get() as any).count, 3)
+  assert.equal(
+    (sqlite.prepare("SELECT COUNT(*) count FROM source_health_attempts WHERE recommendation_id='rec-1'").get() as any)
+      .count,
+    3,
+  )
   sqlite.close()
 })
 
@@ -231,7 +278,9 @@ test('scheduled refresh checks Queue, the current not-started lesson turn, and C
   globalThis.fetch = (async () => new Response(null, { status: 200 })) as typeof fetch
   try {
     const receipt = await refreshScopedSourceHealth(DB, 8)
-    const checked = sqlite.prepare('SELECT recommendation_id FROM source_health_attempts ORDER BY recommendation_id').all()
+    const checked = sqlite
+      .prepare('SELECT recommendation_id FROM source_health_attempts ORDER BY recommendation_id')
+      .all()
       .map((row: any) => row.recommendation_id)
     assert.equal(receipt.checked, 3)
     assert.deepEqual(checked, ['book', 'lesson', 'queue'])
@@ -262,7 +311,9 @@ test('scheduled refresh does not let a fresh verdict for a former URL skip the c
   try {
     const receipt = await refreshScopedSourceHealth(DB, 8)
     assert.equal(receipt.checked, 1)
-    const current = sqlite.prepare("SELECT checked_url,status FROM source_health WHERE recommendation_id='queue'").get() as any
+    const current = sqlite
+      .prepare("SELECT checked_url,status FROM source_health WHERE recommendation_id='queue'")
+      .get() as any
     assert.deepEqual({ ...current }, { checked_url: 'https://example.com/current', status: 'verified' })
   } finally {
     globalThis.fetch = originalFetch
@@ -295,7 +346,10 @@ test('scheduled source checks stay bounded to current commitment surfaces', () =
 })
 
 test('source-health control ignores non-web sources and discards stale ledger reads', () => {
-  const component = readFileSync(new URL('../../client/src/components/SourceHealthControl.tsx', import.meta.url), 'utf8')
+  const component = readFileSync(
+    new URL('../../client/src/components/SourceHealthControl.tsx', import.meta.url),
+    'utf8',
+  )
   assert.ok(component.includes('const supportsHealth = /^https?:\\/\\//i.test(suppliedUrl)'))
   assert.match(component, /if \(!supportsHealth\) return null/)
   assert.match(component, /const version = \+\+reloadVersion\.current/)
@@ -317,7 +371,10 @@ test('Library Queue exposes a usable current source-health filter without adding
 
 test('Current Book exposes the complete guarded source repair and replacement history control', () => {
   const books = readFileSync(new URL('../../client/src/workspaces/library/BooksView.tsx', import.meta.url), 'utf8')
-  const currentBookHealth = books.slice(books.indexOf('<BookKnowledgeContext book={primaryBook}/>'), books.indexOf('{nextChapter ?'))
+  const currentBookHealth = books.slice(
+    books.indexOf('<BookKnowledgeContext book={primaryBook}'),
+    books.indexOf('{nextChapter ?'),
+  )
   assert.match(currentBookHealth, /<SourceHealthControl\s+sourceId=\{String\(primaryBook\.id\)\}/)
   assert.doesNotMatch(currentBookHealth, /<SourceHealthControl\s+compact/)
   assert.match(currentBookHealth, /onReplaced=\{\(\) => handlers\.onReload\?\.\(\)\}/)

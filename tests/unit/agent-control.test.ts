@@ -5,16 +5,32 @@ import { fileURLToPath } from 'node:url'
 import { createServer, type ViteDevServer } from 'vite'
 
 import { loadHermesBrief } from '../../src/services/agent-briefing.ts'
-import { AGENT_CONTRACT_VERSION, AGENT_PROTOCOL, agentCapabilityPathPattern, buildAgentOpenApi, buildCapabilityCatalog, resolveCapabilityReadbacks, type CapabilityTuple } from '../../src/services/agent-capabilities.ts'
+import {
+  AGENT_CONTRACT_VERSION,
+  AGENT_PROTOCOL,
+  agentCapabilityPathPattern,
+  buildAgentOpenApi,
+  buildCapabilityCatalog,
+  resolveCapabilityReadbacks,
+  type CapabilityTuple,
+} from '../../src/services/agent-capabilities.ts'
 
 let agentApp: any
 let vite: ViteDevServer
 test.before(async () => {
   const root = fileURLToPath(new URL('../..', import.meta.url))
-  vite = await createServer({ root, configFile: false, server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' })
+  vite = await createServer({
+    root,
+    configFile: false,
+    server: { middlewareMode: true },
+    appType: 'custom',
+    logLevel: 'silent',
+  })
   agentApp = (await vite.ssrLoadModule('/src/api/agent.ts')).default
 })
-test.after(async () => { await vite.close() })
+test.after(async () => {
+  await vite.close()
+})
 
 const sample = [
   ['GET', '/capture/queue', 'Read Queue.'],
@@ -37,22 +53,35 @@ const env = {
   },
 } as any
 
-const agentRequest = (body: unknown) => agentApp.request('https://example.test/request', {
-  method: 'POST',
-  headers: { 'content-type': 'application/json', 'x-agent-name': 'test' },
-  body: JSON.stringify(body),
-}, env)
+const agentRequest = (body: unknown) =>
+  agentApp.request(
+    'https://example.test/request',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-agent-name': 'test' },
+      body: JSON.stringify(body),
+    },
+    env,
+  )
 
-const agentRead = (path: string, requestEnv: any = env) => agentApp.request(`https://example.test${path}`, {
-  headers: { 'x-agent-name': 'test' },
-}, requestEnv)
+const agentRead = (path: string, requestEnv: any = env) =>
+  agentApp.request(
+    `https://example.test${path}`,
+    {
+      headers: { 'x-agent-name': 'test' },
+    },
+    requestEnv,
+  )
 
 test('agent capability catalog is structured, filterable, and safety-aware', () => {
   const catalog = buildCapabilityCatalog(sample)
   assert.equal(AGENT_CONTRACT_VERSION, '2026-08-31')
   assert.equal(AGENT_PROTOCOL, 'learning-compass-agent-http/2')
   assert.equal(catalog.length, sample.length)
-  assert.deepEqual(buildCapabilityCatalog(sample, { domain: 'capture', intent: 'update' }).map((item) => item.path), ['/capture/:id/triage'])
+  assert.deepEqual(
+    buildCapabilityCatalog(sample, { domain: 'capture', intent: 'update' }).map((item) => item.path),
+    ['/capture/:id/triage'],
+  )
   const destructive = catalog.find((item) => item.path.includes('/permanent'))!
   assert.equal(destructive.risk, 'high')
   assert.equal(destructive.reversible, false)
@@ -87,8 +116,19 @@ test('permanent Thread deletion is exact-target, high-risk, and parent-list veri
   assert.equal(capability.explicit_confirmation_required, true)
   assert.equal(capability.precondition_path, '/learning/core/threads/:id')
   assert.equal(capability.verification_path, '/learning/core/threads')
-  assert.deepEqual(resolveCapabilityReadbacks('DELETE /learning/core/threads/:id', capability.verification_path, capability.path, '/learning/core/threads/thread-1'), ['/learning/core/threads'])
-  assert.match(readFileSync(new URL('../../src/api/agent.ts', import.meta.url), 'utf8'), /\['DELETE', '\/learning\/core\/threads\/:id'/)
+  assert.deepEqual(
+    resolveCapabilityReadbacks(
+      'DELETE /learning/core/threads/:id',
+      capability.verification_path,
+      capability.path,
+      '/learning/core/threads/thread-1',
+    ),
+    ['/learning/core/threads'],
+  )
+  assert.match(
+    readFileSync(new URL('../../src/api/agent.ts', import.meta.url), 'utf8'),
+    /\[\s*'DELETE',\s*'\/learning\/core\/threads\/:id'/,
+  )
 })
 
 test('agent OpenAPI is generated from the same catalog with control schemas and safety extensions', () => {
@@ -98,16 +138,28 @@ test('agent OpenAPI is generated from the same catalog with control schemas and 
   assert.ok(spec.paths['/capture/{id}/triage'].post.requestBody)
   assert.equal(spec.paths['/capture/{id}/triage'].post.parameters[0].name, 'id')
   assert.equal(spec.paths['/recommendations/{id}/permanent'].delete['x-risk'], 'high')
-  assert.equal(spec.paths['/agent/request'].post.requestBody.content['application/json'].schema.$ref, '#/components/schemas/AgentRequest')
+  assert.equal(
+    spec.paths['/agent/request'].post.requestBody.content['application/json'].schema.$ref,
+    '#/components/schemas/AgentRequest',
+  )
   assert.deepEqual(spec.components.schemas.AgentAssertion.required, ['path', 'field', 'equals'])
   assert.equal(spec.components.securitySchemes, undefined)
   assert.equal(spec.paths['/capture/{id}/triage'].post.security, undefined)
   assert.equal(spec.paths['/agent/request'].post.security, undefined)
   assert.equal(spec.paths['/capture/{id}/triage'].post.parameters.at(-1).name, 'x-client-mutation-id')
-  assert.deepEqual(spec.paths['/capture/feeds'].post.requestBody.content['application/json'].schema.required, ['url', 'branch_id'])
-  assert.equal(spec.paths['/capture/feeds'].post.requestBody.content['application/json'].schema.properties.limit.maximum, 20)
+  assert.deepEqual(spec.paths['/capture/feeds'].post.requestBody.content['application/json'].schema.required, [
+    'url',
+    'branch_id',
+  ])
+  assert.equal(
+    spec.paths['/capture/feeds'].post.requestBody.content['application/json'].schema.properties.limit.maximum,
+    20,
+  )
   assert.equal(spec.paths['/capture/feeds'].post['x-verification-path'], '/capture/feeds')
-  assert.equal(spec.paths['/capture/feeds/{id}/sync'].post.requestBody.content['application/json'].schema.properties.limit.maximum, 20)
+  assert.equal(
+    spec.paths['/capture/feeds/{id}/sync'].post.requestBody.content['application/json'].schema.properties.limit.maximum,
+    20,
+  )
   assert.equal(spec.paths['/capture/feeds/{id}/sync'].post['x-verification-path'], '/capture/feeds/:id/entries')
   assert.ok(spec.components.responses.Conflict)
 })
@@ -151,12 +203,68 @@ test('mutation capability schemas match canonical Queue, feedback, personal, and
 })
 
 test('verification readbacks resolve srs, feedback, and batch targets exactly', () => {
-  assert.deepEqual(resolveCapabilityReadbacks('POST /capture/feeds/:id/sync', '/capture/feeds/:id/entries', '/capture/feeds/:id/sync', '/capture/feeds/feed-1/sync'), ['/capture/feeds/feed-1/entries'])
-  assert.deepEqual(resolveCapabilityReadbacks('POST /capture/personal', '/capture/personal/:id', '/capture/personal', '/capture/personal', {}, { item: { id: 'item 1' } }), ['/capture/personal/item%201'])
-  assert.deepEqual(resolveCapabilityReadbacks('PATCH /capture/personal/:id', '/capture/personal/:id', '/capture/personal/:id', '/capture/personal/item%201?view=full'), ['/capture/personal/item%201'])
-  assert.deepEqual(resolveCapabilityReadbacks('POST /learning/srs/review', '/learning/srs/cards/:id', '/learning/srs/review', '/learning/srs/review', { card_id: 'card 1' }, {}), ['/learning/srs/cards/card%201'])
-  assert.deepEqual(resolveCapabilityReadbacks('POST /feedback/record', '/capture/:id/record', '/feedback/record', '/feedback/record', {}, { source: { id: 'rec-1' } }), ['/capture/rec-1/record'])
-  assert.deepEqual(resolveCapabilityReadbacks('POST /recommendations/map', '/capture/:id/record', '/recommendations/map', '/recommendations/map', { ids: ['rec-1', 'rec-2'] }, {}), ['/capture/rec-1/record', '/capture/rec-2/record'])
+  assert.deepEqual(
+    resolveCapabilityReadbacks(
+      'POST /capture/feeds/:id/sync',
+      '/capture/feeds/:id/entries',
+      '/capture/feeds/:id/sync',
+      '/capture/feeds/feed-1/sync',
+    ),
+    ['/capture/feeds/feed-1/entries'],
+  )
+  assert.deepEqual(
+    resolveCapabilityReadbacks(
+      'POST /capture/personal',
+      '/capture/personal/:id',
+      '/capture/personal',
+      '/capture/personal',
+      {},
+      { item: { id: 'item 1' } },
+    ),
+    ['/capture/personal/item%201'],
+  )
+  assert.deepEqual(
+    resolveCapabilityReadbacks(
+      'PATCH /capture/personal/:id',
+      '/capture/personal/:id',
+      '/capture/personal/:id',
+      '/capture/personal/item%201?view=full',
+    ),
+    ['/capture/personal/item%201'],
+  )
+  assert.deepEqual(
+    resolveCapabilityReadbacks(
+      'POST /learning/srs/review',
+      '/learning/srs/cards/:id',
+      '/learning/srs/review',
+      '/learning/srs/review',
+      { card_id: 'card 1' },
+      {},
+    ),
+    ['/learning/srs/cards/card%201'],
+  )
+  assert.deepEqual(
+    resolveCapabilityReadbacks(
+      'POST /feedback/record',
+      '/capture/:id/record',
+      '/feedback/record',
+      '/feedback/record',
+      {},
+      { source: { id: 'rec-1' } },
+    ),
+    ['/capture/rec-1/record'],
+  )
+  assert.deepEqual(
+    resolveCapabilityReadbacks(
+      'POST /recommendations/map',
+      '/capture/:id/record',
+      '/recommendations/map',
+      '/recommendations/map',
+      { ids: ['rec-1', 'rec-2'] },
+      {},
+    ),
+    ['/capture/rec-1/record', '/capture/rec-2/record'],
+  )
 })
 
 test('Compass creation, job lifecycle, and exact note deletion declare canonical readbacks', () => {
@@ -170,19 +278,64 @@ test('Compass creation, job lifecycle, and exact note deletion declare canonical
   const compassSchema: any = compass.request_body_schema
   assert.deepEqual(compass.required_fields, ['intent', 'thread_id', 'candidates'])
   assert.deepEqual(compassSchema.required, ['intent', 'thread_id', 'candidates'])
-  assert.deepEqual(compassSchema.properties.intent.enum, ['solve_problem', 'build_skill', 'deepen_thread', 'discover', 'queue_fill'])
+  assert.deepEqual(compassSchema.properties.intent.enum, [
+    'solve_problem',
+    'build_skill',
+    'deepen_thread',
+    'discover',
+    'queue_fill',
+  ])
   assert.equal(compassSchema.properties.candidates.minItems, 3)
   assert.equal(compassSchema.properties.candidates.maxItems, 24)
-  assert.deepEqual(compassSchema.properties.candidates.items.required, ['canonical_url', 'title', 'creator', 'format', 'source_class', 'branch_id', 'expected_contribution', 'evidence', 'editorial_review'])
+  assert.deepEqual(compassSchema.properties.candidates.items.required, [
+    'canonical_url',
+    'title',
+    'creator',
+    'format',
+    'source_class',
+    'branch_id',
+    'expected_contribution',
+    'evidence',
+    'editorial_review',
+  ])
   assert.equal(compassSchema.properties.candidates.items.properties.evidence.items.properties.claim.minLength, 12)
-  assert.deepEqual(compassSchema.properties.candidates.items.properties.editorial_review.required, ['verdict', 'why_worth_time', 'unique_value', 'depth'])
-  assert.deepEqual(compassSchema.properties.candidates.items.properties.editorial_review.properties.depth.enum, ['substantive', 'deep'])
-  assert.deepEqual(compassSchema.properties.candidates.items.properties.perspective.anyOf, [{ required: ['viewpoint'] }, { required: ['school'] }])
+  assert.deepEqual(compassSchema.properties.candidates.items.properties.editorial_review.required, [
+    'verdict',
+    'why_worth_time',
+    'unique_value',
+    'depth',
+  ])
+  assert.deepEqual(compassSchema.properties.candidates.items.properties.editorial_review.properties.depth.enum, [
+    'substantive',
+    'deep',
+  ])
+  assert.deepEqual(compassSchema.properties.candidates.items.properties.perspective.anyOf, [
+    { required: ['viewpoint'] },
+    { required: ['school'] },
+  ])
   assert.equal(compass.verification_path, '/compass/pick/:pick_id')
-  assert.deepEqual(resolveCapabilityReadbacks('POST /compass/picks', compass.verification_path, compass.path, '/compass/picks', {}, { pick_id: 'pick 1' }), ['/compass/pick/pick%201'])
+  assert.deepEqual(
+    resolveCapabilityReadbacks(
+      'POST /compass/picks',
+      compass.verification_path,
+      compass.path,
+      '/compass/picks',
+      {},
+      { pick_id: 'pick 1' },
+    ),
+    ['/compass/pick/pick%201'],
+  )
   for (const capability of [claim, replay]) {
     assert.equal(capability.verification_path, '/agent/jobs/:id')
-    assert.deepEqual(resolveCapabilityReadbacks(`${capability.method} ${capability.path}`, capability.verification_path, capability.path, '/agent/jobs/job-1/' + (capability === claim ? 'claim' : 'replay')), ['/agent/jobs/job-1'])
+    assert.deepEqual(
+      resolveCapabilityReadbacks(
+        `${capability.method} ${capability.path}`,
+        capability.verification_path,
+        capability.path,
+        '/agent/jobs/job-1/' + (capability === claim ? 'claim' : 'replay'),
+      ),
+      ['/agent/jobs/job-1'],
+    )
   }
   assert.deepEqual((claim.request_body_schema as any).required, ['worker'])
   assert.equal((claim.request_body_schema as any).properties.worker.maxLength, 120)
@@ -211,7 +364,12 @@ test('capability path matching escapes literals and excludes traversal-normalize
   assert.equal(agentCapabilityPathPattern('/agent/openapi.json').test('/agent/openapi.json'), true)
   assert.equal(agentCapabilityPathPattern('/agent/openapi.json').test('/agent/openapiXjson'), false)
   assert.equal(agentCapabilityPathPattern('/capture/:id/triage').test('/capture/../triage'), true)
-  assert.equal(agentCapabilityPathPattern('/capture/:id/triage').test(new URL('/capture/../triage', 'https://example.test').pathname), false)
+  assert.equal(
+    agentCapabilityPathPattern('/capture/:id/triage').test(
+      new URL('/capture/../triage', 'https://example.test').pathname,
+    ),
+    false,
+  )
 })
 
 test('briefing uses one D1 batch and reports exact pressure and distinct blockers', async () => {
@@ -223,14 +381,31 @@ test('briefing uses one D1 batch and reports exact pressure and distinct blocker
       batchCalls += 1
       statementCount = statements.length
       return [
-        { results: [{ id: 'queue-1', video_title: 'Queued source', learning_state: 'queued', queue_count: 4, invalid_branch_count: 1, missing_domain_count: 2 }] },
+        {
+          results: [
+            {
+              id: 'queue-1',
+              video_title: 'Queued source',
+              learning_state: 'queued',
+              queue_count: 4,
+              invalid_branch_count: 1,
+              missing_domain_count: 2,
+            },
+          ],
+        },
         { results: [{ count: 0 }] },
         { results: [{ count: 3 }] },
         { results: [{ count: 76 }] },
         { results: [{ count: 2 }] },
         { results: [{ id: 'con-1', recommendation_id: 'source-1', open_count: 3 }] },
-        { results: [{ active_count: 8, failed_count: 2, dead_letter_count: 1, stale_count: 3, overdue_retry_count: 4 }] },
-        { results: [{ id: 'lesson-1', title: 'Lesson one', thread_id: 'thread-1', stage_id: 'stage-1', missing_count: 5 }] },
+        {
+          results: [{ active_count: 8, failed_count: 2, dead_letter_count: 1, stale_count: 3, overdue_retry_count: 4 }],
+        },
+        {
+          results: [
+            { id: 'lesson-1', title: 'Lesson one', thread_id: 'thread-1', stage_id: 'stage-1', missing_count: 5 },
+          ],
+        },
       ]
     },
   }
@@ -258,7 +433,10 @@ test('lesson source attachment replaces required roles but accumulates optional 
   assert.match(learningCore, /valid non-pruned branch_id required/)
   assert.match(learningCore, /learning_state='captured' THEN 'attached'/)
   assert.doesNotMatch(learningCore, /branch_id=excluded\.branch_id/)
-  assert.match(learningCore, /DELETE FROM thread_lesson_sources WHERE lesson_id=\? AND role=\? AND recommendation_id<>\? AND \?!='optional'/)
+  assert.match(
+    learningCore,
+    /DELETE FROM thread_lesson_sources WHERE lesson_id=\? AND role=\? AND recommendation_id<>\? AND \?!='optional'/,
+  )
   assert.match(capabilities, /'POST \/learning\/core\/threads\/:id\/lessons\/:lessonId\/sources'/)
   assert.match(capabilities, /\['recommendation_id', 'expected_contribution'\]/)
 })
@@ -276,7 +454,17 @@ test('Thread material organizer capabilities are Library-first, exact-scope, and
     ['POST', '/learning/core/threads/:id/lessons/:lessonId/material-request', 'Find material.'],
   ] as const satisfies readonly CapabilityTuple[]
   const catalog = buildCapabilityCatalog(routes)
-  const [threadAttach, threadEdit, levelAttach, levelEdit, levelRemove, lessonAttach, lessonEdit, lessonRemove, findMaterial] = catalog
+  const [
+    threadAttach,
+    threadEdit,
+    levelAttach,
+    levelEdit,
+    levelRemove,
+    lessonAttach,
+    lessonEdit,
+    lessonRemove,
+    findMaterial,
+  ] = catalog
   for (const capability of [threadEdit, levelAttach, levelEdit, levelRemove, lessonAttach, lessonEdit, lessonRemove]) {
     assert.equal(capability.verification_path, '/learning/core/threads/:id/path')
   }
@@ -289,8 +477,19 @@ test('Thread material organizer capabilities are Library-first, exact-scope, and
     assert.equal(contribution.minLength, 1)
     assert.equal(contribution.pattern, '\\S')
   }
-  assert.deepEqual((lessonEdit.request_body_schema as any).properties.role.enum, ['primary', 'case', 'challenge', 'reference', 'optional'])
-  assert.deepEqual((threadEdit.request_body_schema as any).properties.role.enum, ['primary', 'supporting', 'counterevidence', 'reference'])
+  assert.deepEqual((lessonEdit.request_body_schema as any).properties.role.enum, [
+    'primary',
+    'case',
+    'challenge',
+    'reference',
+    'optional',
+  ])
+  assert.deepEqual((threadEdit.request_body_schema as any).properties.role.enum, [
+    'primary',
+    'supporting',
+    'counterevidence',
+    'reference',
+  ])
   assert.ok((levelEdit.request_body_schema as any).properties.expected_contribution)
   assert.equal((lessonAttach.request_body_schema as any).properties.expected_source_url.format, 'uri')
   assert.equal(findMaterial.verification_path, '/learning/core/threads/:id/lessons/:lessonId/material-request')
@@ -305,7 +504,17 @@ test('NotebookLM learning routes expose typed plans and canonical receipt readba
   const catalog = buildCapabilityCatalog(routes)
   assert.deepEqual(catalog[0].required_fields, ['recommendation_id'])
   assert.deepEqual(catalog[1].required_fields, ['kind', 'recommendation_id', 'notebook_id', 'notebook_url', 'status'])
-  assert.deepEqual(resolveCapabilityReadbacks('POST /notebooklm/learning/route', '/notebooklm/learning/receipts?recommendation_id=:recommendation_id', '/notebooklm/learning/route', '/notebooklm/learning/route', { recommendation_id: 'rec 1' }, {}), ['/notebooklm/learning/receipts?recommendation_id=rec%201'])
+  assert.deepEqual(
+    resolveCapabilityReadbacks(
+      'POST /notebooklm/learning/route',
+      '/notebooklm/learning/receipts?recommendation_id=:recommendation_id',
+      '/notebooklm/learning/route',
+      '/notebooklm/learning/route',
+      { recommendation_id: 'rec 1' },
+      {},
+    ),
+    ['/notebooklm/learning/receipts?recommendation_id=rec%201'],
+  )
 })
 
 test('guarded agent mutations can call same-zone Worker routes in production', () => {
@@ -344,14 +553,20 @@ test('automated recall is disabled while manual write paths enforce Arabic', () 
 test('agent context and tools enforce canonical v2 semantics', () => {
   const agent = readFileSync(new URL('../../src/api/agent.ts', import.meta.url), 'utf8')
   const capture = readFileSync(new URL('../../src/api/capture.ts', import.meta.url), 'utf8')
-  for (const obsolete of ["name: 'push_recommendation'", "name: 'validate_content_fit'", "name: 'log_learning_session'", "name: 'get_agent_context'", "app.post('/validate-fit'"]) {
+  for (const obsolete of [
+    "name: 'push_recommendation'",
+    "name: 'validate_content_fit'",
+    "name: 'log_learning_session'",
+    "name: 'get_agent_context'",
+    "app.post('/validate-fit'",
+  ]) {
     assert.equal(agent.includes(obsolete), false, `obsolete tool remains: ${obsolete}`)
   }
   assert.equal(agent.includes("AVG(CASE WHEN user_rating IN ('love','like') THEN 1 ELSE 0 END) as mastery_rate"), false)
   assert.ok(agent.includes('learning_gaps'))
   assert.ok(agent.includes('completed_threads'))
   assert.ok(agent.includes('legacy_mastered'))
-  assert.ok(agent.includes("return c.json(payload, requiredUnavailable ? 503 : 200)"))
+  assert.ok(agent.includes('return c.json(payload, requiredUnavailable ? 503 : 200)'))
   assert.ok(agent.includes('loadCaptureQueue(DB, 50)'))
   assert.ok(agent.includes('HAVING MAX(COALESCE(dm.last_consumed, dr.last_consumed)) IS NULL'))
   assert.equal(agent.includes('HAVING last_consumed IS NULL'), false)
@@ -379,7 +594,7 @@ test('stranded consolidation runs reconcile from canonical outputs or regain a l
 test('legacy extraction jobs cannot write stale Thread foreign keys', () => {
   const jobs = readFileSync(new URL('../../src/api/jobs.ts', import.meta.url), 'utf8')
   assert.match(jobs, /SELECT id FROM learning_threads WHERE id=\?/)
-  assert.match(jobs, /if \(payloadThreadId\) statements\.push/)
+  assert.match(jobs, /if \(\s*payloadThreadId\s*\)\s*statements\.push/)
   assert.doesNotMatch(jobs, /if \(payload\.thread_id\) statements\.push/)
 })
 
@@ -415,7 +630,12 @@ test('agent request canonicalizes paths, rejects verification substitution, and 
     })
   }) as any
   try {
-    const traversal = await agentRequest({ method: 'POST', path: '/capture/../triage', idempotency_key: 'traversal-1', body: {} })
+    const traversal = await agentRequest({
+      method: 'POST',
+      path: '/capture/../triage',
+      idempotency_key: 'traversal-1',
+      body: {},
+    })
     assert.equal(traversal.status, 403)
     assert.equal(fetchCalls, 0)
 
@@ -453,7 +673,12 @@ test('agent request canonicalizes paths, rejects verification substitution, and 
     const singularPickPayload: any = await singularPickReadback.json()
     assert.equal(singularPickPayload.required_verification_path, '/compass/pick/:pick_id')
 
-    const unverified = await agentRequest({ method: 'POST', path: '/brain/priorities', idempotency_key: 'priority-1', body: { priorities: [] } })
+    const unverified = await agentRequest({
+      method: 'POST',
+      path: '/brain/priorities',
+      idempotency_key: 'priority-1',
+      body: { priorities: [] },
+    })
     assert.equal(unverified.status, 200)
     const unverifiedPayload: any = await unverified.json()
     assert.equal(unverifiedPayload.ok, true)
@@ -515,10 +740,22 @@ test('exact note deletion verifies canonical absence instead of treating a succe
 test('agent activity stays bounded, redacts historical secrets, and reports exact degraded health', async () => {
   const huge = 'x'.repeat(60000)
   const receiptJson = JSON.stringify({
-    intent: 'update', target: '/settings/appearance?access_token=receipt-target-secret',
-    before: { path: '/settings', status: 200, data: { huge, token: 'stored-secret', message: 'provider said Bearer receipt-message-secret' } },
-    mutation_or_job: { method: 'PUT', status: 200, mutation_committed: true, data: { authorization: 'Bearer stored-secret' } },
-    after: { path: '/settings', status: 200, data: { ok: true } }, evidence: [], blocker: null,
+    intent: 'update',
+    target: '/settings/appearance?access_token=receipt-target-secret',
+    before: {
+      path: '/settings',
+      status: 200,
+      data: { huge, token: 'stored-secret', message: 'provider said Bearer receipt-message-secret' },
+    },
+    mutation_or_job: {
+      method: 'PUT',
+      status: 200,
+      mutation_committed: true,
+      data: { authorization: 'Bearer stored-secret' },
+    },
+    after: { path: '/settings', status: 200, data: { ok: true } },
+    evidence: [],
+    blocker: null,
   })
   const activityEnv: any = {
     DB: {
@@ -526,10 +763,35 @@ test('agent activity stays bounded, redacts historical secrets, and reports exac
         const statement: any = {
           bind: () => statement,
           all: async () => {
-            if (sql.includes('FROM agent_receipts')) return { results: [{ id: 'receipt-1', target: '/settings?api_key=row-target-secret', agent_name: 'agent token=row-agent-secret', verified: 1, receipt_json: receiptJson }] }
+            if (sql.includes('FROM agent_receipts'))
+              return {
+                results: [
+                  {
+                    id: 'receipt-1',
+                    target: '/settings?api_key=row-target-secret',
+                    agent_name: 'agent token=row-agent-secret',
+                    verified: 1,
+                    receipt_json: receiptJson,
+                  },
+                ],
+              }
             if (sql.includes('FROM agent_logs')) throw new Error('temporary audit table failure')
-            if (sql.includes('FROM agent_jobs')) return { results: [{ id: 'job-1', status: 'running', error: 'provider failed with Bearer job-error-secret', active_total: 7, failed_total: 4, stale_total: 2, dead_letter_total: 1 }] }
-            if (sql.includes('FROM feedback_proposals')) return { results: [{ id: 'proposal-1', status: 'applied', pending_total: 3 }] }
+            if (sql.includes('FROM agent_jobs'))
+              return {
+                results: [
+                  {
+                    id: 'job-1',
+                    status: 'running',
+                    error: 'provider failed with Bearer job-error-secret',
+                    active_total: 7,
+                    failed_total: 4,
+                    stale_total: 2,
+                    dead_letter_total: 1,
+                  },
+                ],
+              }
+            if (sql.includes('FROM feedback_proposals'))
+              return { results: [{ id: 'proposal-1', status: 'applied', pending_total: 3 }] }
             return { results: [] }
           },
         }
@@ -549,7 +811,14 @@ test('agent activity stays bounded, redacts historical secrets, and reports exac
   assert.equal(payload.health.dead_letter_jobs, 1)
   assert.equal(payload.health.pending_proposals, 3)
   assert.equal(payload.audit_events.length, 0)
-  for (const secret of ['stored-secret', 'receipt-target-secret', 'receipt-message-secret', 'row-target-secret', 'row-agent-secret', 'job-error-secret']) {
+  for (const secret of [
+    'stored-secret',
+    'receipt-target-secret',
+    'receipt-message-secret',
+    'row-target-secret',
+    'row-agent-secret',
+    'job-error-secret',
+  ]) {
     assert.equal(text.includes(secret), false, `activity leaked ${secret}`)
   }
   assert.ok(Buffer.byteLength(text) < 40000)
@@ -562,7 +831,10 @@ test('agent operational counts include lease-free activation waits as active wor
 
   assert.equal(activity.match(/status IN \('pending','running','retry','awaiting_activation'/g)?.length, 2)
   assert.match(system, /status IN \('pending','running','retry','awaiting_activation'\)/)
-  assert.match(system, /FROM artifacts WHERE COALESCE\(json_extract\(metadata_json,'\$\.publication_state'\),'ready'\)!='staged'/)
+  assert.match(
+    system,
+    /FROM artifacts WHERE COALESCE\(json_extract\(metadata_json,'\$\.publication_state'\),'ready'\)!='staged'/,
+  )
 })
 
 test('agent context marks the placeholder gap section unavailable and omits synthetic rounds', async () => {
@@ -596,7 +868,8 @@ test('retired progression-gate mutations are absent from the Hermes registry', a
     "['PATCH', '/learning/core/threads/:id/stages/:stageId/items/:itemId'",
     "['POST', '/learning/core/threads/:id/stages/:stageId/verify'",
     "['POST', '/learning/core/threads/:id/verify'",
-  ]) assert.equal(agent.includes(retired), false, `retired agent route remains: ${retired}`)
+  ])
+    assert.equal(agent.includes(retired), false, `retired agent route remains: ${retired}`)
 
   const response = await agentRequest({
     method: 'POST',
@@ -654,7 +927,12 @@ test('batch map rereads every affected source before and after the mutation', as
     assert.equal(response.status, 200)
     const payload: any = await response.json()
     assert.equal(payload.verified, true)
-    assert.deepEqual(reads, ['/capture/rec-1/record', '/capture/rec-2/record', '/capture/rec-1/record', '/capture/rec-2/record'])
+    assert.deepEqual(reads, [
+      '/capture/rec-1/record',
+      '/capture/rec-2/record',
+      '/capture/rec-1/record',
+      '/capture/rec-2/record',
+    ])
     assert.equal(payload.receipt.after.length, 2)
   } finally {
     globalThis.fetch = originalFetch
@@ -664,10 +942,13 @@ test('batch map rereads every affected source before and after the mutation', as
 test('atomic mutation reservation schema and middleware protect request fingerprints', () => {
   const source = readFileSync(new URL('../../src/index.ts', import.meta.url), 'utf8')
   const recovery = readFileSync(new URL('../../src/services/mutation-recovery.ts', import.meta.url), 'utf8')
-  const migration = readFileSync(new URL('../../migrations/0037_atomic_mutation_reservations.sql', import.meta.url), 'utf8')
-  assert.ok(source.includes("INSERT OR IGNORE INTO sync_mutation_locks"))
+  const migration = readFileSync(
+    new URL('../../migrations/0037_atomic_mutation_reservations.sql', import.meta.url),
+    'utf8',
+  )
+  assert.ok(source.includes('INSERT OR IGNORE INTO sync_mutation_locks'))
   assert.ok(source.includes('mutation_id_reused_for_different_operation'))
-  assert.ok(source.includes("crypto.subtle.digest('SHA-256'"))
+  assert.match(source, /crypto\.subtle\.digest\(\s*'SHA-256'/)
   assert.ok(source.includes('DURABLE_UNKNOWN_MUTATION_EXPIRES_AT'))
   assert.ok(source.includes("created_at<=datetime('now','-2 minutes')"))
   assert.ok(source.includes("expires_at<=datetime(created_at,'+5 minutes')"))
@@ -681,8 +962,14 @@ test('Hermes cockpit, evidence retrieval, private intake, and recovery seams sta
   const agent = readFileSync(new URL('../../src/api/agent.ts', import.meta.url), 'utf8')
   const search = readFileSync(new URL('../../src/api/search.ts', import.meta.url), 'utf8')
   const index = readFileSync(new URL('../../src/index.ts', import.meta.url), 'utf8')
-  const migration = readFileSync(new URL('../../migrations/0038_hermes_brief_annotations_receipts.sql', import.meta.url), 'utf8')
-  const telegramMigration = readFileSync(new URL('../../migrations/0039_telegram_webhook_dedup.sql', import.meta.url), 'utf8')
+  const migration = readFileSync(
+    new URL('../../migrations/0038_hermes_brief_annotations_receipts.sql', import.meta.url),
+    'utf8',
+  )
+  const telegramMigration = readFileSync(
+    new URL('../../migrations/0039_telegram_webhook_dedup.sql', import.meta.url),
+    'utf8',
+  )
   const extension = readFileSync(new URL('../../browser-extension/background.js', import.meta.url), 'utf8')
   assert.ok(agent.includes("['GET', '/agent/briefing'"))
   assert.ok(agent.includes("app.get('/activity'"))
@@ -704,8 +991,11 @@ test('memory replacement atomically supersedes active or approved values and per
       const statement: any = {
         sql,
         args: [] as any[],
-        bind: (...args: any[]) => { statement.args = args; return statement },
-        first: async () => sql.includes('SELECT id FROM hermes_memory') ? { id: 'mem-approved' } : null,
+        bind: (...args: any[]) => {
+          statement.args = args
+          return statement
+        },
+        first: async () => (sql.includes('SELECT id FROM hermes_memory') ? { id: 'mem-approved' } : null),
         run: async () => ({ meta: { changes: 1 } }),
       }
       return statement
@@ -715,21 +1005,31 @@ test('memory replacement atomically supersedes active or approved values and per
       return statements.map(() => ({ meta: { changes: 1 } }))
     },
   }
-  const response = await agentApp.request('https://example.test/memory', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-agent-name': 'test' },
-    body: JSON.stringify({
-      memory_key: 'skill_procedure:test',
-      memory_kind: 'durable',
-      value: { rule: 'verified' },
-      source: 'test',
-      confidence: 0.9,
-      evidence: [{ source: 'test-suite', reason: 'regression' }],
-    }),
-  }, { DB } as any)
+  const response = await agentApp.request(
+    'https://example.test/memory',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-agent-name': 'test' },
+      body: JSON.stringify({
+        memory_key: 'skill_procedure:test',
+        memory_kind: 'durable',
+        value: { rule: 'verified' },
+        source: 'test',
+        confidence: 0.9,
+        evidence: [{ source: 'test-suite', reason: 'regression' }],
+      }),
+    },
+    { DB } as any,
+  )
   assert.equal(response.status, 201)
   assert.equal(batches.length, 1)
-  assert.ok(batches[0].some((statement) => /UPDATE hermes_memory SET status='superseded'.*memory_key=\? AND status IN \('active','approved'\)/s.test(statement.sql)))
+  assert.ok(
+    batches[0].some((statement) =>
+      /UPDATE hermes_memory SET status='superseded'.*memory_key=\? AND status IN \('active','approved'\)/s.test(
+        statement.sql,
+      ),
+    ),
+  )
   assert.ok(batches[0].some((statement) => /INSERT INTO hermes_memory/.test(statement.sql)))
   assert.ok(batches[0].some((statement) => /INSERT INTO memory_evidence/.test(statement.sql)))
   const migration = readFileSync(new URL('../../migrations/0066_hermes_memory_live_key.sql', import.meta.url), 'utf8')

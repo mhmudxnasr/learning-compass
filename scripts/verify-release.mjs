@@ -30,12 +30,15 @@ const capture = (command, args, cwd = repoRoot) => {
 
 const relevantFiles = (root) => {
   if (!existsSync(root)) throw new Error(`Required release input is missing: ${root}`)
-  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    if (['__pycache__', '.usage', '.hub'].includes(entry.name)) return []
-    const path = join(dir, entry.name)
-    return entry.isDirectory() ? walk(path) : [path]
-  })
-  return walk(root).filter((path) => !path.endsWith('.pyc')).sort()
+  const walk = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      if (['__pycache__', '.usage', '.hub'].includes(entry.name)) return []
+      const path = join(dir, entry.name)
+      return entry.isDirectory() ? walk(path) : [path]
+    })
+  return walk(root)
+    .filter((path) => !path.endsWith('.pyc'))
+    .sort()
 }
 
 const assertMirror = (skillPath) => {
@@ -55,42 +58,48 @@ const assertMirror = (skillPath) => {
 
 const assertNoRetiredClientAuth = () => {
   const executableChecks = [
-    ['workflow/learning-compass-site-operator/scripts/site_request.py', [
-      /TASTE_MAP_API_TOKEN/,
-      /learning-compass-api-token/,
-      /headers\s*\[\s*["']x-api-token["']\s*\]\s*=/i,
-      /add_header\(\s*["']x-api-token["']/i,
-      /^\s*token:\s*str\s*$/m,
-      /config\.token\b/,
-    ]],
-    ['lite-visual/scripts/upload_pair.py', [
-      /TASTE_MAP_API_TOKEN/,
-      /learning-compass-api-token/,
-      /add_header\(\s*["']x-api-token["']/i,
-    ]],
-    ['lite-visual/scripts/run_workflow.py', [
-      /TASTE_MAP_API_TOKEN/,
-      /learning-compass-api-token/,
-      /headers\s*\[\s*["']x-api-token["']\s*\]\s*=/i,
-    ]],
+    [
+      'workflow/learning-compass-site-operator/scripts/site_request.py',
+      [
+        /TASTE_MAP_API_TOKEN/,
+        /learning-compass-api-token/,
+        /headers\s*\[\s*["']x-api-token["']\s*\]\s*=/i,
+        /add_header\(\s*["']x-api-token["']/i,
+        /^\s*token:\s*str\s*$/m,
+        /config\.token\b/,
+      ],
+    ],
+    [
+      'lite-visual/scripts/upload_pair.py',
+      [/TASTE_MAP_API_TOKEN/, /learning-compass-api-token/, /add_header\(\s*["']x-api-token["']/i],
+    ],
+    [
+      'lite-visual/scripts/run_workflow.py',
+      [/TASTE_MAP_API_TOKEN/, /learning-compass-api-token/, /headers\s*\[\s*["']x-api-token["']\s*\]\s*=/i],
+    ],
   ]
   for (const [relativePath, patterns] of executableChecks) {
     for (const root of [canonicalSkills, profileSkills]) {
       const file = join(root, relativePath)
       const source = readFileSync(file, 'utf8')
       for (const pattern of patterns) {
-        if (pattern.test(source)) throw new Error(`Retired Learning Compass auth plumbing remains in ${file}: ${pattern}`)
+        if (pattern.test(source))
+          throw new Error(`Retired Learning Compass auth plumbing remains in ${file}: ${pattern}`)
       }
     }
   }
 
   for (const [relativePath, required] of [
     ['workflow/learning-compass-site-operator/SKILL.md', 'ordinary reads and writes are public at the transport layer'],
-    ['workflow/recommendations-worker-ops/SKILL.md', 'Ordinary Learning Compass reads and writes are public at the transport layer'],
+    [
+      'workflow/recommendations-worker-ops/SKILL.md',
+      'Ordinary Learning Compass reads and writes are public at the transport layer',
+    ],
   ]) {
     for (const root of [canonicalSkills, profileSkills]) {
       const source = readFileSync(join(root, relativePath), 'utf8')
-      if (!source.includes(required)) throw new Error(`Public Learning Compass API contract is missing from ${join(root, relativePath)}`)
+      if (!source.includes(required))
+        throw new Error(`Public Learning Compass API contract is missing from ${join(root, relativePath)}`)
     }
   }
 }
@@ -107,7 +116,10 @@ const assertNoRetiredReleaseDocsAuth = () => {
   for (const file of documentation) {
     const source = readFileSync(file, 'utf8')
     for (const retired of ['REQUIRE_API_AUTH', 'LEARNING_COMPASS_API_TOKEN', 'TASTE_MAP_API_TOKEN', 'x-api-token']) {
-      if (source.includes(retired)) throw new Error(`Retired Learning Compass auth credential remains in release documentation: ${relative(repoRoot, file)} (${retired})`)
+      if (source.includes(retired))
+        throw new Error(
+          `Retired Learning Compass auth credential remains in release documentation: ${relative(repoRoot, file)} (${retired})`,
+        )
     }
   }
 }
@@ -119,7 +131,24 @@ const changedFiles = () => {
 }
 
 const textExtensions = new Set([
-  '', '.cjs', '.css', '.html', '.js', '.json', '.jsx', '.md', '.mjs', '.py', '.sh', '.sql', '.toml', '.ts', '.tsx', '.txt', '.yaml', '.yml',
+  '',
+  '.cjs',
+  '.css',
+  '.html',
+  '.js',
+  '.json',
+  '.jsx',
+  '.md',
+  '.mjs',
+  '.py',
+  '.sh',
+  '.sql',
+  '.toml',
+  '.ts',
+  '.tsx',
+  '.txt',
+  '.yaml',
+  '.yml',
 ])
 const credentialPatterns = [
   ['private key', /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/],
@@ -136,7 +165,8 @@ const inspectChangedFiles = () => {
     if (!existsSync(path) || !lstatSync(path).isFile()) continue
     if (!textExtensions.has(extname(path).toLowerCase()) || lstatSync(path).size > 2_000_000) continue
     const source = readFileSync(path, 'utf8')
-    if (source.split('\n').some((line) => /[ \t]+$/.test(line))) throw new Error(`Trailing whitespace in changed file: ${name}`)
+    if (source.split('\n').some((line) => /[ \t]+$/.test(line)))
+      throw new Error(`Trailing whitespace in changed file: ${name}`)
     for (const [label, pattern] of credentialPatterns) {
       if (pattern.test(source)) throw new Error(`Potential ${label} in changed file: ${name}`)
     }
@@ -150,33 +180,54 @@ const pythonRoots = [
   join(profileSkills, 'lite-visual'),
 ]
 for (const root of pythonRoots) if (!existsSync(root)) throw new Error(`Required installed client is missing: ${root}`)
-if (!existsSync(join(managerRoot, 'scripts', 'run_tests.sh'))) throw new Error('Deterministic Hermes manager harness is missing')
+if (!existsSync(join(managerRoot, 'scripts', 'run_tests.sh')))
+  throw new Error('Deterministic Hermes manager harness is missing')
 
 inspectChangedFiles()
-for (const skillPath of ['workflow/learning-compass-site-operator', 'workflow/recommendations-worker-ops', 'lite-visual']) assertMirror(skillPath)
+for (const skillPath of [
+  'workflow/learning-compass-site-operator',
+  'workflow/recommendations-worker-ops',
+  'lite-visual',
+])
+  assertMirror(skillPath)
 assertNoRetiredClientAuth()
 assertNoRetiredReleaseDocsAuth()
 
+run('Code style and static analysis', 'npm', ['run', 'quality'])
 run('Unit tests and TypeScript', 'npm', ['test'])
+run('Standalone Worker and D1 integration scenarios', 'npm', ['run', 'test:integration'])
 run('Production build and bundle budget', 'npm', ['run', 'build'])
 run('Worker-backed responsive, PWA, offline, and public-boundary E2E', 'npm', ['run', 'test:e2e'])
 run('Hermes contracts and Telegram prompt budgets', 'npm', ['run', 'verify:hermes'])
 run('Fresh and idempotent migration rehearsal', 'npm', ['run', 'verify:migrations'])
 run('Agent control contract', 'npm', ['run', 'verify:agent-contract'])
-run('Deterministic Hermes manager harness', 'scripts/run_tests.sh', ['tests/evals/test_manager_routing_harness.py', '-q'], managerRoot)
+run(
+  'Deterministic Hermes manager harness',
+  'scripts/run_tests.sh',
+  ['tests/evals/test_manager_routing_harness.py', '-q'],
+  managerRoot,
+)
 
 for (const root of [
   join(canonicalSkills, 'workflow', 'learning-compass-site-operator'),
   join(profileSkills, 'workflow', 'learning-compass-site-operator'),
 ]) {
-  run(`Installed site-client tests: ${root}`, 'python3', ['-m', 'unittest', 'discover', '-s', join(root, 'tests'), '-p', 'test_*.py'])
+  run(`Installed site-client tests: ${root}`, 'python3', [
+    '-m',
+    'unittest',
+    'discover',
+    '-s',
+    join(root, 'tests'),
+    '-p',
+    'test_*.py',
+  ])
 }
 
-run(
-  'Installed Python client syntax',
-  'python3',
-  ['-c', "from pathlib import Path; import sys; [compile(p.read_text(), str(p), 'exec') for root in sys.argv[1:] for p in Path(root).rglob('*.py') if '__pycache__' not in p.parts]", ...pythonRoots],
-)
+run('Installed Python client syntax', 'python3', [
+  '-c',
+  "from pathlib import Path; import sys; [compile(p.read_text(), str(p), 'exec') for root in sys.argv[1:] for p in Path(root).rglob('*.py') if '__pycache__' not in p.parts]",
+  ...pythonRoots,
+])
 for (const root of [join(canonicalSkills, 'lite-visual'), join(profileSkills, 'lite-visual')]) {
   for (const file of relevantFiles(root).filter((path) => ['.js', '.mjs', '.cjs'].includes(extname(path)))) {
     run(`Installed Node client syntax: ${file}`, process.execPath, ['--check', file])

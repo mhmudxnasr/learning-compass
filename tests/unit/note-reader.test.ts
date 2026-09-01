@@ -1,16 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildNoteReaderDocument, directionForText, parseNoteBlocks } from '../../client/src/workspaces/learn/noteReader.ts'
+import {
+  buildNoteReaderDocument,
+  directionForText,
+  parseNoteBlocks,
+} from '../../client/src/workspaces/learn/noteReader.ts'
 
 test('note reader removes Obsidian front matter and promotes the embedded source link', () => {
   const document = buildNoteReaderDocument({
     id: 'note_1',
     title: 'Skinner on Behaviorism',
-    sections: [{
-      section_key: 'body',
-      label: 'Notes',
-      direction: 'auto',
-      content: `---
+    sections: [
+      {
+        section_key: 'body',
+        label: 'Notes',
+        direction: 'auto',
+        content: `---
 type: notes tags: people/Skinner status/completed
 subject/Behavioral-Psychology ---
 
@@ -20,7 +25,8 @@ YT-Vid (https://www.youtube.com/watch?v=example)
 
 1. **تحديد السلوك** يبدأ من أثر البيئة.
 2. التعزيز الإيجابي يشكل السلوك.`,
-    }],
+      },
+    ],
   })
 
   assert.equal(document.contentSourceUrl, 'https://www.youtube.com/watch?v=example')
@@ -37,14 +43,25 @@ YT-Vid (https://www.youtube.com/watch?v=example)
 
 test('reader preserves Markdown structure and chooses direction per block', () => {
   const blocks = parseNoteBlocks('## Key idea\n\nEnglish context.\n\n> خلاصة عربية مهمة', 'auto')
-  assert.deepEqual(blocks.map((block) => block.kind), ['heading', 'paragraph', 'quote'])
+  assert.deepEqual(
+    blocks.map((block) => block.kind),
+    ['heading', 'paragraph', 'quote'],
+  )
   assert.equal(blocks[0].direction, 'ltr')
   assert.equal(blocks[2].direction, 'rtl')
   assert.equal(directionForText('السلوك البشري (Behaviorism)'), 'rtl')
 })
 
 test('reader does not turn ordinary prose labels into generated cards', () => {
-  const blocks = parseNoteBlocks('Risk sharing: The contract allocates uncertainty between both sides.\n\nStory: This remains ordinary source prose.')
-  assert.deepEqual(blocks.map((block) => block.kind), ['paragraph', 'paragraph'])
-  assert.equal(blocks.some((block) => ['definition', 'case_study', 'synthesis'].includes((block as any).kind)), false)
+  const blocks = parseNoteBlocks(
+    'Risk sharing: The contract allocates uncertainty between both sides.\n\nStory: This remains ordinary source prose.',
+  )
+  assert.deepEqual(
+    blocks.map((block) => block.kind),
+    ['paragraph', 'paragraph'],
+  )
+  assert.equal(
+    blocks.some((block) => ['definition', 'case_study', 'synthesis'].includes((block as any).kind)),
+    false,
+  )
 })

@@ -39,12 +39,15 @@ function registerServiceWorker() {
     location.reload()
   })
   const register = () => {
-    void navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
+    void navigator.serviceWorker
+      .register('/sw.js', { scope: '/', updateViaCache: 'none' })
       .then((registration) => {
         document.documentElement.dataset.serviceWorker = 'ready'
         void registration.update()
       })
-      .catch(() => { document.documentElement.dataset.serviceWorker = 'failed' })
+      .catch(() => {
+        document.documentElement.dataset.serviceWorker = 'failed'
+      })
   }
   if (document.readyState === 'complete') register()
   else addEventListener('load', register, { once: true })
@@ -62,7 +65,9 @@ export function initAndroidExperience() {
   })
   addEventListener('appinstalled', () => {
     promptEvent = null
-    try { localStorage.removeItem(DISMISS_KEY) } catch {}
+    try {
+      localStorage.removeItem(DISMISS_KEY)
+    } catch {}
     emit()
   })
   matchMedia('(display-mode: standalone)').addEventListener('change', emit)
@@ -80,13 +85,19 @@ async function install() {
   const choice = await event.userChoice
   promptEvent = null
   if (choice.outcome === 'dismissed') {
-    try { localStorage.setItem(DISMISS_KEY, String(Date.now())) } catch {}
+    try {
+      localStorage.setItem(DISMISS_KEY, String(Date.now()))
+    } catch {}
   }
   emit()
 }
 
 function recentlyDismissed() {
-  try { return Date.now() - Number(localStorage.getItem(DISMISS_KEY) || 0) < DISMISS_FOR_MS } catch { return false }
+  try {
+    return Date.now() - Number(localStorage.getItem(DISMISS_KEY) || 0) < DISMISS_FOR_MS
+  } catch {
+    return false
+  }
 }
 
 export function AndroidInstallBanner() {
@@ -96,17 +107,32 @@ export function AndroidInstallBanner() {
   useEffect(() => subscribe(setInstallState), [])
   if (!installState.android || installState.standalone || !installState.canInstall || dismissed) return null
 
-  return <aside class="android-install-banner" aria-label="Install Learning Compass">
-    <div>
-      <strong>Use Learning Compass like an Android app</strong>
-      <span>Install it for a launcher icon, standalone window, offline shell, and sharing. Reminders can be enabled separately in Preferences.</span>
-    </div>
-    <div class="android-install-actions">
-      <button class="button secondary" type="button" onClick={() => {
-        try { localStorage.setItem(DISMISS_KEY, String(Date.now())) } catch {}
-        setDismissed(true)
-      }}>Not now</button>
-      <button class="button primary" type="button" onClick={() => void install()}>Install app</button>
-    </div>
-  </aside>
+  return (
+    <aside class="android-install-banner" aria-label="Install Learning Compass">
+      <div>
+        <strong>Use Learning Compass like an Android app</strong>
+        <span>
+          Install it for a launcher icon, standalone window, offline shell, and sharing. Reminders can be enabled
+          separately in Preferences.
+        </span>
+      </div>
+      <div class="android-install-actions">
+        <button
+          class="button secondary"
+          type="button"
+          onClick={() => {
+            try {
+              localStorage.setItem(DISMISS_KEY, String(Date.now()))
+            } catch {}
+            setDismissed(true)
+          }}
+        >
+          Not now
+        </button>
+        <button class="button primary" type="button" onClick={() => void install()}>
+          Install app
+        </button>
+      </div>
+    </aside>
+  )
 }

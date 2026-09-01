@@ -137,13 +137,13 @@ Critical separations:
 
 The client uses hash routing and has five roots with 12 grouped modes.
 
-| Root | Grouped modes | Subordinate focuses |
-|---|---|---|
-| Home | Today | None |
-| Library | Books, Triage, Archive, Files | Triage contains Queue and RSS Feeds |
-| Learn | Threads, Practice | Practice contains Notes, Recall, and Contradictions |
-| Map | Atlas, Review | Review contains the unified Branch Dossier |
-| Settings | Personal, Data & recovery, System | Personal contains Learning profile and Preferences |
+| Root     | Grouped modes                     | Subordinate focuses                                 |
+| -------- | --------------------------------- | --------------------------------------------------- |
+| Home     | Today                             | None                                                |
+| Library  | Books, Triage, Archive, Files     | Triage contains Queue and RSS Feeds                 |
+| Learn    | Threads, Practice                 | Practice contains Notes, Recall, and Contradictions |
+| Map      | Atlas, Review                     | Review contains the unified Branch Dossier          |
+| Settings | Personal, Data & recovery, System | Personal contains Learning profile and Preferences  |
 
 Desktop uses a persistent labeled root rail, global Search and Capture utilities, a main working canvas, and an optional contextual inspector. Mobile replaces the rail with a five-item bottom dock and turns inspection into a sheet or pushed detail view. Interactive mobile targets must be at least 44x44px.
 
@@ -793,19 +793,19 @@ Provide:
 
 Score each stage from 1-5 and explain the main friction.
 
-| Stage | Score | What works | Main friction | Consequence |
-|---|---:|---|---|---|
-| Define Thread | | | | |
-| Capture | | | | |
-| Curate and branch | | | | |
-| Commit to Queue | | | | |
-| Consume | | | | |
-| Return and reflect | | | | |
-| Retain into notes/Units | | | | |
-| Create/review recall | | | | |
-| Complete lessons | | | | |
-| Map and synthesize | | | | |
-| Resurface | | | | |
+| Stage                   | Score | What works | Main friction | Consequence |
+| ----------------------- | ----: | ---------- | ------------- | ----------- |
+| Define Thread           |       |            |               |             |
+| Capture                 |       |            |               |             |
+| Curate and branch       |       |            |               |             |
+| Commit to Queue         |       |            |               |             |
+| Consume                 |       |            |               |             |
+| Return and reflect      |       |            |               |             |
+| Retain into notes/Units |       |            |               |             |
+| Create/review recall    |       |            |               |             |
+| Complete lessons        |       |            |               |             |
+| Map and synthesize      |       |            |               |             |
+| Resurface               |       |            |               |             |
 
 ### 3. Information Architecture Review
 
@@ -814,7 +814,7 @@ For every root and grouped mode, choose one: Keep as-is, Improve, Simplify, Merg
 ### 4. Complete Feature Disposition Matrix
 
 | Feature | Current status | User value | Complexity | Recommendation | Reason |
-|---|---|---:|---:|---|---|
+| ------- | -------------- | ---------: | ---------: | -------------- | ------ |
 
 Use: Keep, Improve, Simplify, Merge, Remove, Defer, or Fix inconsistency.
 

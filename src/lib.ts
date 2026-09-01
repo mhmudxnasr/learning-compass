@@ -1,5 +1,3 @@
-import { Hono } from 'hono'
-
 export type Bindings = {
   DB: D1Database
   ASSETS: Fetcher
@@ -74,7 +72,12 @@ export function normalizeRating(raw: unknown): { rating: string; score: number |
 // ---------- dedup key derivation (data quality) ----------
 // If no explicit dedup_key is supplied we derive a stable one from the source so
 // re-pushes never silently duplicate. yt_<id> / book_<slug> / article_<slug> / etc.
-export function deriveDedupKey(item: { video_url?: any; content_type?: any; dedup_key?: any; video_title?: any }): string {
+export function deriveDedupKey(item: {
+  video_url?: any
+  content_type?: any
+  dedup_key?: any
+  video_title?: any
+}): string {
   if (item.dedup_key && item.dedup_key.trim()) return item.dedup_key.trim()
   const url = item.video_url || ''
   // YouTube
@@ -94,14 +97,16 @@ export function deriveDedupKey(item: { video_url?: any; content_type?: any; dedu
     const type = (item.content_type || 'art').slice(0, 4)
     return `${type}_${host}_${slug}`.toLowerCase()
   } catch {
-    const slug = (item.video_title || 'x').toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40)
+    const slug = (item.video_title || 'x')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .slice(0, 40)
     return 'key_' + slug
   }
 }
 
 export const isValidUrl = (u: unknown): u is string =>
-  typeof u === 'string' && u.length > 0 && u.length < 2048 &&
-  /^https?:\/\/[^\s<>"']+$/i.test(u)
+  typeof u === 'string' && u.length > 0 && u.length < 2048 && /^https?:\/\/[^\s<>"']+$/i.test(u)
 
 export const isNonEmptyStr = (v: unknown, max = 5000): v is string =>
   typeof v === 'string' && v.length > 0 && v.length <= max
@@ -110,7 +115,7 @@ export const isValidLength = (v: unknown, min: number, max: number): v is string
   typeof v === 'string' && v.length >= min && v.length <= max
 
 export const escapeHtml = (s: string): string =>
-  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
+  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 
 export function redactSensitiveText(value: unknown, maxLength = 500): string {
   let text = value instanceof Error ? value.message : String(value)
@@ -120,7 +125,7 @@ export function redactSensitiveText(value: unknown, maxLength = 500): string {
   const queryCredential = new RegExp(`([?&](?:${sensitiveName}|key)=)[^&\\s]+`, 'gi')
   text = text
     .replace(/(https:\/\/api\.telegram\.org\/bot)[^/\s]+/gi, '$1[redacted]')
-    .replace(/\b(?:Bearer\s+)[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [redacted]')
+    .replace(/\b(?:Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [redacted]')
     .replace(/\b(?:Basic\s+)[A-Za-z0-9+/]+=*/gi, 'Basic [redacted]')
     .replace(/\b(?:sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{8,}\b/g, '[redacted]')
     .replace(jsonCredential, '$1$2[redacted]$2')
@@ -150,7 +155,9 @@ export function normalizeUrlForDedup(url: string): string {
   try {
     const host = new URL(u).hostname.toLowerCase().replace(/^www\./, '')
     if (host === 'youtube.com' || host === 'youtu.be') u = normalizeYouTubeUrl(u)
-  } catch { /* URL validation happens at the route boundary. */ }
+  } catch {
+    /* URL validation happens at the route boundary. */
+  }
   return u
 }
 
@@ -164,5 +171,7 @@ export function normalizeSourceUrlIdentity(url: string): string {
     const parsed = new URL(normalized)
     parsed.hash = ''
     return normalizeUrlForDedup(parsed.toString())
-  } catch { return normalized }
+  } catch {
+    return normalized
+  }
 }

@@ -149,6 +149,7 @@ The five-root product audit repaired the highest-impact confirmed defects withou
 Ordinary `POST /feedback/record` and session-return feedback now treat `completion_state=stopped` as a terminal user rejection: the source becomes `rejected`/`excluded`, leaves Queue, resolves any active Compass pick, preserves the exact reason and reflection, and still queues Taste Mapper without starting note extraction. `in_progress` remains the only nonterminal feedback state. The focused regression test, TypeScript, production build, and diff checks pass. Deployment is intentionally pending because the working tree contains a larger in-flight release that must not be partially published.
 
 ## Current truth — 2026-08-25 (feedback branch mapping, deployed)
+
 `POST /feedback/record` now accepts an explicit verified `branch_id` and persists it atomically with feedback, including when a source is completed. The direct high-confidence `/capture/:id/branch-map` repair route now also accepts existing completed/excluded sources without changing consumption state. The previously unlinked قيام الليل video was repaired and verified under `qiyam-al-layl` (`status=love`, `priority_rank=1`). Verification passes the full unit suite (294 passed, 2 environment-only Chrome skips), TypeScript, production build, Hermes contract checks, live branch-map/source-dossier readback, and branch ledger readback. The integration feedback-flow test could not start its local Wrangler worker in this environment. Deployed Worker version `ea3b8152-4060-4686-9d0f-72c5ef11ce4c`.
 
 ## Current truth — 2026-08-25 (Personal Assistant, deployed)
@@ -322,6 +323,7 @@ The Thread path reader now batches artifact and NotebookLM receipt lookups below
 ## Current truth — 2026-08-23 (Clean knowledge branch taxonomy and round retirement)
 
 Restructured knowledge branches across the entire site, database, API, client views, test suites, and Hermes skills/rules:
+
 - Retired synthetic `R1`, `R2`, `R3` round numbering and progression guesswork in favor of a clean, production-grade 3-tier domain taxonomy: Super Category (Domain) → Knowledge Branch (`tree_nodes`) → Topics/Leaves (`meta_json.leaves`), with explicit priority (`priority_rank` 1–5) and status (`love` / `active` / `held` / `pruned`).
 - Added migration `0053_retire_synthetic_rounds.sql` clearing synthetic `round_label` from `tree_nodes` and `round` from `recommendations`.
 - Updated client UI (BranchDeckPage, BooksView, LibraryViews, LearnThreadView, Inspector, studio.css) to eliminate `[R1]`/`[R2]` round tags and render clean Domain / Branch / Priority badges everywhere.
@@ -672,6 +674,7 @@ The 2026-08-14 Lite Visual repair was replayed against the complete 82.5-minute 
 ## Post-deploy follow-up
 
 Keep the recoverable pre-reset snapshot through the rollback window. VAPID secrets are configured; a real subscribed-device notification delivery test remains a separate explicit operational check because it sends an external notification.
+
 ## Learning workflow improvement — 2026-08-17
 
 The Learning workspace connects the authored curriculum to the primary path screen. A learner can start an available Level, understand why a locked Level cannot open, and advance through direct lesson completion. Optional projects and study materials remain visible without affecting progression.
@@ -695,9 +698,11 @@ Hermes Thread control is now expanded through the capability registry: project u
 ## Hermes skill graph repair - 2026-08-18
 
 The active Learning Compass skills have synchronized ownership. Visual Lite is code-only and has no AGY/image-agent permission or Visual Mind delegation; it never auto-chains extraction. Source notes default to English with source-original Arabic quotations; recommendation serving mode and exploration are Worker-owned live values; source Queue placement requires canonical branch mapping; and JSON mutations use guarded `/agent/request`.
+
 # Current contract update — captured Library sources
 
 New and migrated captures use `learning_state='captured'` and remain durable source records. The retired All sources surface no longer appears in Library; legacy Catalog URLs recover to Archive.
+
 # Current truth — 2026-08-28 (premium shell and guarded releases)
 
 The Learning Compass shell is now a deliberate desktop workbench: a narrow navigation-only root rail, a separate workspace command bar, integrated grouped modes, and a master-detail Home canvas. Mobile keeps the five-root dock and compact wrapping mode controls. Application-only releases now have an explicit guarded lane; corpus publication remains separately blocked until its signed v6 aggregate audit and review exist.

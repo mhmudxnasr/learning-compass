@@ -28,13 +28,26 @@ export type LibraryViewHandlers = {
   onInspect: (selection: LibrarySelection) => void
   onQueue: (item: LibraryRecord, override?: boolean) => void
   onExclude: (item: LibraryRecord) => void
-  onStart: (event: MouseEvent, item: LibraryRecord, href: string, kind?: 'original' | 'html' | 'pdf' | 'artifact' | 'notebooklm', artifactId?: string) => void
+  onStart: (
+    event: MouseEvent,
+    item: LibraryRecord,
+    href: string,
+    kind?: 'original' | 'html' | 'pdf' | 'artifact' | 'notebooklm',
+    artifactId?: string,
+  ) => void
   onProcessArtifact: (item: LibraryRecord) => void
   onDeleteArtifact: (item: LibraryRecord, skipConfirm?: boolean) => void
   onDeleteRecommendationPermanently: (item: LibraryRecord) => void
   onCompleteChapter: (book: LibraryRecord, chapter: LibraryRecord) => void
   onSetBookReadingState: (book: LibraryRecord, state: 'saved' | 'reading' | 'finished', primary?: boolean) => void
-  onAddBook: (payload: { title: string; author: string; branch_id: string; isbn?: string; why_this?: string; url?: string }) => Promise<void>
+  onAddBook: (payload: {
+    title: string
+    author: string
+    branch_id: string
+    isbn?: string
+    why_this?: string
+    url?: string
+  }) => Promise<void>
   onAddFeed?: (url: string, branchId: string) => void
   onSyncFeeds?: () => void
   onSyncFeed?: (feedId: string) => void
@@ -43,7 +56,13 @@ export type LibraryViewHandlers = {
   onClearFeedEntries?: (feedId: string) => void
   onFeedbackSaved?: (sourceId: string, receipt: LibraryRecord) => void
   onReload?: () => void
-  onQueueDeliveryChange?: (context: { effort?: string; language?: string; delivery_modes?: string[]; depth_tier?: string; matches_only?: boolean }) => void
+  onQueueDeliveryChange?: (context: {
+    effort?: string
+    language?: string
+    delivery_modes?: string[]
+    depth_tier?: string
+    matches_only?: boolean
+  }) => void
   feedbackReceipt?: { sourceId: string; result: LibraryRecord } | null
   busyId?: string
   blockedId?: string
@@ -77,13 +96,13 @@ export function viewHref(view: LibraryView) {
 }
 
 export function asView(value?: string): LibraryView {
-  return value && value in viewLabels ? value as LibraryView : 'queue'
+  return value && value in viewLabels ? (value as LibraryView) : 'queue'
 }
 
 export function listFrom<T = LibraryRecord>(data: unknown, key: string): T[] {
   if (!data || typeof data !== 'object') return []
   const value = (data as LibraryRecord)[key]
-  return Array.isArray(value) ? value as T[] : []
+  return Array.isArray(value) ? (value as T[]) : []
 }
 
 export function parseMetadata(value: unknown): LibraryRecord {
@@ -121,7 +140,8 @@ export function sourceLink(item: LibraryRecord) {
 export function artifactLink(item: LibraryRecord) {
   if (item.legacy) return `/html/download/${encodeURIComponent(String(item.id))}`
   const id = encodeURIComponent(String(item.id))
-  return /html|markdown|text\/plain/i.test(String(item.media_type || '')) || /\.(?:html?|md)$/i.test(String(item.filename || ''))
+  return /html|markdown|text\/plain/i.test(String(item.media_type || '')) ||
+    /\.(?:html?|md)$/i.test(String(item.filename || ''))
     ? `/artifacts/${id}/view`
     : `/artifacts/${id}`
 }
@@ -158,7 +178,9 @@ export function formatReason(item: LibraryRecord) {
 }
 
 export function formatStatus(value: unknown) {
-  return String(value || 'saved').replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+  return String(value || 'saved')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 export function sourceSelection(item: LibraryRecord): LibrarySelection {
@@ -168,7 +190,13 @@ export function sourceSelection(item: LibraryRecord): LibrarySelection {
 
 export function artifactSelection(item: LibraryRecord): LibrarySelection {
   const id = String(item.id)
-  return { type: 'artifact', id, title: String(item.filename || 'Untitled artifact'), data: item, route: objectHref('artifact', id) }
+  return {
+    type: 'artifact',
+    id,
+    title: String(item.filename || 'Untitled artifact'),
+    data: item,
+    route: objectHref('artifact', id),
+  }
 }
 
 export function bookSelection(item: LibraryRecord): LibrarySelection {

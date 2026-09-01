@@ -6,13 +6,15 @@ const app = new Hono<{ Bindings: Bindings }>()
 app.get('/list', async (c) => {
   const { DB } = c.env
   try {
-    const result = await DB.prepare('SELECT id, filename, created_at, length(content) as size, substr(content, 1, 200) as snippet FROM html_files ORDER BY created_at DESC').all()
+    const result = await DB.prepare(
+      'SELECT id, filename, created_at, length(content) as size, substr(content, 1, 200) as snippet FROM html_files ORDER BY created_at DESC',
+    ).all()
     return new Response(JSON.stringify({ files: result.results }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
         'Cache-Control': 'no-store, no-cache, must-revalidate',
-      }
+      },
     })
   } catch (err) {
     return c.json(safeError('List failed')(err), 500)
@@ -33,7 +35,9 @@ app.post('/upload', async (c) => {
       return c.json({ error: 'Content too large (max 8MB)' }, 413)
     }
     const id = `html_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
-    await DB.prepare('INSERT INTO html_files (id, filename, content) VALUES (?, ?, ?)').bind(id, filename, content).run()
+    await DB.prepare('INSERT INTO html_files (id, filename, content) VALUES (?, ?, ?)')
+      .bind(id, filename, content)
+      .run()
     return c.json({ ok: true, id })
   } catch (err) {
     return c.json(safeError('Upload failed')(err), 500)
@@ -44,21 +48,21 @@ app.get('/download/:id', async (c) => {
   const { DB } = c.env
   const id = c.req.param('id')
   try {
-    const file = await DB.prepare('SELECT filename, content FROM html_files WHERE id = ?').bind(id).first<{ filename: string; content: string }>()
+    const file = await DB.prepare('SELECT filename, content FROM html_files WHERE id = ?')
+      .bind(id)
+      .first<{ filename: string; content: string }>()
     if (!file) {
       return c.text('File not found', 404)
     }
     const isPdf = file.filename.endsWith('.pdf')
-    const body = isPdf
-      ? Uint8Array.from(atob(file.content), c => c.charCodeAt(0))
-      : file.content
+    const body = isPdf ? Uint8Array.from(atob(file.content), (c) => c.charCodeAt(0)) : file.content
     return new Response(body, {
       headers: {
         'Content-Type': isPdf ? 'application/pdf' : 'text/html; charset=utf-8',
         'Content-Disposition': `${isPdf ? 'inline' : 'inline'}; filename="${encodeURIComponent(file.filename)}"`,
         'X-Frame-Options': 'ALLOWALL',
-        'Access-Control-Allow-Origin': '*'
-      }
+        'Access-Control-Allow-Origin': '*',
+      },
     })
   } catch (err) {
     console.error('[html/download]', safeErrorMessage(err))
@@ -109,8 +113,9 @@ app.post('/delete', async (c) => {
       const row = await DB.prepare('SELECT * FROM html_files WHERE id = ?').bind(id).first<any>()
       if (!row) return c.json({ error: 'not found' }, 404)
       await DB.batch([
-        DB.prepare("INSERT OR REPLACE INTO undo_queue (id, table_name, row_id, snapshot_json, expires_at) VALUES (?, 'html_files', ?, ?, datetime('now', '+30 seconds'))")
-          .bind(id, id, JSON.stringify(row)),
+        DB.prepare(
+          "INSERT OR REPLACE INTO undo_queue (id, table_name, row_id, snapshot_json, expires_at) VALUES (?, 'html_files', ?, ?, datetime('now', '+30 seconds'))",
+        ).bind(id, id, JSON.stringify(row)),
         DB.prepare('DELETE FROM html_files WHERE id = ?').bind(id),
       ])
     } else {
@@ -127,17 +132,22 @@ app.post('/undo', async (c) => {
   try {
     const { id } = await c.req.json<{ id: string }>()
     if (!id) return c.json({ error: 'ID required' }, 400)
-    const row = await DB.prepare("SELECT * FROM undo_queue WHERE id = ? AND expires_at > datetime('now')").bind(id).first<any>()
+    const row = await DB.prepare("SELECT * FROM undo_queue WHERE id = ? AND expires_at > datetime('now')")
+      .bind(id)
+      .first<any>()
     if (!row) return c.json({ error: 'nothing to undo or expired' }, 404)
 
     if (row.table_name === 'html_files') {
       const snap = JSON.parse(row.snapshot_json)
       await DB.prepare('INSERT OR REPLACE INTO html_files (id, filename, content) VALUES (?, ?, ?)')
-        .bind(snap.id, snap.filename, snap.content).run()
+        .bind(snap.id, snap.filename, snap.content)
+        .run()
     }
     await DB.prepare('DELETE FROM undo_queue WHERE id = ?').bind(id).run()
     return c.json({ ok: true })
-  } catch (err) { return c.json(safeError('Undo failed')(err), 500) }
+  } catch (err) {
+    return c.json(safeError('Undo failed')(err), 500)
+  }
 })
 
 // GET /html/print/:id — wraps HTML file in A4 print-friendly view
@@ -145,7 +155,9 @@ app.get('/print/:id', async (c) => {
   const { DB } = c.env
   const id = c.req.param('id')
   try {
-    const file = await DB.prepare('SELECT filename, content FROM html_files WHERE id = ?').bind(id).first<{ filename: string; content: string }>()
+    const file = await DB.prepare('SELECT filename, content FROM html_files WHERE id = ?')
+      .bind(id)
+      .first<{ filename: string; content: string }>()
     if (!file) {
       return c.text('File not found', 404)
     }
@@ -229,7 +241,7 @@ window.onload = function() {};
 </html>`
 
     return new Response(html, {
-      headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Frame-Options': 'ALLOWALL' }
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Frame-Options': 'ALLOWALL' },
     })
   } catch (err) {
     console.error('[html/print]', safeErrorMessage(err))
@@ -242,7 +254,13 @@ window.onload = function() {};
  * Parse uploaded HTML study guide and extract Q&A blocks to create flashcards in srs_cards table.
  */
 app.post('/sync-srs', async (c) => {
-  return c.json({ error: 'automated_recall_disabled', message: 'HTML flash-card sync is disabled. Create an Arabic card explicitly in Recall.' }, 409)
+  return c.json(
+    {
+      error: 'automated_recall_disabled',
+      message: 'HTML flash-card sync is disabled. Create an Arabic card explicitly in Recall.',
+    },
+    409,
+  )
 })
 
 export default app

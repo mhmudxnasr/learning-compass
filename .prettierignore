@@ -1,0 +1,14 @@
+backups/
+client/public/prototypes/
+client/public/updates/
+dist/
+docs/hermes-production-hardening-field-guide.html
+docs/hermes-contract.json
+docs/hermes-compass-prompt-budget.json
+docs/hermes-prompt-budget.json
+migrations/
+node_modules/
+package-lock.json
+schema.sql
+test-results/
+.wrangler/

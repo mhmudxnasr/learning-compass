@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { api, ApiError } from '../api'
 
 type HealthStatus = 'verified' | 'restricted' | 'unavailable' | 'unknown' | 'invalid'
@@ -22,10 +22,16 @@ type HealthLedger = {
 
 const statusCopy: Record<HealthStatus, { label: string; detail: string }> = {
   verified: { label: 'Verified', detail: 'The original source responded successfully.' },
-  restricted: { label: 'Restricted', detail: 'The source may require sign-in or be blocking automated checks. This is not a dead-link verdict.' },
+  restricted: {
+    label: 'Restricted',
+    detail: 'The source may require sign-in or be blocking automated checks. This is not a dead-link verdict.',
+  },
   unavailable: { label: 'Unavailable', detail: 'The source returned a confirmed not-found response.' },
   unknown: { label: 'Unknown', detail: 'The check was inconclusive. The URL has not been rewritten.' },
-  invalid: { label: 'Invalid URL', detail: 'The address is malformed, private, or redirected outside the safe public boundary.' },
+  invalid: {
+    label: 'Invalid URL',
+    detail: 'The address is malformed, private, or redirected outside the safe public boundary.',
+  },
 }
 
 const isHealthStatus = (value: unknown): value is HealthStatus => typeof value === 'string' && value in statusCopy
@@ -56,15 +62,23 @@ export function SourceHealthControl({
   const [working, setWorking] = useState<'check' | 'verify' | 'replace' | null>(null)
   const [error, setError] = useState('')
   const [candidate, setCandidate] = useState('')
-  const [verifiedCandidate, setVerifiedCandidate] = useState<{ source_url: string; expected_source_url: string; accepted: boolean; status: HealthStatus } | null>(null)
+  const [verifiedCandidate, setVerifiedCandidate] = useState<{
+    source_url: string
+    expected_source_url: string
+    accepted: boolean
+    status: HealthStatus
+  } | null>(null)
   const activeSourceId = useRef(sourceId)
   const sourceVersion = useRef(0)
   const reloadVersion = useRef(0)
   activeSourceId.current = sourceId
-  const operationIsCurrent = (requestedSourceId: string, version: number) =>
-    activeSourceId.current === requestedSourceId && sourceVersion.current === version
+  const operationIsCurrent = useCallback(
+    (requestedSourceId: string, version: number) =>
+      activeSourceId.current === requestedSourceId && sourceVersion.current === version,
+    [],
+  )
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
     const requestedSourceId = sourceId
     const sourceGeneration = sourceVersion.current
     const version = ++reloadVersion.current
@@ -77,7 +91,7 @@ export function SourceHealthControl({
       if (version !== reloadVersion.current || !operationIsCurrent(requestedSourceId, sourceGeneration)) return
       setError(reason instanceof Error ? reason.message : 'Source health could not be loaded.')
     }
-  }
+  }, [operationIsCurrent, sourceId])
 
   useEffect(() => {
     reloadVersion.current += 1
@@ -88,8 +102,11 @@ export function SourceHealthControl({
     setCandidate('')
     setVerifiedCandidate(null)
     if (supportsHealth) void reload()
-    return () => { sourceVersion.current += 1; reloadVersion.current += 1 }
-  }, [sourceId, sourceUrl])
+    return () => {
+      sourceVersion.current += 1
+      reloadVersion.current += 1
+    }
+  }, [reload, suppliedUrl, supportsHealth])
 
   const check = async () => {
     const requestedSourceId = sourceId
@@ -130,8 +147,14 @@ export function SourceHealthControl({
         timeoutMs: 15000,
       })
       if (!operationIsCurrent(requestedSourceId, version)) return
-      if (!isHealthStatus(result?.verification?.status)) throw new Error('Candidate verification returned an invalid status.')
-      setVerifiedCandidate({ source_url: result.source_url, expected_source_url: result.current_source_url, accepted: Boolean(result.accepted_for_replacement), status: result.verification.status })
+      if (!isHealthStatus(result?.verification?.status))
+        throw new Error('Candidate verification returned an invalid status.')
+      setVerifiedCandidate({
+        source_url: result.source_url,
+        expected_source_url: result.current_source_url,
+        accepted: Boolean(result.accepted_for_replacement),
+        status: result.verification.status,
+      })
     } catch (reason) {
       if (!operationIsCurrent(requestedSourceId, version)) return
       setError(reason instanceof Error ? reason.message : 'Candidate verification failed.')
@@ -149,7 +172,10 @@ export function SourceHealthControl({
     try {
       const result = await api<any>(`/recommendations/${encodeURIComponent(sourceId)}/source-url`, {
         method: 'PATCH',
-        body: JSON.stringify({ source_url: verifiedCandidate.source_url, expected_source_url: verifiedCandidate.expected_source_url }),
+        body: JSON.stringify({
+          source_url: verifiedCandidate.source_url,
+          expected_source_url: verifiedCandidate.expected_source_url,
+        }),
         queueOnNetworkError: false,
         timeoutMs: 15000,
       })
@@ -161,9 +187,12 @@ export function SourceHealthControl({
       await reload()
     } catch (reason) {
       if (!operationIsCurrent(requestedSourceId, version)) return
-      const detail = reason instanceof ApiError && reason.body?.verification?.status
-        ? `Replacement blocked: ${statusCopy[reason.body.verification.status as HealthStatus]?.detail || reason.message}`
-        : reason instanceof Error ? reason.message : 'Source replacement failed.'
+      const detail =
+        reason instanceof ApiError && reason.body?.verification?.status
+          ? `Replacement blocked: ${statusCopy[reason.body.verification.status as HealthStatus]?.detail || reason.message}`
+          : reason instanceof Error
+            ? reason.message
+            : 'Source replacement failed.'
       setError(detail)
     } finally {
       if (operationIsCurrent(requestedSourceId, version)) setWorking(null)
@@ -178,51 +207,134 @@ export function SourceHealthControl({
   if (!supportsHealth) return null
 
   if (compact) {
-    return <div class={`source-health-control is-compact state-${health?.status || 'unchecked'}`}>
-      <span class="source-health-state">
-        <i aria-hidden="true" />
-        <span>{health ? copy.label : 'Not checked'}</span>
-        {health?.last_checked_at && <small>{displayTime(health.last_checked_at)}</small>}
-      </span>
-      {problem && companionHref && <a class="folio-button" href={companionHref} target="_blank" rel="noreferrer">Open verified companion</a>}
-      <button type="button" class="folio-button" onClick={check} disabled={working !== null || !currentUrl}>{working === 'check' ? 'Checking…' : 'Check source'}</button>
-      {error && <small class="source-health-error" role="alert">{error}</small>}
-    </div>
+    return (
+      <div class={`source-health-control is-compact state-${health?.status || 'unchecked'}`}>
+        <span class="source-health-state">
+          <i aria-hidden="true" />
+          <span>{health ? copy.label : 'Not checked'}</span>
+          {health?.last_checked_at && <small>{displayTime(health.last_checked_at)}</small>}
+        </span>
+        {problem && companionHref && (
+          <a class="folio-button" href={companionHref} target="_blank" rel="noreferrer">
+            Open verified companion
+          </a>
+        )}
+        <button type="button" class="folio-button" onClick={check} disabled={working !== null || !currentUrl}>
+          {working === 'check' ? 'Checking…' : 'Check source'}
+        </button>
+        {error && (
+          <small class="source-health-error" role="alert">
+            {error}
+          </small>
+        )}
+      </div>
+    )
   }
 
-  return <section class={`source-health-control state-${health?.status || 'unchecked'}`} aria-label="Original source health">
-    <div class="source-health-heading">
-      <div>
-        <span class="folio-object-kicker">Original source health</span>
-        <h3>{health ? copy.label : 'Not checked'}</h3>
-        <p>{health ? copy.detail : 'Run an explicit check to record whether the current original can still be reached.'}</p>
+  return (
+    <section class={`source-health-control state-${health?.status || 'unchecked'}`} aria-label="Original source health">
+      <div class="source-health-heading">
+        <div>
+          <span class="folio-object-kicker">Original source health</span>
+          <h3>{health ? copy.label : 'Not checked'}</h3>
+          <p>
+            {health
+              ? copy.detail
+              : 'Run an explicit check to record whether the current original can still be reached.'}
+          </p>
+        </div>
+        <button type="button" class="folio-button" onClick={check} disabled={working !== null || !currentUrl}>
+          {working === 'check' ? 'Checking…' : 'Check current URL'}
+        </button>
       </div>
-      <button type="button" class="folio-button" onClick={check} disabled={working !== null || !currentUrl}>{working === 'check' ? 'Checking…' : 'Check current URL'}</button>
-    </div>
-    {health && <dl class="source-health-facts">
-      <div><dt>Last checked</dt><dd>{displayTime(health.last_checked_at)}</dd></div>
-      <div><dt>HTTP</dt><dd>{health.http_status || 'No conclusive response'}</dd></div>
-      <div><dt>Final URL</dt><dd>{health.final_url || health.checked_url}</dd></div>
-    </dl>}
-    {problem && companionHref && <p class="source-health-fallback"><a class="folio-button folio-button-primary" href={companionHref} target="_blank" rel="noreferrer">Open verified companion</a><span>The original remains unchanged.</span></p>}
-    <details class="source-health-repair">
-      <summary>Verify a replacement URL</summary>
-      <form onSubmit={verifyCandidate}>
-        <input type="url" value={candidate} onInput={(event) => { setCandidate((event.currentTarget as HTMLInputElement).value); setVerifiedCandidate(null) }} placeholder="https://…" aria-label="Candidate replacement URL" required />
-        <button class="folio-button" disabled={working !== null}>{working === 'verify' ? 'Verifying…' : 'Verify candidate'}</button>
-      </form>
-      {verifiedCandidate && <div class={`source-health-candidate state-${verifiedCandidate.status}`}>
-        <p><strong>{statusCopy[verifiedCandidate.status].label}</strong> · {statusCopy[verifiedCandidate.status].detail}</p>
-        {verifiedCandidate.accepted && <button type="button" class="folio-button folio-button-primary" onClick={replace} disabled={working !== null}>{working === 'replace' ? 'Replacing…' : 'Use this verified URL'}</button>}
-      </div>}
-    </details>
-    {(ledger?.attempts.length || ledger?.replacements.length) ? <details class="source-health-history">
-      <summary>Check and replacement history</summary>
-      <ol>
-        {(ledger?.attempts || []).map((attempt) => <li key={attempt.id}><strong>{statusCopy[attempt.status].label}</strong><span>{attempt.purpose} · {displayTime(attempt.checked_at)}{attempt.http_status ? ` · HTTP ${attempt.http_status}` : ''}</span></li>)}
-        {(ledger?.replacements || []).map((replacement) => <li key={replacement.id}><strong>URL replaced</strong><span>{displayTime(replacement.replaced_at)} · previous URL preserved</span></li>)}
-      </ol>
-    </details> : null}
-    {error && <p class="source-health-error" role="alert">{error}</p>}
-  </section>
+      {health && (
+        <dl class="source-health-facts">
+          <div>
+            <dt>Last checked</dt>
+            <dd>{displayTime(health.last_checked_at)}</dd>
+          </div>
+          <div>
+            <dt>HTTP</dt>
+            <dd>{health.http_status || 'No conclusive response'}</dd>
+          </div>
+          <div>
+            <dt>Final URL</dt>
+            <dd>{health.final_url || health.checked_url}</dd>
+          </div>
+        </dl>
+      )}
+      {problem && companionHref && (
+        <p class="source-health-fallback">
+          <a class="folio-button folio-button-primary" href={companionHref} target="_blank" rel="noreferrer">
+            Open verified companion
+          </a>
+          <span>The original remains unchanged.</span>
+        </p>
+      )}
+      <details class="source-health-repair">
+        <summary>Verify a replacement URL</summary>
+        <form onSubmit={verifyCandidate}>
+          <input
+            type="url"
+            value={candidate}
+            onInput={(event) => {
+              setCandidate((event.currentTarget as HTMLInputElement).value)
+              setVerifiedCandidate(null)
+            }}
+            placeholder="https://…"
+            aria-label="Candidate replacement URL"
+            required
+          />
+          <button class="folio-button" disabled={working !== null}>
+            {working === 'verify' ? 'Verifying…' : 'Verify candidate'}
+          </button>
+        </form>
+        {verifiedCandidate && (
+          <div class={`source-health-candidate state-${verifiedCandidate.status}`}>
+            <p>
+              <strong>{statusCopy[verifiedCandidate.status].label}</strong> ·{' '}
+              {statusCopy[verifiedCandidate.status].detail}
+            </p>
+            {verifiedCandidate.accepted && (
+              <button
+                type="button"
+                class="folio-button folio-button-primary"
+                onClick={replace}
+                disabled={working !== null}
+              >
+                {working === 'replace' ? 'Replacing…' : 'Use this verified URL'}
+              </button>
+            )}
+          </div>
+        )}
+      </details>
+      {ledger?.attempts.length || ledger?.replacements.length ? (
+        <details class="source-health-history">
+          <summary>Check and replacement history</summary>
+          <ol>
+            {(ledger?.attempts || []).map((attempt) => (
+              <li key={attempt.id}>
+                <strong>{statusCopy[attempt.status].label}</strong>
+                <span>
+                  {attempt.purpose} · {displayTime(attempt.checked_at)}
+                  {attempt.http_status ? ` · HTTP ${attempt.http_status}` : ''}
+                </span>
+              </li>
+            ))}
+            {(ledger?.replacements || []).map((replacement) => (
+              <li key={replacement.id}>
+                <strong>URL replaced</strong>
+                <span>{displayTime(replacement.replaced_at)} · previous URL preserved</span>
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
+      {error && (
+        <p class="source-health-error" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
+  )
 }

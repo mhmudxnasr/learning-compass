@@ -13,37 +13,43 @@ export type ParsedFeed = {
   entries: FeedEntry[]
 }
 
-const decodeXml = (value: string) => value
-  .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-  .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
-  .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-  .replace(/&(?:nbsp|#160);/gi, ' ')
-  .replace(/&amp;/gi, '&')
-  .replace(/&lt;/gi, '<')
-  .replace(/&gt;/gi, '>')
-  .replace(/&quot;/gi, '"')
-  .replace(/&apos;/gi, "'")
+const decodeXml = (value: string) =>
+  value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&(?:nbsp|#160);/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
 
 const tag = (block: string, names: string[]) => {
   for (const name of names) {
     const qualified = name.includes(':') ? name.replace(':', '\\:') : `(?:[\\w.-]+:)?${name}`
-    const match = block.match(new RegExp(`<${qualified}\\b(?![^>]*\\/\\s*>)[^>]*>([\\s\\S]*?)<\\/${qualified}\\s*>`, 'i'))
+    const match = block.match(
+      new RegExp(`<${qualified}\\b(?![^>]*\\/\\s*>)[^>]*>([\\s\\S]*?)<\\/${qualified}\\s*>`, 'i'),
+    )
     if (match) return decodeXml(match[1]).trim()
   }
   return ''
 }
 
-const cleanText = (value: string, max = 500) => decodeXml(value)
-  .replace(/<[^>]+>/g, ' ')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .slice(0, max)
+const cleanText = (value: string, max = 500) =>
+  decodeXml(value)
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max)
 
 const absoluteHttpUrl = (value: string, base: string) => {
   try {
     const url = new URL(value.trim(), base)
     return /^https?:$/.test(url.protocol) ? url.toString() : ''
-  } catch { return '' }
+  } catch {
+    return ''
+  }
 }
 
 const atomLink = (block: string) => {
@@ -97,10 +103,12 @@ export function parseFeed(xml: string, feedUrl: string): ParsedFeed {
 }
 
 export function validateFeedUrl(value: string) {
-  try { return validatePublicHttpUrl(value) }
-  catch (error) {
-    if (error instanceof Error && error.message === 'private_or_local_url') throw new Error('Private or local feed URLs are not allowed')
-    throw new Error('Enter a valid public HTTP or HTTPS feed URL')
+  try {
+    return validatePublicHttpUrl(value)
+  } catch (error) {
+    if (error instanceof Error && error.message === 'private_or_local_url')
+      throw new Error('Private or local feed URLs are not allowed', { cause: error })
+    throw new Error('Enter a valid public HTTP or HTTPS feed URL', { cause: error })
   }
 }
 import { validatePublicHttpUrl } from './public-url.ts'

@@ -26,15 +26,18 @@ export async function startLearningSession(
         target_artifact_id: targetArtifactId,
       }),
     })
-    localStorage.setItem('tm-active-session', JSON.stringify({
-      id: result.session_id,
-      recommendationId: item.id,
-      title: item.video_title || item.title,
-      sourceUrl: href,
-      threadId: item.thread_id || null,
-      targetKind,
-      targetArtifactId: targetArtifactId || null,
-    }))
+    localStorage.setItem(
+      'tm-active-session',
+      JSON.stringify({
+        id: result.session_id,
+        recommendationId: item.id,
+        title: item.video_title || item.title,
+        sourceUrl: href,
+        threadId: item.thread_id || null,
+        targetKind,
+        targetArtifactId: targetArtifactId || null,
+      }),
+    )
     if (popup) popup.location.replace(href)
     else window.location.assign(href)
   } catch (error) {
@@ -46,7 +49,11 @@ export async function startLearningSession(
 export async function triageCapture(id: string, action: 'queue' | 'exclude', overrideQueueCap = false) {
   return api<{ ok: boolean; state?: string; thread_id?: string }>(`/capture/${encodeURIComponent(id)}/triage`, {
     method: 'POST',
-    body: JSON.stringify({ action, override_queue_cap: overrideQueueCap, reason: action === 'exclude' ? 'inbox_exclusion' : undefined }),
+    body: JSON.stringify({
+      action,
+      override_queue_cap: overrideQueueCap,
+      reason: action === 'exclude' ? 'inbox_exclusion' : undefined,
+    }),
   })
 }
 

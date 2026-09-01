@@ -40,7 +40,9 @@ const artifactIsNewer = (candidate: Row, current: Row) => {
 
 export function resolveBookReadingState(book: Row): BookReadingState {
   const metadata = parseObject(book.source_metadata_json ?? book.source_metadata)
-  const explicit = String(metadata.book_reading_state || '').trim().toLowerCase()
+  const explicit = String(metadata.book_reading_state || '')
+    .trim()
+    .toLowerCase()
   if (explicit === 'saved' || explicit === 'reading' || explicit === 'finished') return explicit
   if (book.status === 'consumed' || book.learning_state === 'completed') return 'finished'
   if (book.learning_state === 'in_progress') return 'reading'
@@ -53,7 +55,9 @@ export function resolveBookPrimary(book: Row) {
 }
 
 export function isSyntheticWholeBookChapter(row: Row) {
-  const key = String(row.chapter_key ?? row.key ?? '').trim().toLowerCase()
+  const key = String(row.chapter_key ?? row.key ?? '')
+    .trim()
+    .toLowerCase()
   const position = Number(row.position ?? row.number ?? row.chapter_number ?? 0)
   return key === 'book' && position === 0
 }
@@ -61,8 +65,13 @@ export function isSyntheticWholeBookChapter(row: Row) {
 export function chapterMetadataFromArtifact(metadata: Row, requestedKey: string, fallbackPosition: number) {
   const key = String(metadata.chapter_key || '').trim()
   if (!key || key !== requestedKey || isSyntheticWholeBookChapter(metadata)) return null
-  const number = positiveNumber(metadata.position, metadata.number, metadata.chapter_number, key.match(/^chapter-(\d+)$/i)?.[1]) || fallbackPosition
-  const title = String(metadata.chapter_title || metadata.title || `Chapter ${number}`).trim().slice(0, 500) || `Chapter ${number}`
+  const number =
+    positiveNumber(metadata.position, metadata.number, metadata.chapter_number, key.match(/^chapter-(\d+)$/i)?.[1]) ||
+    fallbackPosition
+  const title =
+    String(metadata.chapter_title || metadata.title || `Chapter ${number}`)
+      .trim()
+      .slice(0, 500) || `Chapter ${number}`
   return { key, title, position: number }
 }
 
@@ -107,7 +116,14 @@ export function normalizeBookChapters(chapterRows: Row[] = [], artifactRows: Row
 
   for (const artifact of artifactRows) {
     const metadata = parseObject(artifact.metadata_json ?? artifact.metadata)
-    if (['staged', 'superseded'].includes(String(metadata.publication_state || '').trim().toLowerCase())) continue
+    if (
+      ['staged', 'superseded'].includes(
+        String(metadata.publication_state || '')
+          .trim()
+          .toLowerCase(),
+      )
+    )
+      continue
     if (!metadata.chapter_key || isSyntheticWholeBookChapter(metadata)) continue
     const role = String(metadata.role || '').toLowerCase()
     if (role !== 'html' && role !== 'pdf') continue
@@ -136,10 +152,14 @@ export function normalizeBookChapters(chapterRows: Row[] = [], artifactRows: Row
       else legacy.push(artifact)
     }
     const completePairs = [...pairs.values()]
-      .filter((pair) => pair.some((artifact) => artifact.metadata?.role === 'html') && pair.some((artifact) => artifact.metadata?.role === 'pdf'))
+      .filter(
+        (pair) =>
+          pair.some((artifact) => artifact.metadata?.role === 'html') &&
+          pair.some((artifact) => artifact.metadata?.role === 'pdf'),
+      )
       .sort((left, right) => {
-        const newestLeft = [...left].sort((a, b) => artifactIsNewer(a, b) ? -1 : artifactIsNewer(b, a) ? 1 : 0)[0]
-        const newestRight = [...right].sort((a, b) => artifactIsNewer(a, b) ? -1 : artifactIsNewer(b, a) ? 1 : 0)[0]
+        const newestLeft = [...left].sort((a, b) => (artifactIsNewer(a, b) ? -1 : artifactIsNewer(b, a) ? 1 : 0))[0]
+        const newestRight = [...right].sort((a, b) => (artifactIsNewer(a, b) ? -1 : artifactIsNewer(b, a) ? 1 : 0))[0]
         return artifactIsNewer(newestLeft, newestRight) ? -1 : artifactIsNewer(newestRight, newestLeft) ? 1 : 0
       })
     if (completePairs[0]) {
@@ -149,7 +169,8 @@ export function normalizeBookChapters(chapterRows: Row[] = [], artifactRows: Row
     }
     for (const artifact of legacy) {
       const role = String(artifact.metadata?.role || '').toLowerCase()
-      if ((role === 'html' || role === 'pdf') && (!chapter[role] || artifactIsNewer(artifact, chapter[role]))) chapter[role] = artifact
+      if ((role === 'html' || role === 'pdf') && (!chapter[role] || artifactIsNewer(artifact, chapter[role])))
+        chapter[role] = artifact
     }
   }
 
@@ -166,7 +187,8 @@ export function projectBook(book: Row, chapterRows: Row[] = [], artifactRows: Ro
   const completed = chapters.filter((chapter) => chapter.completed).length
   const total = chapters.length
   const percent = total ? Math.round((completed / total) * 100) : 0
-  const nextChapter = chapters.find((chapter) => !chapter.completed) || (chapters.length ? chapters[chapters.length - 1] : null)
+  const nextChapter =
+    chapters.find((chapter) => !chapter.completed) || (chapters.length ? chapters[chapters.length - 1] : null)
   return {
     reading_state: resolveBookReadingState(book),
     is_primary: resolveBookPrimary(book),

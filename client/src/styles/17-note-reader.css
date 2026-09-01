@@ -1,0 +1,740 @@
+/* ==========================================================================
+   NOTE READING STUDIO (DETAIL WORKSPACE)
+   ========================================================================== */
+
+.note-reading-studio-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding-bottom: 80px;
+}
+
+/* Top Sticky Navigation Bar */
+.note-reading-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-radius: var(--studio-radius-control);
+  background: color-mix(in srgb, var(--studio-shell) 88%, transparent);
+  backdrop-filter: blur(var(--studio-glass-blur));
+  border: 1px solid var(--studio-seam);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+  width: 100%;
+}
+
+.note-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.note-back-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--studio-seam);
+  background: var(--studio-canvas);
+  color: var(--studio-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.15s ease;
+  white-space: nowrap;
+}
+
+.note-back-nav-btn:hover {
+  background: var(--studio-ledger);
+  border-color: var(--studio-cypress);
+}
+
+.note-topbar-crumb-sep {
+  color: var(--studio-muted);
+  font-size: 12px;
+}
+
+.note-topbar-branch {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--studio-cypress);
+  white-space: nowrap;
+}
+
+.note-topbar-current-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--studio-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.note-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: var(--studio-radius-control);
+  text-decoration: none;
+}
+
+.note-edit-btn {
+  background: var(--studio-cypress);
+  color: var(--studio-action-ink, #ffffff);
+}
+
+/* Two-Column Reading Layout */
+.note-reading-content-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 28px;
+  align-items: start;
+  width: 100%;
+}
+
+@media (max-width: 1020px) {
+  .note-reading-content-columns {
+    grid-template-columns: 1fr;
+  }
+  .note-outline-rail {
+    display: none;
+  }
+}
+
+/* Editorial Document Sheet */
+.note-reading-sheet {
+  background: var(--studio-canvas);
+  border: 1px solid var(--studio-seam);
+
+  border-radius: var(--studio-radius-panel);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
+  padding: clamp(28px, 4vw, 56px) clamp(20px, 5vw, 64px);
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+/* Sheet Hero */
+.note-sheet-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--studio-seam);
+}
+
+.note-sheet-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.note-sheet-title {
+  margin: 0;
+  font-family: var(--font-display), 'Noto Naskh Arabic', Georgia, serif;
+  font-size: clamp(26px, 4vw, 42px);
+  font-weight: 700;
+  color: var(--studio-ink);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.note-sheet-title[dir='rtl'] {
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.note-sheet-meta-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--studio-muted);
+}
+
+.note-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.note-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--studio-cypress);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.note-source-link:hover {
+  text-decoration: underline;
+}
+
+/* Sections Flow */
+.note-sheet-sections-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 44px;
+}
+
+.note-sheet-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.note-sheet-section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--studio-cypress) 20%, var(--studio-seam));
+}
+
+.note-section-index-pill {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--studio-cypress) 12%, transparent);
+  color: var(--studio-cypress);
+}
+
+.note-section-title {
+  margin: 0;
+  font-family: var(--font-display), 'Noto Naskh Arabic', Georgia, serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--studio-ink);
+}
+
+.note-sheet-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* --- Reader Block Styling --- */
+
+/* 1. Executive Synthesis Card */
+.reader-synthesis-card {
+  padding: 20px 24px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--studio-lichen) 45%, var(--studio-canvas));
+  border: 1px solid color-mix(in srgb, var(--studio-cypress) 35%, transparent);
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 6px 0 14px;
+}
+
+.reader-synthesis-header {
+  display: flex;
+  align-items: center;
+}
+
+.reader-synthesis-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--studio-cypress);
+}
+
+.reader-synthesis-body {
+  color: var(--studio-ink);
+  font-size: 14.5px;
+  line-height: 1.68;
+  font-family: var(--font-ui);
+}
+
+/* 2. Source Transition Divider */
+.reader-source-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 16px 0;
+}
+
+.reader-source-divider-line {
+  flex: 1;
+  height: 1px;
+  background: var(--studio-seam);
+}
+
+.reader-source-divider-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--studio-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* 3. Subheadings */
+.reader-heading {
+  margin: 18px 0 6px;
+  font-family: var(--font-display), 'Noto Naskh Arabic', Georgia, serif;
+  color: var(--studio-ink);
+  line-height: 1.3;
+}
+
+.reader-heading.level-2 {
+  font-size: 24px;
+  font-weight: 750;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--studio-seam);
+}
+
+.reader-heading.level-3 {
+  font-size: 19px;
+  font-weight: 700;
+  padding-inline-start: 10px;
+}
+
+.reader-heading.level-4 {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--studio-secondary);
+}
+
+/* 4. Definition / Concept Card */
+.reader-definition-card {
+  padding: 16px 20px;
+  border-radius: 8px;
+  background: var(--studio-ledger);
+  border: 1px solid var(--studio-seam);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reader-definition-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--studio-cypress) 12%, transparent);
+  color: var(--studio-cypress);
+  font-family: var(--font-display), 'Noto Naskh Arabic', Georgia, serif;
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+.reader-definition-explanation {
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--studio-ink);
+  font-family: var(--font-reading), 'Noto Naskh Arabic', Georgia, serif;
+}
+
+/* 5. Case Study / Story Card */
+.reader-case-study-card {
+  padding: 20px 24px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--studio-map) 8%, var(--studio-canvas));
+  border: 1px solid color-mix(in srgb, var(--studio-map) 30%, transparent);
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.reader-case-study-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reader-case-study-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--studio-map);
+}
+
+.reader-case-study-title {
+  margin: 0;
+  font-family: var(--font-display), 'Noto Naskh Arabic', Georgia, serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--studio-ink);
+}
+
+.reader-case-study-body {
+  font-family: var(--font-reading), 'Noto Naskh Arabic', Georgia, serif;
+  font-size: 15px;
+  line-height: 1.82;
+  color: var(--studio-ink);
+}
+
+/* 6. Callouts (Warnings & Tips) */
+.reader-callout-card {
+  padding: 16px 20px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.reader-callout-card.type-warning {
+  background: color-mix(in srgb, var(--studio-ochre) 12%, var(--studio-canvas));
+  border: 1px solid color-mix(in srgb, var(--studio-ochre) 35%, transparent);
+}
+
+.reader-callout-card.type-warning .reader-callout-head {
+  color: var(--studio-ochre);
+}
+
+.reader-callout-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.reader-callout-body {
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--studio-ink);
+}
+
+/* 7. Blockquotes */
+.reader-blockquote {
+  margin: 14px 0;
+  padding: 10px 20px;
+
+  background: color-mix(in srgb, var(--studio-cypress) 4%, transparent);
+  border-radius: 0 8px 8px 0;
+  color: var(--studio-secondary);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.75;
+  font-family: var(--font-reading), 'Noto Naskh Arabic', Georgia, serif;
+}
+
+/* 8. Lists & Paragraphs */
+.reader-paragraph {
+  margin: 0;
+  font-family: var(--font-reading), 'Noto Naskh Arabic', Georgia, serif;
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--studio-ink);
+}
+
+.reader-paragraph[dir='rtl'] {
+  line-height: 1.88;
+  font-size: 16.5px;
+}
+
+.reader-list {
+  margin: 0;
+  padding-inline-start: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reader-list li {
+  font-family: var(--font-reading), 'Noto Naskh Arabic', Georgia, serif;
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--studio-ink);
+}
+
+.inline-note-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--studio-cypress);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Document Footer & Recall Bridge */
+.note-sheet-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-top: 28px;
+  border-top: 1px solid var(--studio-seam);
+}
+
+.note-recall-bridge-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 26px;
+  border-radius: var(--studio-radius-card);
+  background: color-mix(in srgb, var(--studio-cypress) 8%, var(--studio-canvas));
+  border: 1px solid color-mix(in srgb, var(--studio-cypress) 25%, transparent);
+}
+
+.note-recall-bridge-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--studio-cypress);
+  color: var(--studio-action-ink, #ffffff);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.note-recall-bridge-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.note-recall-bridge-info h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--studio-ink);
+}
+
+.note-recall-bridge-info p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--studio-secondary);
+  line-height: 1.5;
+}
+
+.note-recall-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--studio-radius-control);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.note-pagination-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.note-pagination-link {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--studio-seam);
+  background: var(--studio-canvas);
+  text-decoration: none;
+  color: inherit;
+  max-width: 45%;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.note-pagination-link:hover {
+  border-color: var(--studio-cypress);
+  background: var(--studio-ledger);
+}
+
+.note-pagination-link.next {
+  text-align: right;
+  margin-left: auto;
+}
+
+.note-pagination-dir {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--studio-cypress);
+  text-transform: uppercase;
+}
+
+.note-pagination-title {
+  font-size: 13.5px;
+  color: var(--studio-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Outline / Sticky Sidebar Rail */
+.note-outline-rail {
+  position: sticky;
+  top: 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.note-toc-panel,
+.note-related-panel {
+  padding: 18px 20px;
+  border-radius: var(--studio-radius-card);
+  border: 1px solid var(--studio-seam);
+  background: var(--studio-canvas);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.note-toc-head,
+.note-related-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--studio-muted);
+}
+
+.note-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.note-toc-item a {
+  display: block;
+  font-size: 12.5px;
+  color: var(--studio-secondary);
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition:
+    color 0.12s ease,
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease,
+    opacity 0.12s ease,
+    transform 0.12s ease;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-toc-item.level-2 a {
+  padding-left: 14px;
+  font-size: 12px;
+}
+
+.note-toc-item.level-3 a {
+  padding-left: 20px;
+  font-size: 11.5px;
+  color: var(--studio-muted);
+}
+
+.note-toc-item:hover a {
+  color: var(--studio-cypress);
+  background: var(--studio-ledger);
+}
+
+.note-toc-item.active a {
+  color: var(--studio-cypress);
+  background: color-mix(in srgb, var(--studio-cypress) 10%, transparent);
+  font-weight: 700;
+}
+
+.note-related-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.note-related-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-decoration: none;
+  color: inherit;
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: background 0.12s ease;
+}
+
+.note-related-link:hover {
+  background: var(--studio-ledger);
+}
+
+.note-related-link-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--studio-ink);
+  line-height: 1.3;
+}
+
+.note-related-link small {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--studio-muted);
+}

@@ -14,15 +14,31 @@ class PersonalUrlEditDatabase {
   prepare(sql: string) {
     const statement = {
       args: [] as unknown[],
-      bind: (...args: unknown[]) => { statement.args = args; return statement },
+      bind: (...args: unknown[]) => {
+        statement.args = args
+        return statement
+      },
       first: async () => {
-        if (sql.includes('FROM personal_library_items p')) return {
-          recommendation_id: 'personal-1', item_type: 'movie', personal_state: 'planned',
-          title: 'A film', creator: 'Director', video_url: 'https://example.com/original',
-          branch_id: 'film', branch_label: 'Film', branch_status: 'active',
-          release_year: null, duration_minutes: null, progress_current: null, progress_total: null,
-          progress_unit: 'minutes', user_score: null, tags_json: '[]', personal_note: '',
-        }
+        if (sql.includes('FROM personal_library_items p'))
+          return {
+            recommendation_id: 'personal-1',
+            item_type: 'movie',
+            personal_state: 'planned',
+            title: 'A film',
+            creator: 'Director',
+            video_url: 'https://example.com/original',
+            branch_id: 'film',
+            branch_label: 'Film',
+            branch_status: 'active',
+            release_year: null,
+            duration_minutes: null,
+            progress_current: null,
+            progress_total: null,
+            progress_unit: 'minutes',
+            user_score: null,
+            tags_json: '[]',
+            personal_note: '',
+          }
         if (sql.includes('SELECT progress_current')) return { progress_current: null, progress_total: null }
         if (sql.includes('SELECT n.id')) return { id: 'film', label: 'Film', status: 'active' }
         if (sql.includes('SELECT video_url')) return { video_url: 'https://example.com/original' }
@@ -31,7 +47,10 @@ class PersonalUrlEditDatabase {
     }
     return statement
   }
-  async batch(statements: unknown[]) { this.batches.push(statements); return [] }
+  async batch(statements: unknown[]) {
+    this.batches.push(statements)
+    return []
+  }
 }
 
 test('personal-library input normalizes typed progress, direct ratings, and bounded tags', () => {
@@ -69,9 +88,25 @@ test('personal-library input normalizes typed progress, direct ratings, and boun
 })
 
 test('personal-library validation protects book identity and progress bounds', () => {
-  assert.deepEqual(normalizePersonalLibraryInput({ title: 'A book', item_type: 'book', state: 'planned', branch_id: 'books' }), { ok: false, error: 'author required for books' })
-  assert.deepEqual(normalizePersonalLibraryInput({ title: 'A show', item_type: 'series', state: 'planned', branch_id: 'tv', progress_current: 11, progress_total: 10 }), { ok: false, error: 'progress_current cannot exceed progress_total' })
-  assert.deepEqual(normalizePersonalLibraryInput({ title: 'A movie', item_type: 'movie', state: 'planned' }), { ok: false, error: 'branch_id required' })
+  assert.deepEqual(
+    normalizePersonalLibraryInput({ title: 'A book', item_type: 'book', state: 'planned', branch_id: 'books' }),
+    { ok: false, error: 'author required for books' },
+  )
+  assert.deepEqual(
+    normalizePersonalLibraryInput({
+      title: 'A show',
+      item_type: 'series',
+      state: 'planned',
+      branch_id: 'tv',
+      progress_current: 11,
+      progress_total: 10,
+    }),
+    { ok: false, error: 'progress_current cannot exceed progress_total' },
+  )
+  assert.deepEqual(normalizePersonalLibraryInput({ title: 'A movie', item_type: 'movie', state: 'planned' }), {
+    ok: false,
+    error: 'branch_id required',
+  })
 })
 
 test('personal-library identity remains deterministic for URL-free and Unicode records', () => {
@@ -111,7 +146,10 @@ test('the API, global Capture, and Settings studio expose one editable personal-
   const captureApi = readFileSync(new URL('../../src/api/capture.ts', import.meta.url), 'utf8')
   const recommendationsApi = readFileSync(new URL('../../src/api/recommendations.ts', import.meta.url), 'utf8')
   const captureDialog = readFileSync(new URL('../../client/src/shell/CaptureDialog.tsx', import.meta.url), 'utf8')
-  const studio = readFileSync(new URL('../../client/src/workspaces/settings/PersonalDataStudio.tsx', import.meta.url), 'utf8')
+  const studio = readFileSync(
+    new URL('../../client/src/workspaces/settings/PersonalDataStudio.tsx', import.meta.url),
+    'utf8',
+  )
   assert.match(captureApi, /app\.get\('\/personal'/)
   assert.match(captureApi, /app\.post\('\/personal'/)
   assert.match(captureApi, /app\.patch\('\/personal\/:id'/)
@@ -126,11 +164,17 @@ test('the API, global Capture, and Settings studio expose one editable personal-
   assert.match(studio, /method: 'PATCH'/)
   assert.match(studio, /Canonical link changes use the source record’s verified replacement flow/)
   assert.doesNotMatch(studio, /url: draft\.url/)
-  assert.doesNotMatch(recommendationsApi.match(/app\.post\('\/books'[\s\S]*?\n\}\)\n\napp\.post\('\/push'/)?.[0] || '', /video_url=excluded\.video_url/)
+  assert.doesNotMatch(
+    recommendationsApi.match(/app\.post\('\/books'[\s\S]*?\n\}\)\n\napp\.post\('\/push'/)?.[0] || '',
+    /video_url=excluded\.video_url/,
+  )
 })
 
 test('book-state reconciliation repairs consumed books imported before explicit metadata existed', () => {
-  const migration = readFileSync(new URL('../../migrations/0065_reconcile_personal_book_states.sql', import.meta.url), 'utf8')
+  const migration = readFileSync(
+    new URL('../../migrations/0065_reconcile_personal_book_states.sql', import.meta.url),
+    'utf8',
+  )
   assert.match(migration, /r\.status = 'consumed'/)
   assert.match(migration, /m\.learning_state = 'completed'/)
   assert.match(migration, /book_reading_state.*finished/)

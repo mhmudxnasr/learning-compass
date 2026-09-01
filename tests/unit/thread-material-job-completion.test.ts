@@ -11,10 +11,13 @@ test('lesson material completion is a read-only ready-pick or abstention receipt
   assert.match(route, /lesson_material_output_forbidden/)
   assert.match(route, /It cannot attach, queue, start, or advance anything/)
   assert.match(route, /lesson_material_abstention_requires_reason/)
-  assert.match(route, /new Set\(\['worker', 'outcome', 'pick_id', 'recommendation_id'/)
+  assert.match(route, /new Set\(\s*\[\s*'worker',\s*'outcome',\s*'pick_id',\s*'recommendation_id'/)
   assert.match(route, /recommendationId !== String\(pick\.recommendation_id/)
   assert.match(route, /JOIN compass_candidates c ON c\.pick_id=p\.id AND c\.is_winner=1/)
-  assert.match(route, /JOIN recommendation_meta m ON m\.recommendation_id=p\.recommendation_id AND m\.branch_id=c\.branch_id/)
+  assert.match(
+    route,
+    /JOIN recommendation_meta m ON m\.recommendation_id=p\.recommendation_id AND m\.branch_id=c\.branch_id/,
+  )
   assert.match(route, /p\.workflow_scope='lesson_material' AND p\.workflow_request_id=\?/)
   assert.match(route, /bind\(pickId, job\.id\)/)
   assert.match(route, /p\.status='ready'/)

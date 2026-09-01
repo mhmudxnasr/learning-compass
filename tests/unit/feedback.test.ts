@@ -4,21 +4,24 @@ import test from 'node:test'
 import { feedbackLifecycle, feedbackMetadata, normalizeStructuredFeedback } from '../../src/services/feedback.ts'
 
 test('structured feedback normalizes completion, tags, effort, and duration', () => {
-  assert.deepEqual(normalizeStructuredFeedback({
-    completion_state: 'stopped',
-    reason_tags: ['Too Advanced', 'too-advanced', 'wrong topic', ''],
-    expected: '  A practical explanation.  ',
-    actual: '  Too abstract. ',
-    effort: 'deep',
-    length_minutes: '42.4',
-  }), {
-    completion_state: 'stopped',
-    reason_tags: ['too_advanced', 'wrong_topic'],
-    expected: 'A practical explanation.',
-    actual: 'Too abstract.',
-    effort: 'deep',
-    length_minutes: 42,
-  })
+  assert.deepEqual(
+    normalizeStructuredFeedback({
+      completion_state: 'stopped',
+      reason_tags: ['Too Advanced', 'too-advanced', 'wrong topic', ''],
+      expected: '  A practical explanation.  ',
+      actual: '  Too abstract. ',
+      effort: 'deep',
+      length_minutes: '42.4',
+    }),
+    {
+      completion_state: 'stopped',
+      reason_tags: ['too_advanced', 'wrong_topic'],
+      expected: 'A practical explanation.',
+      actual: 'Too abstract.',
+      effort: 'deep',
+      length_minutes: 42,
+    },
+  )
 })
 
 test('stopped feedback exits Queue instead of becoming in progress', () => {
@@ -32,7 +35,7 @@ test('stopped feedback exits Queue instead of becoming in progress', () => {
   })
   const product = readFileSync(new URL('../../src/api/product.ts', import.meta.url), 'utf8')
   assert.equal((product.match(/feedbackLifecycle\(structured\.completion_state\)/g) || []).length, 2)
-  assert.match(product, /if \(complete \|\| stopped\).*UPDATE compass_picks/)
+  assert.match(product, /if \(complete \|\| stopped\)[\s\S]*?UPDATE compass_picks/)
 })
 
 test('feedback metadata preserves shared fields and route context', () => {

@@ -57,11 +57,15 @@ function createWorkerHarness() {
   let uuid = 0
   const caches = {
     open: async (name: string) => {
-      if (!cacheMap.has(name)) cacheMap.set(name, new MemoryCache(
-        name,
-        (cacheName, key) => putFailure?.(cacheName, key),
-        (cache, key) => afterPut?.(cache, key),
-      ))
+      if (!cacheMap.has(name))
+        cacheMap.set(
+          name,
+          new MemoryCache(
+            name,
+            (cacheName, key) => putFailure?.(cacheName, key),
+            (cache, key) => afterPut?.(cache, key),
+          ),
+        )
       return cacheMap.get(name)!
     },
     keys: async () => [...cacheMap.keys()],
@@ -122,8 +126,16 @@ function createWorkerHarness() {
     let reply: unknown
     handlers.get('message')!({
       data,
-      ports: [{ postMessage: (value: unknown) => { reply = value } }],
-      waitUntil: (task: Promise<unknown>) => { waitUntil = task },
+      ports: [
+        {
+          postMessage: (value: unknown) => {
+            reply = value
+          },
+        },
+      ],
+      waitUntil: (task: Promise<unknown>) => {
+        waitUntil = task
+      },
     })
     assert.ok(waitUntil, 'service worker message must extend its lifetime')
     await waitUntil
@@ -135,7 +147,9 @@ function createWorkerHarness() {
     const url = new URL(path, ORIGIN)
     handlers.get('fetch')!({
       request: { method: 'GET', mode, destination: mode === 'navigate' ? 'document' : '', url: url.href },
-      respondWith: (result: Promise<Response | undefined> | Response | undefined) => { response = Promise.resolve(result) },
+      respondWith: (result: Promise<Response | undefined> | Response | undefined) => {
+        response = Promise.resolve(result)
+      },
     })
     return response ? await response : undefined
   }
@@ -147,24 +161,22 @@ function createWorkerHarness() {
     caches,
     cacheMap,
     fetchCount: () => fetchCount,
-    failPutsWith: (failure: ((cacheName: string, key: string) => unknown) | null) => { putFailure = failure },
-    afterPuts: (effect: ((cache: MemoryCache, key: string) => void) | null) => { afterPut = effect },
+    failPutsWith: (failure: ((cacheName: string, key: string) => unknown) | null) => {
+      putFailure = failure
+    },
+    afterPuts: (effect: ((cache: MemoryCache, key: string) => void) | null) => {
+      afterPut = effect
+    },
     index: async () => {
       const response = await (await caches.open(INDEX_CACHE)).match(INDEX_URL)
-      return response ? await response.json() as Record<string, any> : {}
+      return response ? ((await response.json()) as Record<string, any>) : {}
     },
   }
 }
 
 const byteSize = (body: string) => new TextEncoder().encode(body).byteLength
 
-function artifact(
-  role: 'html' | 'pdf',
-  artifactId: string,
-  pairId: string,
-  body: string,
-  groupId = 'source-1',
-) {
+function artifact(role: 'html' | 'pdf', artifactId: string, pairId: string, body: string, groupId = 'source-1') {
   const sizeBytes = byteSize(body)
   return {
     resource: {
@@ -203,7 +215,13 @@ function pack(version: string, pairId = version) {
     snapshot,
   }
   return {
-    request: { id: 'source:source-1', title: 'Source one', scope: 'source', version, resources: [html.resource, pdf.resource, data] },
+    request: {
+      id: 'source:source-1',
+      title: 'Source one',
+      scope: 'source',
+      version,
+      resources: [html.resource, pdf.resource, data],
+    },
     responses: [html, pdf],
     expectedSize: html.resource.sizeBytes + pdf.resource.sizeBytes + data.sizeBytes,
   }
@@ -232,19 +250,40 @@ test('service worker saves an exact coherent pack, detects eviction and superses
   assert.equal(saved.resourceCount, 3)
 
   harness.network.clear()
-  assert.equal(await (await harness.request(first.responses[0].resource.url, 'navigate'))!.text(), '<!doctype html><p>v1</p>')
-  assert.equal(await (await harness.request(first.responses[1].resource.url, 'navigate'))!.text(), '%PDF-1.7\nv1\n%%EOF')
-  assert.deepEqual(await (await harness.request('/capture/source-1/record'))!.json(), { id: 'source-1', learning_state: 'queued' })
+  assert.equal(
+    await (await harness.request(first.responses[0].resource.url, 'navigate'))!.text(),
+    '<!doctype html><p>v1</p>',
+  )
+  assert.equal(
+    await (await harness.request(first.responses[1].resource.url, 'navigate'))!.text(),
+    '%PDF-1.7\nv1\n%%EOF',
+  )
+  assert.deepEqual(await (await harness.request('/capture/source-1/record'))!.json(), {
+    id: 'source-1',
+    learning_state: 'queued',
+  })
   assert.equal(await harness.request('/learning/srs/due'), undefined)
 
-  const ready = await harness.message({ action: 'offline-pack:status', packId: first.request.id, expectedVersion: 'v1' })
+  const ready = await harness.message({
+    action: 'offline-pack:status',
+    packId: first.request.id,
+    expectedVersion: 'v1',
+  })
   assert.equal(ready.state, 'ready')
-  const superseded = await harness.message({ action: 'offline-pack:status', packId: first.request.id, expectedVersion: 'v2' })
+  const superseded = await harness.message({
+    action: 'offline-pack:status',
+    packId: first.request.id,
+    expectedVersion: 'v2',
+  })
   assert.equal(superseded.state, 'superseded')
 
   const index = await harness.index()
   await harness.cacheMap.get(index[first.request.id].cacheName)!.delete(first.responses[1].resource.url)
-  const partial = await harness.message({ action: 'offline-pack:status', packId: first.request.id, expectedVersion: 'v1' })
+  const partial = await harness.message({
+    action: 'offline-pack:status',
+    packId: first.request.id,
+    expectedVersion: 'v1',
+  })
   assert.equal(partial.state, 'partial')
   assert.deepEqual([...partial.missing], [first.responses[1].resource.url])
 
@@ -270,17 +309,25 @@ test('failed or quota-blocked refresh keeps the previous complete version atomic
   assert.equal(failed.state, 'error')
   assert.equal(failed.stored, true)
   assert.equal((await harness.index())[first.request.id].cacheName, committed.cacheName)
-  assert.equal((await harness.message({ action: 'offline-pack:status', packId: first.request.id, expectedVersion: 'v1' })).state, 'ready')
+  assert.equal(
+    (await harness.message({ action: 'offline-pack:status', packId: first.request.id, expectedVersion: 'v1' })).state,
+    'ready',
+  )
 
   installResponses(harness, changed)
-  harness.failPutsWith((cacheName, key) => cacheName.includes('learning-compass-offline-pack-v1:') && key === changed.responses[0].resource.url
-    ? Object.assign(new Error(''), { name: 'QuotaExceededError' })
-    : null)
+  harness.failPutsWith((cacheName, key) =>
+    cacheName.includes('learning-compass-offline-pack-v1:') && key === changed.responses[0].resource.url
+      ? Object.assign(new Error(''), { name: 'QuotaExceededError' })
+      : null,
+  )
   const quota = await harness.message({ action: 'offline-pack:save', pack: changed.request })
   assert.equal(quota.state, 'storage-full')
   assert.equal(quota.stored, true)
   assert.equal((await harness.index())[first.request.id].cacheName, committed.cacheName)
-  assert.equal((await harness.message({ action: 'offline-pack:status', packId: first.request.id, expectedVersion: 'v1' })).state, 'ready')
+  assert.equal(
+    (await harness.message({ action: 'offline-pack:status', packId: first.request.id, expectedVersion: 'v1' })).state,
+    'ready',
+  )
 
   harness.failPutsWith(null)
   harness.afterPuts((cache, key) => {
@@ -290,7 +337,10 @@ test('failed or quota-blocked refresh keeps the previous complete version atomic
   assert.equal(evictedWhileStaging.state, 'storage-full')
   assert.equal(evictedWhileStaging.stored, true)
   assert.equal((await harness.index())[first.request.id].cacheName, committed.cacheName)
-  assert.equal((await harness.message({ action: 'offline-pack:status', packId: first.request.id, expectedVersion: 'v1' })).state, 'ready')
+  assert.equal(
+    (await harness.message({ action: 'offline-pack:status', packId: first.request.id, expectedVersion: 'v1' })).state,
+    'ready',
+  )
 })
 
 test('service worker rejects external/original, NotebookLM, recall, and duplicate-role resources before fetching', async () => {
@@ -302,7 +352,10 @@ test('service worker rejects external/original, NotebookLM, recall, and duplicat
     const harness = createWorkerHarness()
     const built = pack('v1', 'pair-1')
     installResponses(harness, built)
-    const result = await harness.message({ action: 'offline-pack:save', pack: { ...built.request, resources: [...built.request.resources, forbidden] } })
+    const result = await harness.message({
+      action: 'offline-pack:save',
+      pack: { ...built.request, resources: [...built.request.resources, forbidden] },
+    })
     assert.equal(result.state, 'error')
     assert.equal(harness.fetchCount(), 0)
     assert.deepEqual(await harness.index(), {})
@@ -313,7 +366,10 @@ test('service worker rejects external/original, NotebookLM, recall, and duplicat
   installResponses(harness, built)
   const duplicateHtml = artifact('html', 'html-duplicate', 'pair-1', '<p>duplicate</p>')
   harness.network.set(duplicateHtml.resource.url, duplicateHtml.response)
-  const result = await harness.message({ action: 'offline-pack:save', pack: { ...built.request, resources: [...built.request.resources, duplicateHtml.resource] } })
+  const result = await harness.message({
+    action: 'offline-pack:save',
+    pack: { ...built.request, resources: [...built.request.resources, duplicateHtml.resource] },
+  })
   assert.equal(result.state, 'error')
   assert.equal(harness.fetchCount(), 0)
 })

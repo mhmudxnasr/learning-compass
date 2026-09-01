@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 import { ApiError, api } from '../api'
 import { ErrorState, Loading } from '../components/States'
 import { useData } from '../app/useData'
@@ -19,7 +19,6 @@ import {
   artifactSelection,
   bookSelection,
   listFrom,
-  objectHref,
   sourceSelection,
   viewHref,
   type LibraryObjectType,
@@ -36,11 +35,16 @@ function endpointFor(view: string, objectType?: string, objectId?: string) {
     if (objectType === 'artifact') return '/artifacts'
   }
   switch (asView(view)) {
-    case 'feeds': return '/capture/feeds'
-    case 'files': return '/artifacts'
-    case 'books': return '/recommendations/books'
-    case 'archive': return '/recommendations/list?limit=200&source=manual&status=archived'
-    default: return '/capture/queue'
+    case 'feeds':
+      return '/capture/feeds'
+    case 'files':
+      return '/artifacts'
+    case 'books':
+      return '/recommendations/books'
+    case 'archive':
+      return '/recommendations/list?limit=200&source=manual&status=archived'
+    default:
+      return '/capture/queue'
   }
 }
 
@@ -60,8 +64,10 @@ function selectionFor(type: LibraryObjectType, item: LibraryRecord): LibrarySele
 }
 
 function objectItem(type: LibraryObjectType, data: LibraryRecord, objectId: string) {
-  if (type === 'source' || type === 'book') return data.item || listFrom<LibraryRecord>(data, 'books').find((item) => String(item.id) === objectId) || null
-  if (type === 'artifact') return listFrom<LibraryRecord>(data, 'artifacts').find((item) => String(item.id) === objectId) || null
+  if (type === 'source' || type === 'book')
+    return data.item || listFrom<LibraryRecord>(data, 'books').find((item) => String(item.id) === objectId) || null
+  if (type === 'artifact')
+    return listFrom<LibraryRecord>(data, 'artifacts').find((item) => String(item.id) === objectId) || null
   return null
 }
 
@@ -94,30 +100,68 @@ function libraryHref(mode: LibraryPrimaryMode, focus = defaultViewForMode(mode))
   return mode === 'books' ? canonicalRouteHref('library', mode) : canonicalRouteHref('library', mode, focus)
 }
 
-function LibraryModeSwitcher({ activeView, objectType, onNavigate }: { activeView: LibraryView; objectType?: LibraryObjectType; onNavigate?: (href: string) => void }) {
+function LibraryModeSwitcher({
+  activeView,
+  objectType,
+  onNavigate,
+}: {
+  activeView: LibraryView
+  objectType?: LibraryObjectType
+  onNavigate?: (href: string) => void
+}) {
   const activePrimary = primaryModeFor(activeView, objectType)
   const navigate = (href: string) => {
     onNavigate?.(href)
     if (!onNavigate) location.hash = href.slice(1)
   }
-  return <>
-    <nav class="workspace-mode-switcher workspace-local-nav" aria-label="Library sections">
-      {primaryModes.map((item) => {
-        const href = libraryHref(item.key, item.view)
-        return <a key={item.key} href={href} class={activePrimary === item.key ? 'active' : ''} aria-current={activePrimary === item.key ? 'page' : undefined} onClick={(event) => { if (!onNavigate) return; event.preventDefault(); navigate(href) }}>
-          <strong>{item.label}</strong><small>{item.description}</small>
-        </a>
-      })}
-    </nav>
-    {activePrimary === 'triage' && <nav class="workspace-filter-switcher workspace-local-nav" aria-label="Triage filters">
-      {triageFilters.map((item) => {
-        const href = libraryHref(activePrimary, item.key)
-        return <a key={item.key} href={href} class={activeView === item.key ? 'active' : ''} aria-current={activeView === item.key ? 'page' : undefined} onClick={(event) => { if (!onNavigate) return; event.preventDefault(); navigate(href) }}>
-          <strong>{item.label}</strong><small>{item.description}</small>
-        </a>
-      })}
-    </nav>}
-  </>
+  return (
+    <>
+      <nav class="workspace-mode-switcher workspace-local-nav" aria-label="Library sections">
+        {primaryModes.map((item) => {
+          const href = libraryHref(item.key, item.view)
+          return (
+            <a
+              key={item.key}
+              href={href}
+              class={activePrimary === item.key ? 'active' : ''}
+              aria-current={activePrimary === item.key ? 'page' : undefined}
+              onClick={(event) => {
+                if (!onNavigate) return
+                event.preventDefault()
+                navigate(href)
+              }}
+            >
+              <strong>{item.label}</strong>
+              <small>{item.description}</small>
+            </a>
+          )
+        })}
+      </nav>
+      {activePrimary === 'triage' && (
+        <nav class="workspace-filter-switcher workspace-local-nav" aria-label="Triage filters">
+          {triageFilters.map((item) => {
+            const href = libraryHref(activePrimary, item.key)
+            return (
+              <a
+                key={item.key}
+                href={href}
+                class={activeView === item.key ? 'active' : ''}
+                aria-current={activeView === item.key ? 'page' : undefined}
+                onClick={(event) => {
+                  if (!onNavigate) return
+                  event.preventDefault()
+                  navigate(href)
+                }}
+              >
+                <strong>{item.label}</strong>
+                <small>{item.description}</small>
+              </a>
+            )
+          })}
+        </nav>
+      )}
+    </>
+  )
 }
 
 export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect, onNavigate }: LibraryWorkspaceProps) {
@@ -125,10 +169,27 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
   const activeRoute = route || localRoute
   const normalizedMode = activeRoute.mode || activeRoute.query.get('mode') || ''
   const normalizedFocus = activeRoute.focus || activeRoute.query.get('focus') || ''
-  const compatibleView = normalizedFocus || (/^(queue|feeds|files|books|archive)$/.test(normalizedMode) ? normalizedMode : '') || (/^(queue|feeds|files|books|archive)$/.test(activeRoute.view) ? activeRoute.view : '')
-  const view = compatibleView ? asView(compatibleView) : normalizedMode === 'catalog' ? 'archive' : normalizedMode === 'assets' ? 'files' : normalizedMode === 'triage' ? 'queue' : 'books'
+  const compatibleView =
+    normalizedFocus ||
+    (/^(queue|feeds|files|books|archive)$/.test(normalizedMode) ? normalizedMode : '') ||
+    (/^(queue|feeds|files|books|archive)$/.test(activeRoute.view) ? activeRoute.view : '')
+  const view = compatibleView
+    ? asView(compatibleView)
+    : normalizedMode === 'catalog'
+      ? 'archive'
+      : normalizedMode === 'assets'
+        ? 'files'
+        : normalizedMode === 'triage'
+          ? 'queue'
+          : 'books'
   const objectType = activeRoute.objectType as LibraryObjectType | undefined
-  const [queueDelivery, setQueueDelivery] = useState<{ effort?: string; language?: string; delivery_modes?: string[]; depth_tier?: string; matches_only?: boolean }>({})
+  const [queueDelivery, setQueueDelivery] = useState<{
+    effort?: string
+    language?: string
+    delivery_modes?: string[]
+    depth_tier?: string
+    matches_only?: boolean
+  }>({})
   const queueQuery = new URLSearchParams()
   for (const [key, value] of Object.entries(queueDelivery)) {
     if (value === undefined || value === false || (Array.isArray(value) && !value.length)) continue
@@ -172,7 +233,9 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
   }
 
   const queue = async (item: LibraryRecord, override = false) => {
-    setWorking(String(item.id)); setNotice(''); if (!override) setBlockedId('')
+    setWorking(String(item.id))
+    setNotice('')
+    if (!override) setBlockedId('')
     try {
       await triageCapture(String(item.id), 'queue', override)
       setBlockedId('')
@@ -180,75 +243,162 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
       reload()
     } catch (actionError) {
       if (errorCode(actionError) === 'queue_full' || actionMessage(actionError).toLowerCase().includes('queue_full')) {
-        setBlockedId(String(item.id)); setNotice('Queue is at its five-item cap. Review the overflow choice before adding this source.')
+        setBlockedId(String(item.id))
+        setNotice('Queue is at its five-item cap. Review the overflow choice before adding this source.')
       } else if (errorCode(actionError) === 'learning_thread_required') {
         setNotice('Start a Learning Thread before adding a source to Queue.')
       } else {
         setNotice(actionMessage(actionError))
       }
-    } finally { setWorking('') }
+    } finally {
+      setWorking('')
+    }
   }
 
   const exclude = async (item: LibraryRecord) => {
-    if (!window.confirm(`Exclude “${item.video_title || item.title || 'this source'}”? This is an administrative exclusion; it will not be recorded as bad fit.`)) return
-    setWorking(String(item.id)); setNotice('')
-    try { await triageCapture(String(item.id), 'exclude'); setNotice('Source excluded.'); reload() }
-    catch (actionError) { setNotice(actionMessage(actionError)) }
-    finally { setWorking('') }
+    if (
+      !window.confirm(
+        `Exclude “${item.video_title || item.title || 'this source'}”? This is an administrative exclusion; it will not be recorded as bad fit.`,
+      )
+    )
+      return
+    setWorking(String(item.id))
+    setNotice('')
+    try {
+      await triageCapture(String(item.id), 'exclude')
+      setNotice('Source excluded.')
+      reload()
+    } catch (actionError) {
+      setNotice(actionMessage(actionError))
+    } finally {
+      setWorking('')
+    }
   }
 
-  const start = async (event: MouseEvent, item: LibraryRecord, href: string, kind: 'original' | 'html' | 'pdf' | 'artifact' | 'notebooklm' = 'original', artifactId?: string) => {
-    setWorking(String(item.id)); setNotice('')
-    try { await startLearningSession(event, item, href, kind, artifactId) }
-    catch (actionError) { setNotice(`Could not start the session: ${actionMessage(actionError)}`) }
-    finally { setWorking('') }
+  const start = async (
+    event: MouseEvent,
+    item: LibraryRecord,
+    href: string,
+    kind: 'original' | 'html' | 'pdf' | 'artifact' | 'notebooklm' = 'original',
+    artifactId?: string,
+  ) => {
+    setWorking(String(item.id))
+    setNotice('')
+    try {
+      await startLearningSession(event, item, href, kind, artifactId)
+    } catch (actionError) {
+      setNotice(`Could not start the session: ${actionMessage(actionError)}`)
+    } finally {
+      setWorking('')
+    }
   }
 
   const process = async (item: LibraryRecord) => {
-    setWorking(String(item.id)); setNotice('')
-    try { const result = await processArtifact(String(item.id)); setNotice(result.status === 'retry' ? 'Extraction retry queued.' : 'Note extraction queued.'); reload() }
-    catch (actionError) { setNotice(actionMessage(actionError)) }
-    finally { setWorking('') }
+    setWorking(String(item.id))
+    setNotice('')
+    try {
+      const result = await processArtifact(String(item.id))
+      setNotice(result.status === 'retry' ? 'Extraction retry queued.' : 'Note extraction queued.')
+      reload()
+    } catch (actionError) {
+      setNotice(actionMessage(actionError))
+    } finally {
+      setWorking('')
+    }
   }
 
   const removeArtifact = async (item: LibraryRecord, skipConfirm = false) => {
-    const files = Array.isArray(item._group) ? item._group as LibraryRecord[] : [item]
-    if (!skipConfirm && !window.confirm(`Remove ${files.length > 1 ? `these ${files.length} linked files` : `“${item.filename || 'this file'}”`} from Files?`)) return
-    setWorking(String(item.id)); setNotice('Removing…')
-    try { for (const file of files) await api(`/artifacts/${encodeURIComponent(String(file.id))}`, { method: 'DELETE' }); setNotice('Removed from Files.'); reload() }
-    catch (actionError) { setNotice(actionMessage(actionError)) }
-    finally { setWorking('') }
+    const files = Array.isArray(item._group) ? (item._group as LibraryRecord[]) : [item]
+    if (
+      !skipConfirm &&
+      !window.confirm(
+        `Remove ${files.length > 1 ? `these ${files.length} linked files` : `“${item.filename || 'this file'}”`} from Files?`,
+      )
+    )
+      return
+    setWorking(String(item.id))
+    setNotice('Removing…')
+    try {
+      for (const file of files) await api(`/artifacts/${encodeURIComponent(String(file.id))}`, { method: 'DELETE' })
+      setNotice('Removed from Files.')
+      reload()
+    } catch (actionError) {
+      setNotice(actionMessage(actionError))
+    } finally {
+      setWorking('')
+    }
   }
 
   const completeChapter = async (book: LibraryRecord, chapter: LibraryRecord) => {
     const busyKey = `${book.id}:${chapter.key}`
-    setWorking(busyKey); setNotice('')
-    try { await api(`/recommendations/books/${encodeURIComponent(String(book.id))}/chapters/${encodeURIComponent(String(chapter.key))}/complete`, { method: 'POST', body: JSON.stringify({ completed: !chapter.completed }) }); setNotice(chapter.completed ? 'Chapter reopened.' : 'Chapter marked finished.'); reload() }
-    catch (actionError) { setNotice(actionMessage(actionError)) }
-    finally { setWorking('') }
+    setWorking(busyKey)
+    setNotice('')
+    try {
+      await api(
+        `/recommendations/books/${encodeURIComponent(String(book.id))}/chapters/${encodeURIComponent(String(chapter.key))}/complete`,
+        { method: 'POST', body: JSON.stringify({ completed: !chapter.completed }) },
+      )
+      setNotice(chapter.completed ? 'Chapter reopened.' : 'Chapter marked finished.')
+      reload()
+    } catch (actionError) {
+      setNotice(actionMessage(actionError))
+    } finally {
+      setWorking('')
+    }
   }
 
   const setBookReadingState = async (book: LibraryRecord, state: 'saved' | 'reading' | 'finished', primary = false) => {
     const busyKey = `reading-state:${book.id}`
-    setWorking(busyKey); setNotice('')
+    setWorking(busyKey)
+    setNotice('')
     try {
-      await api(`/recommendations/books/${encodeURIComponent(String(book.id))}/reading-state`, { method: 'POST', body: JSON.stringify({ state, ...(primary ? { primary: true } : {}) }) })
-      setNotice(primary ? 'Pinned as the primary current book.' : `Personal reading state changed to ${state}. Queue was not changed.`)
+      await api(`/recommendations/books/${encodeURIComponent(String(book.id))}/reading-state`, {
+        method: 'POST',
+        body: JSON.stringify({ state, ...(primary ? { primary: true } : {}) }),
+      })
+      setNotice(
+        primary
+          ? 'Pinned as the primary current book.'
+          : `Personal reading state changed to ${state}. Queue was not changed.`,
+      )
       reload()
-    } catch (actionError) { setNotice(actionMessage(actionError)) }
-    finally { setWorking('') }
+    } catch (actionError) {
+      setNotice(actionMessage(actionError))
+    } finally {
+      setWorking('')
+    }
   }
 
-  const addBook = async (payload: { title: string; author: string; branch_id: string; isbn?: string; why_this?: string; url?: string }) => {
-    setWorking('book'); setNotice('')
-    try { await api('/recommendations/books', { method: 'POST', body: JSON.stringify(payload) }); setNotice('Book added to Books.'); reload() }
-    catch (actionError) { setNotice(actionMessage(actionError)); throw actionError }
-    finally { setWorking('') }
+  const addBook = async (payload: {
+    title: string
+    author: string
+    branch_id: string
+    isbn?: string
+    why_this?: string
+    url?: string
+  }) => {
+    setWorking('book')
+    setNotice('')
+    try {
+      await api('/recommendations/books', { method: 'POST', body: JSON.stringify(payload) })
+      setNotice('Book added to Books.')
+      reload()
+    } catch (actionError) {
+      setNotice(actionMessage(actionError))
+      throw actionError
+    } finally {
+      setWorking('')
+    }
   }
 
   const deleteRecommendationPermanently = async (item: LibraryRecord) => {
     const title = String(item.video_title || item.title || 'this source')
-    if (!window.confirm(`Permanently delete “${title}”? This removes the source, feedback, notes, learning history, and linked files from the site. This cannot be undone.`)) return
+    if (
+      !window.confirm(
+        `Permanently delete “${title}”? This removes the source, feedback, notes, learning history, and linked files from the site. This cannot be undone.`,
+      )
+    )
+      return
     const busyKey = `permanent-delete:${item.id}`
     setWorking(busyKey)
     setNotice('Deleting forever…')
@@ -281,7 +431,10 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     setWorking('sync-feeds')
     setNotice('')
     try {
-      const res = await api<{ ok: boolean; imported: number }>('/capture/feeds/sync', { method: 'POST', body: JSON.stringify({ limit: 5 }) })
+      const res = await api<{ ok: boolean; imported: number }>('/capture/feeds/sync', {
+        method: 'POST',
+        body: JSON.stringify({ limit: 5 }),
+      })
       setNotice(`Feeds checked. ${res.imported || 0} new ${res.imported === 1 ? 'entry' : 'entries'} added to Library.`)
       reload()
     } catch (actionError) {
@@ -296,7 +449,10 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     setWorking(busyKey)
     setNotice('')
     try {
-      const res = await api<{ ok: boolean; imported?: number }>(`/capture/feeds/${encodeURIComponent(feedId)}/sync`, { method: 'POST', body: JSON.stringify({ limit: 5 }) })
+      const res = await api<{ ok: boolean; imported?: number }>(`/capture/feeds/${encodeURIComponent(feedId)}/sync`, {
+        method: 'POST',
+        body: JSON.stringify({ limit: 5 }),
+      })
       setNotice(`Feed checked. ${res.imported || 0} new ${res.imported === 1 ? 'entry' : 'entries'} added to Library.`)
       reload()
     } catch (actionError) {
@@ -325,7 +481,9 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     setWorking(busyKey)
     setNotice('')
     try {
-      await api(`/capture/feeds/${encodeURIComponent(feedId)}/entries/${encodeURIComponent(String(item.id))}`, { method: 'DELETE' })
+      await api(`/capture/feeds/${encodeURIComponent(feedId)}/entries/${encodeURIComponent(String(item.id))}`, {
+        method: 'DELETE',
+      })
       setNotice('Article removed from feed.')
       reload()
     } catch (actionError) {
@@ -349,7 +507,7 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     }
   }
 
-  const handlers: LibraryViewHandlers = useMemo(() => ({
+  const handlers: LibraryViewHandlers = {
     onInspect: inspect,
     onQueue: queue,
     onExclude: exclude,
@@ -373,26 +531,57 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     busyId: working,
     blockedId,
     notice,
-  }), [working, blockedId, notice, feedbackReceipt, reload])
+  }
 
-  if (loading) return <Loading label={objectType ? `Loading ${objectType}` : `Loading ${view}`}/>
-  if (error) return <ErrorState message={error} retry={reload}/>
+  if (loading) return <Loading label={objectType ? `Loading ${objectType}` : `Loading ${view}`} />
+  if (error) return <ErrorState message={error} retry={reload} />
   const loaded = data || {}
 
-  const modeSwitcher = embedded ? null : <LibraryModeSwitcher activeView={view} objectType={objectType} onNavigate={onNavigate} />
+  const modeSwitcher = embedded ? null : (
+    <LibraryModeSwitcher activeView={view} objectType={objectType} onNavigate={onNavigate} />
+  )
 
   if (activeRoute.objectId && objectType) {
     const item = objectItem(objectType, loaded, activeRoute.objectId)
-    if (!item) return <ErrorState message={`The ${objectType} “${activeRoute.objectId}” is not available in this library.`} retry={reload}/>
-    const objectData = objectType === 'source' || objectType === 'book' ? { ...loaded, [objectType]: item } : { [objectType]: item }
+    if (!item)
+      return (
+        <ErrorState
+          message={`The ${objectType} “${activeRoute.objectId}” is not available in this library.`}
+          retry={reload}
+        />
+      )
+    const objectData =
+      objectType === 'source' || objectType === 'book' ? { ...loaded, [objectType]: item } : { [objectType]: item }
     const backView = objectType === 'artifact' ? 'files' : objectType === 'book' ? 'books' : 'queue'
-    return <div class={`library-workspace workspace-surface ${objectType === 'book' ? 'is-books-room' : ''}`}>{modeSwitcher}<ObjectRouteView type={objectType} data={objectData} handlers={handlers} onBack={() => go(viewHref(backView))}/></div>
+    return (
+      <div class={`library-workspace workspace-surface ${objectType === 'book' ? 'is-books-room' : ''}`}>
+        {modeSwitcher}
+        <ObjectRouteView
+          type={objectType}
+          data={objectData}
+          handlers={handlers}
+          onBack={() => go(viewHref(backView))}
+        />
+      </div>
+    )
   }
 
-  const content = view === 'queue' ? <QueueView data={loaded} handlers={handlers}/> :
-      view === 'feeds' ? <FeedsView data={loaded} handlers={handlers}/> :
-        view === 'files' ? <FilesView data={loaded} handlers={handlers}/> :
-            view === 'books' ? <BooksView data={loaded} handlers={handlers}/> :
-              <ArchiveView data={loaded} handlers={handlers}/>
-  return <div class={`library-workspace workspace-surface ${view === 'books' ? 'is-books-room' : ''}`}>{modeSwitcher}{content}</div>
+  const content =
+    view === 'queue' ? (
+      <QueueView data={loaded} handlers={handlers} />
+    ) : view === 'feeds' ? (
+      <FeedsView data={loaded} handlers={handlers} />
+    ) : view === 'files' ? (
+      <FilesView data={loaded} handlers={handlers} />
+    ) : view === 'books' ? (
+      <BooksView data={loaded} handlers={handlers} />
+    ) : (
+      <ArchiveView data={loaded} handlers={handlers} />
+    )
+  return (
+    <div class={`library-workspace workspace-surface ${view === 'books' ? 'is-books-room' : ''}`}>
+      {modeSwitcher}
+      {content}
+    </div>
+  )
 }

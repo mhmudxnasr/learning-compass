@@ -56,42 +56,85 @@ const focus = (key: string, label: string, description: string): FocusDefinition
 
 /** The canonical registry contains grouped work modes, not the former peer-page sprawl. */
 export const modes: Record<RootKey, ModeDefinition[]> = {
-  home: [
-    { key: 'today', label: 'Today', description: 'Decide what matters next.', defaultView: 'today' },
-  ],
+  home: [{ key: 'today', label: 'Today', description: 'Decide what matters next.', defaultView: 'today' }],
   library: [
     { key: 'books', label: 'Books', description: 'Read and organize the personal book library.', defaultView: 'books' },
     {
-      key: 'triage', label: 'Triage', description: 'Capture, decide, and commit sources.', defaultView: 'queue', defaultFocus: 'queue',
-      focuses: [focus('queue', 'Queue', 'The five sources you committed to next.'), focus('feeds', 'RSS Feeds', 'Subscriptions and imported feed entries.')],
+      key: 'triage',
+      label: 'Triage',
+      description: 'Capture, decide, and commit sources.',
+      defaultView: 'queue',
+      defaultFocus: 'queue',
+      focuses: [
+        focus('queue', 'Queue', 'The five sources you committed to next.'),
+        focus('feeds', 'RSS Feeds', 'Subscriptions and imported feed entries.'),
+      ],
     },
     {
-      key: 'catalog', label: 'Archive', description: 'Recover completed and excluded sources.', defaultView: 'archive', defaultFocus: 'archive',
+      key: 'catalog',
+      label: 'Archive',
+      description: 'Recover completed and excluded sources.',
+      defaultView: 'archive',
+      defaultFocus: 'archive',
       focuses: [focus('archive', 'Archive', 'Completed and excluded sources kept for recovery.')],
     },
     {
-      key: 'assets', label: 'Files', description: 'Open files and reading companions.', defaultView: 'files', defaultFocus: 'files',
+      key: 'assets',
+      label: 'Files',
+      description: 'Open files and reading companions.',
+      defaultView: 'files',
+      defaultFocus: 'files',
       focuses: [focus('files', 'Files', 'Uploaded files and generated reading companions.')],
     },
   ],
   learn: [
     { key: 'paths', label: 'Threads', description: 'Build and follow finite learning paths.', defaultView: 'paths' },
     {
-      key: 'practice', label: 'Practice', description: 'Retrieve and make knowledge durable.', defaultView: 'notes', defaultFocus: 'notes',
-      focuses: [focus('notes', 'Notes', 'Structured, editable bilingual notes.'), focus('recall', 'Recall', 'Due review plus drafts awaiting approval.'), focus('contradictions', 'Contradictions', 'Review grounded tensions between retained ideas.')],
+      key: 'practice',
+      label: 'Practice',
+      description: 'Retrieve and make knowledge durable.',
+      defaultView: 'notes',
+      defaultFocus: 'notes',
+      focuses: [
+        focus('notes', 'Notes', 'Structured, editable bilingual notes.'),
+        focus('recall', 'Recall', 'Due review plus drafts awaiting approval.'),
+        focus('contradictions', 'Contradictions', 'Review grounded tensions between retained ideas.'),
+      ],
     },
   ],
   map: [
     { key: 'atlas', label: 'Atlas', description: 'See the connected topology of what you know.', defaultView: 'atlas' },
-    { key: 'review', label: 'Review', description: 'Decide branch status, priority, scope, and attention.', defaultView: 'branches' },
+    {
+      key: 'review',
+      label: 'Review',
+      description: 'Decide branch status, priority, scope, and attention.',
+      defaultView: 'branches',
+    },
   ],
   settings: [
     {
-      key: 'personal', label: 'Personal', description: 'Tune priorities and learning behavior.', defaultView: 'profile', defaultFocus: 'profile',
-      focuses: [focus('profile', 'Profile', 'Priorities, exclusions, and learned patterns.'), focus('preferences', 'Preferences', 'Learning, recall, and curation defaults.')],
+      key: 'personal',
+      label: 'Personal',
+      description: 'Tune priorities and learning behavior.',
+      defaultView: 'profile',
+      defaultFocus: 'profile',
+      focuses: [
+        focus('profile', 'Profile', 'Priorities, exclusions, and learned patterns.'),
+        focus('preferences', 'Preferences', 'Learning, recall, and curation defaults.'),
+      ],
     },
-    { key: 'data', label: 'Data & recovery', description: 'Inspect exports, storage, and recovery.', defaultView: 'data' },
-    { key: 'system', label: 'System', description: 'Inspect capabilities, schedules, and safety.', defaultView: 'system' },
+    {
+      key: 'data',
+      label: 'Data & recovery',
+      description: 'Inspect exports, storage, and recovery.',
+      defaultView: 'data',
+    },
+    {
+      key: 'system',
+      label: 'System',
+      description: 'Inspect capabilities, schedules, and safety.',
+      defaultView: 'system',
+    },
   ],
 }
 
@@ -119,7 +162,10 @@ function leafMeta(root: RootKey, key: string | undefined) {
 
 /** Compatibility view inventory generated from grouped modes, not a route registry. */
 export const views: Record<RootKey, FocusDefinition[]> = Object.fromEntries(
-  roots.map((root) => [root.key, modeList(root.key).flatMap((mode) => mode.focuses || [focus(mode.defaultView, mode.label, mode.description)])]),
+  roots.map((root) => [
+    root.key,
+    modeList(root.key).flatMap((mode) => mode.focuses || [focus(mode.defaultView, mode.label, mode.description)]),
+  ]),
 ) as Record<RootKey, FocusDefinition[]>
 
 type LegacyDestination = { root: RootKey; mode: string; focus?: string }
@@ -185,26 +231,43 @@ const legacyDestinations: Record<string, LegacyDestination> = {
 const legacySegments: Record<RootKey, Record<string, LegacyDestination>> = {
   home: { today: { root: 'home', mode: 'today' } },
   library: {
-    queue: { root: 'library', mode: 'triage', focus: 'queue' }, inbox: { root: 'library', mode: 'catalog', focus: 'archive' },
-    feeds: { root: 'library', mode: 'triage', focus: 'feeds' }, rss: { root: 'library', mode: 'triage', focus: 'feeds' },
-    all: { root: 'library', mode: 'catalog', focus: 'archive' }, books: { root: 'library', mode: 'books' },
-    journal: { root: 'library', mode: 'catalog', focus: 'archive' }, hardcover: { root: 'library', mode: 'catalog', focus: 'archive' },
-    collections: { root: 'library', mode: 'catalog', focus: 'archive' }, archive: { root: 'library', mode: 'catalog', focus: 'archive' },
+    queue: { root: 'library', mode: 'triage', focus: 'queue' },
+    inbox: { root: 'library', mode: 'catalog', focus: 'archive' },
+    feeds: { root: 'library', mode: 'triage', focus: 'feeds' },
+    rss: { root: 'library', mode: 'triage', focus: 'feeds' },
+    all: { root: 'library', mode: 'catalog', focus: 'archive' },
+    books: { root: 'library', mode: 'books' },
+    journal: { root: 'library', mode: 'catalog', focus: 'archive' },
+    hardcover: { root: 'library', mode: 'catalog', focus: 'archive' },
+    collections: { root: 'library', mode: 'catalog', focus: 'archive' },
+    archive: { root: 'library', mode: 'catalog', focus: 'archive' },
     files: { root: 'library', mode: 'assets', focus: 'files' },
   },
   learn: {
-    hub: { root: 'learn', mode: 'paths' }, paths: { root: 'learn', mode: 'paths' }, canon: { root: 'library', mode: 'books' }, notes: { root: 'learn', mode: 'practice', focus: 'notes' },
-    reflections: { root: 'learn', mode: 'practice', focus: 'notes' }, cards: { root: 'learn', mode: 'practice', focus: 'recall' },
-    review: { root: 'learn', mode: 'practice', focus: 'recall' }, recall: { root: 'learn', mode: 'practice', focus: 'recall' }, contradictions: { root: 'learn', mode: 'practice', focus: 'contradictions' },
+    hub: { root: 'learn', mode: 'paths' },
+    paths: { root: 'learn', mode: 'paths' },
+    canon: { root: 'library', mode: 'books' },
+    notes: { root: 'learn', mode: 'practice', focus: 'notes' },
+    reflections: { root: 'learn', mode: 'practice', focus: 'notes' },
+    cards: { root: 'learn', mode: 'practice', focus: 'recall' },
+    review: { root: 'learn', mode: 'practice', focus: 'recall' },
+    recall: { root: 'learn', mode: 'practice', focus: 'recall' },
+    contradictions: { root: 'learn', mode: 'practice', focus: 'contradictions' },
   },
   map: {
-    deck: { root: 'map', mode: 'review' }, branches: { root: 'map', mode: 'review' },
-    coverage: { root: 'map', mode: 'review' }, balance: { root: 'map', mode: 'review' },
+    deck: { root: 'map', mode: 'review' },
+    branches: { root: 'map', mode: 'review' },
+    coverage: { root: 'map', mode: 'review' },
+    balance: { root: 'map', mode: 'review' },
   },
   settings: {
-    profile: { root: 'settings', mode: 'personal', focus: 'profile' }, preferences: { root: 'settings', mode: 'personal', focus: 'preferences' },
-    appearance: { root: 'settings', mode: 'personal', focus: 'preferences' }, learning: { root: 'settings', mode: 'personal', focus: 'preferences' },
-    curation: { root: 'settings', mode: 'personal', focus: 'preferences' }, data: { root: 'settings', mode: 'data' }, system: { root: 'settings', mode: 'system' },
+    profile: { root: 'settings', mode: 'personal', focus: 'profile' },
+    preferences: { root: 'settings', mode: 'personal', focus: 'preferences' },
+    appearance: { root: 'settings', mode: 'personal', focus: 'preferences' },
+    learning: { root: 'settings', mode: 'personal', focus: 'preferences' },
+    curation: { root: 'settings', mode: 'personal', focus: 'preferences' },
+    data: { root: 'settings', mode: 'data' },
+    system: { root: 'settings', mode: 'system' },
   },
 }
 
@@ -233,7 +296,11 @@ function implicitObjectState(root: RootKey, type: string | undefined) {
   return undefined
 }
 
-function normalizeState(root: RootKey, requestedMode: string | undefined, requestedFocus: string | undefined): { mode: string; focus?: string; invalid: boolean } {
+function normalizeState(
+  root: RootKey,
+  requestedMode: string | undefined,
+  requestedFocus: string | undefined,
+): { mode: string; focus?: string; invalid: boolean } {
   const fallback = defaultState(root)
   let mode = requestedMode
   let focusValue = requestedFocus
@@ -242,7 +309,11 @@ function normalizeState(root: RootKey, requestedMode: string | undefined, reques
   if (!mode && focusValue) {
     const owner = modeList(root).find((candidate) => candidate.focuses?.some((item) => item.key === focusValue))
     if (owner) mode = owner.key
-    else { mode = fallback.mode; focusValue = fallback.focus; invalid = true }
+    else {
+      mode = fallback.mode
+      focusValue = fallback.focus
+      invalid = true
+    }
   }
 
   const leaf = mode && !modeMeta(root, mode) ? leafMeta(root, mode) : undefined
@@ -279,7 +350,12 @@ function queryFor(root: RootKey, mode: string, focusValue?: string, forceFocus =
   // Settings' personal focus is intentionally addressable as ?focus=...; its
   // default mode remains implicit even when preferences is selected.
   const omitDefaultModeWithFocus = root === 'settings'
-  if (!modeIsDefault || (forceMode && !omitDefaultModeWithFocus) || (focusValue && !focusIsDefault && !omitDefaultModeWithFocus)) params.set('mode', mode)
+  if (
+    !modeIsDefault ||
+    (forceMode && !omitDefaultModeWithFocus) ||
+    (focusValue && !focusIsDefault && !omitDefaultModeWithFocus)
+  )
+    params.set('mode', mode)
   if (focusValue && (!focusIsDefault || forceFocus)) params.set('focus', focusValue)
   const text = params.toString()
   return text ? `?${text}` : ''
@@ -301,7 +377,15 @@ function isModeOrLeaf(root: RootKey, value: string | undefined) {
   return Boolean(value && (modeMeta(root, value) || leafMeta(root, value) || legacySegments[root][value]))
 }
 
-function canonicalObject(root: RootKey, type: string, id: string, mode: string, focusValue?: string, forceFocus = false, forceMode = false) {
+function canonicalObject(
+  root: RootKey,
+  type: string,
+  id: string,
+  mode: string,
+  focusValue?: string,
+  forceFocus = false,
+  forceMode = false,
+) {
   return `/${root}/${encodeURIComponent(type)}/${encodeURIComponent(id)}${queryFor(root, mode, focusValue, forceFocus, forceMode)}`
 }
 
@@ -313,11 +397,17 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   const originalQuery = new URLSearchParams(queryString)
   const movedBookObject = rawPath.match(/^\/learn\/book\/([^/]+)$/)
   const oldThread = rawPath.match(/^\/learn\/hub\/([^/]+)$/)
-  const oldTypedPath = movedBookObject ? `/library/book/${movedBookObject[1]}` : oldThread ? `/learn/thread/${oldThread[1]}` : rawPath
+  const oldTypedPath = movedBookObject
+    ? `/library/book/${movedBookObject[1]}`
+    : oldThread
+      ? `/learn/thread/${oldThread[1]}`
+      : rawPath
   const lessonPath = oldTypedPath.match(/^\/learn\/(?:thread\/([^/]+)\/lesson|t\/([^/]+)\/l)\/([^/]+)$/)
   const levelPath = oldTypedPath.match(/^\/learn\/(?:thread\/([^/]+)\/level|t\/([^/]+)\/v)\/([^/]+)$/)
   const canonDomainPath = oldTypedPath.match(/^\/learn\/canon\/([^/]+)$/)
-  const movedBooksQuery = (rawPath === '/library' && originalQuery.get('focus') === 'books') || (rawPath === '/learn' && originalQuery.get('mode') === 'canon')
+  const movedBooksQuery =
+    (rawPath === '/library' && originalQuery.get('focus') === 'books') ||
+    (rawPath === '/learn' && originalQuery.get('mode') === 'canon')
   const exactAlias = movedBooksQuery ? { root: 'library' as const, mode: 'books' } : legacyDestinations[rawPath]
   const pathParts = oldTypedPath.replace(/^\//, '').split('/').filter(Boolean)
   const candidateRoot = (exactAlias?.root || pathParts[0]) as RootKey
@@ -325,21 +415,48 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
 
   if (!knownRoot) {
     const fallback = defaultState('home')
-    return { root: 'home', mode: fallback.mode, view: viewFor('home', fallback.mode, fallback.focus), focus: fallback.focus, query: originalQuery, canonical: canonicalRoot('home', fallback.mode, fallback.focus), notFound: true, recoveredFrom: rawPath }
+    return {
+      root: 'home',
+      mode: fallback.mode,
+      view: viewFor('home', fallback.mode, fallback.focus),
+      focus: fallback.focus,
+      query: originalQuery,
+      canonical: canonicalRoot('home', fallback.mode, fallback.focus),
+      notFound: true,
+      recoveredFrom: rawPath,
+    }
   }
 
   const root = candidateRoot
   const pathSegment = pathParts[1]
-  const segmentState = pathSegment ? (legacySegments[root][pathSegment] || undefined) : undefined
+  const segmentState = pathSegment ? legacySegments[root][pathSegment] || undefined : undefined
   const modePrefixedObject = !exactAlias && pathParts.length >= 4 && isModeOrLeaf(root, pathSegment)
-  const objectRoute = !exactAlias && (Boolean(lessonPath) || Boolean(levelPath) || Boolean(canonDomainPath) || modePrefixedObject || (pathParts.length >= 3 && !isModeOrLeaf(root, pathSegment)))
-  const objectType = lessonPath ? 'lesson' : levelPath ? 'level' : canonDomainPath ? 'canon-domain' : objectRoute ? pathParts[modePrefixedObject ? 2 : 1] : undefined
+  const objectRoute =
+    !exactAlias &&
+    (Boolean(lessonPath) ||
+      Boolean(levelPath) ||
+      Boolean(canonDomainPath) ||
+      modePrefixedObject ||
+      (pathParts.length >= 3 && !isModeOrLeaf(root, pathSegment)))
+  const objectType = lessonPath
+    ? 'lesson'
+    : levelPath
+      ? 'level'
+      : canonDomainPath
+        ? 'canon-domain'
+        : objectRoute
+          ? pathParts[modePrefixedObject ? 2 : 1]
+          : undefined
   const objectStart = modePrefixedObject ? 3 : 2
   let objectId: string | undefined
   let parentObjectId: string | undefined
   if (objectRoute) {
     const nestedPath = lessonPath || levelPath
-    const rawSegment = canonDomainPath ? canonDomainPath[1] : nestedPath ? nestedPath[3] : pathParts.slice(objectStart).join('/')
+    const rawSegment = canonDomainPath
+      ? canonDomainPath[1]
+      : nestedPath
+        ? nestedPath[3]
+        : pathParts.slice(objectStart).join('/')
     try {
       objectId = decodeURIComponent(rawSegment)
       parentObjectId = nestedPath ? decodeURIComponent(nestedPath[1] || nestedPath[2]) : undefined
@@ -348,38 +465,73 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
       parentObjectId = nestedPath ? nestedPath[1] || nestedPath[2] : undefined
     }
   }
-  const pathState = segmentState || (pathSegment && modeMeta(root, pathSegment) ? { root, mode: pathSegment } : undefined)
+  const pathState =
+    segmentState || (pathSegment && modeMeta(root, pathSegment) ? { root, mode: pathSegment } : undefined)
   const queryMode = originalQuery.get('mode') || undefined
   const queryFocus = originalQuery.get('focus') || undefined
   const objectState = !queryMode && !queryFocus && !exactAlias ? implicitObjectState(root, objectType) : undefined
-  const requestedMode = movedBookObject || movedBooksQuery ? 'books' : queryMode || exactAlias?.mode || objectState?.mode || pathState?.mode
-  const rawRequestedFocus = movedBookObject || movedBooksQuery ? undefined : queryFocus || exactAlias?.focus || objectState?.focus || pathState?.focus
-  const legacyBooksFocus = root === 'library' && requestedMode === 'books' && ['shelf', 'atlas'].includes(String(rawRequestedFocus || ''))
-  const retiredCatalogFocus = root === 'library' && requestedMode === 'catalog' && ['all', 'journal', 'collections'].includes(String(rawRequestedFocus || ''))
-  const retiredMapFocus = root === 'map' && requestedMode === 'review' && ['branches', 'balance'].includes(String(rawRequestedFocus || ''))
-  const requestedFocus = legacyBooksFocus || retiredMapFocus ? undefined : retiredCatalogFocus ? 'archive' : rawRequestedFocus
+  const requestedMode =
+    movedBookObject || movedBooksQuery ? 'books' : queryMode || exactAlias?.mode || objectState?.mode || pathState?.mode
+  const rawRequestedFocus =
+    movedBookObject || movedBooksQuery
+      ? undefined
+      : queryFocus || exactAlias?.focus || objectState?.focus || pathState?.focus
+  const legacyBooksFocus =
+    root === 'library' && requestedMode === 'books' && ['shelf', 'atlas'].includes(String(rawRequestedFocus || ''))
+  const retiredCatalogFocus =
+    root === 'library' &&
+    requestedMode === 'catalog' &&
+    ['all', 'journal', 'collections'].includes(String(rawRequestedFocus || ''))
+  const retiredMapFocus =
+    root === 'map' && requestedMode === 'review' && ['branches', 'balance'].includes(String(rawRequestedFocus || ''))
+  const requestedFocus =
+    legacyBooksFocus || retiredMapFocus ? undefined : retiredCatalogFocus ? 'archive' : rawRequestedFocus
   const state = normalizeState(root, requestedMode, requestedFocus)
   const invalidObject = objectRoute && (!objectType || !objectTypes[root].includes(objectType))
-  const invalidModePath = !objectRoute && pathParts.length > 1 && !exactAlias && !pathState && !modeMeta(root, pathSegment)
+  const invalidModePath =
+    !objectRoute && pathParts.length > 1 && !exactAlias && !pathState && !modeMeta(root, pathSegment)
   const invalid = state.invalid || Boolean(invalidObject) || Boolean(invalidModePath)
   const query = exactAlias ? mergeRecoveryQuery(originalQuery, state.mode, state.focus) : originalQuery
-  const canonicalBooksRecovery = root === 'library' && state.mode === 'books' && Boolean(movedBookObject || movedBooksQuery || exactAlias?.mode === 'books')
+  const canonicalBooksRecovery =
+    root === 'library' &&
+    state.mode === 'books' &&
+    Boolean(movedBookObject || movedBooksQuery || exactAlias?.mode === 'books')
   const forceLegacyFocus = Boolean((exactAlias || modePrefixedObject || queryFocus) && !canonicalBooksRecovery)
-  const forceLegacyMode = Boolean((exactAlias || modePrefixedObject || queryFocus) && !canonicalBooksRecovery && root !== 'settings')
-  const canonical = invalidObject || invalidModePath
-    ? canonicalRoot(root, defaultState(root).mode, defaultState(root).focus)
-    : objectRoute
-      ? canonDomainPath
-        ? `/learn/canon/${encodeURIComponent(objectId || '')}`
-        : lessonPath || levelPath
-        ? `/learn/t/${encodeURIComponent(parentObjectId || '')}/${lessonPath ? 'l' : 'v'}/${encodeURIComponent(objectId || '')}${objectState ? '' : queryFor(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)}`
-        : objectState
-          ? `/${root}/${encodeURIComponent(objectType!)}/${encodeURIComponent(objectId || '')}`
-          : canonicalObject(root, objectType!, objectId || '', state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
-      : canonicalRoot(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
+  const forceLegacyMode = Boolean(
+    (exactAlias || modePrefixedObject || queryFocus) && !canonicalBooksRecovery && root !== 'settings',
+  )
+  const canonical =
+    invalidObject || invalidModePath
+      ? canonicalRoot(root, defaultState(root).mode, defaultState(root).focus)
+      : objectRoute
+        ? canonDomainPath
+          ? `/learn/canon/${encodeURIComponent(objectId || '')}`
+          : lessonPath || levelPath
+            ? `/learn/t/${encodeURIComponent(parentObjectId || '')}/${lessonPath ? 'l' : 'v'}/${encodeURIComponent(objectId || '')}${objectState ? '' : queryFor(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)}`
+            : objectState
+              ? `/${root}/${encodeURIComponent(objectType!)}/${encodeURIComponent(objectId || '')}`
+              : canonicalObject(
+                  root,
+                  objectType!,
+                  objectId || '',
+                  state.mode,
+                  state.focus,
+                  forceLegacyFocus,
+                  forceLegacyMode,
+                )
+        : canonicalRoot(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
   const rawComparable = rawPath + (queryString ? `?${queryString}` : '')
   const changed = canonical !== rawComparable
-  const recovered = Boolean(exactAlias || movedBookObject || legacyBooksFocus || retiredCatalogFocus || retiredMapFocus || oldThread || (pathParts.length > 1 && !objectRoute && canonical !== rawComparable) || invalid)
+  const recovered = Boolean(
+    exactAlias ||
+    movedBookObject ||
+    legacyBooksFocus ||
+    retiredCatalogFocus ||
+    retiredMapFocus ||
+    oldThread ||
+    (pathParts.length > 1 && !objectRoute && canonical !== rawComparable) ||
+    invalid,
+  )
   const route = {
     root,
     mode: state.mode,

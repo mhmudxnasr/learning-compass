@@ -1,16 +1,24 @@
 import assert from 'node:assert/strict'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
-import { loadSourceAnnotationEvidence, SourceAnnotationEvidenceError } from '../../src/services/source-annotation-evidence.ts'
+import {
+  loadSourceAnnotationEvidence,
+  SourceAnnotationEvidenceError,
+} from '../../src/services/source-annotation-evidence.ts'
 
 class SqliteD1 {
   private readonly sqlite: DatabaseSync
-  constructor(sqlite: DatabaseSync) { this.sqlite = sqlite }
+  constructor(sqlite: DatabaseSync) {
+    this.sqlite = sqlite
+  }
   prepare(sql: string) {
     const statement = {
       args: [] as unknown[],
-      bind: (...args: unknown[]) => { statement.args = args; return statement },
-      first: async () => this.sqlite.prepare(sql).get(...statement.args as any[]) || null,
+      bind: (...args: unknown[]) => {
+        statement.args = args
+        return statement
+      },
+      first: async () => this.sqlite.prepare(sql).get(...(statement.args as any[])) || null,
     }
     return statement
   }
@@ -44,21 +52,36 @@ function fixture() {
 test('authoritative annotation evidence binds current source, branch, Thread, artifact, locator, quote, and checksum', async () => {
   const { sqlite, DB } = fixture()
   try {
-    const evidence = await loadSourceAnnotationEvidence(DB, 'anchor', { recommendationId: 'rec', branchId: 'branch', threadId: 'thread' })
-    assert.deepEqual({
-      recommendation_id: evidence.recommendation_id,
-      branch_id: evidence.branch_id,
-      thread_id: evidence.thread_id,
-      artifact_id: evidence.artifact_id,
-      locator: evidence.locator,
-      quote: evidence.quote,
-      source_checksum: evidence.source_checksum,
-      anchor_type: evidence.anchor_type,
-    }, {
-      recommendation_id: 'rec', branch_id: 'branch', thread_id: 'thread', artifact_id: 'artifact', locator: '#claim',
-      quote: 'Canonical quote', source_checksum: 'checksum-1', anchor_type: 'url_fragment',
+    const evidence = await loadSourceAnnotationEvidence(DB, 'anchor', {
+      recommendationId: 'rec',
+      branchId: 'branch',
+      threadId: 'thread',
     })
-  } finally { sqlite.close() }
+    assert.deepEqual(
+      {
+        recommendation_id: evidence.recommendation_id,
+        branch_id: evidence.branch_id,
+        thread_id: evidence.thread_id,
+        artifact_id: evidence.artifact_id,
+        locator: evidence.locator,
+        quote: evidence.quote,
+        source_checksum: evidence.source_checksum,
+        anchor_type: evidence.anchor_type,
+      },
+      {
+        recommendation_id: 'rec',
+        branch_id: 'branch',
+        thread_id: 'thread',
+        artifact_id: 'artifact',
+        locator: '#claim',
+        quote: 'Canonical quote',
+        source_checksum: 'checksum-1',
+        anchor_type: 'url_fragment',
+      },
+    )
+  } finally {
+    sqlite.close()
+  }
 })
 
 test('annotation derivation rejects stale ownership and unrelated Thread attachment', async () => {
@@ -73,5 +96,7 @@ test('annotation derivation rejects stale ownership and unrelated Thread attachm
       loadSourceAnnotationEvidence(DB, 'anchor', { recommendationId: 'rec' }),
       (error: unknown) => error instanceof SourceAnnotationEvidenceError && error.code === 'annotation_branch_stale',
     )
-  } finally { sqlite.close() }
+  } finally {
+    sqlite.close()
+  }
 })

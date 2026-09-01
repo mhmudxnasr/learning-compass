@@ -6,7 +6,9 @@ import type { ThreadCoverageAnchor } from '../compass-scoring'
  * inform later structured coverage, but they are too noisy for a hard gate.
  */
 export async function loadThreadCoverageAnchors(db: D1Database): Promise<ThreadCoverageAnchor[]> {
-  const rows = await db.prepare(`
+  const rows = await db
+    .prepare(
+      `
     SELECT t.id AS thread_id,t.title AS thread_title,'thread' AS scope_kind,t.id AS scope_id,t.title AS label,
       trim(t.title || ' ' || COALESCE(t.guiding_question,'') || ' ' || COALESCE(t.definition_of_done,'')) AS coverage_text
     FROM learning_threads t WHERE t.status!='abandoned' AND t.superseded_at IS NULL
@@ -23,7 +25,9 @@ export async function loadThreadCoverageAnchors(db: D1Database): Promise<ThreadC
       trim(i.title || ' ' || COALESCE(i.description,''))
     FROM learning_path_items i JOIN learning_path_stages s ON s.id=i.stage_id JOIN learning_threads t ON t.id=s.thread_id
     WHERE t.status!='abandoned' AND t.superseded_at IS NULL
-  `).all<any>()
+  `,
+    )
+    .all<any>()
   return (rows.results || []).map((row: any) => ({
     threadId: String(row.thread_id),
     threadTitle: String(row.thread_title),
