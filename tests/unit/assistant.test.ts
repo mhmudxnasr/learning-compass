@@ -3,23 +3,44 @@ import assert from 'node:assert/strict'
 import { interpretAssistantMessage } from '../../src/services/assistant.ts'
 import { readFileSync } from 'node:fs'
 
-const assistantUi = readFileSync(new URL('../../client/src/workspaces/settings/PersonalAssistant.tsx', import.meta.url), 'utf8')
+const assistantUi = readFileSync(
+  new URL('../../client/src/workspaces/settings/PersonalAssistant.tsx', import.meta.url),
+  'utf8',
+)
 
 test('assistant interpretation is a no-write preview and normalizes model JSON', async () => {
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body || '{}'))
     assert.match(body.messages[1].content, /اتفرجت/)
-    return new Response(JSON.stringify({ choices: [{ message: { content: '{"reply":"تمام","items":[{"title":"Interstellar","item_type":"movie","state":"completed","rating":9,"tags":["space"],"personal_note":"عجبك عشان فكرته"}],"profile_signals":[{"key":"likes_mechanism","category":"taste","value":"بيحب الأفلام اللي فيها أفكار علمية","confidence":0.9}],"questions":["تحب الأفلام البطيئة؟"]}' } }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content:
+                '{"reply":"تمام","items":[{"title":"Interstellar","item_type":"movie","state":"completed","rating":9,"tags":["space"],"personal_note":"عجبك عشان فكرته"}],"profile_signals":[{"key":"likes_mechanism","category":"taste","value":"بيحب الأفلام اللي فيها أفكار علمية","confidence":0.9}],"questions":["تحب الأفلام البطيئة؟"]}',
+            },
+          },
+        ],
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
   }) as typeof fetch
   try {
-    const result = await interpretAssistantMessage({ OPENCODE_ZEN_API_KEY: 'test-key' }, 'اتفرجت على Interstellar وعجبني', 'mixed')
+    const result = await interpretAssistantMessage(
+      { OPENCODE_ZEN_API_KEY: 'test-key' },
+      'اتفرجت على Interstellar وعجبني',
+      'mixed',
+    )
     assert.equal(result.available, true)
     assert.equal(result.items[0].title, 'Interstellar')
     assert.equal(result.items[0].rating, 9)
     assert.equal(result.profile_signals[0].confidence, 0.9)
     assert.equal(result.questions.length, 1)
-  } finally { globalThis.fetch = originalFetch }
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('assistant returns a safe unavailable response without an API key', async () => {

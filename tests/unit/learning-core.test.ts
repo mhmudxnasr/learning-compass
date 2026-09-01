@@ -13,13 +13,22 @@ test('ratings never infer a learning disposition', () => {
 })
 
 test('reopening a lesson restores completed progression to active', () => {
-  assert.equal(deriveLevelStatus({ priorComplete: true, totalLessons: 3, completedLessons: 2, currentStatus: 'verified' }), 'in_progress')
-  assert.equal(deriveLevelStatus({ priorComplete: true, totalLessons: 3, completedLessons: 3, currentStatus: 'in_progress' }), 'verified')
+  assert.equal(
+    deriveLevelStatus({ priorComplete: true, totalLessons: 3, completedLessons: 2, currentStatus: 'verified' }),
+    'in_progress',
+  )
+  assert.equal(
+    deriveLevelStatus({ priorComplete: true, totalLessons: 3, completedLessons: 3, currentStatus: 'in_progress' }),
+    'verified',
+  )
   assert.equal(deriveThreadStatus('verified', false), 'active')
   assert.equal(deriveThreadStatus('active', true), 'verified')
 })
 
 test('reopening an earlier Level locks later Levels without erasing lesson completion', () => {
-  assert.equal(deriveLevelStatus({ priorComplete: false, totalLessons: 3, completedLessons: 3, currentStatus: 'verified' }), 'locked')
+  assert.equal(
+    deriveLevelStatus({ priorComplete: false, totalLessons: 3, completedLessons: 3, currentStatus: 'verified' }),
+    'locked',
+  )
   assert.equal(deriveThreadStatus('abandoned', false), 'abandoned')
 })

@@ -43,9 +43,25 @@ test('personal-library input normalizes typed progress, direct ratings, and boun
 })
 
 test('personal-library validation protects book identity and progress bounds', () => {
-  assert.deepEqual(normalizePersonalLibraryInput({ title: 'A book', item_type: 'book', state: 'planned', branch_id: 'books' }), { ok: false, error: 'author required for books' })
-  assert.deepEqual(normalizePersonalLibraryInput({ title: 'A show', item_type: 'series', state: 'planned', branch_id: 'tv', progress_current: 11, progress_total: 10 }), { ok: false, error: 'progress_current cannot exceed progress_total' })
-  assert.deepEqual(normalizePersonalLibraryInput({ title: 'A movie', item_type: 'movie', state: 'planned' }), { ok: false, error: 'branch_id required' })
+  assert.deepEqual(
+    normalizePersonalLibraryInput({ title: 'A book', item_type: 'book', state: 'planned', branch_id: 'books' }),
+    { ok: false, error: 'author required for books' },
+  )
+  assert.deepEqual(
+    normalizePersonalLibraryInput({
+      title: 'A show',
+      item_type: 'series',
+      state: 'planned',
+      branch_id: 'tv',
+      progress_current: 11,
+      progress_total: 10,
+    }),
+    { ok: false, error: 'progress_current cannot exceed progress_total' },
+  )
+  assert.deepEqual(normalizePersonalLibraryInput({ title: 'A movie', item_type: 'movie', state: 'planned' }), {
+    ok: false,
+    error: 'branch_id required',
+  })
 })
 
 test('personal-library identity remains deterministic for URL-free and Unicode records', () => {
@@ -71,7 +87,10 @@ test('the API, global Capture, and Settings studio expose one editable personal-
   const captureApi = readFileSync(new URL('../../src/api/capture.ts', import.meta.url), 'utf8')
   const recommendationsApi = readFileSync(new URL('../../src/api/recommendations.ts', import.meta.url), 'utf8')
   const captureDialog = readFileSync(new URL('../../client/src/shell/CaptureDialog.tsx', import.meta.url), 'utf8')
-  const studio = readFileSync(new URL('../../client/src/workspaces/settings/PersonalDataStudio.tsx', import.meta.url), 'utf8')
+  const studio = readFileSync(
+    new URL('../../client/src/workspaces/settings/PersonalDataStudio.tsx', import.meta.url),
+    'utf8',
+  )
   assert.match(captureApi, /app\.get\('\/personal'/)
   assert.match(captureApi, /app\.post\('\/personal'/)
   assert.match(captureApi, /app\.patch\('\/personal\/:id'/)
@@ -87,7 +106,10 @@ test('the API, global Capture, and Settings studio expose one editable personal-
 })
 
 test('book-state reconciliation repairs consumed books imported before explicit metadata existed', () => {
-  const migration = readFileSync(new URL('../../migrations/0065_reconcile_personal_book_states.sql', import.meta.url), 'utf8')
+  const migration = readFileSync(
+    new URL('../../migrations/0065_reconcile_personal_book_states.sql', import.meta.url),
+    'utf8',
+  )
   assert.match(migration, /r\.status = 'consumed'/)
   assert.match(migration, /m\.learning_state = 'completed'/)
   assert.match(migration, /book_reading_state.*finished/)

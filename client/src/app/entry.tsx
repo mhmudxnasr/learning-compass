@@ -22,7 +22,9 @@ function recoverFromStaleImport(message: string) {
 }
 
 addEventListener('error', (event: ErrorEvent) => recoverFromStaleImport(event.message || ''))
-addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => recoverFromStaleImport(String(event.reason?.message || event.reason || '')))
+addEventListener('unhandledrejection', (event: PromiseRejectionEvent) =>
+  recoverFromStaleImport(String(event.reason?.message || event.reason || '')),
+)
 
 initTheme()
 initAndroidExperience()

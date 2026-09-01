@@ -82,63 +82,113 @@ export async function loadHermesBrief(DB: Database) {
   let next_action: HermesNextAction
   if (count(due) > 0) {
     next_action = {
-      id: 'due-recall', kind: 'review', label: 'Review due recall',
+      id: 'due-recall',
+      kind: 'review',
+      label: 'Review due recall',
       reason: `${count(due)} recall ${count(due) === 1 ? 'card is' : 'cards are'} due today.`,
-      target: 'learn.recall', href: '#/learn?mode=practice&focus=recall', priority: 'high',
+      target: 'learn.recall',
+      href: '#/learn?mode=practice&focus=recall',
+      priority: 'high',
     }
   } else if (staleJobs > 0 || failedJobs > 0 || deadLetterJobs > 0 || overdueRetries > 0) {
-    const issue = staleJobs > 0 ? `${staleJobs} stale job ${staleJobs === 1 ? 'lease needs' : 'leases need'} recovery`
-      : deadLetterJobs > 0 ? `${deadLetterJobs} dead-letter ${deadLetterJobs === 1 ? 'job needs' : 'jobs need'} review`
-        : failedJobs > 0 ? `${failedJobs} failed ${failedJobs === 1 ? 'job needs' : 'jobs need'} review`
-          : `${overdueRetries} overdue ${overdueRetries === 1 ? 'retry needs' : 'retries need'} recovery`
+    const issue =
+      staleJobs > 0
+        ? `${staleJobs} stale job ${staleJobs === 1 ? 'lease needs' : 'leases need'} recovery`
+        : deadLetterJobs > 0
+          ? `${deadLetterJobs} dead-letter ${deadLetterJobs === 1 ? 'job needs' : 'jobs need'} review`
+          : failedJobs > 0
+            ? `${failedJobs} failed ${failedJobs === 1 ? 'job needs' : 'jobs need'} review`
+            : `${overdueRetries} overdue ${overdueRetries === 1 ? 'retry needs' : 'retries need'} recovery`
     next_action = {
-      id: staleJobs > 0 ? 'jobs:stale' : deadLetterJobs > 0 ? 'jobs:dead-letter' : failedJobs > 0 ? 'jobs:failed' : 'jobs:overdue-retry',
-      kind: 'repair', label: 'Repair blocked Hermes work', reason: `${issue}.`,
-      target: 'settings.system.jobs', href: '#/settings?mode=system', priority: 'high',
+      id:
+        staleJobs > 0
+          ? 'jobs:stale'
+          : deadLetterJobs > 0
+            ? 'jobs:dead-letter'
+            : failedJobs > 0
+              ? 'jobs:failed'
+              : 'jobs:overdue-retry',
+      kind: 'repair',
+      label: 'Repair blocked Hermes work',
+      reason: `${issue}.`,
+      target: 'settings.system.jobs',
+      href: '#/settings?mode=system',
+      priority: 'high',
     }
   } else if (consolidation) {
     next_action = {
-      id: `consolidation:${consolidation.id}`, kind: 'repair', label: 'Resolve an open consolidation loop',
+      id: `consolidation:${consolidation.id}`,
+      kind: 'repair',
+      label: 'Resolve an open consolidation loop',
       reason: `${consolidation.video_title || 'A completed source'} still has unfinished consolidation work.`,
-      target: `library.source.${consolidation.recommendation_id}`, href: `#/library/source/${encodeURIComponent(consolidation.recommendation_id)}`,
-      priority: 'high', source_id: consolidation.recommendation_id, recommendation_id: consolidation.recommendation_id,
+      target: `library.source.${consolidation.recommendation_id}`,
+      href: `#/library/source/${encodeURIComponent(consolidation.recommendation_id)}`,
+      priority: 'high',
+      source_id: consolidation.recommendation_id,
+      recommendation_id: consolidation.recommendation_id,
     }
   } else if (queue) {
     next_action = {
-      id: `queue:${queue.id}`, kind: 'continue', label: queue.learning_state === 'in_progress' ? 'Continue the current source' : 'Start the next source',
+      id: `queue:${queue.id}`,
+      kind: 'continue',
+      label: queue.learning_state === 'in_progress' ? 'Continue the current source' : 'Start the next source',
       reason: `${queue.video_title || 'Your next source'} is ${queue.learning_state === 'in_progress' ? 'in progress' : 'ready to start'}.`,
-      target: 'library.queue', href: '#/library?mode=triage&focus=queue', priority: 'medium', recommendation_id: queue.id,
+      target: 'library.queue',
+      href: '#/library?mode=triage&focus=queue',
+      priority: 'medium',
+      recommendation_id: queue.id,
     }
   } else if (missingMaterial) {
     next_action = {
-      id: `lesson-material:${missingMaterial.id}`, kind: 'curate', label: 'Add the missing lesson material',
+      id: `lesson-material:${missingMaterial.id}`,
+      kind: 'curate',
+      label: 'Add the missing lesson material',
       reason: `${missingMaterial.title || 'The next lesson'} has neither authored content nor a primary source.`,
       target: `learn.lesson.${missingMaterial.id}`,
       href: `#/learn/t/${encodeURIComponent(missingMaterial.thread_id)}/l/${encodeURIComponent(missingMaterial.id)}`,
-      priority: 'medium', thread_id: missingMaterial.thread_id, stage_id: missingMaterial.stage_id,
+      priority: 'medium',
+      thread_id: missingMaterial.thread_id,
+      stage_id: missingMaterial.stage_id,
     }
   } else if (count(proposals) > 0) {
     next_action = {
-      id: 'pending-proposals', kind: 'review', label: 'Review pending Hermes changes',
+      id: 'pending-proposals',
+      kind: 'review',
+      label: 'Review pending Hermes changes',
       reason: `${count(proposals)} proposed ${count(proposals) === 1 ? 'change is' : 'changes are'} waiting for a decision.`,
-      target: 'settings.system.proposals', href: '#/settings?mode=system', priority: 'medium',
+      target: 'settings.system.proposals',
+      href: '#/settings?mode=system',
+      priority: 'medium',
     }
   } else if (count(drafts) > 0) {
     next_action = {
-      id: 'recall-drafts', kind: 'approve_recall', label: 'Review recall drafts',
+      id: 'recall-drafts',
+      kind: 'approve_recall',
+      label: 'Review recall drafts',
       reason: `${count(drafts)} drafted ${count(drafts) === 1 ? 'card is' : 'cards are'} waiting for approval.`,
-      target: 'learn.recall', href: '#/learn?mode=practice&focus=recall', priority: 'medium',
+      target: 'learn.recall',
+      href: '#/learn?mode=practice&focus=recall',
+      priority: 'medium',
     }
   } else if (count(inbox) > 0) {
     next_action = {
-      id: 'captured-sources', kind: 'curate', label: 'Review captured sources',
+      id: 'captured-sources',
+      kind: 'curate',
+      label: 'Review captured sources',
       reason: `${count(inbox)} captured ${count(inbox) === 1 ? 'source needs' : 'sources need'} a decision.`,
-      target: 'home.capture', href: '#/home?action=capture', priority: 'low',
+      target: 'home.capture',
+      href: '#/home?action=capture',
+      priority: 'low',
     }
   } else {
     next_action = {
-      id: 'capture', kind: 'curate', label: 'Capture the next useful source',
-      reason: 'The active Queue and captured sources are clear.', target: 'home.capture', href: '#/home?action=capture', priority: 'low',
+      id: 'capture',
+      kind: 'curate',
+      label: 'Capture the next useful source',
+      reason: 'The active Queue and captured sources are clear.',
+      target: 'home.capture',
+      href: '#/home?action=capture',
+      priority: 'low',
     }
   }
 

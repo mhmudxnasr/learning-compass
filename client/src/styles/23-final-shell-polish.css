@@ -1,0 +1,757 @@
+/* ═════════════════════════ Anti-slop design law pass ═════════════════════════
+ * Phase 1+2: hover-lift/shadow purge, rail signature, custom wordmark.
+ * Hover on any interactive element changes state cleanly — tonal shift,
+ * border color, focus ring, active pressed marker — never a translateY
+ * lift or an even all-around shadow bloom.
+ */
+
+/* 1. Hover-lift/slop-shadow purge — targeted to the actual interactive
+   elements (all inputs/buttons/a/button-like). Cards may still rise if a
+   block genuinely needs it, but never with a wide blooming shadow. */
+button:hover:not(:disabled),
+button:focus-visible:not(:disabled),
+.button:hover,
+a:hover {
+  transform: none;
+}
+/* The all-around bloom (the "box-shadow floats" tell) only ever lives on
+   genuinely floating surfaces: dialogs, popovers, drag ghost. */
+.folio-home-thread-lesson:hover,
+.curriculum-lesson-card:hover,
+.course-lesson:hover,
+.course-material-primary:hover,
+.course-next-action:hover,
+.atlas-controls-trigger:hover,
+.atlas-floating-bar .atlas-controls-trigger.active:hover,
+.root-rail nav a:hover,
+.rail-command:hover,
+.rail-bottom a:hover,
+.mobile-dock a:hover,
+.object-inspector a:hover,
+.object-inspector button:hover {
+  box-shadow: none;
+}
+
+/* 2. Rail signature + brand lockup — real bespoke mark + word, no tile,
+   no rounded box behind the glyph. Active pressed marker uses a sliding
+   column on the rail, not a live rectangle. */
+.root-rail {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--studio-rail) 100%, var(--studio-ink)) 0%,
+    var(--studio-rail) 18%,
+    var(--studio-rail) 82%,
+    color-mix(in srgb, var(--studio-rail) 94%, var(--studio-ink)) 100%
+  );
+  color: var(--studio-rail-ink);
+  border-right: 1px solid var(--studio-rail-border);
+  box-shadow: inset -9px 0 0 0 color-mix(in srgb, var(--studio-rail-ink) 10%, transparent);
+}
+.rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 0 14px;
+}
+.rail-brand svg {
+  width: 28px;
+  height: 28px;
+  color: var(--studio-rail-ink);
+  flex: 0 0 28px;
+}
+.rail-brand strong {
+  font-family: var(--font-reading, 'Literata', Georgia, serif);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 0.008em;
+  color: var(--studio-rail-ink);
+  line-height: 1;
+  text-transform: none;
+}
+.rail-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid var(--studio-rail-border);
+  padding: 0 2px 8px;
+}
+.root-rail nav > .rail-top .rail-command {
+  flex: 1;
+  width: auto;
+  min-height: 32px;
+  border-radius: var(--studio-radius-control);
+}
+.rail-command .rail-label {
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+/* The left rail active marker is a tiny rose tab that slides to the
+   current root with a positional relational shift, not a rectangle. */
+.root-rail nav a.active,
+.rail-bottom a.active {
+  border-color: transparent;
+  background: transparent;
+  color: var(--studio-rail-active-ink);
+  box-shadow: inset 3px 0 0 0 var(--studio-lichen);
+}
+
+/* Premium composition pass -------------------------------------------------
+ * Keep the established Botanical Folio tokens and information architecture,
+ * but give the shell one deliberate spatial system. This final layer replaces
+ * the accidental geometry created by earlier, surface-specific polish passes.
+ */
+
+.studio-shell {
+  grid-template-columns: clamp(164px, calc(132px * var(--font-scale)), 190px) minmax(0, 1fr);
+}
+
+.studio-shell.has-inspector {
+  grid-template-columns: clamp(164px, calc(132px * var(--font-scale)), 190px) minmax(0, 1fr) var(
+      --studio-inspector-width
+    );
+}
+
+.root-rail {
+  width: clamp(164px, calc(132px * var(--font-scale)), 190px);
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--studio-rail-ink) 10%, transparent);
+}
+
+.root-rail nav {
+  gap: 4px;
+  padding: 14px 10px 18px;
+}
+
+.rail-brand {
+  min-height: 50px;
+  margin-bottom: 3px;
+  padding: 3px 7px 16px;
+}
+
+.rail-top {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 0 0 12px;
+}
+
+.root-rail nav > .rail-top .rail-command {
+  min-width: 0;
+  min-height: 52px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 3px;
+}
+
+.root-rail nav > a {
+  min-height: 48px;
+  padding-inline: 12px;
+}
+
+.root-rail nav a.active,
+.rail-bottom a.active {
+  border-color: color-mix(in srgb, var(--studio-rail-ink) 8%, transparent);
+  background: color-mix(in srgb, var(--studio-rail-ink) 9%, transparent);
+  box-shadow: inset 3px 0 0 var(--studio-lichen);
+}
+
+.work-area {
+  background: var(--studio-shell);
+}
+
+.workspace-canvas {
+  padding: var(--studio-density-canvas-y) var(--studio-density-canvas-x) var(--studio-density-canvas-bottom);
+  background: var(--studio-canvas);
+  scroll-padding-top: 20px;
+}
+
+.workspace-canvas > * {
+  width: min(100%, 1280px);
+  max-width: 1280px;
+  margin-inline: auto;
+}
+
+.workspace-canvas:has(.atlas-canvas-view) {
+  padding-inline: 0;
+  padding-bottom: 0;
+}
+
+.workspace-canvas:has(.atlas-canvas-view) > * {
+  width: 100%;
+  max-width: none;
+}
+
+/* Local navigation reads as one compact command strip, not a second header. */
+.workspace-mode-switcher,
+.learn-workspace-shell > .workspace-mode-switcher,
+.settings-local-navigation .settings-local-nav {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 18px;
+  gap: 0;
+}
+
+.workspace-mode-switcher a {
+  min-width: 112px;
+  min-height: 40px;
+  flex: 0 0 auto;
+  padding: 8px 15px;
+  border-radius: 0;
+}
+
+.workspace-mode-switcher a small {
+  display: none;
+}
+
+.workspace-mode-switcher a:hover,
+.workspace-mode-switcher a.active {
+  background: transparent;
+  color: var(--studio-ink);
+}
+
+.workspace-filter-switcher {
+  margin: -8px 0 16px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.settings-workspace,
+.settings-local-navigation {
+  gap: 8px;
+}
+
+.settings-local-navigation {
+  margin-bottom: 0;
+}
+
+.preferences-page {
+  gap: 16px;
+}
+
+/* Home has a clear hierarchy: active work first, supporting shelves second. */
+.folio-home-workspace {
+  gap: 22px;
+  padding-top: 0;
+}
+
+.folio-home-header {
+  min-height: 54px;
+}
+
+.folio-home-focus {
+  padding: clamp(22px, 3vw, 34px);
+  border-color: color-mix(in srgb, var(--studio-seam) 82%, var(--studio-ink));
+}
+
+.folio-home-focus .state-empty {
+  min-height: 150px;
+  padding-block: 24px;
+}
+
+.folio-home-sequence {
+  grid-template-columns: minmax(0, 1.35fr) minmax(290px, 0.75fr);
+  grid-template-rows: auto auto;
+  gap: 16px;
+}
+
+.folio-home-threads {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+.folio-home-queue {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.folio-home-feeds {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.folio-home-threads,
+.folio-home-queue,
+.folio-home-feeds {
+  padding: 22px;
+}
+
+.folio-home-thread-lesson,
+.folio-home-feed-item,
+.folio-home-queue-item {
+  border-color: color-mix(in srgb, var(--studio-seam) 90%, transparent);
+}
+
+/* At ordinary laptop widths the branch dossier gets a readable main column;
+ * live signals move beneath it instead of squeezing three permanent rails. */
+@media (min-width: 1081px) and (max-width: 1380px) {
+  .branch-dossier-layout {
+    grid-template-columns: minmax(270px, 300px) minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .branch-dossier-rail {
+    grid-column: 2;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-height: 0;
+  }
+
+  .branch-rail-head,
+  .branch-rail-decision,
+  .branch-rail-atlas {
+    grid-column: 1 / -1;
+  }
+
+  .branch-rail-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .branch-rail-signal:nth-of-type(even) {
+    border-inline-end: 1px solid var(--studio-seam);
+  }
+}
+
+.mobile-brand {
+  display: none;
+}
+
+@media (max-width: 940px) {
+  .studio-shell,
+  .studio-shell.has-inspector {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mobile-utilities {
+    position: sticky;
+    z-index: 12;
+    top: 0;
+    display: flex;
+    min-height: 64px;
+    align-items: center;
+    gap: 7px;
+    padding: max(9px, env(safe-area-inset-top)) 14px 9px;
+    border-bottom: 1px solid color-mix(in srgb, var(--studio-seam) 76%, transparent);
+    background: color-mix(in srgb, var(--studio-canvas) 94%, transparent);
+    backdrop-filter: blur(var(--studio-glass-blur));
+  }
+
+  .mobile-brand {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+    margin-right: auto;
+    color: var(--studio-ink);
+  }
+
+  .mobile-brand svg {
+    flex: 0 0 auto;
+    color: var(--studio-cypress);
+  }
+
+  .mobile-brand strong {
+    overflow: hidden;
+    font-family: var(--font-reading);
+    font-size: calc(15px * var(--font-scale));
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-utilities .button {
+    width: auto;
+    min-width: 44px;
+    padding-inline: 11px;
+  }
+
+  .workspace-canvas {
+    padding: var(--studio-density-canvas-y) var(--studio-density-canvas-x)
+      calc(max(var(--studio-density-canvas-bottom), 92px) + env(safe-area-inset-bottom));
+  }
+
+  .mobile-dock {
+    right: 10px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: 10px;
+    min-height: 64px;
+    padding: 6px;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--studio-ledger) 95%, transparent);
+    backdrop-filter: blur(var(--studio-glass-blur));
+    box-shadow: 0 12px 32px color-mix(in srgb, var(--studio-rail) 16%, transparent);
+  }
+
+  .mobile-dock a {
+    min-height: 50px;
+    border-radius: 10px;
+  }
+
+  .folio-home-sequence {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+
+  .folio-home-threads,
+  .folio-home-queue,
+  .folio-home-feeds {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .workspace-mode-switcher,
+  .learn-workspace-shell > .workspace-mode-switcher,
+  .settings-local-navigation .settings-local-nav {
+    display: grid;
+    width: 100%;
+    max-width: none;
+    gap: 2px;
+    margin-bottom: 16px;
+  }
+
+  [data-root='library'] .workspace-mode-switcher {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  [data-root='settings'] .workspace-mode-switcher {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  [data-root='learn'] .workspace-mode-switcher,
+  [data-root='map'] .workspace-mode-switcher {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace-mode-switcher a {
+    min-width: 0;
+    min-height: 44px;
+    padding-inline: 6px;
+  }
+
+  .workspace-filter-switcher {
+    margin-top: -8px;
+  }
+
+  .mobile-brand strong {
+    display: none;
+  }
+
+  .mobile-utilities .button {
+    padding-inline: 10px;
+  }
+
+  .folio-home-focus,
+  .folio-home-threads,
+  .folio-home-queue,
+  .folio-home-feeds {
+    padding: 18px;
+  }
+}
+
+/* Structural shell contract — authoritative final cascade. */
+.workspace-chrome {
+  display: none;
+}
+
+@media (min-width: 941px) {
+  .studio-shell {
+    grid-template-columns: 108px minmax(0, 1fr);
+  }
+  .studio-shell.has-inspector {
+    grid-template-columns: 108px minmax(0, 1fr) var(--studio-inspector-width);
+  }
+  .root-rail {
+    width: 108px;
+  }
+  .root-rail nav {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    padding: 18px 10px;
+  }
+  .rail-brand {
+    justify-content: center;
+    min-height: 58px;
+    margin: 0 0 13px;
+    padding: 0 0 16px;
+    border-bottom: 1px solid var(--studio-rail-border);
+  }
+  .rail-brand strong {
+    display: none;
+  }
+  .root-rail nav > a {
+    min-height: 68px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 5px;
+    text-align: center;
+  }
+  .root-rail nav > a .rail-label {
+    font-size: calc(11px * var(--font-scale));
+    line-height: 1;
+  }
+  .root-rail nav a.active,
+  .rail-bottom a.active {
+    box-shadow: inset 3px 0 0 var(--studio-lichen);
+  }
+  .rail-bottom {
+    margin-top: auto;
+    justify-content: center;
+  }
+
+  .work-area {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    grid-template-rows: 64px minmax(0, 1fr);
+  }
+  .workspace-chrome {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 0 22px 0 var(--studio-density-canvas-x);
+    border-bottom: 1px solid var(--studio-seam);
+    background: var(--studio-canvas);
+  }
+  .workspace-location {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 9px;
+    color: var(--studio-muted);
+    font-size: calc(12px * var(--font-scale));
+  }
+  .workspace-location strong {
+    overflow: hidden;
+    color: var(--studio-ink);
+    font-weight: var(--font-medium-weight);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .workspace-location .icon {
+    color: var(--studio-seam-strong);
+  }
+  .workspace-commands {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .workspace-search-command,
+  .workspace-capture-command {
+    min-height: 38px;
+    border: 1px solid var(--studio-seam);
+    border-radius: var(--studio-radius-control);
+    font: inherit;
+    cursor: pointer;
+  }
+  .workspace-search-command {
+    display: grid;
+    min-width: 238px;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 9px;
+    padding: 0 9px 0 12px;
+    background: var(--studio-shell);
+    color: var(--studio-muted);
+    text-align: left;
+  }
+  .workspace-search-command kbd {
+    padding: 3px 6px;
+    border: 1px solid var(--studio-seam);
+    background: var(--studio-canvas);
+    color: var(--studio-muted);
+    font: 10px/1.2 var(--font-ui);
+  }
+  .workspace-capture-command {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 14px;
+    border-color: var(--studio-cypress);
+    background: var(--studio-cypress);
+    color: var(--studio-action-ink);
+    font-weight: var(--font-medium-weight);
+  }
+  .workspace-search-command:hover,
+  .workspace-search-command:focus-visible {
+    border-color: var(--studio-cypress);
+    color: var(--studio-ink);
+  }
+  .workspace-capture-command:hover,
+  .workspace-capture-command:focus-visible {
+    background: color-mix(in srgb, var(--studio-cypress) 86%, var(--studio-ink));
+  }
+  .workspace-canvas {
+    min-height: 0;
+  }
+}
+
+.folio-home-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(300px, 0.65fr);
+  grid-template-areas: 'home-head home-head' 'resurfacing resurfacing' 'current queue' 'threads feeds';
+  gap: 0 24px;
+  align-items: start;
+}
+.folio-home-header {
+  grid-area: home-head;
+  min-height: 104px;
+  align-items: end;
+  padding: 8px 0 22px;
+  border-bottom: 1px solid var(--studio-seam);
+}
+.folio-home-header h1 {
+  margin-top: 5px;
+  font-size: clamp(32px, 4vw, 54px);
+}
+.folio-home-intro {
+  max-width: 48ch;
+  margin: 0 0 4px;
+  color: var(--studio-muted);
+  line-height: 1.55;
+  text-align: right;
+}
+.folio-home-resurfacing {
+  grid-area: resurfacing;
+  margin: 18px 0 0;
+}
+.folio-home-focus {
+  grid-area: current;
+  min-height: 330px;
+  margin: 24px 0 0;
+}
+.folio-home-sequence {
+  display: contents;
+}
+.folio-home-queue {
+  grid-area: queue;
+  min-height: 330px;
+  margin-top: 24px;
+}
+.folio-home-threads {
+  grid-area: threads;
+  margin-top: 24px;
+}
+.folio-home-feeds {
+  grid-area: feeds;
+  margin-top: 24px;
+}
+.folio-home-focus,
+.folio-home-threads,
+.folio-home-queue,
+.folio-home-feeds {
+  border-radius: 0;
+}
+
+@media (max-width: 1100px) {
+  .folio-home-workspace {
+    grid-template-columns: 1fr;
+    grid-template-areas: 'home-head' 'resurfacing' 'current' 'queue' 'threads' 'feeds';
+  }
+  .folio-home-intro {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .folio-home-header {
+    min-height: 82px;
+    padding-bottom: 16px;
+  }
+  .folio-home-header h1 {
+    font-size: clamp(30px, 11vw, 44px);
+  }
+  .folio-home-focus,
+  .folio-home-queue,
+  .folio-home-threads,
+  .folio-home-feeds {
+    min-height: 0;
+    margin-top: 16px;
+  }
+}
+
+@media (min-width: 941px) {
+  .workspace-chrome-modes {
+    display: flex;
+    align-self: stretch;
+    align-items: stretch;
+    gap: 3px;
+    margin-inline: auto;
+  }
+
+  .workspace-chrome-modes a {
+    position: relative;
+    display: flex;
+    min-width: 68px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    color: var(--studio-muted);
+    font-size: calc(12px * var(--font-scale));
+    font-weight: var(--font-medium-weight);
+    text-decoration: none;
+  }
+
+  .workspace-chrome-modes a::after {
+    position: absolute;
+    right: 10px;
+    bottom: -1px;
+    left: 10px;
+    height: 2px;
+    background: transparent;
+    content: '';
+  }
+
+  .workspace-chrome-modes a:hover,
+  .workspace-chrome-modes a.active {
+    color: var(--studio-ink);
+  }
+
+  .workspace-chrome-modes a.active::after {
+    background: var(--studio-cypress);
+  }
+
+  .workspace-canvas .workspace-mode-switcher {
+    display: none;
+  }
+}
+
+@media (min-width: 1101px) {
+  [data-root='home'] :is(.folio-home-focus, .folio-home-threads, .folio-home-queue, .folio-home-feeds) {
+    border: 0;
+    border-top: 1px solid var(--studio-seam);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  [data-root='home'] :is(.folio-home-focus, .folio-home-threads) {
+    padding-inline: 0;
+  }
+
+  [data-root='home'] :is(.folio-home-queue, .folio-home-feeds) {
+    padding-right: 0;
+    padding-left: 24px;
+    border-left: 1px solid var(--studio-seam);
+  }
+}
+
+@media (min-width: 941px) and (max-width: 1180px) {
+  .workspace-search-command {
+    min-width: 44px;
+  }
+  .workspace-search-command > span {
+    display: none;
+  }
+  .workspace-search-command {
+    grid-template-columns: auto auto;
+  }
+  .workspace-location > span,
+  .workspace-location > .icon {
+    display: none;
+  }
+}

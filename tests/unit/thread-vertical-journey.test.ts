@@ -1,11 +1,20 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { readStudioCss } from './support/read-studio-css.ts'
 
 const pathsView = readFileSync(new URL('../../client/src/workspaces/learn/LearnPathsView.tsx', import.meta.url), 'utf8')
-const threadView = readFileSync(new URL('../../client/src/workspaces/learn/LearnThreadView.tsx', import.meta.url), 'utf8')
+const threadView = [
+  'LearnThreadView.tsx',
+  'LearnThreadProjects.tsx',
+  'LearnLevelView.tsx',
+  'LearnThreadMaterials.tsx',
+  'LearnLessonView.tsx',
+]
+  .map((name) => readFileSync(new URL(`../../client/src/workspaces/learn/${name}`, import.meta.url), 'utf8'))
+  .join('\n')
 const learnWorkspace = readFileSync(new URL('../../client/src/workspaces/LearnWorkspace.tsx', import.meta.url), 'utf8')
-const studioCss = readFileSync(new URL('../../client/src/studio.css', import.meta.url), 'utf8')
+const studioCss = readStudioCss()
 const serviceWorker = readFileSync(new URL('../../client/public/sw.js', import.meta.url), 'utf8')
 
 test('Thread command center uses one continuous Vertical Journey contract', () => {
@@ -21,11 +30,18 @@ test('Thread command center uses one continuous Vertical Journey contract', () =
   }
 
   assert.match(studioCss, /container-name:\s*thread-journey/)
-  assert.match(studioCss, /\.vertical-thread > :not\(\.vertical-thread-spine\)\s*\{[^}]*width:\s*100%;[^}]*margin-inline:\s*0;/s)
+  assert.match(
+    studioCss,
+    /\.vertical-thread > :not\(\.vertical-thread-spine\)\s*\{[^}]*width:\s*100%;[^}]*margin-inline:\s*0;/s,
+  )
   assert.doesNotMatch(studioCss, /\.vertical-thread > :not\(\.vertical-thread-spine\)\s*\{[^}]*1120px/s)
   assert.match(studioCss, /\.thread-tabs\.vertical-thread-tabs\s*\{[^}]*display:\s*flex/s)
-  assert.match(studioCss, /@container thread-journey \(max-width:\s*660px\)[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(2/)
-  for (const label of ['Now', 'Lessons', 'Projects', 'Resources']) assert.match(threadView, new RegExp(`label: '${label}'`))
+  assert.match(
+    studioCss,
+    /@container thread-journey \(max-width:\s*660px\)[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(2/,
+  )
+  for (const label of ['Now', 'Lessons', 'Projects', 'Resources'])
+    assert.match(threadView, new RegExp(`label: '${label}'`))
   assert.match(learnWorkspace, /!\['thread', 'level', 'lesson', 'canon-domain'\]\.includes/)
   assert.doesNotMatch(threadView, /class="vertical-overview-next"/)
 })
@@ -47,7 +63,8 @@ test('Level and owner disclosures stay exact, bounded, and recoverable', () => {
 })
 
 test('Threads index leads with resumable work instead of dashboard metrics', () => {
-  for (const label of ['In progress', 'Paused', 'Completed', 'All']) assert.match(pathsView, new RegExp(`label: '${label}'`))
+  for (const label of ['In progress', 'Paused', 'Completed', 'All'])
+    assert.match(pathsView, new RegExp(`label: '${label}'`))
   assert.match(pathsView, /const \[filter, setFilter\] = useState\('active'\)/)
   assert.match(pathsView, /Continue Thread/)
   assert.match(pathsView, /thread-index-summary/)
@@ -74,6 +91,6 @@ test('Vertical Journey preserves direct progression language and ships a fresh P
 })
 
 test('locked Levels distinguish prerequisites from missing material', () => {
-  assert.match(threadView, /sourceCount > 0 \? 'Preview · Prerequisite' : 'Preview · Needs material'/)
+  assert.match(threadView, /sourceCount > 0\s*\?\s*'Preview · Prerequisite'\s*:\s*'Preview · Needs material'/)
   assert.match(threadView, /Complete the preceding Levels before these lessons become active work/)
 })

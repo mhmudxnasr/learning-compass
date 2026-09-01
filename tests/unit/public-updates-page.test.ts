@@ -11,11 +11,19 @@ let vite: ViteDevServer
 
 test.before(async () => {
   const root = fileURLToPath(new URL('../..', import.meta.url))
-  vite = await createServer({ root, configFile: false, server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' })
+  vite = await createServer({
+    root,
+    configFile: false,
+    server: { middlewareMode: true },
+    appType: 'custom',
+    logLevel: 'silent',
+  })
   app = (await vite.ssrLoadModule('/src/index.ts')).default
 })
 
-test.after(async () => { await vite.close() })
+test.after(async () => {
+  await vite.close()
+})
 
 test('public learning update explains the real material contract in accessible plain HTML', () => {
   assert.match(updateHtml, /^<!doctype html>/i)
@@ -46,7 +54,11 @@ test('learning update stays public and is served with strict document headers', 
     },
   }
 
-  const response = await app.fetch(new Request(`https://learning-compass.test${updatePath}`), env as any, {} as ExecutionContext)
+  const response = await app.fetch(
+    new Request(`https://learning-compass.test${updatePath}`),
+    env as any,
+    {} as ExecutionContext,
+  )
   assert.equal(response.status, 200)
   assert.deepEqual(requestedPaths, [updatePath])
   assert.equal(response.headers.get('content-type'), 'text/html; charset=utf-8')

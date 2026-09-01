@@ -1,6 +1,13 @@
 const supportedProposalTypes = new Set([
-  'profile_signal', 'profile_update', 'quality_rule', 'operational_style', 'core_filter',
-  'pattern_hypothesis', 'pattern', 'blacklist', 'priority',
+  'profile_signal',
+  'profile_update',
+  'quality_rule',
+  'operational_style',
+  'core_filter',
+  'pattern_hypothesis',
+  'pattern',
+  'blacklist',
+  'priority',
 ])
 
 const legacyProposalTypes: Record<string, string> = {
@@ -10,7 +17,8 @@ const legacyProposalTypes: Record<string, string> = {
 
 export const normalizeProposalType = (value: unknown): string => legacyProposalTypes[String(value)] || String(value)
 
-export const isSupportedProposalType = (value: unknown): boolean => supportedProposalTypes.has(normalizeProposalType(value))
+export const isSupportedProposalType = (value: unknown): boolean =>
+  supportedProposalTypes.has(normalizeProposalType(value))
 
 export const serializeProfileValue = (value: any): string => {
   if (typeof value === 'string') return value
@@ -20,7 +28,11 @@ export const serializeProfileValue = (value: any): string => {
 
 const parseStoredProfileValue = (value: unknown): any => {
   if (value === null || value === undefined || value === '') return null
-  try { return JSON.parse(String(value)) } catch { return value }
+  try {
+    return JSON.parse(String(value))
+  } catch {
+    return value
+  }
 }
 
 const isPlainObject = (value: unknown): value is Record<string, any> =>
@@ -33,9 +45,13 @@ export function mergeQualityRules(existingRaw: unknown, proposed: any): string {
   if (existing === null) return serializeProfileValue(proposed)
   if (Array.isArray(existing)) {
     const additions = Array.isArray(proposed) ? proposed : [proposed]
-    return JSON.stringify([...existing, ...additions.filter((item) => !existing.some((current) => sameSerializedValue(current, item)))])
+    return JSON.stringify([
+      ...existing,
+      ...additions.filter((item) => !existing.some((current) => sameSerializedValue(current, item))),
+    ])
   }
   if (isPlainObject(existing) && isPlainObject(proposed)) return JSON.stringify({ ...existing, ...proposed })
-  if (typeof existing === 'string' && typeof proposed === 'string') return existing === proposed ? existing : `${existing}\n${proposed}`
+  if (typeof existing === 'string' && typeof proposed === 'string')
+    return existing === proposed ? existing : `${existing}\n${proposed}`
   return JSON.stringify([existing, ...(Array.isArray(proposed) ? proposed : [proposed])])
 }

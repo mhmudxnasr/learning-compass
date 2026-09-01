@@ -1,5 +1,15 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-01 (production maintainability hardening, local)
+
+The production-readiness branch adds one repository quality gate for lint, formatting, hook correctness, dead files, and dependency reachability; updates the supported runtime and build packages; migrates Vite chunking to Rolldown; and documents the TypeScript 7 compatibility hold. The 28,695-line application stylesheet is now an ordered set of product-area modules with byte-equivalent compiled output. The former 2,098-line Learning Thread view is split into route, level, project, lesson, material, and view-model owners. The browser extension now has its declared options UI and tested production default. Retired client/config entry points and publicly served design prototypes are removed.
+
+`README.md`, `AGENTS.md`, `docs/architecture.md`, `docs/dependencies.md`, the style-module README, and `CHANGELOG.md` now define folder ownership, dependency exceptions, naming and error conventions, test expectations, file-size guidance, and required human/AI maintenance behavior. This work is local only; no deployment or production data mutation has occurred.
+
+Repository verification passes `npm run quality`, 381/381 unit tests plus TypeScript, the Vite 8 production build at 112.29 KB gzip for the base JavaScript, all six standalone Worker/D1 integration flows, and the full five-root/16-mode typed-object Android/offline/mobile E2E suite. Migration rehearsal applies all 70 migrations cleanly and idempotently; the agent/Hermes contract passes 31 controls, 30 synchronized checks, and 125 owned routes. The deterministic Hermes manager harness passes 37 tests, both installed site clients pass 46 tests each, installed Python/Node syntax checks pass, `npm audit` reports zero vulnerabilities, and `git diff --check` passes.
+
+The combined non-deploying release command reaches and passes its repository quality, unit, type, build, E2E, and Hermes contract stages, then stops at the installed Hermes prompt-budget check. The default profile's skills index is 2,896 bytes against the recorded 2,809-byte ceiling, and both profiles have tool-schema hashes that differ from the trusted receipts. The installed Hermes checkout has unrelated uncommitted code and skill changes, so this branch does not bless those hashes or raise the budget. Reconcile and clean that external checkout, then rerun `npm run verify:release` before any deployment.
+
 ## Current truth — 2026-08-28 (structural shell redesign, local)
 
 The five-root client now has three explicit architectural planes: a 108px navigation-only desktop rail, a 64px workspace command bar, and the working field. Search and capture no longer compete with root navigation. Root context and grouped workspace modes live in the command bar, so Books/Triage/Archive/Files and the other mode sets no longer render as detached secondary headers on desktop. Ordinary workspaces retain a centered 1280px field while Atlas remains intentionally edge-to-edge.
@@ -85,6 +95,7 @@ The five-root product audit repaired the highest-impact confirmed defects withou
 Ordinary `POST /feedback/record` and session-return feedback now treat `completion_state=stopped` as a terminal user rejection: the source becomes `rejected`/`excluded`, leaves Queue, resolves any active Compass pick, preserves the exact reason and reflection, and still queues Taste Mapper without starting note extraction. `in_progress` remains the only nonterminal feedback state. The focused regression test, TypeScript, production build, and diff checks pass. Deployment is intentionally pending because the working tree contains a larger in-flight release that must not be partially published.
 
 ## Current truth — 2026-08-25 (feedback branch mapping, deployed)
+
 `POST /feedback/record` now accepts an explicit verified `branch_id` and persists it atomically with feedback, including when a source is completed. The direct high-confidence `/capture/:id/branch-map` repair route now also accepts existing completed/excluded sources without changing consumption state. The previously unlinked قيام الليل video was repaired and verified under `qiyam-al-layl` (`status=love`, `priority_rank=1`). Verification passes the full unit suite (294 passed, 2 environment-only Chrome skips), TypeScript, production build, Hermes contract checks, live branch-map/source-dossier readback, and branch ledger readback. The integration feedback-flow test could not start its local Wrangler worker in this environment. Deployed Worker version `ea3b8152-4060-4686-9d0f-72c5ef11ce4c`.
 
 ## Current truth — 2026-08-25 (Personal Assistant, deployed)
@@ -258,6 +269,7 @@ The Thread path reader now batches artifact and NotebookLM receipt lookups below
 ## Current truth — 2026-08-23 (Clean knowledge branch taxonomy and round retirement)
 
 Restructured knowledge branches across the entire site, database, API, client views, test suites, and Hermes skills/rules:
+
 - Retired synthetic `R1`, `R2`, `R3` round numbering and progression guesswork in favor of a clean, production-grade 3-tier domain taxonomy: Super Category (Domain) → Knowledge Branch (`tree_nodes`) → Topics/Leaves (`meta_json.leaves`), with explicit priority (`priority_rank` 1–5) and status (`love` / `active` / `held` / `pruned`).
 - Added migration `0053_retire_synthetic_rounds.sql` clearing synthetic `round_label` from `tree_nodes` and `round` from `recommendations`.
 - Updated client UI (BranchDeckPage, BooksView, LibraryViews, LearnThreadView, Inspector, studio.css) to eliminate `[R1]`/`[R2]` round tags and render clean Domain / Branch / Priority badges everywhere.
@@ -267,7 +279,7 @@ Restructured knowledge branches across the entire site, database, API, client vi
 
 ## Current truth — 2026-08-23 (Books room visual refinement, deployed)
 
-Learn → Books now carries one cohesive reading-room treatment across its mode control, Books introduction, pinned reading desk, chapter disclosure, searchable My Books ledger, add form, empty states, integrated Canon field surface, and focused Book hub. The focused route is a composed folio with reading typography, status and knowledge-context chips, a clear reading-state row, next-chapter panel, collapsed chapter ledger, overview metadata, notes and source anchors, recall, connections, reading history, files, and feedback. Every section reads the canonical book record and renders a truthful empty state when no related data exists. The continuous Books-room structure, routes, pinned-book behavior, and closed chapter milestone disclosure are unchanged. The integrated Canon header and filter toolbar remain visible, and the mobile composition retains 44px controls with no meaningful horizontal overflow. The grouped My Books experiment is reverted locally; ten isolated HTML directions are available from the local dev server at `/prototypes/my-books-variations.html` for selection before another production redesign.
+Learn → Books now carries one cohesive reading-room treatment across its mode control, Books introduction, pinned reading desk, chapter disclosure, searchable My Books ledger, add form, empty states, integrated Canon field surface, and focused Book hub. The focused route is a composed folio with reading typography, status and knowledge-context chips, a clear reading-state row, next-chapter panel, collapsed chapter ledger, overview metadata, notes and source anchors, recall, connections, reading history, files, and feedback. Every section reads the canonical book record and renders a truthful empty state when no related data exists. The continuous Books-room structure, routes, pinned-book behavior, and closed chapter milestone disclosure are unchanged. The integrated Canon header and filter toolbar remain visible, and the mobile composition retains 44px controls with no meaningful horizontal overflow. The grouped My Books experiment was reverted, and its prototype-only public HTML was retired during the 2026-09-01 production cleanup.
 
 The current production release remains Worker version `926fca19-a3d2-4770-bc8b-a6968aa2b422`, which preserves the verified 294-lesson Thread fix and still contains the grouped My Books experiment inherited from `c5ccf235-6448-43f5-a49c-bb59148627fa`. The restored old list and ten-option prototype pass TypeScript, build, E2E, focused Books tests, desktop/mobile browser checks, and diff checks locally. Deployment is intentionally blocked until the concurrent production-operations release resolves its stale Android PWA assertion, Hermes migration inventory for `0054`, and pending remote migration.
 
@@ -588,7 +600,7 @@ Verified: `npm test` 93/93, typecheck, production build, and live health smoke c
 
 The frontend replacement is implemented, wired as the active entry, verified, and **deployed to production** at `https://recommendations-worker.mhmudnasr30.workers.dev` (Worker version `e9542138-53d2-4aa1-91e3-b1d75ed4af3f`).
 
-- `client/src/main.tsx` imports `client/src/app/entry.tsx`; the old monolithic frontend is no longer the runtime entry.
+- `client/index.html` loads `client/src/app/entry.tsx` directly; the retired compatibility entry is removed and the old monolithic frontend is no longer the runtime entry.
 - The shipped visual contract is **Botanical Folio / Evidence Ledger**: green and cream planes, a persistent desktop root rail with command bar (⌘K search, capture), grouped workspace modes, a working canvas, dynamic theme engine (20 presets + custom palettes and typography), and an optional inspector.
 - Navigation has five root destinations and 12 grouped modes with subordinate focus filters: Home/Today; Library/Triage (Queue, RSS Feeds), Catalog (All sources, Reading journal, Collections, Archive), Assets (Files); Learn/Threads, Books (Shelf, Canon atlas), Practice; Map/Atlas, Review; Settings/Personal, Data & recovery, System.
 - Desktop uses rail + canvas + optional inspector; there is no permanent context pane. Mobile and tablet use a five-item bottom dock with primary modes in an equal-width visible grid and subordinate filters as compact wrapping controls; object inspection becomes a sheet or pushed detail view.
@@ -608,6 +620,7 @@ The 2026-08-14 Lite Visual repair was replayed against the complete 82.5-minute 
 ## Post-deploy follow-up
 
 Keep the recoverable pre-reset snapshot through the rollback window. VAPID secrets are configured; a real subscribed-device notification delivery test remains a separate explicit operational check because it sends an external notification.
+
 ## Learning workflow improvement — 2026-08-17
 
 The Learning workspace connects the authored curriculum to the primary path screen. A learner can start an available Level, understand why a locked Level cannot open, and advance through direct lesson completion. Optional projects and study materials remain visible without affecting progression.
@@ -631,9 +644,11 @@ Hermes Thread control is now expanded through the capability registry: project u
 ## Hermes skill graph repair - 2026-08-18
 
 The active Learning Compass skills have synchronized ownership. Visual Lite is code-only and has no AGY/image-agent permission or Visual Mind delegation; it never auto-chains extraction. Source notes default to English with source-original Arabic quotations; recommendation serving mode and exploration are Worker-owned live values; source Queue placement requires canonical branch mapping; and JSON mutations use guarded `/agent/request`.
+
 # Current contract update — captured Library sources
 
 New and migrated captures use `learning_state='captured'` and remain durable source records. The retired All sources surface no longer appears in Library; legacy Catalog URLs recover to Archive.
+
 # Current truth — 2026-08-28 (premium shell and guarded releases)
 
 The Learning Compass shell is now a deliberate desktop workbench: a narrow navigation-only root rail, a separate workspace command bar, integrated grouped modes, and a master-detail Home canvas. Mobile keeps the five-root dock and compact wrapping mode controls. Application-only releases now have an explicit guarded lane; corpus publication remains separately blocked until its signed v6 aggregate audit and review exist.

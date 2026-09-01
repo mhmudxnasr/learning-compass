@@ -12,7 +12,9 @@ test('zero-TTL reads bypass both memory and edge caches', async () => {
         edgeReads += 1
         return new Response(JSON.stringify('stale'))
       },
-      put: async () => { edgeWrites += 1 },
+      put: async () => {
+        edgeWrites += 1
+      },
       delete: async () => true,
     },
   }

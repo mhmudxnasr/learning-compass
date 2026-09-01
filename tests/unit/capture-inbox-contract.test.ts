@@ -19,7 +19,7 @@ test('global Capture describes the same source-record contract as the API', () =
 })
 
 test('global Capture preserves focus and cannot dismiss an in-flight save', () => {
-  assert.match(captureDialog, /requestAnimationFrame\(\(\) => document\.getElementById/)
+  assert.match(captureDialog, /requestAnimationFrame\(\(\) =>\s*document\.getElementById/)
   assert.match(captureDialog, /if \(!saving\) onClose\(\)/)
   assert.match(captureDialog, /disabled=\{saving\}/)
   assert.doesNotMatch(captureDialog, /\[open, kind\]/)
@@ -27,11 +27,14 @@ test('global Capture preserves focus and cannot dismiss an in-flight save', () =
 
 test('Captured sources can be branch-mapped but Queue rejects unmapped sources', () => {
   assert.match(captureService, /branch_id=COALESCE\(branch_id,\?\)/)
-  assert.match(captureService, /INSERT INTO recommendation_meta \(recommendation_id,learning_state,branch_id,source_metadata_json,updated_at\)/)
+  assert.match(
+    captureService,
+    /INSERT INTO recommendation_meta \(recommendation_id,learning_state,branch_id,source_metadata_json,updated_at\)/,
+  )
   assert.match(captureApi, /cannot capture to a pruned branch/)
   assert.match(captureApi, /branch_mapping_conflict/)
   assert.match(agentCapabilities, /\['source', 'branch_id'\]/)
-  assert.match(captureApi, /\['captured','queued','in_progress','completed','excluded'\]/)
+  assert.match(captureApi, /\[\s*'captured',\s*'queued',\s*'in_progress',\s*'completed',\s*'excluded'\s*\]/)
   assert.match(captureApi, /branch_mapping_required/)
   assert.match(captureApi, /if \(!branchId\) return c\.json\(\{ error: 'branch_id required' \}/)
   assert.match(captureApi, /!item\.branch_id \|\| !item\.branch_exists/)

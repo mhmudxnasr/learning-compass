@@ -5,7 +5,6 @@ import { formatNoteAnchors, selectCurationMode, computeDialecticDivergenceScore 
 
 const app = new Hono<{ Bindings: Bindings }>()
 
-
 /**
  * POST /ai/suggest
  * Advanced LLM-powered auto-curation engine for Learning Compass.
@@ -16,7 +15,9 @@ const app = new Hono<{ Bindings: Bindings }>()
 app.post('/suggest', async (c) => {
   const { DB } = c.env
   let reqBody: { energy_level?: string; format_preference?: string; mode?: string } = {}
-  try { reqBody = await c.req.json().catch(() => ({})) } catch {}
+  try {
+    reqBody = await c.req.json().catch(() => ({}))
+  } catch {}
 
   const energyLevel = reqBody.energy_level || 'medium_focus'
   const formatPref = reqBody.format_preference || 'any'
@@ -36,10 +37,21 @@ app.post('/suggest', async (c) => {
       reflectionsRes,
       feedEntriesRes,
     ] = await Promise.all([
-      DB.prepare('SELECT identity_json, mega_priority_json, core_filter, reaction_style_json, quality_rules_json, patterns_summary_json FROM profile WHERE id = 1').first<any>().catch(() => null),
-      DB.prepare('SELECT rank, branch_id, label, rationale FROM priorities ORDER BY rank ASC LIMIT 10').all<any>().catch(() => ({ results: [] })),
-      DB.prepare("SELECT r.video_title FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 10").all<any>().catch(() => ({ results: [] })),
-      DB.prepare(`
+      DB.prepare(
+        'SELECT identity_json, mega_priority_json, core_filter, reaction_style_json, quality_rules_json, patterns_summary_json FROM profile WHERE id = 1',
+      )
+        .first<any>()
+        .catch(() => null),
+      DB.prepare('SELECT rank, branch_id, label, rationale FROM priorities ORDER BY rank ASC LIMIT 10')
+        .all<any>()
+        .catch(() => ({ results: [] })),
+      DB.prepare(
+        "SELECT r.video_title FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id WHERE r.status='active' AND COALESCE(r.content_type, '') != 'book' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress') ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 10",
+      )
+        .all<any>()
+        .catch(() => ({ results: [] })),
+      DB.prepare(
+        `
         SELECT t.id, t.label, t.super_category, MAX(r.consumed_date) as last_consumed
         FROM tree_nodes t
         LEFT JOIN recommendations r ON r.dedup_key LIKE (t.id || '-%') AND r.status = 'consumed'
@@ -48,13 +60,31 @@ app.post('/suggest', async (c) => {
         HAVING last_consumed IS NULL OR last_consumed < date('now', '-30 days')
         ORDER BY last_consumed ASC
         LIMIT 5
-      `).all<any>().catch(() => ({ results: [] })),
-      DB.prepare('SELECT topic, affinity_score, consumption_count, last_consumed_at FROM taste_vectors ORDER BY affinity_score DESC LIMIT 10').all<any>().catch(() => ({ results: [] })),
-      DB.prepare("SELECT user_rating, video_title, creator, user_review FROM recommendations WHERE status = 'consumed' AND user_rating IN ('love','like') ORDER BY consumed_date DESC LIMIT 10").all<any>().catch(() => ({ results: [] })),
-      DB.prepare("SELECT video_title, creator FROM recommendations WHERE status = 'consumed' LIMIT 150").all<any>().catch(() => ({ results: [] })),
-      DB.prepare('SELECT id, kind, label, author, rating FROM mastered ORDER BY mastered_at DESC').all<any>().catch(() => ({ results: [] })),
-      DB.prepare('SELECT name, work, reason, severity FROM blacklist ORDER BY severity ASC').all<any>().catch(() => ({ results: [] })),
-      DB.prepare(`
+      `,
+      )
+        .all<any>()
+        .catch(() => ({ results: [] })),
+      DB.prepare(
+        'SELECT topic, affinity_score, consumption_count, last_consumed_at FROM taste_vectors ORDER BY affinity_score DESC LIMIT 10',
+      )
+        .all<any>()
+        .catch(() => ({ results: [] })),
+      DB.prepare(
+        "SELECT user_rating, video_title, creator, user_review FROM recommendations WHERE status = 'consumed' AND user_rating IN ('love','like') ORDER BY consumed_date DESC LIMIT 10",
+      )
+        .all<any>()
+        .catch(() => ({ results: [] })),
+      DB.prepare("SELECT video_title, creator FROM recommendations WHERE status = 'consumed' LIMIT 150")
+        .all<any>()
+        .catch(() => ({ results: [] })),
+      DB.prepare('SELECT id, kind, label, author, rating FROM mastered ORDER BY mastered_at DESC')
+        .all<any>()
+        .catch(() => ({ results: [] })),
+      DB.prepare('SELECT name, work, reason, severity FROM blacklist ORDER BY severity ASC')
+        .all<any>()
+        .catch(() => ({ results: [] })),
+      DB.prepare(
+        `
         SELECT n.id, n.label, n.super_category
         FROM tree_nodes n
         LEFT JOIN recommendation_meta m ON m.branch_id = n.id
@@ -63,18 +93,35 @@ app.post('/suggest', async (c) => {
         GROUP BY n.id
         HAVING COUNT(r.id) = 0
         LIMIT 15
-      `).all<any>().catch(() => ({ results: [] })),
-      DB.prepare("SELECT reflection FROM learning_sessions WHERE reflection IS NOT NULL AND reflection != '' ORDER BY completed_at DESC LIMIT 5").all<any>().catch(() => ({ results: [] })),
-      DB.prepare("SELECT title, url FROM feed_entries LIMIT 10").all<any>().catch(() => ({ results: [] })),
+      `,
+      )
+        .all<any>()
+        .catch(() => ({ results: [] })),
+      DB.prepare(
+        "SELECT reflection FROM learning_sessions WHERE reflection IS NOT NULL AND reflection != '' ORDER BY completed_at DESC LIMIT 5",
+      )
+        .all<any>()
+        .catch(() => ({ results: [] })),
+      DB.prepare('SELECT title, url FROM feed_entries LIMIT 10')
+        .all<any>()
+        .catch(() => ({ results: [] })),
     ])
 
     let identity = null
-    try { if (profileRow?.identity_json) identity = JSON.parse(profileRow.identity_json) } catch {}
+    try {
+      if (profileRow?.identity_json) identity = JSON.parse(profileRow.identity_json)
+    } catch {}
 
     const activeTitles = (activeRes?.results || []).map((r: any) => r.video_title)
-    const consumedTitles = (consumedTitlesRes?.results || []).map((r: any) => `${r.video_title}${r.creator ? ` by ${r.creator}` : ''}`)
-    const masteredList = (masteredRes?.results || []).map((m: any) => `${m.label}${m.author ? ` by ${m.author}` : ''} (${m.kind})`)
-    const blacklistList = (blacklistRes?.results || []).map((b: any) => `${b.name}${b.work ? ` (${b.work})` : ''} - ${b.reason || 'blacklisted'}`)
+    const consumedTitles = (consumedTitlesRes?.results || []).map(
+      (r: any) => `${r.video_title}${r.creator ? ` by ${r.creator}` : ''}`,
+    )
+    const masteredList = (masteredRes?.results || []).map(
+      (m: any) => `${m.label}${m.author ? ` by ${m.author}` : ''} (${m.kind})`,
+    )
+    const blacklistList = (blacklistRes?.results || []).map(
+      (b: any) => `${b.name}${b.work ? ` (${b.work})` : ''} - ${b.reason || 'blacklisted'}`,
+    )
     const blindSpots = (blindSpotsRes?.results || []).map((b: any) => `${b.label} [${b.super_category || 'general'}]`)
     const noteAnchors = formatNoteAnchors(reflectionsRes?.results || [])
     const feedEntries = (feedEntriesRes?.results || []).map((f: any) => `"${f.title}" (${f.url})`)
@@ -136,7 +183,12 @@ CURATION INSTRUCTIONS:
     let suggestion: any = null
     let model = 'd1-fallback'
 
-    const result = await freeAi(c.env, 'You are a precise content curator. Return ONLY valid JSON object requested — no markdown or commentary.', prompt, 2048)
+    const result = await freeAi(
+      c.env,
+      'You are a precise content curator. Return ONLY valid JSON object requested — no markdown or commentary.',
+      prompt,
+      2048,
+    )
     if (result && result.text) {
       const jsonMatch = result.text.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
@@ -149,7 +201,13 @@ CURATION INSTRUCTIONS:
 
     let needsWebSearch = false
     let searchQuery: string | null = null
-    if (!suggestion || !suggestion.title || !suggestion.why_this || !suggestion.url || /^SEARCH:/i.test(String(suggestion.url))) {
+    if (
+      !suggestion ||
+      !suggestion.title ||
+      !suggestion.why_this ||
+      !suggestion.url ||
+      /^SEARCH:/i.test(String(suggestion.url))
+    ) {
       const topTopic = neglected[0]?.label || priorities[0]?.label || 'Core Learning'
       // Never fabricate a source URL. The compatibility endpoint now returns
       // an explicit search handoff for the web candidate assembler.
@@ -181,10 +239,8 @@ CURATION INSTRUCTIONS:
           refutation_weight: 0.35,
           score: dialecticDivergenceScore,
         },
-      }
+      },
     })
-
-
   } catch (err) {
     console.error('Suggest failed', safeErrorMessage(err))
     return c.json(safeError('Suggest failed')(err), 500)

@@ -13,7 +13,12 @@ test('knowledge frontier classifies advisory states from cumulative evidence', (
 
 test('frontier attributes note-owned Units before source branch fallback', async () => {
   const queries: string[] = []
-  const DB = { prepare(sql: string) { queries.push(sql); return { all: async () => ({ results: [] }) } } }
+  const DB = {
+    prepare(sql: string) {
+      queries.push(sql)
+      return { all: async () => ({ results: [] }) }
+    },
+  }
   await buildLearningBalance(DB as any)
   const unitQuery = queries.find((sql) => sql.includes("u.status='accepted'")) || ''
   assert.match(unitQuery, /COALESCE\(n\.branch_id,m\.branch_id\)/)
@@ -24,29 +29,33 @@ test('learning balance projects lifetime frontier evidence, exact lessons, lates
   const recent = new Date().toISOString().slice(0, 10)
   const old = '2020-01-01'
   const rows = (sql: string) => {
-    if (sql.includes('FROM tree_nodes')) return [
-      { id: 'root', type: 'root', label: 'Root', parent_id: null, status: 'active' },
-      { id: 'cat', type: 'category', label: 'Domain', parent_id: 'root', status: 'active' },
-      { id: 'branch', type: 'branch', label: 'Branch', parent_id: 'cat', status: 'active' },
-      { id: 'pruned', type: 'branch', label: 'Pruned', parent_id: 'cat', status: 'pruned' },
-      { id: 'pruned-leaf', type: 'leaf', label: 'Hidden', parent_id: 'pruned', status: 'active' },
-    ]
+    if (sql.includes('FROM tree_nodes'))
+      return [
+        { id: 'root', type: 'root', label: 'Root', parent_id: null, status: 'active' },
+        { id: 'cat', type: 'category', label: 'Domain', parent_id: 'root', status: 'active' },
+        { id: 'branch', type: 'branch', label: 'Branch', parent_id: 'cat', status: 'active' },
+        { id: 'pruned', type: 'branch', label: 'Pruned', parent_id: 'cat', status: 'pruned' },
+        { id: 'pruned-leaf', type: 'leaf', label: 'Hidden', parent_id: 'pruned', status: 'active' },
+      ]
     if (sql.includes('FROM priorities')) return []
-    if (sql.includes('FROM recommendations r LEFT JOIN recommendation_meta')) return [
-      { id: 'recent', status: 'consumed', consumed_date: recent, branch_id: 'branch', dedup_key: '' },
-      { id: 'old', status: 'consumed', consumed_date: old, branch_id: 'branch', dedup_key: '' },
-      { id: 'hidden', status: 'consumed', consumed_date: recent, branch_id: 'pruned-leaf', dedup_key: '' },
-    ]
+    if (sql.includes('FROM recommendations r LEFT JOIN recommendation_meta'))
+      return [
+        { id: 'recent', status: 'consumed', consumed_date: recent, branch_id: 'branch', dedup_key: '' },
+        { id: 'old', status: 'consumed', consumed_date: old, branch_id: 'branch', dedup_key: '' },
+        { id: 'hidden', status: 'consumed', consumed_date: recent, branch_id: 'pruned-leaf', dedup_key: '' },
+      ]
     if (sql.includes('FROM notes')) return []
     if (sql.includes('FROM srs_cards')) return [{ id: 'card', recommendation_id: 'recent', due_at: '2099-01-01' }]
-    if (sql.includes('FROM srs_review_events')) return [
-      { card_id: 'card', grade: 5, reviewed_at: '2026-01-01' },
-      { card_id: 'card', grade: 3, reviewed_at: '2026-08-01' },
-    ]
-    if (sql.includes("u.status='accepted'")) return [
-      { id: 'unit-1', branch_id: 'branch' },
-      { id: 'unit-2', branch_id: 'branch' },
-    ]
+    if (sql.includes('FROM srs_review_events'))
+      return [
+        { card_id: 'card', grade: 5, reviewed_at: '2026-01-01' },
+        { card_id: 'card', grade: 3, reviewed_at: '2026-08-01' },
+      ]
+    if (sql.includes("u.status='accepted'"))
+      return [
+        { id: 'unit-1', branch_id: 'branch' },
+        { id: 'unit-2', branch_id: 'branch' },
+      ]
     if (sql.includes("l.status='completed'")) return [{ id: 'lesson-1', branch_id: 'branch' }]
     if (sql.includes('FROM branch_exploration')) return []
     return []
@@ -69,5 +78,8 @@ test('learning balance projects lifetime frontier evidence, exact lessons, lates
   assert.equal(category.completed_lessons_count, 0, 'direct lesson completion must not roll up to ancestors')
   assert.equal(branch.latest_recall, 0.6)
   assert.equal(branch.frontier_state, 'developing')
-  assert.equal(balance.branches.some((node) => node.id === 'pruned' || node.id === 'pruned-leaf'), false)
+  assert.equal(
+    balance.branches.some((node) => node.id === 'pruned' || node.id === 'pruned-leaf'),
+    false,
+  )
 })

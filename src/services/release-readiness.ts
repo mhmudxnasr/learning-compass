@@ -13,7 +13,9 @@ export const REQUIRED_RELEASE_SCHEMA = [
 ] as const
 
 export async function loadReleaseContractHealth(env: Bindings) {
-  const schema = await env.DB.prepare(`SELECT name FROM sqlite_schema WHERE name IN (${REQUIRED_RELEASE_SCHEMA.map(() => '?').join(',')})`)
+  const schema = await env.DB.prepare(
+    `SELECT name FROM sqlite_schema WHERE name IN (${REQUIRED_RELEASE_SCHEMA.map(() => '?').join(',')})`,
+  )
     .bind(...REQUIRED_RELEASE_SCHEMA)
     .all<{ name: string }>()
   const present = new Set((schema.results || []).map((row) => row.name))
@@ -25,9 +27,11 @@ export async function loadReleaseContractHealth(env: Bindings) {
     ai: Boolean(env.AI),
     vectorize: Boolean(env.COMPASS_VECTORS),
   }
-  const missingBindings = Object.entries(bindings).filter(([, configured]) => !configured).map(([name]) => name)
-  const signingSecretConfigured = typeof env.LITE_VISUAL_RECEIPT_SIGNING_KEY === 'string'
-    && env.LITE_VISUAL_RECEIPT_SIGNING_KEY.trim().length >= 32
+  const missingBindings = Object.entries(bindings)
+    .filter(([, configured]) => !configured)
+    .map(([name]) => name)
+  const signingSecretConfigured =
+    typeof env.LITE_VISUAL_RECEIPT_SIGNING_KEY === 'string' && env.LITE_VISUAL_RECEIPT_SIGNING_KEY.trim().length >= 32
   return {
     ok: missingSchema.length === 0 && missingBindings.length === 0 && signingSecretConfigured,
     schema: { expected: REQUIRED_RELEASE_SCHEMA.length, missing: missingSchema },

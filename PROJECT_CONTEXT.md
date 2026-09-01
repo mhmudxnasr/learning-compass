@@ -39,13 +39,13 @@ The product interface is English-first. Notes Extractor source notes optimize fo
 
 The shipped client is the **Botanical Folio / Evidence Ledger**: a green-and-cream studio with five root destinations and 12 grouped modes, with subordinate focus filters:
 
-| Root destination | Grouped modes and subordinate focuses |
-|---|---|
-| Home | Today |
-| Library | Books (Reading desk, My books, integrated Canon fields), Triage (Queue, Feeds), Archive, Files |
-| Learn | Practice (Notes by default, Recall), Threads (legacy Paths aliases) |
-| Map | Atlas, Review (one Branch Dossier combining status, priority, scope, coverage, retention, and attention) |
-| Settings | Personal (Learning profile, Preferences), Data & recovery (editable personal Data Studio plus explicit completeness, validity, uniqueness, lineage, export, and recovery contracts), System |
+| Root destination | Grouped modes and subordinate focuses                                                                                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Home             | Today                                                                                                                                                                                       |
+| Library          | Books (Reading desk, My books, integrated Canon fields), Triage (Queue, Feeds), Archive, Files                                                                                              |
+| Learn            | Practice (Notes by default, Recall), Threads (legacy Paths aliases)                                                                                                                         |
+| Map              | Atlas, Review (one Branch Dossier combining status, priority, scope, coverage, retention, and attention)                                                                                    |
+| Settings         | Personal (Learning profile, Preferences), Data & recovery (editable personal Data Studio plus explicit completeness, validity, uniqueness, lineage, export, and recovery contracts), System |
 
 Desktop uses a persistent root rail, main canvas, and optional contextual inspector; there is no permanent context pane. Search, Add anything, and sync state are global rail tools rather than extra destinations. Add anything begins with a compact type choice and four required core decisions, with progress, rating, tags, and notes behind disclosure. Mobile and tablet replace the rail with a five-item bottom dock plus separate Search and Capture utilities; primary modes remain an equal-width visible grid and subordinate filters remain compact wrapping controls. Selected-object inspection becomes a sheet or pushed detail view. Typed Thread and Level routes remove the global Learn switcher, return through one Threads breadcrumb, and use the task-language sections Now, Lessons, Projects, and Resources. Normal Level links and Lesson Level breadcrumbs target the exact `tab=curriculum&level=<id>` state instead of leaving the Thread command center; typed Level routes remain deep-link recovery surfaces. Lesson routes omit progression/contract/guide panels, lead with an action bar only when a real navigation or progression action exists, render one truthful readiness state, reduce HTML/PDF/Original/NotebookLM access to compact accessible icons, and bound secondary sources behind More materials. Typed object routes preserve Source, Thread, Note, Unit, Recall Card, Branch, Node, Collection, Book, and Artifact identity. Legacy hashes canonicalize to purposeful routes and unknown hashes render recovery.
 
@@ -55,7 +55,7 @@ Display preferences are functional system settings, not previews. Preferences pr
 
 Android uses the same canonical client as an installable PWA rather than a separate product fork. The manifest supplies 192px, 512px, and maskable launcher assets, standalone launch, Capture/Queue/Recall shortcuts, and the existing share-to-Library target. The registered service worker precaches the complete fingerprinted shell plus the bounded Home briefing required for a first-install offline launch. It also caches each HTML reading companion under its exact artifact URL after the first successful online open, refreshes that copy on later online opens, and falls back to it offline without changing the interface; artifact navigations never overwrite the application shell. Installed mode respects Android safe areas and removes browser overscroll, and a dismissible install card appears only when Android reports that installation is available. A future Play Store release wraps this PWA as a Trusted Web Activity with Digital Asset Links; a generic WebView wrapper is not an accepted architecture.
 
-`client/src/main.tsx` is cut over to `client/src/app/entry.tsx`. The replacement is composed under `client/src/app`, `client/src/shell`, `client/src/workspaces`, and shared components; the retired monolithic shell/registry/styles files are removed as part of the cutover.
+`client/index.html` loads `client/src/app/entry.tsx` directly. The application is composed under `client/src/app`, `client/src/shell`, `client/src/workspaces`, focused features, and shared components; the retired compatibility entry and monolithic shell/registry/styles files are removed.
 
 ## System architecture and ownership
 
@@ -81,9 +81,11 @@ Capture interoperability includes a least-privilege Manifest V3 browser extensio
 Run proportionate checks with the repository’s existing Node modules:
 
 ```bash
-npm run typecheck
+npm run quality
+npm test
 npm run build
+npm run test:e2e
 git diff --check
 ```
 
-The current deployment is `55b28d90-4505-4726-b23e-33c8bd75b6b0`, created when the preferred private-auth secret was staged; `285f3765-2663-4df9-990f-ce04f6699d53` is the previous code baseline, and the deployed PWA shell is v44. Auth code remains undeployed, so private reads are still public on the old Worker. Remote migrations are current. `/health/ready` is healthy with zero blockers, the backup/restore rehearsal is current, jobs have no stale/dead/overdue work, and data quality is trusted 5/5 with complete branch and lineage coverage. All 21 manager cases pass across saved focused reruns; a combined rerun was stopped before producing an artifact, so it is not counted as a combined release pass. Deployment still requires that artifact, a refreshed isolation hash after the latest synchronized edits, and safe rotation of the previously exposed Linux/sudo login password. The password cannot be changed unattended without risking lockout.
+`CURRENT_STATE.md` is the only checked-in source for deployment IDs, shell-cache revisions, observed release results, and active blockers. Do not copy those volatile values into this durable product contract. A production release requires `npm run verify:release`, the live checks and backup requirements in `docs/release-checklist.md`, and explicit deployment authorization.

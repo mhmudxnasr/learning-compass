@@ -20,10 +20,7 @@ function assertAccessibleText(label: string, palette: CustomPalette, mode: Theme
   for (const token of TEXT_TOKENS) {
     for (const plane of TEXT_PLANES) {
       const ratio = contrastRatio(variables[token], variables[plane])
-      assert.ok(
-        ratio !== null && ratio >= 4.5,
-        `${label} ${token} must remain WCAG AA on ${plane}; received ${ratio}`,
-      )
+      assert.ok(ratio !== null && ratio >= 4.5, `${label} ${token} must remain WCAG AA on ${plane}; received ${ratio}`)
     }
   }
 }
@@ -104,17 +101,20 @@ test('derived contrast correction never mutates the authored palette', () => {
 
 test('semantic foregrounds remain readable on functional colors', () => {
   for (const brand of ['#ffffff', '#000000', '#777777', '#7a7a7a']) {
-    const variables = computeThemeVariables({
-      brand,
-      shell: '#111111',
-      highlight: '#222222',
-      accent: '#ffffff',
-      ink: '#ffffff',
-      rail: brand,
-      map: brand,
-      due: brand,
-      danger: brand,
-    }, 'dark')
+    const variables = computeThemeVariables(
+      {
+        brand,
+        shell: '#111111',
+        highlight: '#222222',
+        accent: '#ffffff',
+        ink: '#ffffff',
+        rail: brand,
+        map: brand,
+        due: brand,
+        danger: brand,
+      },
+      'dark',
+    )
     for (const [foreground, background] of [
       ['--studio-action-ink', '--studio-cypress'],
       ['--studio-rail-ink', '--studio-rail'],

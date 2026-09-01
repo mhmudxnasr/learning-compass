@@ -12,7 +12,7 @@ const port = await new Promise((resolve, reject) => {
   probe.once('error', reject)
   probe.listen(0, '127.0.0.1', () => {
     const address = probe.address()
-    probe.close((error) => error ? reject(error) : resolve(address.port))
+    probe.close((error) => (error ? reject(error) : resolve(address.port)))
   })
 })
 const baseUrl = `http://127.0.0.1:${port}`
@@ -21,25 +21,68 @@ let server
 try {
   console.log('1. Setting up local D1 schema and applying discovery migration...')
   for (const args of [
-    ['d1', 'execute', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir, '--file', 'schema.sql'],
-    ['d1', 'migrations', 'apply', 'recommendations-db', '--local', '--config', 'wrangler.toml', '--persist-to', persistDir],
+    [
+      'd1',
+      'execute',
+      'recommendations-db',
+      '--local',
+      '--config',
+      'wrangler.toml',
+      '--persist-to',
+      persistDir,
+      '--file',
+      'schema.sql',
+    ],
+    [
+      'd1',
+      'migrations',
+      'apply',
+      'recommendations-db',
+      '--local',
+      '--config',
+      'wrangler.toml',
+      '--persist-to',
+      persistDir,
+    ],
   ]) {
     const process = spawn(wrangler, args, { stdio: ['ignore', 'pipe', 'pipe'] })
     let output = ''
-    process.stdout.on('data', (chunk) => { output += chunk })
-    process.stderr.on('data', (chunk) => { output += chunk })
+    process.stdout.on('data', (chunk) => {
+      output += chunk
+    })
+    process.stderr.on('data', (chunk) => {
+      output += chunk
+    })
     const status = await new Promise((resolve) => process.on('close', resolve))
     if (status !== 0) throw new Error(`D1 setup failed:\n${output}`)
   }
 
   console.log('2. Starting local Wrangler dev server...')
-  server = spawn(wrangler, ['dev', '--config', 'wrangler.toml', '--persist-to', persistDir, '--port', String(port), '--var', 'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true'], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: true,
-  })
+  server = spawn(
+    wrangler,
+    [
+      'dev',
+      '--config',
+      'wrangler.toml',
+      '--persist-to',
+      persistDir,
+      '--port',
+      String(port),
+      '--var',
+      'ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true',
+    ],
+    {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    },
+  )
   let serverLog = ''
-  server.stdout.on('data', (chunk) => { serverLog = (serverLog + chunk).slice(-4000) })
-  server.stderr.on('data', (chunk) => { serverLog = (serverLog + chunk).slice(-4000) })
+  server.stdout.on('data', (chunk) => {
+    serverLog = (serverLog + chunk).slice(-4000)
+  })
+  server.stderr.on('data', (chunk) => {
+    serverLog = (serverLog + chunk).slice(-4000)
+  })
 
   for (let attempt = 0; attempt < 60; attempt++) {
     try {
@@ -65,16 +108,22 @@ try {
   assert.equal(state0.body.gate_state.can_start_discovery, true)
 
   console.log('4. Testing POST /discovery/runs (Creating research mission)...')
-  const run1 = await req('/discovery/runs', { method: 'POST', body: JSON.stringify({ mission: 'Test discovery wave 1' }) })
+  const run1 = await req('/discovery/runs', {
+    method: 'POST',
+    body: JSON.stringify({ mission: 'Test discovery wave 1' }),
+  })
   assert.equal(run1.status, 200)
   assert.ok(run1.body.run.id)
   const runId = run1.body.run.id
 
   console.log('5. Testing Hard Feedback Gate (Blocking concurrent discovery run)...')
-  const run2 = await req('/discovery/runs', { method: 'POST', body: JSON.stringify({ mission: 'Concurrent discovery wave' }) })
+  const run2 = await req('/discovery/runs', {
+    method: 'POST',
+    body: JSON.stringify({ mission: 'Concurrent discovery wave' }),
+  })
   assert.equal(run2.status, 409)
   assert.equal(run2.body.error, 'hard_gate_blocked')
-  console.ok ? console.ok('Gate blocked second run as expected') : console.log('✓ Hard gate correctly blocked second run')
+  console.log('Gate blocked second run as expected')
 
   console.log('6. Testing POST /discovery/runs/:id/candidates...')
   const candidatesInput = Array.from({ length: 20 }, (_, i) => ({
@@ -87,7 +136,10 @@ try {
     verification: { verified_url: `https://example.com/source-${i + 1}`, author_verified: true },
     total_score: 0.85 - i * 0.02,
   }))
-  const candidatesRes = await req(`/discovery/runs/${runId}/candidates`, { method: 'POST', body: JSON.stringify({ candidates: candidatesInput }) })
+  const candidatesRes = await req(`/discovery/runs/${runId}/candidates`, {
+    method: 'POST',
+    body: JSON.stringify({ candidates: candidatesInput }),
+  })
   assert.equal(candidatesRes.status, 200)
   assert.equal(candidatesRes.body.count, 20)
   assert.equal(candidatesRes.body.source_classes_count, 4)
@@ -113,7 +165,10 @@ try {
     body: JSON.stringify({
       raw_feedback: 'This opened an unexpected personal frontier in behavioral game theory!',
       questions: ['How does this framing compare to your past conviction on decision theory?'],
-      answers: { 'How does this framing compare to your past conviction on decision theory?': 'The contrast hook highlights a blind spot I had not considered.' },
+      answers: {
+        'How does this framing compare to your past conviction on decision theory?':
+          'The contrast hook highlights a blind spot I had not considered.',
+      },
     }),
   })
   assert.equal(interviewRes.status, 200)
@@ -138,7 +193,10 @@ try {
   assert.ok(resolveRes.body.updated_weights.frontier_potential)
 
   console.log('11. Testing POST /agent/jobs/:id/heartbeat...')
-  const heartbeatRes = await req(`/agent/jobs/${run1.body.job_id}/heartbeat`, { method: 'POST', body: JSON.stringify({ worker: 'integration' }) })
+  const heartbeatRes = await req(`/agent/jobs/${run1.body.job_id}/heartbeat`, {
+    method: 'POST',
+    body: JSON.stringify({ worker: 'integration' }),
+  })
   // Should return 409 because status is pending or not running, or if claimed then 200
   assert.ok([200, 409].includes(heartbeatRes.status))
 
@@ -156,9 +214,19 @@ try {
 } finally {
   if (server && server.exitCode === null) {
     const exited = new Promise((resolve) => server.once('exit', resolve))
-    try { process.kill(-server.pid, 'SIGTERM') } catch { server.kill('SIGTERM') }
+    try {
+      process.kill(-server.pid, 'SIGTERM')
+    } catch {
+      server.kill('SIGTERM')
+    }
     await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 3000))])
-    if (server.exitCode === null) { try { process.kill(-server.pid, 'SIGKILL') } catch { server.kill('SIGKILL') } }
+    if (server.exitCode === null) {
+      try {
+        process.kill(-server.pid, 'SIGKILL')
+      } catch {
+        server.kill('SIGKILL')
+      }
+    }
   }
   rmSync(persistDir, { recursive: true, force: true })
 }

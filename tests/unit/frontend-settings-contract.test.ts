@@ -1,24 +1,28 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { readStudioCss } from './support/read-studio-css.ts'
 
-const studioCss = readFileSync(new URL('../../client/src/studio.css', import.meta.url), 'utf8')
-const settingsSource = readFileSync(new URL('../../client/src/workspaces/SettingsWorkspace.tsx', import.meta.url), 'utf8')
+const studioCss = readStudioCss()
+const settingsSource = readFileSync(
+  new URL('../../client/src/workspaces/SettingsWorkspace.tsx', import.meta.url),
+  'utf8',
+)
 
 test('app-wide display preferences have real stylesheet behavior', () => {
   const requiredSelectors = [
-    ':root[data-density="comfortable"]',
-    ':root[data-density="compact"]',
-    ':root[data-radius="sharp"]',
-    ':root[data-radius="round"]',
-    ':root[data-font-size="small"]',
-    ':root[data-font-size="large"]',
-    ':root[data-reduced-motion="true"]',
+    /:root\[data-density=['"]comfortable['"]\]/,
+    /:root\[data-density=['"]compact['"]\]/,
+    /:root\[data-radius=['"]sharp['"]\]/,
+    /:root\[data-radius=['"]round['"]\]/,
+    /:root\[data-font-size=['"]small['"]\]/,
+    /:root\[data-font-size=['"]large['"]\]/,
+    /:root\[data-reduced-motion=['"]true['"]\]/,
   ]
 
   for (const selector of requiredSelectors) {
     assert.ok(
-      studioCss.includes(selector),
+      selector.test(studioCss),
       `${selector} must change the rendered studio instead of only updating document metadata`,
     )
   }
@@ -83,6 +87,9 @@ test('custom theme workshop audits rendered tokens and keeps transfer tools prog
   assert.match(settingsSource, /class="theme-contrast-report"/)
   assert.match(settingsSource, /<details class="theme-workshop-advanced">/)
   assert.match(settingsSource, /aria-label="Import visual system JSON"/)
-  assert.match(studioCss, /\.preferences-main \.custom-color-input-group input\[type="color"\][\s\S]*width: 44px;[\s\S]*height: 44px;/)
+  assert.match(
+    studioCss,
+    /\.preferences-main \.custom-color-input-group input\[type=['"]color['"]\][\s\S]*width: 44px;[\s\S]*height: 44px;/,
+  )
   assert.doesNotMatch(studioCss, /\.preferences-main \.theme-preset-desc[\s\S]{0,240}-webkit-line-clamp: 4/)
 })

@@ -43,15 +43,15 @@ The browser uses hash routes, so the Worker serves one application shell. The Wo
 
 ### Data ownership
 
-| Data | Source of truth |
-|---|---|
-| Captures, typed personal library, queue, sessions, notes, ratings, cards, settings, and map | D1 |
-| PDFs, HTML, transcripts, and generated companions | R2 |
-| Pending offline mutations | IndexedDB until synchronized |
-| UI preferences and resumable client state | Local storage |
-| Extracted-note archive copies | Obsidian |
-| KOReader/Hardcover books and reading-journal mirror | Hardcover externally; mirrored in D1 until branch-gated import |
-| Product and API code | This repository |
+| Data                                                                                        | Source of truth                                                |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Captures, typed personal library, queue, sessions, notes, ratings, cards, settings, and map | D1                                                             |
+| PDFs, HTML, transcripts, and generated companions                                           | R2                                                             |
+| Pending offline mutations                                                                   | IndexedDB until synchronized                                   |
+| UI preferences and resumable client state                                                   | Local storage                                                  |
+| Extracted-note archive copies                                                               | Obsidian                                                       |
+| KOReader/Hardcover books and reading-journal mirror                                         | Hardcover externally; mirrored in D1 until branch-gated import |
+| Product and API code                                                                        | This repository                                                |
 
 Obsidian is an export target, not a second writable database. It must never overwrite D1.
 
@@ -59,41 +59,49 @@ Settings → Data & recovery starts with the Personal Data Studio: real counts a
 
 ### Why these boundaries exist
 
-| Choice | Reason |
-|---|---|
-| Source records in Library, five-item Queue | Saving should be frictionless; commitment should be scarce. |
+| Choice                                                | Reason                                                                                                                                    |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Source records in Library, five-item Queue            | Saving should be frictionless; commitment should be scarce.                                                                               |
 | Personal-media state beside canonical source identity | Watch/read history can inform direct preferences without pretending that every item is a queued lesson or a second disconnected database. |
-| Consumption at the original source | The system tracks learning without becoming a worse reader for every media format. |
-| Learner-authored Arabic recall cards | Flash cards are never generated automatically; the learner creates each question and answer explicitly. |
-| Leased, idempotent background jobs | A crash or retry must not duplicate notes, cards, artifacts, or taste signals. |
-| One canonical database | Notes, ratings, map state, and automation cannot safely disagree about which copy is current. |
+| Consumption at the original source                    | The system tracks learning without becoming a worse reader for every media format.                                                        |
+| Learner-authored Arabic recall cards                  | Flash cards are never generated automatically; the learner creates each question and answer explicitly.                                   |
+| Leased, idempotent background jobs                    | A crash or retry must not duplicate notes, cards, artifacts, or taste signals.                                                            |
+| One canonical database                                | Notes, ratings, map state, and automation cannot safely disagree about which copy is current.                                             |
 
 ## Repository map
 
 ```text
 client/
+  index.html                  Vite HTML entry; loads src/app/entry.tsx
   src/app/App.tsx             application shell and workspace composition
   src/api.ts                  browser API and offline helpers
   src/app/router.ts           canonical five-destination registry (12 grouped modes + focus filters)
   src/features/atlas/         lazy-loaded knowledge graph
+  src/styles/                 ordered, workspace-oriented CSS modules
 
 src/
   index.ts                    Worker entry, middleware, routes, PWA endpoints
   api/                        HTTP route modules
-  services/                   capture, RSS, and settings services
+  services/                   reusable product and storage workflows
   domain.ts                   shared product rules
   lib.ts                      bindings, types, validation, normalization
 
 migrations/                   ordered, idempotent D1 migrations
+browser-extension/             optional Manifest V3 capture client
+scripts/                       release, recovery, migration, and analysis tools
 tests/unit/                   domain and route-contract tests
+tests/integration/            isolated Worker and D1 workflow tests
 tests/e2e/                    real Worker + browser acceptance tests
 docs/API.md                   active HTTP contracts
-docs/architecture.md          concise implementation notes
+docs/architecture.md          component boundaries and request/data flows
+docs/dependencies.md          dependency ownership and upgrade policy
 docs/hermes-production.md     Hermes manager operations, SLOs, recovery, and release gate
 docs/release-checklist.md     production release procedure
+AGENTS.md                     coding and AI-maintenance contract
+CHANGELOG.md                  user-visible, architecture, and dependency history
 ```
 
-Read [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for the durable product model, [CURRENT_STATE.md](CURRENT_STATE.md) for verified reality, and [AGENTS.md](AGENTS.md) before making changes.
+Start with [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for the durable product model, [docs/architecture.md](docs/architecture.md) for ownership boundaries, and [CURRENT_STATE.md](CURRENT_STATE.md) for verified operational reality. Read [AGENTS.md](AGENTS.md) before changing code and record material changes in [CHANGELOG.md](CHANGELOG.md).
 
 ## Run locally
 
@@ -161,14 +169,18 @@ The checked-in development commands retain their loopback-only write-rate-limit 
 
 ## Commands
 
-| Command | Purpose |
-|---|---|
-| `npm run dev` | Run the Vite client only |
-| `npm run dev:worker` | Apply the base schema and local migrations, build the client, and run the complete Worker locally |
-| `npm test` | Run unit tests and TypeScript checks |
-| `npm run build` | Create the production client bundle |
-| `npm run test:e2e` | Create a fresh temporary D1 database and test all root destinations, grouped modes, and responsive shell behavior in Chromium |
-| `npm run deploy` | Build and deploy with the repository Wrangler config |
+| Command                    | Purpose                                                                                                                       |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`              | Run the Vite client only                                                                                                      |
+| `npm run dev:worker`       | Apply the base schema and local migrations, build the client, and run the complete Worker locally                             |
+| `npm test`                 | Run unit tests and TypeScript checks                                                                                          |
+| `npm run quality`          | Run ESLint, dead-code/dependency analysis, and the formatting check                                                           |
+| `npm run format`           | Format supported source and documentation files                                                                               |
+| `npm run test:integration` | Run the standalone Worker/D1 integration scenarios sequentially                                                               |
+| `npm run build`            | Create the production client bundle                                                                                           |
+| `npm run test:e2e`         | Create a fresh temporary D1 database and test all root destinations, grouped modes, and responsive shell behavior in Chromium |
+| `npm run verify:release`   | Run the local release gate, including repository and installed Hermes contracts; it does not deploy                           |
+| `npm run deploy`           | Build and deploy with the repository Wrangler config                                                                          |
 
 The E2E runner owns its temporary database, Wrangler process, browser, and cleanup. A local test pass therefore does not depend on an old `.wrangler` database.
 
@@ -232,6 +244,7 @@ Keep graph and analytics libraries lazy-loaded. The base client bundle must rema
 ### 6. Verify the full change
 
 ```bash
+npm run quality
 npm test
 npm run build
 npm run test:e2e
@@ -307,6 +320,7 @@ python3 /home/mahmud/.hermes/skills/lite-visual/scripts/extract_source.py '<URL-
   --output /abs/work/source.txt \
   --manifest /abs/work/source-extraction.json
 ```
+
 - Lite Visual v6 receipts are HMAC-attested over a cross-runtime-safe integer/string domain. Replacement corpora persist chapter-aware ordered targets and immutable workflow runs, stage as invisible R2-verified pairs with lease-free `awaiting_activation` jobs, and become visible only through one all-target D1 activation transaction. Activation re-verifies R2, current source identity, and every current-pair precondition; abort safely discards hidden staging; guarded rollback rechecks and restores the immediately prior visible set. A stale or interrupted lifecycle request cannot mutate the winning state.
 - D1 remains canonical; R2 stores large artifacts; Obsidian remains an archive export.
 - Every registered destination resolves to a purposeful view.
@@ -321,6 +335,6 @@ npx wrangler deploy --config wrangler.toml
 
 Code deployment and data changes are separate operations. D1 or R2 data-only writes do not require a Worker deployment.
 
-Current deployed Worker version: `5ad589b7-d710-447e-b388-e3318b846847`. The deployed PWA shell cache is `learning-compass-shell-v45`.
+Deployment IDs and the active PWA shell revision change independently of the architecture. Record and verify them in [CURRENT_STATE.md](CURRENT_STATE.md) during each release instead of copying volatile values across documents.
 
 The production Worker, R2 bucket, cache names, protocol name, cron name, and Hermes paths retain legacy identifiers for compatibility even though the product and repository are named Learning Compass.

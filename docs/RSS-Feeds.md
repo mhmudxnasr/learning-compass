@@ -36,16 +36,16 @@ Imports are deduplicated by feed GUID and the normal recommendation URL deduplic
 
 Base URL: `https://recommendations-worker.mhmudnasr30.workers.dev`
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| GET | `/capture/feeds` | List subscriptions and imported-entry counts |
-| POST | `/capture/feeds` | Subscribe to `{ "url": "https://…", "branch_id": "verified-branch", "limit": 1..20 }` and import current entries; limit is optional |
-| POST | `/capture/feeds/sync` | Refresh every enabled feed; optional `{ "limit": 1..20 }` caps each feed |
-| POST | `/capture/feeds/:id/sync` | Refresh one feed; optional `{ "limit": 1..20 }` |
-| GET | `/capture/feeds/:id/entries?limit=200&offset=0` | Read imported history for one feed |
-| DELETE | `/capture/feeds/:id` | Unsubscribe without deleting captures |
-| GET | `/capture` | Read captured feed articles in the durable source ledger |
-| POST | `/capture/:id/triage` | Queue or exclude an imported article |
+| Method | Endpoint                                        | Purpose                                                                                                                             |
+| ------ | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/capture/feeds`                                | List subscriptions and imported-entry counts                                                                                        |
+| POST   | `/capture/feeds`                                | Subscribe to `{ "url": "https://…", "branch_id": "verified-branch", "limit": 1..20 }` and import current entries; limit is optional |
+| POST   | `/capture/feeds/sync`                           | Refresh every enabled feed; optional `{ "limit": 1..20 }` caps each feed                                                            |
+| POST   | `/capture/feeds/:id/sync`                       | Refresh one feed; optional `{ "limit": 1..20 }`                                                                                     |
+| GET    | `/capture/feeds/:id/entries?limit=200&offset=0` | Read imported history for one feed                                                                                                  |
+| DELETE | `/capture/feeds/:id`                            | Unsubscribe without deleting captures                                                                                               |
+| GET    | `/capture`                                      | Read captured feed articles in the durable source ledger                                                                            |
+| POST   | `/capture/:id/triage`                           | Queue or exclude an imported article                                                                                                |
 
 Ordinary reads and writes are public at the transport layer. Agent clients send no Learning Compass token/header/session; they should still discover the allow-list from `GET /agent/capabilities` and use `POST /agent/request` rather than guessing routes.
 

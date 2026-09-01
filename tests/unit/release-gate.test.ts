@@ -11,6 +11,7 @@ test('the combined release gate is complete and local-only', () => {
 
   const gate = read('scripts/verify-release.mjs')
   for (const required of [
+    "run('Code style and static analysis', 'npm', ['run', 'quality'])",
     "run('Unit tests and TypeScript', 'npm', ['test'])",
     "run('Production build and bundle budget', 'npm', ['run', 'build'])",
     "run('Worker-backed responsive, PWA, offline, and public-boundary E2E', 'npm', ['run', 'test:e2e'])",
@@ -24,7 +25,8 @@ test('the combined release gate is complete and local-only', () => {
     'Retired Learning Compass auth credential remains in release documentation',
     'credentialPatterns',
     "run('Final tracked diff check', 'git', ['diff', 'HEAD', '--check'])",
-  ]) assert.ok(gate.includes(required), `missing release gate: ${required}`)
+  ])
+    assert.ok(gate.includes(required), `missing release gate: ${required}`)
 
   assert.doesNotMatch(gate, /wrangler\s+(?:deploy|rollback)/)
   assert.doesNotMatch(gate, /--remote/)
@@ -53,6 +55,7 @@ test('E2E proves the public API and retired session boundary', () => {
     '/auth/session',
     'www-authenticate',
     'set-cookie',
-  ]) assert.ok(e2e.includes(required), `missing public-boundary assertion: ${required}`)
+  ])
+    assert.ok(e2e.includes(required), `missing public-boundary assertion: ${required}`)
   assert.doesNotMatch(e2e, /TASTE_MAP_API_TOKEN/)
 })

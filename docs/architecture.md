@@ -1,5 +1,47 @@
 # Architecture
 
+Learning Compass is one Cloudflare Worker application with a statically built Preact client. D1 is the canonical relational store, R2 owns large artifacts, and Hermes performs bounded background work through the public Worker contract. There is no second backend or client-side database of record.
+
+## Runtime flow
+
+```text
+Browser / installed PWA / capture extension
+                  |
+                  | HTTPS and hash-route navigation
+                  v
+        Hono Cloudflare Worker (`src/`)
+             |                 |
+             | SQL             | object reads/writes
+             v                 v
+             D1                R2
+             ^
+             | allow-listed, leased API jobs
+             |
+           Hermes
+```
+
+The Worker serves the built client from its Assets binding. The client reaches domain state only through HTTP helpers in `client/src/api.ts`. Hermes also uses the Worker API and never writes D1 or R2 directly. The browser extension opens the normal capture route; it does not have a separate ingestion API.
+
+## Module ownership
+
+- `client/src/app/` owns startup, top-level composition, and route registration. `client/index.html` loads `client/src/app/entry.tsx` directly.
+- `client/src/shell/` owns cross-workspace navigation and command surfaces. `client/src/workspaces/` owns destination screens; `client/src/features/` contains reusable bounded features such as Atlas and Branches.
+- `client/src/styles/` divides the application cascade by product area. `client/src/studio.css` imports those modules in a fixed order, and the directory README documents placement rules.
+- `src/index.ts` is the Worker composition root. `src/api/` translates HTTP to typed application calls; `src/services/` owns reusable workflows and persistence orchestration; `src/domain.ts` and focused helpers own pure business rules.
+- `schema.sql` is the base local schema. `migrations/` is the only production schema evolution path; migrations are numbered, ordered, and idempotent.
+- `scripts/` owns operator commands. `tests/unit/`, `tests/integration/`, and `tests/e2e/` cover pure contracts, isolated Worker/D1 flows, and browser-visible behavior respectively.
+- `docs/API.md` is the HTTP contract, `PROJECT_CONTEXT.md` is the durable product contract, `CURRENT_STATE.md` records verified operational truth, and `CHANGELOG.md` records why the repository changed.
+
+Dependencies point inward: workspace views may use features and the shared API client; API routes may use services and domain helpers. Domain/service code cannot import the client, features cannot own global routing, and Hermes cannot bypass the Worker. A change that crosses one of these boundaries must update both contracts and boundary tests.
+
+## Request and data boundaries
+
+1. The client validates interaction state and sends a typed request through `client/src/api.ts`.
+2. A route in `src/api/` validates untrusted input, applies transport policy, and calls the owning service or domain function.
+3. The service performs one bounded D1/R2 operation or creates an idempotent leased job. Domain invariants remain server-owned even when the client mirrors them for usability.
+4. The route returns a stable client-safe response. Retried mutations use stable IDs or idempotency keys, and the client keeps offline mutations in IndexedDB until confirmed.
+5. Hermes claims only allow-listed work, writes through the same Worker validation path, and verifies canonical readback before treating a mutation as complete.
+
 Anchored `unit_relations` are the canonical semantic-link layer for meaningful backlinks, cross-branch bridges, and contradiction review; bridges are derived and never duplicated into a synthetic graph. Note distillation is additive D1 state above immutable canonical note sections. Resurfacing state is recommendation-backed and branch-validated. Delivery context, adaptive depth, perspective diversity, and knowledge-frontier states are advisory read/scoring models and cannot mutate lesson progression.
 
 ## Learning core

@@ -1,13 +1,22 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { fetchHardcoverSnapshot, hardcoverAuthor, hardcoverBookState, hardcoverCover, normalizeHardcoverToken } from '../../src/services/hardcover.ts'
+import {
+  fetchHardcoverSnapshot,
+  hardcoverAuthor,
+  hardcoverBookState,
+  hardcoverCover,
+  normalizeHardcoverToken,
+} from '../../src/services/hardcover.ts'
 
 test('Hardcover helpers normalize authentication, covers, authors, and statuses', () => {
   assert.equal(normalizeHardcoverToken('token'), 'Bearer token')
   assert.equal(normalizeHardcoverToken('Bearer token'), 'Bearer token')
   assert.equal(hardcoverCover({ url: 'https://images.example/cover.jpg' }), 'https://images.example/cover.jpg')
   assert.equal(hardcoverCover({ url: 'javascript:alert(1)' }), null)
-  assert.equal(hardcoverAuthor([{ author: { name: 'Ursula K. Le Guin' } }, { name: 'Editor' }]), 'Ursula K. Le Guin, Editor')
+  assert.equal(
+    hardcoverAuthor([{ author: { name: 'Ursula K. Le Guin' } }, { name: 'Editor' }]),
+    'Ursula K. Le Guin, Editor',
+  )
   assert.equal(hardcoverBookState(1), 'planned')
   assert.equal(hardcoverBookState(2), 'in_progress')
   assert.equal(hardcoverBookState(3), 'completed')
@@ -32,10 +41,21 @@ test('Hardcover snapshot is authenticated and paginates the private library', as
 })
 
 test('Hardcover GraphQL errors never produce a partial snapshot or expose credential detail', async () => {
-  const fetcher = async () => new Response(JSON.stringify({ errors: [{ message: 'authorization=header-credential-value https://provider.test/fail?token=query-credential-value' }] }), { status: 200, headers: { 'content-type': 'application/json' } })
-  await assert.rejects(() => fetchHardcoverSnapshot('bad', fetcher as typeof fetch), (error: any) => {
-    assert.doesNotMatch(error.message, /credential-value/)
-    assert.match(error.message, /\[redacted\]/)
-    return true
-  })
+  const fetcher = async () =>
+    new Response(
+      JSON.stringify({
+        errors: [
+          { message: 'authorization=header-credential-value https://provider.test/fail?token=query-credential-value' },
+        ],
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+  await assert.rejects(
+    () => fetchHardcoverSnapshot('bad', fetcher as typeof fetch),
+    (error: any) => {
+      assert.doesNotMatch(error.message, /credential-value/)
+      assert.match(error.message, /\[redacted\]/)
+      return true
+    },
+  )
 })

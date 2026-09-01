@@ -30,12 +30,18 @@ function stageWithLessons(statuses: ThreadLesson['status'][]): PathStage {
 
 test('Home selects only the current lesson from each Thread', () => {
   const stage = stageWithLessons(['completed', 'in_progress', 'not_started', 'not_started', 'not_started'])
-  assert.deepEqual(selectHomeLessonTurns(stage.lessons).map((lesson) => lesson.id), ['lesson-1'])
+  assert.deepEqual(
+    selectHomeLessonTurns(stage.lessons).map((lesson) => lesson.id),
+    ['lesson-1'],
+  )
 })
 
 test('Home starts from the first unfinished lesson when none is active', () => {
   const stage = stageWithLessons(['completed', 'completed', 'not_started', 'not_started'])
-  assert.deepEqual(selectHomeLessonTurns(stage.lessons).map((lesson) => lesson.id), ['lesson-2'])
+  assert.deepEqual(
+    selectHomeLessonTurns(stage.lessons).map((lesson) => lesson.id),
+    ['lesson-2'],
+  )
 })
 
 test('Home does not fabricate a current lesson when the Level is complete', () => {

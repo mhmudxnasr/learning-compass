@@ -32,14 +32,33 @@ import analyticsApi from './api/analytics'
 import learningCoreApi from './api/learning-core'
 import canonApi from './api/canon'
 import annotationsApi from './api/annotations'
-import { DAILY_READ_BUDGET, DAILY_WRITE_BUDGET, reserveFreeTierBudget, secondsUntilUtcReset } from './services/free-tier-budget'
+import {
+  DAILY_READ_BUDGET,
+  DAILY_WRITE_BUDGET,
+  reserveFreeTierBudget,
+  secondsUntilUtcReset,
+} from './services/free-tier-budget'
 import { DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, mutationReservationDisposition } from './services/mutation-recovery'
 
 const app = new Hono<{ Bindings: Bindings; Variables: { requestId: string } }>()
 const PUBLIC_LEARNING_UPDATE_PATH = '/updates/learning-materials'
 const PUBLIC_LEARNING_UPDATE_FILE_PATH = `${PUBLIC_LEARNING_UPDATE_PATH}.html`
-const isPublicLearningUpdatePath = (path: string) => path === PUBLIC_LEARNING_UPDATE_PATH || path === PUBLIC_LEARNING_UPDATE_FILE_PATH
-const isPublicRequestPath = (path: string) => path === '/' || path === '/ui' || isPublicLearningUpdatePath(path) || path === '/health' || path.startsWith('/health/') || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path === '/favicon.ico' || path === '/api/telegram' || path.startsWith('/assets/') || path.startsWith('/icons/')
+const isPublicLearningUpdatePath = (path: string) =>
+  path === PUBLIC_LEARNING_UPDATE_PATH || path === PUBLIC_LEARNING_UPDATE_FILE_PATH
+const isPublicRequestPath = (path: string) =>
+  path === '/' ||
+  path === '/ui' ||
+  isPublicLearningUpdatePath(path) ||
+  path === '/health' ||
+  path.startsWith('/health/') ||
+  path === '/manifest.json' ||
+  path === '/sw.js' ||
+  path === '/icon.svg' ||
+  path === '/brand-mark.svg' ||
+  path === '/favicon.ico' ||
+  path === '/api/telegram' ||
+  path.startsWith('/assets/') ||
+  path.startsWith('/icons/')
 
 const RATE_LIMIT_WINDOW = 60000
 const RATE_LIMIT_MAX_READS = 300
@@ -71,7 +90,7 @@ function checkRateLimit(ip: string, isWrite: boolean): { allowed: boolean; retry
   const bucket = isWrite ? entry.writes : entry.reads
 
   bucket.push(now)
-  const recent = bucket.filter(t => now - t < windowMs)
+  const recent = bucket.filter((t) => now - t < windowMs)
   bucket.length = 0
   bucket.push(...recent)
 
@@ -98,7 +117,20 @@ app.use('/*', async (c, next) => {
   c.res.headers.set('Server-Timing', `app;dur=${duration}`)
   c.res.headers.set('X-Response-Time-Ms', String(duration))
   if (status >= 400 || duration >= 1000) {
-    console.warn(JSON.stringify({ ts: new Date().toISOString(), level: status >= 500 ? 'error' : 'warn', msg: 'request', method, path, status, duration, ip, ua, requestId }))
+    console.warn(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: status >= 500 ? 'error' : 'warn',
+        msg: 'request',
+        method,
+        path,
+        status,
+        duration,
+        ip,
+        ua,
+        requestId,
+      }),
+    )
   }
 })
 
@@ -106,9 +138,22 @@ app.onError((error, c) => {
   const requestId = c.get('requestId') || crypto.randomUUID()
   const method = c.req.method
   const path = new URL(c.req.url).pathname
-  console.error(JSON.stringify({ ts: new Date().toISOString(), level: 'error', msg: 'unhandled_request_error', method, path, requestId, error: safeErrorMessage(error) }))
+  console.error(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      level: 'error',
+      msg: 'unhandled_request_error',
+      method,
+      path,
+      requestId,
+      error: safeErrorMessage(error),
+    }),
+  )
   c.header('X-Request-Id', requestId)
-  return c.json({ error: 'internal_error', message: 'Learning Compass could not complete this request.', request_id: requestId }, 500)
+  return c.json(
+    { error: 'internal_error', message: 'Learning Compass could not complete this request.', request_id: requestId },
+    500,
+  )
 })
 
 app.use('/*', async (c, next) => {
@@ -116,7 +161,16 @@ app.use('/*', async (c, next) => {
   if (c.req.method === 'GET' || c.req.method === 'HEAD') {
     const path = new URL(c.req.url).pathname
     const already = c.res.headers.get('Cache-Control')
-    const isAsset = path === '/' || path === '/ui' || isPublicLearningUpdatePath(path) || path === '/manifest.json' || path === '/sw.js' || path === '/icon.svg' || path === '/brand-mark.svg' || path.startsWith('/assets/') || path.startsWith('/icons/')
+    const isAsset =
+      path === '/' ||
+      path === '/ui' ||
+      isPublicLearningUpdatePath(path) ||
+      path === '/manifest.json' ||
+      path === '/sw.js' ||
+      path === '/icon.svg' ||
+      path === '/brand-mark.svg' ||
+      path.startsWith('/assets/') ||
+      path.startsWith('/icons/')
     if (!isAsset && !already) c.res.headers.set('Cache-Control', 'no-store')
   }
 })
@@ -138,7 +192,14 @@ app.use('/*', async (c, next) => {
   const method = c.req.method.toUpperCase()
   if (method === 'GET' || method === 'OPTIONS' || method === 'HEAD') {
     const path = new URL(c.req.url).pathname
-    if (path === '/' || isPublicLearningUpdatePath(path) || path === '/sw.js' || path.startsWith('/assets/') || path.startsWith('/icons/')) return next()
+    if (
+      path === '/' ||
+      isPublicLearningUpdatePath(path) ||
+      path === '/sw.js' ||
+      path.startsWith('/assets/') ||
+      path.startsWith('/icons/')
+    )
+      return next()
     const ip = getClientIp(c)
     const { allowed, retryAfter } = checkRateLimit(ip, false)
     if (!allowed) {
@@ -167,7 +228,10 @@ app.use('/*', async (c, next) => {
   if (!budget.allowed) {
     const retryAfter = secondsUntilUtcReset()
     c.header('Retry-After', String(retryAfter))
-    return c.json({ error: 'daily_free_tier_budget_exhausted', reset_at: new Date(Date.now() + retryAfter * 1000).toISOString() }, 429)
+    return c.json(
+      { error: 'daily_free_tier_budget_exhausted', reset_at: new Date(Date.now() + retryAfter * 1000).toISOString() },
+      429,
+    )
   }
   c.header('X-D1-Estimated-Rows-Read', String(budget.read))
   c.header('X-D1-Estimated-Rows-Written', String(budget.written))
@@ -183,16 +247,31 @@ app.use('/*', async (c, next) => {
   if (!mutationId || mutationId.length > 120 || !c.env.DB) return next()
   const endpoint = new URL(c.req.url).pathname
   const bodyText = await c.req.raw.clone().text()
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${c.req.method}\n${endpoint}\n${bodyText}`))
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${c.req.method}\n${endpoint}\n${bodyText}`),
+  )
   const requestHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
 
   const replay = async () => {
-    const existing = await c.env.DB.prepare('SELECT method,endpoint,request_hash,status_code,response_json FROM sync_mutations WHERE mutation_id=?').bind(mutationId).first<any>()
+    const existing = await c.env.DB.prepare(
+      'SELECT method,endpoint,request_hash,status_code,response_json FROM sync_mutations WHERE mutation_id=?',
+    )
+      .bind(mutationId)
+      .first<any>()
     if (!existing) return null
-    if (existing.method !== c.req.method || existing.endpoint !== endpoint || (existing.request_hash && existing.request_hash !== requestHash)) {
+    if (
+      existing.method !== c.req.method ||
+      existing.endpoint !== endpoint ||
+      (existing.request_hash && existing.request_hash !== requestHash)
+    ) {
       return c.json({ error: 'mutation_id_reused_for_different_operation' }, 409)
     }
-    try { return c.json(JSON.parse(existing.response_json), existing.status_code as any) } catch { return c.json({ error: 'cached mutation response unavailable' }, 409) }
+    try {
+      return c.json(JSON.parse(existing.response_json), existing.status_code as any)
+    } catch {
+      return c.json({ error: 'cached mutation response unavailable' }, 409)
+    }
   }
 
   const cached = await replay()
@@ -201,26 +280,37 @@ app.use('/*', async (c, next) => {
   // durable tombstones: legacy builds represented those by extending the
   // expiry well beyond created_at, while current builds use the explicit
   // far-future sentinel. Neither may be deleted and turned into a blind replay.
-  await c.env.DB.prepare("DELETE FROM sync_mutation_locks WHERE expires_at<=datetime('now') AND expires_at<=datetime(created_at,'+5 minutes')").run()
+  await c.env.DB.prepare(
+    "DELETE FROM sync_mutation_locks WHERE expires_at<=datetime('now') AND expires_at<=datetime(created_at,'+5 minutes')",
+  ).run()
   // Reserve fail-closed from the first write. If the handler or the later
   // receipt write crashes, the row is already a durable tombstone; a follow-up
   // database failure cannot leave behind a short lease that later blind-replays.
-  const reservation = await c.env.DB.prepare('INSERT OR IGNORE INTO sync_mutation_locks (mutation_id,method,endpoint,request_hash,expires_at) VALUES (?,?,?,?,?)')
-    .bind(mutationId, c.req.method, endpoint, requestHash, DURABLE_UNKNOWN_MUTATION_EXPIRES_AT).run()
+  const reservation = await c.env.DB.prepare(
+    'INSERT OR IGNORE INTO sync_mutation_locks (mutation_id,method,endpoint,request_hash,expires_at) VALUES (?,?,?,?,?)',
+  )
+    .bind(mutationId, c.req.method, endpoint, requestHash, DURABLE_UNKNOWN_MUTATION_EXPIRES_AT)
+    .run()
   if (!reservation.meta.changes) {
     const completed = await replay()
     if (completed) return completed
-    const lock = await c.env.DB.prepare(`SELECT method,endpoint,request_hash,expires_at,
+    const lock = await c.env.DB.prepare(
+      `SELECT method,endpoint,request_hash,expires_at,
       CASE WHEN (expires_at=? AND created_at<=datetime('now','-2 minutes'))
         OR (expires_at<>? AND expires_at>datetime(created_at,'+5 minutes'))
         THEN 1 ELSE 0 END outcome_unknown
-      FROM sync_mutation_locks WHERE mutation_id=?`)
-      .bind(DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, mutationId).first<any>()
+      FROM sync_mutation_locks WHERE mutation_id=?`,
+    )
+      .bind(DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, mutationId)
+      .first<any>()
     if (lock && (lock.method !== c.req.method || lock.endpoint !== endpoint || lock.request_hash !== requestHash)) {
       return c.json({ error: 'mutation_id_reused_for_different_operation' }, 409)
     }
     if (Number(lock?.outcome_unknown || 0)) {
-      return c.json({ error: 'mutation_outcome_unknown', mutation_committed: 'unknown', retryable: false, reread_required: true }, 409)
+      return c.json(
+        { error: 'mutation_outcome_unknown', mutation_committed: 'unknown', retryable: false, reread_required: true },
+        409,
+      )
     }
     return c.json({ error: 'mutation_in_progress', retryable: true }, 409)
   }
@@ -228,24 +318,35 @@ app.use('/*', async (c, next) => {
   await next()
   const disposition = mutationReservationDisposition(c.res.status)
   if (disposition === 'release') {
-    await c.env.DB.prepare('DELETE FROM sync_mutation_locks WHERE mutation_id=? AND request_hash=?').bind(mutationId, requestHash).run()
+    await c.env.DB.prepare('DELETE FROM sync_mutation_locks WHERE mutation_id=? AND request_hash=?')
+      .bind(mutationId, requestHash)
+      .run()
     return
   }
   if (disposition === 'hold_unknown') {
     await c.env.DB.prepare('UPDATE sync_mutation_locks SET expires_at=? WHERE mutation_id=? AND request_hash=?')
-      .bind(DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, mutationId, requestHash).run().catch(() => undefined)
+      .bind(DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, mutationId, requestHash)
+      .run()
+      .catch(() => undefined)
     return
   }
   try {
     const body = await c.res.clone().text()
-    await c.env.DB.prepare('INSERT INTO sync_mutations (mutation_id,method,endpoint,request_hash,status_code,response_json) VALUES (?,?,?,?,?,?)')
-      .bind(mutationId, c.req.method, endpoint, requestHash, c.res.status, body || '{}').run()
-    await c.env.DB.prepare('DELETE FROM sync_mutation_locks WHERE mutation_id=? AND request_hash=?').bind(mutationId, requestHash).run()
+    await c.env.DB.prepare(
+      'INSERT INTO sync_mutations (mutation_id,method,endpoint,request_hash,status_code,response_json) VALUES (?,?,?,?,?,?)',
+    )
+      .bind(mutationId, c.req.method, endpoint, requestHash, c.res.status, body || '{}')
+      .run()
+    await c.env.DB.prepare('DELETE FROM sync_mutation_locks WHERE mutation_id=? AND request_hash=?')
+      .bind(mutationId, requestHash)
+      .run()
   } catch {
     // The write may already be committed. Quarantine the key durably so a later
     // cleanup cannot turn an unresolved outcome into a blind replay.
     await c.env.DB.prepare('UPDATE sync_mutation_locks SET expires_at=? WHERE mutation_id=? AND request_hash=?')
-      .bind(DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, mutationId, requestHash).run().catch(() => undefined)
+      .bind(DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, mutationId, requestHash)
+      .run()
+      .catch(() => undefined)
   }
 })
 
@@ -287,11 +388,21 @@ app.route('/', productApi)
 app.get('/health/live', (c) => c.json({ ok: true, status: 'live', now: new Date().toISOString() }))
 
 app.get('/health/free-tier-budget', async (c) => {
-  const usage = await c.env.DB.prepare(`SELECT estimated_rows_read,estimated_rows_written,read_requests,write_requests,updated_at FROM free_tier_usage_budget WHERE day_utc=date('now')`).first<any>()
+  const usage = await c.env.DB.prepare(
+    `SELECT estimated_rows_read,estimated_rows_written,read_requests,write_requests,updated_at FROM free_tier_usage_budget WHERE day_utc=date('now')`,
+  ).first<any>()
   return c.json({
     day_utc: new Date().toISOString().slice(0, 10),
-    reads: { estimated: Number(usage?.estimated_rows_read || 0), budget: DAILY_READ_BUDGET, cloudflare_limit: 5_000_000 },
-    writes: { estimated: Number(usage?.estimated_rows_written || 0), budget: DAILY_WRITE_BUDGET, cloudflare_limit: 100_000 },
+    reads: {
+      estimated: Number(usage?.estimated_rows_read || 0),
+      budget: DAILY_READ_BUDGET,
+      cloudflare_limit: 5_000_000,
+    },
+    writes: {
+      estimated: Number(usage?.estimated_rows_written || 0),
+      budget: DAILY_WRITE_BUDGET,
+      cloudflare_limit: 100_000,
+    },
     requests: { reads: Number(usage?.read_requests || 0), writes: Number(usage?.write_requests || 0) },
     updated_at: usage?.updated_at || null,
   })
@@ -320,7 +431,10 @@ app.get(PUBLIC_LEARNING_UPDATE_PATH, async (c) => {
   const headers = new Headers(asset.headers)
   headers.set('Content-Type', 'text/html; charset=utf-8')
   headers.set('Cache-Control', 'no-cache, no-store, must-revalidate')
-  headers.set('Content-Security-Policy', "default-src 'self'; script-src 'none'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+  headers.set(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'none'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  )
   return new Response(asset.body, { status: asset.status, headers })
 })
 app.get(PUBLIC_LEARNING_UPDATE_FILE_PATH, (c) => c.redirect(PUBLIC_LEARNING_UPDATE_PATH, 308))
@@ -359,12 +473,29 @@ app.post('/api/share-target', async (c) => {
     const url = form.get('url')?.toString()?.trim()
     candidate = url || text || ''
     if (!candidate || candidate.length > 10000) return c.redirect('/#/home?action=capture&share=invalid', 303)
-    const derivedTitle = title || (isValidUrl(String(candidate)) ? candidate.split('/').pop()?.replace(/-/g, ' ') : candidate.slice(0, 100)) || 'Shared item'
+    const derivedTitle =
+      title ||
+      (isValidUrl(String(candidate)) ? candidate.split('/').pop()?.replace(/-/g, ' ') : candidate.slice(0, 100)) ||
+      'Shared item'
     const result = await createCapture(c.env.DB, { source: candidate, title: derivedTitle })
-    return c.redirect(`/#/library/source/${encodeURIComponent(result.id)}?from=home&share=${result.duplicate ? 'existing' : 'saved'}`, 303)
+    return c.redirect(
+      `/#/library/source/${encodeURIComponent(result.id)}?from=home&share=${result.duplicate ? 'existing' : 'saved'}`,
+      303,
+    )
   } catch (error) {
-    console.error(JSON.stringify({ ts: new Date().toISOString(), level: 'error', msg: 'share_target_capture_failed', error: safeErrorMessage(error) }))
-    const query = new URLSearchParams({ action: 'capture', share: 'retry', ...(candidate ? { capture: candidate } : {}) })
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: 'error',
+        msg: 'share_target_capture_failed',
+        error: safeErrorMessage(error),
+      }),
+    )
+    const query = new URLSearchParams({
+      action: 'capture',
+      share: 'retry',
+      ...(candidate ? { capture: candidate } : {}),
+    })
     return c.redirect(`/#/home?${query.toString()}`, 303)
   }
 })
@@ -375,7 +506,10 @@ app.get('/api/yt/:id', async (c) => {
   const videoId = c.req.param('id')
   if (!videoId || !/^[\w-]{11}$/.test(videoId)) return c.json({ error: 'invalid id' }, 400)
   try {
-    const html = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { headers: { 'User-Agent': 'TasteMap/1.0' } })
+    const html = await fetch(
+      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
+      { headers: { 'User-Agent': 'TasteMap/1.0' } },
+    )
     if (!html.ok) return c.json({ error: 'not found' }, 404)
     const meta = await html.json<any>()
     return c.json({
@@ -384,7 +518,9 @@ app.get('/api/yt/:id', async (c) => {
       thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
       url: normalizeYouTubeUrl(`https://www.youtube.com/watch?v=${videoId}`),
     })
-  } catch { return c.json({ error: 'failed' }, 500) }
+  } catch {
+    return c.json({ error: 'failed' }, 500)
+  }
 })
 
 // Telegram bot webhook
@@ -395,39 +531,72 @@ async function telegramReply(token: string, payload: Record<string, unknown>) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    if (!response.ok) console.warn(JSON.stringify({ ts: new Date().toISOString(), level: 'warn', msg: 'telegram_reply_failed', status: response.status }))
+    if (!response.ok)
+      console.warn(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: 'warn',
+          msg: 'telegram_reply_failed',
+          status: response.status,
+        }),
+      )
   } catch (error) {
-    console.warn(JSON.stringify({ ts: new Date().toISOString(), level: 'warn', msg: 'telegram_reply_failed', error: safeErrorMessage(error) }))
+    console.warn(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: 'warn',
+        msg: 'telegram_reply_failed',
+        error: safeErrorMessage(error),
+      }),
+    )
   }
 }
 
 app.post('/api/telegram', async (c) => {
   const { DB } = c.env
   const { TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_ALLOWED_CHAT_ID } = c.env
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_WEBHOOK_SECRET) return c.json({ ok: false, error: 'webhook_not_configured' }, 403)
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_WEBHOOK_SECRET)
+    return c.json({ ok: false, error: 'webhook_not_configured' }, 403)
   const suppliedSecret = c.req.header('x-telegram-bot-api-secret-token') || ''
-  if (suppliedSecret.length !== TELEGRAM_WEBHOOK_SECRET.length) return c.json({ ok: false, error: 'invalid_webhook_secret' }, 401)
+  if (suppliedSecret.length !== TELEGRAM_WEBHOOK_SECRET.length)
+    return c.json({ ok: false, error: 'invalid_webhook_secret' }, 401)
   let secretMismatch = 0
-  for (let index = 0; index < TELEGRAM_WEBHOOK_SECRET.length; index += 1) secretMismatch |= suppliedSecret.charCodeAt(index) ^ TELEGRAM_WEBHOOK_SECRET.charCodeAt(index)
+  for (let index = 0; index < TELEGRAM_WEBHOOK_SECRET.length; index += 1)
+    secretMismatch |= suppliedSecret.charCodeAt(index) ^ TELEGRAM_WEBHOOK_SECRET.charCodeAt(index)
   if (secretMismatch !== 0) return c.json({ ok: false, error: 'invalid_webhook_secret' }, 401)
   let body: any
-  try { body = await c.req.json() } catch { return c.json({ ok: false }, 400) }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ ok: false }, 400)
+  }
   const msg = body?.message
   if (!msg?.text) return c.json({ ok: true })
   const chatId = msg.chat.id
-  if (TELEGRAM_ALLOWED_CHAT_ID && String(chatId) !== String(TELEGRAM_ALLOWED_CHAT_ID)) return c.json({ ok: false, error: 'chat_not_allowed' }, 403)
+  if (TELEGRAM_ALLOWED_CHAT_ID && String(chatId) !== String(TELEGRAM_ALLOWED_CHAT_ID))
+    return c.json({ ok: false, error: 'chat_not_allowed' }, 403)
 
   const updateId = Number(body?.update_id)
   const durableUpdate = Number.isInteger(updateId)
   if (durableUpdate) {
-    const existing = await DB.prepare('SELECT status,result_id FROM telegram_updates WHERE update_id=?').bind(updateId).first<{ status: string; result_id: string | null }>()
-    if (existing?.status === 'completed') return c.json({ ok: true, duplicate: true, result_id: existing.result_id || null })
+    const existing = await DB.prepare('SELECT status,result_id FROM telegram_updates WHERE update_id=?')
+      .bind(updateId)
+      .first<{ status: string; result_id: string | null }>()
+    if (existing?.status === 'completed')
+      return c.json({ ok: true, duplicate: true, result_id: existing.result_id || null })
     if (!existing) {
-      await DB.prepare("INSERT INTO telegram_updates(update_id,status,attempts,updated_at) VALUES (?,'processing',1,datetime('now'))").bind(updateId).run()
+      await DB.prepare(
+        "INSERT INTO telegram_updates(update_id,status,attempts,updated_at) VALUES (?,'processing',1,datetime('now'))",
+      )
+        .bind(updateId)
+        .run()
     } else {
-      const claimed = await DB.prepare(`UPDATE telegram_updates SET status='processing',attempts=attempts+1,error=NULL,updated_at=datetime('now')
-        WHERE update_id=? AND (status='failed' OR (status='processing' AND datetime(COALESCE(updated_at,received_at))<datetime('now','-2 minutes')))`)
-        .bind(updateId).run()
+      const claimed = await DB.prepare(
+        `UPDATE telegram_updates SET status='processing',attempts=attempts+1,error=NULL,updated_at=datetime('now')
+        WHERE update_id=? AND (status='failed' OR (status='processing' AND datetime(COALESCE(updated_at,received_at))<datetime('now','-2 minutes')))`,
+      )
+        .bind(updateId)
+        .run()
       if (!claimed.meta?.changes) return c.json({ ok: true, in_progress: true }, 202)
     }
   }
@@ -441,24 +610,58 @@ app.post('/api/telegram', async (c) => {
       const label = text.replace(url, '').trim()
       const result = await createCapture(DB, { source: url, title: label || undefined })
       resultId = result.id
-      if (durableUpdate) await DB.prepare("UPDATE telegram_updates SET status='completed',result_id=?,error=NULL,completed_at=datetime('now'),updated_at=datetime('now') WHERE update_id=?").bind(result.id, updateId).run()
-      await telegramReply(TELEGRAM_BOT_TOKEN, { chat_id: chatId, text: result.duplicate ? `Already captured: ${label || url}` : `Saved as a source: ${label || url}`, reply_to_message_id: msg.message_id })
+      if (durableUpdate)
+        await DB.prepare(
+          "UPDATE telegram_updates SET status='completed',result_id=?,error=NULL,completed_at=datetime('now'),updated_at=datetime('now') WHERE update_id=?",
+        )
+          .bind(result.id, updateId)
+          .run()
+      await telegramReply(TELEGRAM_BOT_TOKEN, {
+        chat_id: chatId,
+        text: result.duplicate ? `Already captured: ${label || url}` : `Saved as a source: ${label || url}`,
+        reply_to_message_id: msg.message_id,
+      })
     } else if (text === '/queue') {
-      const active = await DB.prepare(`SELECT r.video_title,r.content_type
+      const active = await DB.prepare(
+        `SELECT r.video_title,r.content_type
         FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
         WHERE r.status='active' AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')
-        ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 5`).all<any>()
+        ORDER BY COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 5`,
+      ).all<any>()
       const lines = (active.results || []).map((row: any) => `• [${row.content_type || '?'}] ${row.video_title}`)
-      if (durableUpdate) await DB.prepare("UPDATE telegram_updates SET status='completed',error=NULL,completed_at=datetime('now'),updated_at=datetime('now') WHERE update_id=?").bind(updateId).run()
-      await telegramReply(TELEGRAM_BOT_TOKEN, { chat_id: chatId, text: lines.length ? `Queue (${lines.length}):\n${lines.join('\n')}` : 'Queue is empty.' })
+      if (durableUpdate)
+        await DB.prepare(
+          "UPDATE telegram_updates SET status='completed',error=NULL,completed_at=datetime('now'),updated_at=datetime('now') WHERE update_id=?",
+        )
+          .bind(updateId)
+          .run()
+      await telegramReply(TELEGRAM_BOT_TOKEN, {
+        chat_id: chatId,
+        text: lines.length ? `Queue (${lines.length}):\n${lines.join('\n')}` : 'Queue is empty.',
+      })
     } else {
-      if (durableUpdate) await DB.prepare("UPDATE telegram_updates SET status='completed',error=NULL,completed_at=datetime('now'),updated_at=datetime('now') WHERE update_id=?").bind(updateId).run()
-      await telegramReply(TELEGRAM_BOT_TOKEN, { chat_id: chatId, text: 'Send a link to save it, or /queue to see your list.', reply_to_message_id: msg.message_id })
+      if (durableUpdate)
+        await DB.prepare(
+          "UPDATE telegram_updates SET status='completed',error=NULL,completed_at=datetime('now'),updated_at=datetime('now') WHERE update_id=?",
+        )
+          .bind(updateId)
+          .run()
+      await telegramReply(TELEGRAM_BOT_TOKEN, {
+        chat_id: chatId,
+        text: 'Send a link to save it, or /queue to see your list.',
+        reply_to_message_id: msg.message_id,
+      })
     }
     return c.json({ ok: true, result_id: resultId })
   } catch (error) {
     const failure = safeErrorMessage(error)
-    if (durableUpdate) await DB.prepare("UPDATE telegram_updates SET status='failed',error=?,updated_at=datetime('now') WHERE update_id=?").bind(failure.slice(0, 1000), updateId).run().catch(() => undefined)
+    if (durableUpdate)
+      await DB.prepare(
+        "UPDATE telegram_updates SET status='failed',error=?,updated_at=datetime('now') WHERE update_id=?",
+      )
+        .bind(failure.slice(0, 1000), updateId)
+        .run()
+        .catch(() => undefined)
     throw error
   }
 })
@@ -467,7 +670,10 @@ app.post('/api/telegram', async (c) => {
 export async function scheduled(_event: ScheduledController, env: Bindings, _ctx: ExecutionContext) {
   const receipt = await runMaintenance(env, 'cron')
   if (!receipt.ok) {
-    const failures = receipt.steps.filter((step) => step.status === 'failed').map((step) => `${step.name}: ${step.error}`).join('; ')
+    const failures = receipt.steps
+      .filter((step) => step.status === 'failed')
+      .map((step) => `${step.name}: ${step.error}`)
+      .join('; ')
     throw new Error(`Scheduled maintenance failed: ${failures}`)
   }
 }

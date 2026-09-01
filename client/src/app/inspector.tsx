@@ -31,15 +31,23 @@ function selectionFacts(selection: InspectorSelection) {
   const data = selection.data || {}
   if (selection.type === 'source' || selection.type === 'thread') {
     const rawBranch = data.branch
-    const branch = typeof rawBranch === 'string'
-      ? { id: rawBranch, label: rawBranch }
-      : rawBranch || (data.branch_id ? { id: data.branch_id, label: data.branch_label || data.branch_id } : null)
+    const branch =
+      typeof rawBranch === 'string'
+        ? { id: rawBranch, label: rawBranch }
+        : rawBranch || (data.branch_id ? { id: data.branch_id, label: data.branch_label || data.branch_id } : null)
     return [
       ['State', data.learning_state || data.status],
       ['Creator', data.creator || data.author],
       ['Format', data.content_type || data.format],
-      ['Branch', branch ? (branch.label || branch.id) : undefined],
-      ['Domain', data.category_label || data.super_category || (typeof rawBranch === 'object' ? (rawBranch as any)?.category_label || (rawBranch as any)?.super_category : undefined)],
+      ['Branch', branch ? branch.label || branch.id : undefined],
+      [
+        'Domain',
+        data.category_label ||
+          data.super_category ||
+          (typeof rawBranch === 'object'
+            ? (rawBranch as any)?.category_label || (rawBranch as any)?.super_category
+            : undefined),
+      ],
       ['Thread', data.thread_title || data.thread_id],
     ] as Array<[string, unknown]>
   }
@@ -69,23 +77,43 @@ export function Inspector({ selection, onClose }: { selection: InspectorSelectio
   const facts = selectionFacts(selection)
   const data = (selection?.data || {}) as Record<string, unknown>
   const description = data.context_brief || data.why_this || data.description
-  return <div class="desk-inspector">
-    <header class="inspector-head">
-      <div>
-        <span class="desk-card-meta">{selectionType(selection)} · {selection.id}</span>
-        <h2 class="desk-title">{selection.title}</h2>
-      </div>
-      <button class="icon-button" type="button" onClick={onClose} aria-label="Close inspector"><Icon name="close"/></button>
-    </header>
-    {description && <p class="desk-desc">{valueLabel(description)}</p>}
-    <section class="desk-section" aria-labelledby="inspector-facts-title">
-      <div class="desk-section-head"><h3 id="inspector-facts-title">Properties</h3><span>Canonical record</span></div>
-      <dl class="inspector-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{valueLabel(value)}</dd></div>)}</dl>
-    </section>
-    <section class="desk-section" aria-labelledby="inspector-route-title">
-      <div class="desk-section-head"><h3 id="inspector-route-title">Object route</h3></div>
-      <p class="desk-desc inspector-route-copy">This selection stays addressable while you move through its owning workspace.</p>
-      <code class="inspector-route">{selection.route}</code>
-    </section>
-  </div>
+  return (
+    <div class="desk-inspector">
+      <header class="inspector-head">
+        <div>
+          <span class="desk-card-meta">
+            {selectionType(selection)} · {selection.id}
+          </span>
+          <h2 class="desk-title">{selection.title}</h2>
+        </div>
+        <button class="icon-button" type="button" onClick={onClose} aria-label="Close inspector">
+          <Icon name="close" />
+        </button>
+      </header>
+      {description && <p class="desk-desc">{valueLabel(description)}</p>}
+      <section class="desk-section" aria-labelledby="inspector-facts-title">
+        <div class="desk-section-head">
+          <h3 id="inspector-facts-title">Properties</h3>
+          <span>Canonical record</span>
+        </div>
+        <dl class="inspector-facts">
+          {facts.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{valueLabel(value)}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+      <section class="desk-section" aria-labelledby="inspector-route-title">
+        <div class="desk-section-head">
+          <h3 id="inspector-route-title">Object route</h3>
+        </div>
+        <p class="desk-desc inspector-route-copy">
+          This selection stays addressable while you move through its owning workspace.
+        </p>
+        <code class="inspector-route">{selection.route}</code>
+      </section>
+    </div>
+  )
 }

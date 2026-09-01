@@ -45,7 +45,11 @@ test('Library, Learn, Map, and Settings do not render synthetic rounds', () => {
     '../../client/src/workspaces/learn/types.ts',
     '../../client/src/workspaces/learn/LearnCanonView.tsx',
   ]) {
-    assert.doesNotMatch(source(path), /branch_round|round_label|branch\.round|item\.round|Branch round|Current round/, path)
+    assert.doesNotMatch(
+      source(path),
+      /branch_round|round_label|branch\.round|item\.round|Branch round|Current round/,
+      path,
+    )
   }
   assert.doesNotMatch(source('../../client/src/workspaces/SettingsWorkspace.tsx'), />R[123]</)
 })

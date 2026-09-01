@@ -27,11 +27,19 @@ type CanonDomain = {
 }
 
 type CanonAtlasResponse = {
-  atlas: null | { id: string; title: string; guiding_question: string; orientation?: string | null; selection_rubric: string }
+  atlas: null | {
+    id: string
+    title: string
+    guiding_question: string
+    orientation?: string | null
+    selection_rubric: string
+  }
   families: CanonDomain[]
   domains: CanonDomain[]
   counts: { domains: number; unmapped: number; curating: number; complete: number; field_tested: number }
 }
+
+const EMPTY_CANON_DOMAINS: CanonDomain[] = []
 
 type CanonEntry = {
   id: string
@@ -108,18 +116,40 @@ const stateBadge = (status: string) => {
 const isReady = (domain: CanonDomain) =>
   domain.curation_status === 'complete' && Number(domain.entry_count || domain.entry_titles?.length || 0) === 3
 
-export function LearnCanonView({ domainId, integrated = false, searchQuery = '', onClearSearch }: { domainId?: string; integrated?: boolean; searchQuery?: string; onClearSearch?: () => void }) {
-  return domainId ? <CanonDomainDetail domainId={domainId} /> : <CanonAtlas integrated={integrated} searchQuery={searchQuery} onClearSearch={onClearSearch} />
+export function LearnCanonView({
+  domainId,
+  integrated = false,
+  searchQuery = '',
+  onClearSearch,
+}: {
+  domainId?: string
+  integrated?: boolean
+  searchQuery?: string
+  onClearSearch?: () => void
+}) {
+  return domainId ? (
+    <CanonDomainDetail domainId={domainId} />
+  ) : (
+    <CanonAtlas integrated={integrated} searchQuery={searchQuery} onClearSearch={onClearSearch} />
+  )
 }
 
-function CanonAtlas({ integrated, searchQuery: sharedSearchQuery, onClearSearch }: { integrated: boolean; searchQuery: string; onClearSearch?: () => void }) {
+function CanonAtlas({
+  integrated,
+  searchQuery: sharedSearchQuery,
+  onClearSearch,
+}: {
+  integrated: boolean
+  searchQuery: string
+  onClearSearch?: () => void
+}) {
   const [localSearchQuery, setLocalSearchQuery] = useState('')
   const [familyId, setFamilyId] = useState('all')
-  const searchQuery = integrated ? (localSearchQuery || sharedSearchQuery) : localSearchQuery
+  const searchQuery = integrated ? localSearchQuery || sharedSearchQuery : localSearchQuery
   const endpoint = `/learning/core/canon`
   const data = useData<CanonAtlasResponse>(endpoint)
 
-  const allDomains = data.data?.domains || []
+  const allDomains = data.data?.domains || EMPTY_CANON_DOMAINS
   const families = data.data?.families || []
 
   const filteredDomains = useMemo(() => {
@@ -168,15 +198,22 @@ function CanonAtlas({ integrated, searchQuery: sharedSearchQuery, onClearSearch 
   }
 
   return (
-    <section id={integrated ? 'books-canon' : undefined} class={`learn-workspace folio-learn canon-atlas-workspace${integrated ? ' canon-atlas-integrated canon-room-panel' : ''}`} aria-labelledby="canon-title">
+    <section
+      id={integrated ? 'books-canon' : undefined}
+      class={`learn-workspace folio-learn canon-atlas-workspace${integrated ? ' canon-atlas-integrated canon-room-panel' : ''}`}
+      aria-labelledby="canon-title"
+    >
       {/* Clean Folio Surface Head */}
-      <header class={`learn-surface-head folio-surface-head canon-surface-head${integrated ? ' canon-room-header' : ''}`}>
+      <header
+        class={`learn-surface-head folio-surface-head canon-surface-head${integrated ? ' canon-room-header' : ''}`}
+      >
         <div class="learn-header-content">
           {integrated && <p class="canon-room-kicker">Evergreen field guides</p>}
           {integrated ? <h2 id="canon-title">Canon fields</h2> : <h1 id="canon-title">Canon</h1>}
           {integrated && (
             <p class="canon-room-description">
-              Enter each discipline through three deliberate perspectives: its foundation, representative craft, and strongest boundary.
+              Enter each discipline through three deliberate perspectives: its foundation, representative craft, and
+              strongest boundary.
             </p>
           )}
         </div>
@@ -198,7 +235,11 @@ function CanonAtlas({ integrated, searchQuery: sharedSearchQuery, onClearSearch 
 
       {/* Filter and Search Bar */}
       <div class={`canon-toolbar${integrated ? ' canon-room-toolbar' : ''}`}>
-        <div class="canon-filter-tabs" role="group" aria-label={integrated ? 'Filter Canon by family' : 'Filter by knowledge area'}>
+        <div
+          class="canon-filter-tabs"
+          role="group"
+          aria-label={integrated ? 'Filter Canon by family' : 'Filter by knowledge area'}
+        >
           <button
             type="button"
             aria-pressed={familyId === 'all'}
@@ -234,12 +275,7 @@ function CanonAtlas({ integrated, searchQuery: sharedSearchQuery, onClearSearch 
             aria-label={integrated ? 'Search Canon fields' : 'Search Canon disciplines'}
           />
           {searchQuery && (
-            <button
-              class="canon-search-clear"
-              type="button"
-              onClick={clearSearch}
-              aria-label="Clear search"
-            >
+            <button class="canon-search-clear" type="button" onClick={clearSearch} aria-label="Clear search">
               <Icon name="close" size={13} />
             </button>
           )}
@@ -292,7 +328,19 @@ function CanonAtlas({ integrated, searchQuery: sharedSearchQuery, onClearSearch 
   )
 }
 
-function CanonRoomSection({ id, title, description, domains, families }: { id: 'ready' | 'coming'; title: string; description: string; domains: CanonDomain[]; families: CanonDomain[] }) {
+function CanonRoomSection({
+  id,
+  title,
+  description,
+  domains,
+  families,
+}: {
+  id: 'ready' | 'coming'
+  title: string
+  description: string
+  domains: CanonDomain[]
+  families: CanonDomain[]
+}) {
   const familyIds = new Set(families.map((family) => family.id))
   const groups: Array<{ id: string; title: string; description: string; domains: CanonDomain[] }> = families
     .map((family) => ({
@@ -320,22 +368,32 @@ function CanonRoomSection({ id, title, description, domains, families }: { id: '
           <h3 id={`canon-room-${id}-title`}>{title}</h3>
           <p>{description}</p>
         </div>
-        <span class="canon-room-section-count">{domains.length} {domains.length === 1 ? 'field' : 'fields'}</span>
+        <span class="canon-room-section-count">
+          {domains.length} {domains.length === 1 ? 'field' : 'fields'}
+        </span>
       </header>
 
       {groups.length > 0 ? (
         <div class="canon-room-families">
           {groups.map((group) => (
-            <section key={`${id}-${group.id}`} class="canon-room-family" aria-labelledby={`canon-room-${id}-family-${group.id}`}>
+            <section
+              key={`${id}-${group.id}`}
+              class="canon-room-family"
+              aria-labelledby={`canon-room-${id}-family-${group.id}`}
+            >
               <header class="canon-room-family-head">
                 <div>
                   <h4 id={`canon-room-${id}-family-${group.id}`}>{group.title}</h4>
                   {group.description && <p>{group.description}</p>}
                 </div>
-                <span>{group.domains.length} {group.domains.length === 1 ? 'field' : 'fields'}</span>
+                <span>
+                  {group.domains.length} {group.domains.length === 1 ? 'field' : 'fields'}
+                </span>
               </header>
               <div class="canon-field-map-grid">
-                {group.domains.map((domain) => <CanonRoomFieldCard key={domain.id} domain={domain} />)}
+                {group.domains.map((domain) => (
+                  <CanonRoomFieldCard key={domain.id} domain={domain} />
+                ))}
               </div>
             </section>
           ))}
@@ -354,7 +412,10 @@ function CanonRoomFieldCard({ domain }: { domain: CanonDomain }) {
   const orderedRoles: CanonRole[] = ['foundation', 'representative', 'boundary']
 
   return (
-    <article class={`canon-field-map-card ${ready ? 'is-ready' : 'is-coming'}`} aria-labelledby={`canon-room-domain-${domain.id}`}>
+    <article
+      class={`canon-field-map-card ${ready ? 'is-ready' : 'is-coming'}`}
+      aria-labelledby={`canon-room-domain-${domain.id}`}
+    >
       <header class="canon-field-map-head">
         <div>
           <p class="canon-field-map-kicker">{ready ? 'Ready trio' : 'Coming next'}</p>
@@ -382,13 +443,19 @@ function CanonRoomFieldCard({ domain }: { domain: CanonDomain }) {
           const bookTitle = domain.entry_roles?.[role] || bookTitles[index]
           return (
             <li key={role} class={`canon-field-role ${meta.roleClass} ${bookTitle ? 'has-book' : 'is-open'}`}>
-              <span class="canon-field-role-number" aria-hidden="true">{meta.number}</span>
+              <span class="canon-field-role-number" aria-hidden="true">
+                {meta.number}
+              </span>
               <div class="canon-field-role-copy">
                 <span class="canon-field-role-label">{meta.label}</span>
                 {bookTitle ? (
-                  <strong class="canon-field-role-title" title={bookTitle}>{bookTitle}</strong>
+                  <strong class="canon-field-role-title" title={bookTitle}>
+                    {bookTitle}
+                  </strong>
                 ) : (
-                  <span class="canon-field-role-placeholder">{ready ? 'Curated selection' : 'Selection in progress'}</span>
+                  <span class="canon-field-role-placeholder">
+                    {ready ? 'Curated selection' : 'Selection in progress'}
+                  </span>
                 )}
               </div>
             </li>
@@ -398,7 +465,11 @@ function CanonRoomFieldCard({ domain }: { domain: CanonDomain }) {
 
       <footer class="canon-field-map-footer">
         {ready ? (
-          <a class="button secondary canon-field-map-open" href={canonDomainHref(domain)} aria-label={`Open ${domain.title} field guide`}>
+          <a
+            class="button secondary canon-field-map-open"
+            href={canonDomainHref(domain)}
+            aria-label={`Open ${domain.title} field guide`}
+          >
             <span>Open field guide</span>
             <Icon name="chevron" size={14} />
           </a>
@@ -410,14 +481,26 @@ function CanonRoomFieldCard({ domain }: { domain: CanonDomain }) {
   )
 }
 
-function CanonLearnerSection({ title, domains, families, integrated }: { title: string; domains: CanonDomain[]; families: CanonDomain[]; integrated: boolean }) {
+function CanonLearnerSection({
+  title,
+  domains,
+  families,
+  integrated,
+}: {
+  title: string
+  domains: CanonDomain[]
+  families: CanonDomain[]
+  integrated: boolean
+}) {
   return (
     <details class="canon-learner-section" open>
       <summary class="canon-learner-section-head">
         <div>
           <h2 id={`canon-${title.toLowerCase().replace(/\s+/g, '-')}`}>{title}</h2>
         </div>
-        <span class="canon-family-badge">{domains.length} {domains.length === 1 ? 'Field' : 'Fields'}</span>
+        <span class="canon-family-badge">
+          {domains.length} {domains.length === 1 ? 'Field' : 'Fields'}
+        </span>
       </summary>
       {domains.length ? (
         <div class="canon-sections-flow">
@@ -437,7 +520,9 @@ function CanonLearnerSection({ title, domains, families, integrated }: { title: 
                     </span>
                   </header>
                   <div class="canon-cards-grid">
-                    {domainsInFamily.map((domain) => <CanonFieldCard key={domain.id} domain={domain} integrated={integrated} />)}
+                    {domainsInFamily.map((domain) => (
+                      <CanonFieldCard key={domain.id} domain={domain} integrated={integrated} />
+                    ))}
                   </div>
                 </section>
               )
@@ -456,17 +541,27 @@ function CanonFieldCard({ domain, integrated }: { domain: CanonDomain; integrate
   const bookTitles = domain.entry_titles || []
 
   if (integrated) {
-    const content = <>
-      <div class="canon-minimal-field-copy">
-        <h4>{domain.title}</h4>
-        <span>{domain.branch_label || domain.family_title || 'Unmapped'}</span>
-      </div>
-      <span class="canon-minimal-field-count">{ready ? '3 books' : status.label}</span>
-      {ready && <Icon name="chevron" size={14}/>}
-    </>
-    return <article class={`canon-minimal-field ${ready ? 'is-ready' : 'is-pending'}`}>
-      {ready ? <a href={canonDomainHref(domain)} aria-label={`Open ${domain.title} field guide`}>{content}</a> : <div>{content}</div>}
-    </article>
+    const content = (
+      <>
+        <div class="canon-minimal-field-copy">
+          <h4>{domain.title}</h4>
+          <span>{domain.branch_label || domain.family_title || 'Unmapped'}</span>
+        </div>
+        <span class="canon-minimal-field-count">{ready ? '3 books' : status.label}</span>
+        {ready && <Icon name="chevron" size={14} />}
+      </>
+    )
+    return (
+      <article class={`canon-minimal-field ${ready ? 'is-ready' : 'is-pending'}`}>
+        {ready ? (
+          <a href={canonDomainHref(domain)} aria-label={`Open ${domain.title} field guide`}>
+            {content}
+          </a>
+        ) : (
+          <div>{content}</div>
+        )}
+      </article>
+    )
   }
 
   return (
@@ -499,7 +594,9 @@ function CanonFieldCard({ domain, integrated }: { domain: CanonDomain; integrate
                   <span class={`canon-shelf-num ${meta.roleClass}`}>{meta.number}</span>
                   <div class="canon-shelf-details">
                     <span class="canon-shelf-role">{meta.label}</span>
-                    <strong class="canon-shelf-title" title={title}>{title}</strong>
+                    <strong class="canon-shelf-title" title={title}>
+                      {title}
+                    </strong>
                   </div>
                 </li>
               )
@@ -523,12 +620,18 @@ function CanonFieldCard({ domain, integrated }: { domain: CanonDomain; integrate
         )}
       </div>
 
-      {ready && <div class="canon-card-action-bar">
-          <a class="button secondary canon-view-btn" aria-label={`Explore Canon field ${domain.title}`} href={canonDomainHref(domain)}>
-          <span>Open field guide</span>
-          <Icon name="chevron" size={14} />
-        </a>
-      </div>}
+      {ready && (
+        <div class="canon-card-action-bar">
+          <a
+            class="button secondary canon-view-btn"
+            aria-label={`Explore Canon field ${domain.title}`}
+            href={canonDomainHref(domain)}
+          >
+            <span>Open field guide</span>
+            <Icon name="chevron" size={14} />
+          </a>
+        </div>
+      )}
     </article>
   )
 }
@@ -567,13 +670,14 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
     try {
       const result = await api<{ id: string; state: string }>(
         `/learning/core/canon/entries/${encodeURIComponent(entry.id)}/capture`,
-        { method: 'POST' }
+        { method: 'POST' },
       )
       setNotice({
         kind: 'success',
-        message: result.state === 'captured'
-          ? `"${entry.title}" was added to My books under ${domain.branch_label || 'this branch'}.`
-          : `"${entry.title}" is already in My books.`
+        message:
+          result.state === 'captured'
+            ? `"${entry.title}" was added to My books under ${domain.branch_label || 'this branch'}.`
+            : `"${entry.title}" is already in My books.`,
       })
       data.reload()
     } catch (error: any) {
@@ -587,19 +691,24 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
     setWorking('thread')
     setNotice(null)
     try {
-      const result = await api<{ id: string }>(
-        `/learning/core/canon/domains/${encodeURIComponent(domain.id)}/thread`,
-        { method: 'POST' }
-      )
+      const result = await api<{ id: string }>(`/learning/core/canon/domains/${encodeURIComponent(domain.id)}/thread`, {
+        method: 'POST',
+      })
       location.hash = `#/learn/thread/${encodeURIComponent(result.id)}`
     } catch (error: any) {
-      setNotice({ kind: 'error', message: error?.message || 'Could not create a Learning Thread from this discipline.' })
+      setNotice({
+        kind: 'error',
+        message: error?.message || 'Could not create a Learning Thread from this discipline.',
+      })
       setWorking('')
     }
   }
 
   return (
-    <section class="learn-workspace folio-learn canon-detail-workspace canon-domain-detail" aria-labelledby="canon-domain-title">
+    <section
+      class="learn-workspace folio-learn canon-detail-workspace canon-domain-detail"
+      aria-labelledby="canon-domain-title"
+    >
       {/* Breadcrumb Navigation */}
       <nav class="canon-breadcrumb" aria-label="Breadcrumb">
         <a class="canon-back-link" href="#/library">
@@ -634,12 +743,14 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
             </p>
           )}
         </div>
-
       </header>
 
       {/* Notice Banner */}
       {notice && (
-        <div class={`canon-notice-banner ${notice.kind === 'error' ? 'is-error' : ''}`} role={notice.kind === 'error' ? 'alert' : 'status'}>
+        <div
+          class={`canon-notice-banner ${notice.kind === 'error' ? 'is-error' : ''}`}
+          role={notice.kind === 'error' ? 'alert' : 'status'}
+        >
           <Icon name={notice.kind === 'error' ? 'warning' : 'check'} size={15} />
           <span>{notice.message}</span>
         </div>
@@ -649,7 +760,10 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
         <div class="canon-pending-panel">
           <p class="folio-object-kicker">Coming next</p>
           <h2>Field curation in progress</h2>
-          <p>This field is being prepared. Its three-book path will appear after Foundation, Representative, and Boundary are each approved.</p>
+          <p>
+            This field is being prepared. Its three-book path will appear after Foundation, Representative, and Boundary
+            are each approved.
+          </p>
         </div>
       )}
 
@@ -660,9 +774,7 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
             <p class="folio-object-kicker">Curated Reading Path</p>
             <h2>The Three-Book Path</h2>
           </div>
-          <span class="folio-measure">
-            {orderedEntries.length} of 3 books curated
-          </span>
+          <span class="folio-measure">{orderedEntries.length} of 3 books curated</span>
         </div>
 
         <div class="canon-books-ledger">
@@ -746,8 +858,8 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
                           {working === `capture:${entry.id}`
                             ? 'Saving…'
                             : entry.role === 'foundation'
-                            ? 'Save Starting Book'
-                            : 'Save to Library'}
+                              ? 'Save Starting Book'
+                              : 'Save to Library'}
                         </span>
                       </button>
                     )}
@@ -820,14 +932,18 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
                 {orderedEntries.map((entry) => (
                   <tr key={entry.id} class={`matrix-row-${entry.role}`}>
                     <th scope="row">
-                      <span class={`canon-matrix-pill role-${entry.role}`}>{roleMeta[entry.role].number} {roleMeta[entry.role].label}</span>
+                      <span class={`canon-matrix-pill role-${entry.role}`}>
+                        {roleMeta[entry.role].number} {roleMeta[entry.role].label}
+                      </span>
                     </th>
                     <td>
                       <strong class="canon-matrix-title">{entry.title}</strong>
                       <div class="canon-matrix-author">by {entry.author}</div>
                     </td>
                     <td class="canon-matrix-best">{entry.beginner_case}</td>
-                    <td><span class="canon-pill difficulty-pill">{entry.difficulty}</span></td>
+                    <td>
+                      <span class="canon-pill difficulty-pill">{entry.difficulty}</span>
+                    </td>
                     <td class="canon-matrix-limit">{entry.limitations}</td>
                   </tr>
                 ))}
@@ -838,25 +954,27 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
       )}
 
       {/* Thread Creation CTA */}
-      {ready && <div class="canon-bottom-cta">
-        <div>
-          <h3>Ready to study {domain.title}?</h3>
-          <p>
-            {capturedCount
-              ? `${capturedCount} of 3 books are saved to your Library. Launch a structured Learning Thread to track your reading and synthesis.`
-              : 'Add at least one selection to My books before creating a structured Learning Thread.'}
-          </p>
+      {ready && (
+        <div class="canon-bottom-cta">
+          <div>
+            <h3>Ready to study {domain.title}?</h3>
+            <p>
+              {capturedCount
+                ? `${capturedCount} of 3 books are saved to your Library. Launch a structured Learning Thread to track your reading and synthesis.`
+                : 'Add at least one selection to My books before creating a structured Learning Thread.'}
+            </p>
+          </div>
+          <button
+            class="button primary folio-primary"
+            type="button"
+            disabled={working === 'thread' || capturedCount === 0}
+            onClick={startThread}
+          >
+            <Icon name="path" size={16} />
+            <span>{working === 'thread' ? 'Creating Thread…' : 'Create three-book Thread'}</span>
+          </button>
         </div>
-        <button
-          class="button primary folio-primary"
-          type="button"
-          disabled={working === 'thread' || capturedCount === 0}
-          onClick={startThread}
-        >
-          <Icon name="path" size={16} />
-          <span>{working === 'thread' ? 'Creating Thread…' : 'Create three-book Thread'}</span>
-        </button>
-      </div>}
+      )}
     </section>
   )
 }

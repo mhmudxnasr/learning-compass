@@ -12,14 +12,19 @@ const transcript = '/home/mahmud/.hermes/skills/lite-visual/scripts/fetch_transc
 test('source router extracts the complete article body and returns a millisecond cache hit', () => {
   const directory = mkdtempSync(join(tmpdir(), 'lite-visual-source-'))
   try {
-    const paragraph = (number: number) => `الفقرة ${number} تشرح الفكرة الأساسية والسبب والنتيجة والمثال والشرط والحدود بطريقة كاملة تحافظ على معنى المصدر من دون حذف أو اختصار مخل.`
+    const paragraph = (number: number) =>
+      `الفقرة ${number} تشرح الفكرة الأساسية والسبب والنتيجة والمثال والشرط والحدود بطريقة كاملة تحافظ على معنى المصدر من دون حذف أو اختصار مخل.`
     const article = `<!doctype html><html lang="ar" dir="rtl"><head><title>المقال الكامل</title><link rel="canonical" href="https://example.com/canonical"></head><body><nav>قائمة لا تنتمي للمقال</nav><main><article><h1>المقال الكامل</h1>${Array.from({ length: 12 }, (_, index) => `<p>${paragraph(index + 1)}</p>`).join('')}</article></main><footer>تذييل متكرر</footer></body></html>`
     const input = join(directory, 'article.html')
     const output = join(directory, 'source.txt')
     const manifest = join(directory, 'manifest.json')
     const cache = join(directory, 'cache')
     writeFileSync(input, article)
-    const first = spawnSync('python3', [extractor, input, '--kind', 'article', '--output', output, '--manifest', manifest, '--cache-dir', cache], { encoding: 'utf8' })
+    const first = spawnSync(
+      'python3',
+      [extractor, input, '--kind', 'article', '--output', output, '--manifest', manifest, '--cache-dir', cache],
+      { encoding: 'utf8' },
+    )
     assert.equal(first.status, 0, first.stderr)
     const body = readFileSync(output, 'utf8')
     const receipt = JSON.parse(readFileSync(manifest, 'utf8'))
@@ -30,7 +35,11 @@ test('source router extracts the complete article body and returns a millisecond
     assert.equal(receipt.cache_hit, false)
     assert.ok(receipt.word_count >= 100)
 
-    const cached = spawnSync('python3', [extractor, input, '--kind', 'article', '--output', output, '--manifest', manifest, '--cache-dir', cache], { encoding: 'utf8' })
+    const cached = spawnSync(
+      'python3',
+      [extractor, input, '--kind', 'article', '--output', output, '--manifest', manifest, '--cache-dir', cache],
+      { encoding: 'utf8' },
+    )
     assert.equal(cached.status, 0, cached.stderr)
     const cachedReceipt = JSON.parse(readFileSync(manifest, 'utf8'))
     assert.equal(cachedReceipt.cache_hit, true)
@@ -46,8 +55,26 @@ test('source router rejects a visibly truncated paywall instead of inventing com
     const input = join(directory, 'paywall.html')
     const output = join(directory, 'source.txt')
     const manifest = join(directory, 'manifest.json')
-    writeFileSync(input, '<!doctype html><html><head><title>Locked</title></head><body><article><h1>Locked</h1><p>Subscribe to continue reading this article.</p><p>Only this introduction is visible.</p><p>The rest is unavailable.</p></article></body></html>')
-    const result = spawnSync('python3', [extractor, input, '--kind', 'article', '--output', output, '--manifest', manifest, '--cache-dir', join(directory, 'cache')], { encoding: 'utf8' })
+    writeFileSync(
+      input,
+      '<!doctype html><html><head><title>Locked</title></head><body><article><h1>Locked</h1><p>Subscribe to continue reading this article.</p><p>Only this introduction is visible.</p><p>The rest is unavailable.</p></article></body></html>',
+    )
+    const result = spawnSync(
+      'python3',
+      [
+        extractor,
+        input,
+        '--kind',
+        'article',
+        '--output',
+        output,
+        '--manifest',
+        manifest,
+        '--cache-dir',
+        join(directory, 'cache'),
+      ],
+      { encoding: 'utf8' },
+    )
     assert.notEqual(result.status, 0)
     assert.equal(JSON.parse(readFileSync(manifest, 'utf8')).status, 'blocked')
   } finally {
@@ -67,19 +94,38 @@ test('verified local transcript cache is bound to current content, not only file
     const source = `${Array.from({ length: 90 }, (_, index) => `كلمة${index}`).join(' ')}\n`
     const transcriptSha = createHash('sha256').update(source.trim()).digest('hex')
     writeFileSync(input, source)
-    writeFileSync(transcriptReceipt, JSON.stringify({
-      schema_version: 'riyadh-salihin-local-transcript/v1',
-      number: 1,
-      title: 'اختبار النسخة المحلية',
-      media_url: mediaUrl,
-      transcript_sha256: transcriptSha,
-      source_audio_sha256: 'a'.repeat(64),
-      source_duration_seconds: 90,
-      quality: { passed: true },
-      chunks: [{ quality: { passed: true } }],
-      segments: [{ start_seconds: 0, end_seconds: 90, text: source.trim() }],
-    }))
-    const args = [extractor, input, '--kind', 'audio', '--verified-transcript-receipt', transcriptReceipt, '--canonical-source', mediaUrl, '--strip-embedded-timestamps', '--output', output, '--manifest', manifest, '--cache-dir', cache]
+    writeFileSync(
+      transcriptReceipt,
+      JSON.stringify({
+        schema_version: 'riyadh-salihin-local-transcript/v1',
+        number: 1,
+        title: 'اختبار النسخة المحلية',
+        media_url: mediaUrl,
+        transcript_sha256: transcriptSha,
+        source_audio_sha256: 'a'.repeat(64),
+        source_duration_seconds: 90,
+        quality: { passed: true },
+        chunks: [{ quality: { passed: true } }],
+        segments: [{ start_seconds: 0, end_seconds: 90, text: source.trim() }],
+      }),
+    )
+    const args = [
+      extractor,
+      input,
+      '--kind',
+      'audio',
+      '--verified-transcript-receipt',
+      transcriptReceipt,
+      '--canonical-source',
+      mediaUrl,
+      '--strip-embedded-timestamps',
+      '--output',
+      output,
+      '--manifest',
+      manifest,
+      '--cache-dir',
+      cache,
+    ]
     const first = spawnSync('python3', args, { encoding: 'utf8' })
     assert.equal(first.status, 0, first.stderr)
     const receipt = JSON.parse(readFileSync(manifest, 'utf8'))
@@ -89,7 +135,11 @@ test('verified local transcript cache is bound to current content, not only file
 
     const initial = statSync(input, { bigint: true })
     writeFileSync(input, source.replace('كلمة0', 'جملة0'))
-    const restore = spawnSync('python3', ['-c', `import os; os.utime(${JSON.stringify(input)}, ns=(${initial.atimeNs}, ${initial.mtimeNs}))`], { encoding: 'utf8' })
+    const restore = spawnSync(
+      'python3',
+      ['-c', `import os; os.utime(${JSON.stringify(input)}, ns=(${initial.atimeNs}, ${initial.mtimeNs}))`],
+      { encoding: 'utf8' },
+    )
     assert.equal(restore.status, 0, restore.stderr)
     const restored = statSync(input, { bigint: true })
     assert.equal(restored.size, initial.size)
@@ -113,12 +163,47 @@ test('source router visits every text PDF page and preserves page anchors', (t) 
     const pdfPath = join(directory, 'source.pdf')
     const output = join(directory, 'source.txt')
     const manifest = join(directory, 'manifest.json')
-    const content = Array.from({ length: 60 }, (_, index) => `النقطة ${index + 1} تشرح الدليل والمثال والحدود.`).join(' ')
-    writeFileSync(htmlPath, `<!doctype html><html lang="ar" dir="rtl"><style>@page{size:A4;margin:18mm}</style><body><p>${content}</p></body></html>`)
-    const chrome = spawnSync('google-chrome', ['--headless=new', '--no-sandbox', '--disable-gpu', '--no-pdf-header-footer', `--print-to-pdf=${pdfPath}`, `file://${htmlPath}`], { encoding: 'utf8' })
-    if (chrome.status === null) { t.skip('Chrome unavailable'); return }
+    const content = Array.from({ length: 60 }, (_, index) => `النقطة ${index + 1} تشرح الدليل والمثال والحدود.`).join(
+      ' ',
+    )
+    writeFileSync(
+      htmlPath,
+      `<!doctype html><html lang="ar" dir="rtl"><style>@page{size:A4;margin:18mm}</style><body><p>${content}</p></body></html>`,
+    )
+    const chrome = spawnSync(
+      'google-chrome',
+      [
+        '--headless=new',
+        '--no-sandbox',
+        '--disable-gpu',
+        '--no-pdf-header-footer',
+        `--print-to-pdf=${pdfPath}`,
+        `file://${htmlPath}`,
+      ],
+      { encoding: 'utf8' },
+    )
+    if (chrome.status === null) {
+      t.skip('Chrome unavailable')
+      return
+    }
     assert.equal(chrome.status, 0, chrome.stderr)
-    const result = spawnSync('python3', [extractor, pdfPath, '--kind', 'pdf', '--no-ocr', '--output', output, '--manifest', manifest, '--cache-dir', join(directory, 'cache')], { encoding: 'utf8' })
+    const result = spawnSync(
+      'python3',
+      [
+        extractor,
+        pdfPath,
+        '--kind',
+        'pdf',
+        '--no-ocr',
+        '--output',
+        output,
+        '--manifest',
+        manifest,
+        '--cache-dir',
+        join(directory, 'cache'),
+      ],
+      { encoding: 'utf8' },
+    )
     assert.equal(result.status, 0, result.stderr)
     const receipt = JSON.parse(readFileSync(manifest, 'utf8'))
     assert.equal(receipt.status, 'complete')

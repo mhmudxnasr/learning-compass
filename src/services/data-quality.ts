@@ -124,7 +124,7 @@ export function buildDataQualityReport(input: DataQualityInputs, checkedAt = new
   ]
   const passing = checks.filter((item) => item.status === 'passing').length
   return {
-    status: passing === checks.length ? 'trusted' as const : 'needs_attention' as const,
+    status: passing === checks.length ? ('trusted' as const) : ('needs_attention' as const),
     scope: 'active_sources' as const,
     checked_at: checkedAt,
     summary: {
@@ -144,7 +144,8 @@ export function buildDataQualityReport(input: DataQualityInputs, checkedAt = new
 
 export async function loadDataQuality(DB: D1Database, checkedAt = new Date().toISOString()) {
   const [sourceRow, eventRow, feedRow] = await Promise.all([
-    DB.prepare(`WITH stored_sources AS (
+    DB.prepare(
+      `WITH stored_sources AS (
         SELECT r.id,r.status,r.video_title,r.video_url,r.dedup_key,m.recommendation_id meta_id,m.branch_id,n.id node_id,n.type node_type,n.status node_status
         FROM recommendations r
         LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
@@ -165,33 +166,41 @@ export async function loadDataQuality(DB: D1Database, checkedAt = new Date().toI
         (SELECT COUNT(*) FROM active_sources WHERE meta_id IS NULL OR branch_id IS NULL OR trim(branch_id)='') missing_branch,
         (SELECT COUNT(*) FROM active_sources WHERE branch_id IS NOT NULL AND trim(branch_id)!='' AND (node_id IS NULL OR node_type='root' OR lower(COALESCE(node_status,''))='pruned')) invalid_branch,
         (SELECT COUNT(*) FROM duplicate_keys) duplicate_groups,
-        (SELECT COALESCE(SUM(count-1),0) FROM duplicate_keys) duplicate_rows`).first<any>(),
-    DB.prepare(`SELECT COUNT(*) total,
+        (SELECT COALESCE(SUM(count-1),0) FROM duplicate_keys) duplicate_rows`,
+    ).first<any>(),
+    DB.prepare(
+      `SELECT COUNT(*) total,
         SUM(CASE WHEN e.event_type IS NULL OR trim(e.event_type)='' OR e.occurred_at IS NULL
           OR (e.recommendation_id IS NOT NULL AND r.id IS NULL)
           OR (e.thread_id IS NOT NULL AND t.id IS NULL) THEN 1 ELSE 0 END) invalid
       FROM learning_events e
       LEFT JOIN recommendations r ON r.id=e.recommendation_id
-      LEFT JOIN learning_threads t ON t.id=e.thread_id`).first<any>(),
-    DB.prepare(`SELECT COUNT(*) total,
+      LEFT JOIN learning_threads t ON t.id=e.thread_id`,
+    ).first<any>(),
+    DB.prepare(
+      `SELECT COUNT(*) total,
         SUM(CASE WHEN fs.branch_id IS NULL OR trim(fs.branch_id)='' OR n.id IS NULL OR n.type!='branch'
           OR NOT (n.parent_id='root' OR EXISTS (SELECT 1 FROM tree_nodes p WHERE p.id=n.parent_id AND p.type='category'))
           OR lower(COALESCE(n.status,''))='pruned' THEN 1 ELSE 0 END) invalid_branch
       FROM feed_sources fs LEFT JOIN tree_nodes n ON n.id=fs.branch_id
-      WHERE fs.enabled=1`).first<any>(),
+      WHERE fs.enabled=1`,
+    ).first<any>(),
   ])
 
-  return buildDataQualityReport({
-    sources: {
-      total: sourceRow?.total,
-      stored_total: sourceRow?.stored_total,
-      invalid_identity: sourceRow?.invalid_identity,
-      missing_branch: sourceRow?.missing_branch,
-      invalid_branch: sourceRow?.invalid_branch,
-      duplicate_groups: sourceRow?.duplicate_groups,
-      duplicate_rows: sourceRow?.duplicate_rows,
+  return buildDataQualityReport(
+    {
+      sources: {
+        total: sourceRow?.total,
+        stored_total: sourceRow?.stored_total,
+        invalid_identity: sourceRow?.invalid_identity,
+        missing_branch: sourceRow?.missing_branch,
+        invalid_branch: sourceRow?.invalid_branch,
+        duplicate_groups: sourceRow?.duplicate_groups,
+        duplicate_rows: sourceRow?.duplicate_rows,
+      },
+      events: { total: eventRow?.total, invalid: eventRow?.invalid },
+      feeds: { total: feedRow?.total, invalid_branch: feedRow?.invalid_branch },
     },
-    events: { total: eventRow?.total, invalid: eventRow?.invalid },
-    feeds: { total: feedRow?.total, invalid_branch: feedRow?.invalid_branch },
-  }, checkedAt)
+    checkedAt,
+  )
 }

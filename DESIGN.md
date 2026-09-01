@@ -2,74 +2,74 @@
 name: Botanical Folio
 description: Evidence Ledger and calm botanical study studio for Learning Compass
 colors:
-  rail-bg: "#16281f"
-  shell-bg: "#f1e9d9"
-  ledger-bg: "#faf8f3"
-  canvas-bg: "#fffdf8"
-  inspector-bg: "#f7f5ee"
-  ink: "#1c211d"
-  secondary: "#525b54"
-  muted: "#707a72"
-  seams: "#e2ddd2"
-  cypress: "#244f3b"
-  lichen: "#e8f0ea"
-  focus: "#2f634b"
-  due: "#a85f18"
-  danger: "#a8382b"
-  map: "#315f7b"
+  rail-bg: '#16281f'
+  shell-bg: '#f1e9d9'
+  ledger-bg: '#faf8f3'
+  canvas-bg: '#fffdf8'
+  inspector-bg: '#f7f5ee'
+  ink: '#1c211d'
+  secondary: '#525b54'
+  muted: '#707a72'
+  seams: '#e2ddd2'
+  cypress: '#244f3b'
+  lichen: '#e8f0ea'
+  focus: '#2f634b'
+  due: '#a85f18'
+  danger: '#a8382b'
+  map: '#315f7b'
 typography:
   display:
     fontFamily: "IBM Plex Sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-    fontSize: "clamp(24px, 3.5vw, 36px)"
+    fontSize: 'clamp(24px, 3.5vw, 36px)'
     fontWeight: 650
     lineHeight: 1.2
   headline:
     fontFamily: "IBM Plex Sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-    fontSize: "clamp(18px, 2.5vw, 24px)"
+    fontSize: 'clamp(18px, 2.5vw, 24px)'
     fontWeight: 600
     lineHeight: 1.3
   title:
     fontFamily: "IBM Plex Sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-    fontSize: "16px"
+    fontSize: '16px'
     fontWeight: 600
     lineHeight: 1.4
   body:
-    fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, -apple-system, BlinkMacSystemFont, sans-serif"
-    fontSize: "14px"
+    fontFamily: 'IBM Plex Sans, IBM Plex Sans Arabic, -apple-system, BlinkMacSystemFont, sans-serif'
+    fontSize: '14px'
     fontWeight: 400
     lineHeight: 1.6
   reading:
     fontFamily: "Literata, Georgia, 'Times New Roman', serif"
-    fontSize: "16px"
+    fontSize: '16px'
     fontWeight: 400
     lineHeight: 1.75
   mono:
-    fontFamily: "IBM Plex Mono, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
-    fontSize: "12px"
+    fontFamily: 'IBM Plex Mono, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
+    fontSize: '12px'
     fontWeight: 500
     lineHeight: 1.4
 rounded:
-  control: "6px"
-  card: "8px"
-  panel: "10px"
-  pill: "999px"
+  control: '6px'
+  card: '8px'
+  panel: '10px'
+  pill: '999px'
 spacing:
-  xs: "4px"
-  sm: "8px"
-  md: "16px"
-  lg: "24px"
-  xl: "32px"
+  xs: '4px'
+  sm: '8px'
+  md: '16px'
+  lg: '24px'
+  xl: '32px'
 components:
   button-primary:
-    backgroundColor: "{colors.cypress}"
-    textColor: "{colors.canvas-bg}"
-    rounded: "{rounded.control}"
-    padding: "8px 16px"
+    backgroundColor: '{colors.cypress}'
+    textColor: '{colors.canvas-bg}'
+    rounded: '{rounded.control}'
+    padding: '8px 16px'
   button-secondary:
-    backgroundColor: "{colors.ledger-bg}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.control}"
-    padding: "8px 16px"
+    backgroundColor: '{colors.ledger-bg}'
+    textColor: '{colors.ink}'
+    rounded: '{rounded.control}'
+    padding: '8px 16px'
 ---
 
 # Design System: Botanical Folio
@@ -83,6 +83,7 @@ Resurfacing uses one quiet Memory Shelf card on Home with a canonical branch pil
 Learning Compass is a quiet, editorial evidence ledger and botanical study studio for one learner. The material palette uses green-and-cream planes with high tactile contrast. The center canvas is where deep study, reading, and curriculum progression occur; surrounding planes provide stable context and orientation.
 
 **Key Characteristics:**
+
 - High informational density without cognitive clutter or decorative noise.
 - Clean 1px hairline seams, deliberate typography hierarchy, and purposeful whitespace.
 - Semantic day/night/custom color tokens ensuring accessible WCAG AA contrast (≥4.5:1 text, ≥3:1 large text).
@@ -102,18 +103,22 @@ Learning Compass is a quiet, editorial evidence ledger and botanical study studi
 The Botanical Folio palette balances calm botanical greens and warm paper neutrals with precise semantic signals.
 
 ### Primary
+
 - **Cypress** (#244f3b): Primary brand accent, active controls, committed paths, and major actions.
 - **Lichen** (#e8f0ea): Soft botanical tint for active state backgrounds and highlighted ledger rows.
 
 ### Secondary
+
 - **Map Blue** (#315f7b): Knowledge atlas, branch relationships, and structural field links.
 - **Ochre / Due** (#a85f18): Notes, recall schedules, and actionable due work.
 
 ### Tertiary
+
 - **Danger** (#a8382b): Destructive actions, warnings, and unrecoverable deletions.
 - **Focus Green** (#2f634b): Keyboard focus rings and active progression indicators.
 
 ### Neutral
+
 - **Deep Rail** (#16281f): Desktop navigation spine background.
 - **Shell** (#f4f1eb): Outer studio background and utility surfaces.
 - **Ledger** (#faf8f3): Secondary cards, lists, and inactive panel surfaces.
@@ -124,6 +129,7 @@ The Botanical Folio palette balances calm botanical greens and warm paper neutra
 - **Muted Ink** (#707a72): Tertiary timestamps, keyboard shortcuts, and disabled hints.
 
 ### Named Rules
+
 **The Hairline Seam Rule.** Structure is defined by 1px hairline borders (`var(--studio-seam)`) and tonal plane shifts, never by heavy multi-pixel border stripes or decorative drop-shadow halos.
 
 ## Typography
@@ -136,6 +142,7 @@ The Botanical Folio palette balances calm botanical greens and warm paper neutra
 **Character:** Technical precision paired with editorial elegance. Clean modern grotesk for studio operations, classical literary serif for long-form reading, and monospaced figures for metrics and ledger IDs.
 
 ### Hierarchy
+
 - **Display** (650 weight, clamp(24px, 3.5vw, 36px), 1.2 line-height): Workspace headers and major topic anchors.
 - **Headline** (600 weight, clamp(18px, 2.5vw, 24px), 1.3 line-height): Section titles and dossier sheet headings.
 - **Title** (600 weight, 16px, 1.4 line-height): Object titles, card headers, and lesson names.
@@ -153,6 +160,7 @@ Desktop uses a compact 120px labeled left rail, a flexible working canvas, and a
 Surfaces rest flat at rest using subtle tonal layering between Canvas, Ledger, and Shell. Elevation is reserved strictly for floating dialogs, menus, and dragged objects.
 
 ### Shadow Vocabulary
+
 - **Subtle Ledger** (`box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05)`): Light card definition at rest.
 - **Floating Overlay** (`box-shadow: 0 12px 32px rgba(22, 40, 31, 0.12)`): Modal dialogs, dropdown menus, and popovers.
 
@@ -166,6 +174,7 @@ Surfaces rest flat at rest using subtle tonal layering between Canvas, Ledger, a
 ## Components
 
 ### Map Review Branch Dossier
+
 - **Composition:** A compact branch index, an editable central dossier, and a persistent signals-and-decision rail on desktop. Narrow screens preserve that order as index, decision rail, then dossier so consequential actions remain discoverable.
 - **Decision controls:** Keep active, Make first priority, Pause branch, and Archive branch remain visible together. Active uses Cypress, priority uses Map Blue, pause stays neutral, and archive uses Danger without making destructive treatment dominant.
 - **Signals:** Attention window, recent share, filed sources/notes/Units/recall, and priority alignment use live Worker projections. Signals explain decisions; they never become a separate Balance tab.
@@ -211,29 +220,34 @@ Surfaces rest flat at rest using subtle tonal layering between Canvas, Ledger, a
 - **Responsive table:** Desktop keeps aligned ledger columns. Narrow screens hide the visual header, stack labeled cells, preserve 44px actions, and never require sideways scrolling; accessible cell labels retain the removed visual context.
 
 ### Buttons
+
 - **Shape:** Rounded rectangle (6px radius).
 - **Primary:** Cypress background (#244f3b), Canvas ink (#fffdf8), 8px 16px padding.
 - **Secondary:** Ledger background (#faf8f3), Seam border (1px), Ink text (#1c211d).
 - **Hover / Focus:** 1.5px Focus ring (#2f634b) with 2px offset; subtle tonal background shift.
 
 ### Cards & Ledger Rows
+
 - **Corner Style:** 8px radius.
 - **Background:** Ledger or Canvas depending on depth hierarchy.
 - **Border:** 1px solid Seams (#e2ddd2).
 - **Internal Padding:** 14px 18px.
 
 ### Inputs & Search Fields
+
 - **Style:** 1px Seam border, Canvas background, 6px radius.
 - **Focus:** 1.5px Cypress border with subtle outer ring.
 
 ## Do's and Don'ts
 
 ### Do:
+
 - **Do** maintain strict WCAG AA contrast (≥4.5:1 text, ≥3:1 large text) across all themes.
 - **Do** ensure every interactive target on mobile and tablet is at least 44×44px.
 - **Do** use semantic CSS tokens for all colors, radii, and typography scales.
 
 ### Don't:
+
 - **Don't** use multi-pixel colored side-tab borders (≥2px colored border-left/right) on cards or list items.
 - **Don't** animate layout properties like `width`, `height`, `margin`, or `padding` that trigger layout recalculations.
 - **Don't** add decorative chunky colored top-borders to rounded cards.

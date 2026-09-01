@@ -3,7 +3,16 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { modes, objectHref, parseRoute, roots, routeHref, views } from '../../client/src/app/router.ts'
-import { calibratedConfidence, canonicalizeUrl, compassPickIsUnresolved, deriveCandidateFeatures, matchThreadCoverage, pairwiseDominance, semanticSimilarity, serverScore } from '../../src/compass-scoring.ts'
+import {
+  calibratedConfidence,
+  canonicalizeUrl,
+  compassPickIsUnresolved,
+  deriveCandidateFeatures,
+  matchThreadCoverage,
+  pairwiseDominance,
+  semanticSimilarity,
+  serverScore,
+} from '../../src/compass-scoring.ts'
 import { validatePublicHttpUrl } from '../../src/services/public-url.ts'
 test('Compass ignores started picks whose recommendation is already completed or rejected', () => {
   assert.equal(compassPickIsUnresolved('started', 'consumed'), false)
@@ -14,12 +23,15 @@ test('Compass ignores started picks whose recommendation is already completed or
 
 test('Compass bounds repeated current-pick context and persistence work', () => {
   const source = readFileSync(new URL('../../src/api/compass.ts', import.meta.url), 'utf8')
-  const currentPick = source.slice(source.indexOf('async function currentPick'), source.indexOf('async function activeQueueCount'))
+  const currentPick = source.slice(
+    source.indexOf('async function currentPick'),
+    source.indexOf('async function activeQueueCount'),
+  )
   assert.match(currentPick, /for \(let attempt = 0; attempt < 25; attempt\+\+\)/)
   assert.match(currentPick, /coverageAnchors \|\|= await loadThreadCoverageAnchors\(DB\)/)
   assert.match(currentPick, /storedPickCoverageConflict\(DB, pick\.id, coverageAnchors\)/)
   assert.equal((currentPick.match(/loadThreadCoverageAnchors\(DB\)/g) || []).length, 1)
-  assert.match(source, /DB\.batch\(decisions\.v2\.scored\.map/)
+  assert.match(source, /DB\.batch\(\s*decisions\.v2\.scored\.map/)
 })
 
 test('Compass reports comparative selection and current learning load', () => {
@@ -32,11 +44,19 @@ test('Compass reports comparative selection and current learning load', () => {
 })
 test('Compass derives differentiated Worker-owned features from metadata and evidence', () => {
   const strong = deriveCandidateFeatures({
-    canonical_url: 'https://arxiv.org/abs/1234.5678', title: 'Unexpected evidence from a new study',
-    creator: 'Researcher', format: 'research paper', source_class: 'primary research',
+    canonical_url: 'https://arxiv.org/abs/1234.5678',
+    title: 'Unexpected evidence from a new study',
+    creator: 'Researcher',
+    format: 'research paper',
+    source_class: 'primary research',
     evidence: 'Directly extends Mahmood interest with evidence from five studies and practical implications.',
   })
-  const weak = deriveCandidateFeatures({ canonical_url: 'https://example.com/x', title: 'Thing', format: 'unknown', evidence: 'x' })
+  const weak = deriveCandidateFeatures({
+    canonical_url: 'https://example.com/x',
+    title: 'Thing',
+    format: 'unknown',
+    evidence: 'x',
+  })
   assert.ok(serverScore(strong) > serverScore(weak))
   assert.equal(strong._valid_url, true)
   assert.equal(strong._has_identity, true)
@@ -44,66 +64,182 @@ test('Compass derives differentiated Worker-owned features from metadata and evi
 
 test('Compass ignores client-provided feature and verification scores', () => {
   const candidate = deriveCandidateFeatures({
-    canonical_url: 'https://example.com/source', title: 'A source with evidence', format: 'article',
+    canonical_url: 'https://example.com/source',
+    title: 'A source with evidence',
+    format: 'article',
     evidence: 'A sufficiently detailed evidence summary that can be checked against the source.',
-    features: { topic_value: 1, personal_relevance: 1, source_quality: 1 }, is_verified: true, total_score: 1,
+    features: { topic_value: 1, personal_relevance: 1, source_quality: 1 },
+    is_verified: true,
+    total_score: 1,
   })
   const withoutClientFields = deriveCandidateFeatures({
-    canonical_url: 'https://example.com/source', title: 'A source with evidence', format: 'article',
+    canonical_url: 'https://example.com/source',
+    title: 'A source with evidence',
+    format: 'article',
     evidence: 'A sufficiently detailed evidence summary that can be checked against the source.',
   })
   assert.deepEqual(candidate, withoutClientFields)
 })
 
 test('Compass hard-excludes consumed or blocked candidates', () => {
-  const features = deriveCandidateFeatures({
-    canonical_url: 'https://example.com/old', title: 'Old source', creator: 'Blocked creator',
-    format: 'article', evidence: 'Detailed evidence for this source.',
-  }, {
-    knownSources: [{ url: 'https://example.com/old', title: 'Old source', creator: 'Blocked creator', status: 'consumed' }],
-    blockedEntities: ['blocked creator'],
-    creatorTrust: new Map(),
-    topicAffinities: new Map(),
-    priorityTopics: new Set(),
-    formatOutcomes: new Map(),
-    recentFormats: [],
-  })
+  const features = deriveCandidateFeatures(
+    {
+      canonical_url: 'https://example.com/old',
+      title: 'Old source',
+      creator: 'Blocked creator',
+      format: 'article',
+      evidence: 'Detailed evidence for this source.',
+    },
+    {
+      knownSources: [
+        { url: 'https://example.com/old', title: 'Old source', creator: 'Blocked creator', status: 'consumed' },
+      ],
+      blockedEntities: ['blocked creator'],
+      creatorTrust: new Map(),
+      topicAffinities: new Map(),
+      priorityTopics: new Set(),
+      formatOutcomes: new Map(),
+      recentFormats: [],
+    },
+  )
   assert.equal(features._hard_excluded, true)
 })
 
 test('Compass hard-excludes topics already owned by any learning Thread', () => {
   const anchors = [
-    { threadId: 'thread_systems', threadTitle: 'Systems Thinking', scopeKind: 'thread' as const, scopeId: 'thread_systems', label: 'Systems Thinking', text: 'Systems Thinking feedback loops stocks flows and leverage points' },
-    { threadId: 'thread_systems', threadTitle: 'Systems Thinking', scopeKind: 'level' as const, scopeId: 'level_feedback', label: 'Feedback Loops', text: 'Understand reinforcing and balancing feedback loops' },
+    {
+      threadId: 'thread_systems',
+      threadTitle: 'Systems Thinking',
+      scopeKind: 'thread' as const,
+      scopeId: 'thread_systems',
+      label: 'Systems Thinking',
+      text: 'Systems Thinking feedback loops stocks flows and leverage points',
+    },
+    {
+      threadId: 'thread_systems',
+      threadTitle: 'Systems Thinking',
+      scopeKind: 'level' as const,
+      scopeId: 'level_feedback',
+      label: 'Feedback Loops',
+      text: 'Understand reinforcing and balancing feedback loops',
+    },
   ]
-  const match = matchThreadCoverage({ title: 'Thinking in Systems: feedback loops in practice', topic: 'systems thinking' }, anchors)
+  const match = matchThreadCoverage(
+    { title: 'Thinking in Systems: feedback loops in practice', topic: 'systems thinking' },
+    anchors,
+  )
   assert.equal(match?.threadId, 'thread_systems')
-  const features = deriveCandidateFeatures({
-    canonical_url: 'https://example.com/thinking-in-systems', title: 'Thinking in Systems', format: 'lecture',
-    topic: 'systems thinking', evidence: 'A detailed source-grounded lecture about feedback loops and leverage points.',
-  }, {
-    knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [], threadCoverage: anchors,
-  })
+  const features = deriveCandidateFeatures(
+    {
+      canonical_url: 'https://example.com/thinking-in-systems',
+      title: 'Thinking in Systems',
+      format: 'lecture',
+      topic: 'systems thinking',
+      evidence: 'A detailed source-grounded lecture about feedback loops and leverage points.',
+    },
+    {
+      knownSources: [],
+      blockedEntities: [],
+      creatorTrust: new Map(),
+      topicAffinities: new Map(),
+      priorityTopics: new Set(),
+      formatOutcomes: new Map(),
+      recentFormats: [],
+      threadCoverage: anchors,
+    },
+  )
   assert.equal(features._hard_excluded, true)
   assert.equal(features._exclusion_reason, 'covered_by_learning_thread')
   assert.equal(features._coverage_match?.threadTitle, 'Systems Thinking')
 })
 
 test('Compass permits an exact missing lesson target but preserves other Thread coverage', () => {
-  const review = { verdict: 'recommend', why_worth_time: 'This source directly teaches the missing lesson with a complete worked method.', unique_value: 'It provides the exact mechanism and worked application absent from the lesson.', depth: 'deep' }
-  const item = { canonical_url: 'https://example.com/loops', title: 'Feedback loops in practice', target_lesson_id: 'lesson_loops', evidence: [{ claim: 'The source teaches reinforcing and balancing loops.', source_url: 'https://example.com/loops' }], editorial_review: review }
-  const thread = { id: 'thread_systems', recommendation_target_gaps: [{ kind: 'lesson_material' as const, lesson_id: 'lesson_loops', stage_id: 'level_1', stage_title: 'Foundations', title: 'Feedback loops', target_text: 'reinforcing and balancing feedback loops' }] }
-  const sameThread = { threadId: 'thread_systems', threadTitle: 'Systems Thinking', scopeKind: 'lesson' as const, scopeId: 'lesson_loops', label: 'Feedback loops', text: 'reinforcing and balancing feedback loops' }
-  const allowed = deriveCandidateFeatures(item, { knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [], thread, threadCoverage: [sameThread] }, { status: 'verified', evidence_status: 'verified' })
+  const review = {
+    verdict: 'recommend',
+    why_worth_time: 'This source directly teaches the missing lesson with a complete worked method.',
+    unique_value: 'It provides the exact mechanism and worked application absent from the lesson.',
+    depth: 'deep',
+  }
+  const item = {
+    canonical_url: 'https://example.com/loops',
+    title: 'Feedback loops in practice',
+    target_lesson_id: 'lesson_loops',
+    evidence: [
+      { claim: 'The source teaches reinforcing and balancing loops.', source_url: 'https://example.com/loops' },
+    ],
+    editorial_review: review,
+  }
+  const thread = {
+    id: 'thread_systems',
+    recommendation_target_gaps: [
+      {
+        kind: 'lesson_material' as const,
+        lesson_id: 'lesson_loops',
+        stage_id: 'level_1',
+        stage_title: 'Foundations',
+        title: 'Feedback loops',
+        target_text: 'reinforcing and balancing feedback loops',
+      },
+    ],
+  }
+  const sameThread = {
+    threadId: 'thread_systems',
+    threadTitle: 'Systems Thinking',
+    scopeKind: 'lesson' as const,
+    scopeId: 'lesson_loops',
+    label: 'Feedback loops',
+    text: 'reinforcing and balancing feedback loops',
+  }
+  const allowed = deriveCandidateFeatures(
+    item,
+    {
+      knownSources: [],
+      blockedEntities: [],
+      creatorTrust: new Map(),
+      topicAffinities: new Map(),
+      priorityTopics: new Set(),
+      formatOutcomes: new Map(),
+      recentFormats: [],
+      thread,
+      threadCoverage: [sameThread],
+    },
+    { status: 'verified', evidence_status: 'verified' },
+  )
   assert.equal(allowed._hard_excluded, false)
   const otherThread = { ...sameThread, threadId: 'thread_other', threadTitle: 'Another Thread' }
-  const blocked = deriveCandidateFeatures(item, { knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map(), priorityTopics: new Set(), formatOutcomes: new Map(), recentFormats: [], thread, threadCoverage: [sameThread, otherThread] }, { status: 'verified', evidence_status: 'verified' })
+  const blocked = deriveCandidateFeatures(
+    item,
+    {
+      knownSources: [],
+      blockedEntities: [],
+      creatorTrust: new Map(),
+      topicAffinities: new Map(),
+      priorityTopics: new Set(),
+      formatOutcomes: new Map(),
+      recentFormats: [],
+      thread,
+      threadCoverage: [sameThread, otherThread],
+    },
+    { status: 'verified', evidence_status: 'verified' },
+  )
   assert.equal(blocked._exclusion_reason, 'covered_by_learning_thread')
 })
 
 test('Thread coverage does not block a source that only shares a broad word', () => {
-  const anchors = [{ threadId: 'thread_systems', threadTitle: 'Systems Thinking', scopeKind: 'thread' as const, scopeId: 'thread_systems', label: 'Systems Thinking', text: 'Systems Thinking feedback loops stocks flows and leverage points' }]
-  assert.equal(matchThreadCoverage({ title: 'Designing reliable software systems', topic: 'software architecture' }, anchors), null)
+  const anchors = [
+    {
+      threadId: 'thread_systems',
+      threadTitle: 'Systems Thinking',
+      scopeKind: 'thread' as const,
+      scopeId: 'thread_systems',
+      label: 'Systems Thinking',
+      text: 'Systems Thinking feedback loops stocks flows and leverage points',
+    },
+  ]
+  assert.equal(
+    matchThreadCoverage({ title: 'Designing reliable software systems', topic: 'software architecture' }, anchors),
+    null,
+  )
 })
 
 test('Compass canonicalizes tracking and YouTube URL variants', () => {
@@ -113,13 +249,30 @@ test('Compass canonicalizes tracking and YouTube URL variants', () => {
 
 test('public source URLs reject credentials and private or reserved targets', () => {
   assert.equal(validatePublicHttpUrl('https://Example.com/read#part'), 'https://example.com/read')
-  for (const url of ['http://localhost/x', 'http://127.0.0.1/x', 'http://10.0.0.1/x', 'http://[::1]/x', 'https://user:pass@example.com/x', 'https://192.0.2.1/x']) {
+  for (const url of [
+    'http://localhost/x',
+    'http://127.0.0.1/x',
+    'http://10.0.0.1/x',
+    'http://[::1]/x',
+    'https://user:pass@example.com/x',
+    'https://192.0.2.1/x',
+  ]) {
     assert.throws(() => validatePublicHttpUrl(url))
   }
 })
 
 test('Compass treats unknown source reachability as ineligible', () => {
-  const features = deriveCandidateFeatures({ canonical_url: 'https://example.com/source', title: 'Unverified source', editorial_review: { verdict: 'recommend', why_worth_time: 'This source provides a sufficiently substantial account of the target mechanism.', unique_value: 'It covers constraints and examples missing from introductory treatments.', depth: 'deep' }, evidence: [{ claim: 'A structured but not yet reachable source claim.', source_url: 'https://example.com/source' }] })
+  const features = deriveCandidateFeatures({
+    canonical_url: 'https://example.com/source',
+    title: 'Unverified source',
+    editorial_review: {
+      verdict: 'recommend',
+      why_worth_time: 'This source provides a sufficiently substantial account of the target mechanism.',
+      unique_value: 'It covers constraints and examples missing from introductory treatments.',
+      depth: 'deep',
+    },
+    evidence: [{ claim: 'A structured but not yet reachable source claim.', source_url: 'https://example.com/source' }],
+  })
   assert.equal(features._exclusion_reason, 'source_verification_unknown')
 })
 
@@ -134,64 +287,131 @@ test('Compass labels decision confidence honestly and stores observational expos
 })
 
 test('Compass semantic deduplication catches title variants', () => {
-  assert.ok(semanticSimilarity('Practical Agent Workflows with Local LLMs', 'Local LLM Practical Agent Workflows') > .8)
-  assert.ok(semanticSimilarity('Agent Workflows', 'Existential Meaning of Death') < .2)
+  assert.ok(
+    semanticSimilarity('Practical Agent Workflows with Local LLMs', 'Local LLM Practical Agent Workflows') > 0.8,
+  )
+  assert.ok(semanticSimilarity('Agent Workflows', 'Existential Meaning of Death') < 0.2)
 })
 
 test('Compass does not reward verbose evidence or magic relevance words', () => {
-  const base = { canonical_url: 'https://example.com/new', title: 'A useful source', creator: 'Expert', format: 'article', topic: 'business' }
+  const base = {
+    canonical_url: 'https://example.com/new',
+    title: 'A useful source',
+    creator: 'Expert',
+    format: 'article',
+    topic: 'business',
+  }
   const short = deriveCandidateFeatures({ ...base, evidence: 'One source-grounded claim with an anchor.' })
   const verbose = deriveCandidateFeatures({ ...base, evidence: `Mahmood practical interest ${'padding '.repeat(100)}` })
   assert.equal(serverScore(short), serverScore(verbose))
 })
 
 test('Compass confidence can select a strong close winner without a fixed margin gate', () => {
-  assert.ok(calibratedConfidence(.82, .18, .025, .68) >= .67)
-  assert.ok(calibratedConfidence(.60, .50, 0, .50) < .67)
+  assert.ok(calibratedConfidence(0.82, 0.18, 0.025, 0.68) >= 0.67)
+  assert.ok(calibratedConfidence(0.6, 0.5, 0, 0.5) < 0.67)
 })
 
 test('Compass metadata-only candidates can produce a confident personalized winner', () => {
   const context = {
-    knownSources: [], blockedEntities: [],
-    creatorTrust: new Map([['trusted expert', { average: 9, count: 8 }], ['weak creator', { average: 3, count: 6 }]]),
-    topicAffinities: new Map([['business', 4.8], ['unwanted', .5]]),
+    knownSources: [],
+    blockedEntities: [],
+    creatorTrust: new Map([
+      ['trusted expert', { average: 9, count: 8 }],
+      ['weak creator', { average: 3, count: 6 }],
+    ]),
+    topicAffinities: new Map([
+      ['business', 4.8],
+      ['unwanted', 0.5],
+    ]),
     priorityTopics: new Set(['business']),
-    formatOutcomes: new Map([['research paper', { average: 9, count: 8 }], ['article', { average: 4, count: 8 }]]),
+    formatOutcomes: new Map([
+      ['research paper', { average: 9, count: 8 }],
+      ['article', { average: 4, count: 8 }],
+    ]),
     recentFormats: [],
   }
   const candidates = [
-    { canonical_url: 'https://arxiv.org/abs/2401.1', title: 'Institutional design under uncertainty', creator: 'Trusted Expert', format: 'research paper', source_class: 'primary research', topics: ['business'], evidence: 'Methods, findings, caveats, and primary evidence anchors.' },
-    { canonical_url: 'https://example.org/a', title: 'Generic overview', creator: 'Weak Creator', format: 'article', source_class: 'blog', topics: ['unwanted'], evidence: 'A source-grounded overview with links and caveats.' },
-    { canonical_url: 'https://example.net/b', title: 'Another general overview', creator: 'Unknown', format: 'article', source_class: 'blog', topics: ['general'], evidence: 'A source-grounded overview with links and caveats.' },
+    {
+      canonical_url: 'https://arxiv.org/abs/2401.1',
+      title: 'Institutional design under uncertainty',
+      creator: 'Trusted Expert',
+      format: 'research paper',
+      source_class: 'primary research',
+      topics: ['business'],
+      evidence: 'Methods, findings, caveats, and primary evidence anchors.',
+    },
+    {
+      canonical_url: 'https://example.org/a',
+      title: 'Generic overview',
+      creator: 'Weak Creator',
+      format: 'article',
+      source_class: 'blog',
+      topics: ['unwanted'],
+      evidence: 'A source-grounded overview with links and caveats.',
+    },
+    {
+      canonical_url: 'https://example.net/b',
+      title: 'Another general overview',
+      creator: 'Unknown',
+      format: 'article',
+      source_class: 'blog',
+      topics: ['general'],
+      evidence: 'A source-grounded overview with links and caveats.',
+    },
   ]
   const features = candidates.map((candidate) => deriveCandidateFeatures(candidate, context))
-  const ranked = features.map((candidate) => {
-    const dominance = pairwiseDominance(candidate, features)
-    return { score: serverScore(candidate) * .9 + dominance * .1, dominance }
-  }).sort((a, b) => b.score - a.score)
+  const ranked = features
+    .map((candidate) => {
+      const dominance = pairwiseDominance(candidate, features)
+      return { score: serverScore(candidate) * 0.9 + dominance * 0.1, dominance }
+    })
+    .sort((a, b) => b.score - a.score)
   const margin = ranked[0].score - ranked[1].score
-  assert.ok(ranked[0].score >= .68)
-  assert.ok(calibratedConfidence(ranked[0].score, .336, margin, ranked[0].dominance) >= .67)
+  assert.ok(ranked[0].score >= 0.68)
+  assert.ok(calibratedConfidence(ranked[0].score, 0.336, margin, ranked[0].dominance) >= 0.67)
 })
 
 test('Compass infers topic affinity from legacy title-only metadata', () => {
-  const features = deriveCandidateFeatures({
-    canonical_url: 'https://example.com/negotiation', title: 'A practical persuasion field study',
-    creator: 'Researcher', format: 'paper', source_class: 'primary research', evidence: 'Methods, results, caveats, and source anchors.',
-  }, {
-    knownSources: [], blockedEntities: [], creatorTrust: new Map(),
-    topicAffinities: new Map([['persuasion', 4.5]]), priorityTopics: new Set(['persuasion']),
-    formatOutcomes: new Map(), recentFormats: [],
-  })
-  assert.ok(features._topic_affinity >= .9)
-  assert.ok(features.personal_relevance >= .9)
+  const features = deriveCandidateFeatures(
+    {
+      canonical_url: 'https://example.com/negotiation',
+      title: 'A practical persuasion field study',
+      creator: 'Researcher',
+      format: 'paper',
+      source_class: 'primary research',
+      evidence: 'Methods, results, caveats, and source anchors.',
+    },
+    {
+      knownSources: [],
+      blockedEntities: [],
+      creatorTrust: new Map(),
+      topicAffinities: new Map([['persuasion', 4.5]]),
+      priorityTopics: new Set(['persuasion']),
+      formatOutcomes: new Map(),
+      recentFormats: [],
+    },
+  )
+  assert.ok(features._topic_affinity >= 0.9)
+  assert.ok(features.personal_relevance >= 0.9)
 })
 
 test('Compass uses learning balance as a bounded branch signal', () => {
-  const base = { canonical_url: 'https://example.com/history', title: 'A history source', format: 'lecture', topic: 'history', evidence: 'Methods, claims, caveats, and source anchors.' }
+  const base = {
+    canonical_url: 'https://example.com/history',
+    title: 'A history source',
+    format: 'lecture',
+    topic: 'history',
+    evidence: 'Methods, claims, caveats, and source anchors.',
+  }
   const context = {
-    knownSources: [], blockedEntities: [], creatorTrust: new Map(), topicAffinities: new Map([['history', 2]]), priorityTopics: new Set(),
-    formatOutcomes: new Map(), recentFormats: [], branchSignals: new Map([['history', { state: 'at-risk', attentionShare: 0, priorityShare: null }]]),
+    knownSources: [],
+    blockedEntities: [],
+    creatorTrust: new Map(),
+    topicAffinities: new Map([['history', 2]]),
+    priorityTopics: new Set(),
+    formatOutcomes: new Map(),
+    recentFormats: [],
+    branchSignals: new Map([['history', { state: 'at-risk', attentionShare: 0, priorityShare: null }]]),
   }
   const balanced = deriveCandidateFeatures(base)
   const redirected = deriveCandidateFeatures(base, context)
@@ -200,7 +420,10 @@ test('Compass uses learning balance as a bounded branch signal', () => {
 })
 
 test('the router exposes five roots and twelve grouped modes with focus state', () => {
-  assert.deepEqual(roots.map((root) => root.key), ['home', 'library', 'learn', 'map', 'settings'])
+  assert.deepEqual(
+    roots.map((root) => root.key),
+    ['home', 'library', 'learn', 'map', 'settings'],
+  )
   assert.equal(roots.length, 5)
   const declaredModes = roots.flatMap((root) => modes[root.key].map((mode) => ({ root: root.key, ...mode })))
   assert.equal(declaredModes.length, 12)
@@ -209,10 +432,19 @@ test('the router exposes five roots and twelve grouped modes with focus state', 
   assert.equal(views.library.length, 5)
   assert.equal(views.learn.length, 4)
   assert.equal(modes.library[0]?.key, 'books')
-  assert.equal(modes.learn.some((mode) => mode.key === 'canon'), false)
-  assert.deepEqual(roots.find((root) => root.key === 'learn'), { key: 'learn', label: 'Learn', defaultMode: 'practice', defaultFocus: 'notes', defaultView: 'notes' })
+  assert.equal(
+    modes.learn.some((mode) => mode.key === 'canon'),
+    false,
+  )
+  assert.deepEqual(
+    roots.find((root) => root.key === 'learn'),
+    { key: 'learn', label: 'Learn', defaultMode: 'practice', defaultFocus: 'notes', defaultView: 'notes' },
+  )
   assert.equal(modes.library.find((mode) => mode.key === 'catalog')?.label, 'Archive')
-  assert.deepEqual(modes.library.find((mode) => mode.key === 'catalog')?.focuses?.map((item) => item.key), ['archive'])
+  assert.deepEqual(
+    modes.library.find((mode) => mode.key === 'catalog')?.focuses?.map((item) => item.key),
+    ['archive'],
+  )
   for (const root of roots) {
     assert.equal(routeHref(root.key), `#/${root.key}`)
     assert.equal(routeHref(root.key, root.defaultMode), `#/${root.key}`)
@@ -260,7 +492,12 @@ test('root modes parse from query state while typed object links keep their iden
   assert.equal(learnNote.focus, 'notes')
   assert.equal(learnNote.canonical, '/learn/note/note%201')
 
-  for (const href of ['#/library?mode=catalog&focus=books', '#/library?mode=books', '#/library/books', '#/curate/books']) {
+  for (const href of [
+    '#/library?mode=catalog&focus=books',
+    '#/library?mode=books',
+    '#/library/books',
+    '#/curate/books',
+  ]) {
     const books = parseRoute(href)
     assert.equal(books.root, 'library')
     assert.equal(books.mode, 'books')

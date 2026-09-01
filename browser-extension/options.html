@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Learning Compass Capture settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Learning Compass Capture</p>
+      <h1>App connection</h1>
+      <p>Choose the Learning Compass origin that opens when you capture a page or selected passage.</p>
+      <form id="origin-form">
+        <label for="origin">Application origin</label>
+        <input id="origin" name="origin" type="url" inputmode="url" autocomplete="url" required />
+        <button id="save" type="submit">Save connection</button>
+        <output id="status" aria-live="polite"></output>
+      </form>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

@@ -138,7 +138,14 @@ export interface PathStage {
   files: PathArtifact[]
   cards: RecallCard[]
   recall_drafts: RecallDraft[]
-  progress: { completed: number; total: number; study_completed?: number; study_total?: number; project_completed?: number; project_total?: number }
+  progress: {
+    completed: number
+    total: number
+    study_completed?: number
+    study_total?: number
+    project_completed?: number
+    project_total?: number
+  }
   next_action?: NextAction
 }
 

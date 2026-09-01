@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { readStudioCss } from './support/read-studio-css.ts'
 
 const theme = readFileSync(new URL('../../client/src/theme.ts', import.meta.url), 'utf8')
-const studio = readFileSync(new URL('../../client/src/studio.css', import.meta.url), 'utf8')
+const studio = readStudioCss()
 const settings = readFileSync(new URL('../../client/src/workspaces/SettingsWorkspace.tsx', import.meta.url), 'utf8')
 
 test('custom visual-system JSON reaches the global startup and heading seams', () => {

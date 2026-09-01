@@ -6,10 +6,22 @@ import { redactSensitiveText } from '../../src/lib.ts'
 
 test('browser push endpoints are in-app identifiers or public HTTPS URLs only', () => {
   assert.equal(validatePushEndpoint('browser://local-device'), 'browser://local-device')
-  assert.equal(validatePushEndpoint('https://FCM.GoogleApis.com/fcm/send/subscription#fragment'), 'https://fcm.googleapis.com/fcm/send/subscription')
-  assert.equal(validatePushEndpoint('https://updates.push.services.mozilla.com/wpush/v2/subscription'), 'https://updates.push.services.mozilla.com/wpush/v2/subscription')
-  assert.equal(validatePushEndpoint('https://web.push.apple.com/Q/subscription'), 'https://web.push.apple.com/Q/subscription')
-  assert.equal(validatePushEndpoint('https://wns2-db5p.notify.windows.com/w/?token=opaque'), 'https://wns2-db5p.notify.windows.com/w/?token=opaque')
+  assert.equal(
+    validatePushEndpoint('https://FCM.GoogleApis.com/fcm/send/subscription#fragment'),
+    'https://fcm.googleapis.com/fcm/send/subscription',
+  )
+  assert.equal(
+    validatePushEndpoint('https://updates.push.services.mozilla.com/wpush/v2/subscription'),
+    'https://updates.push.services.mozilla.com/wpush/v2/subscription',
+  )
+  assert.equal(
+    validatePushEndpoint('https://web.push.apple.com/Q/subscription'),
+    'https://web.push.apple.com/Q/subscription',
+  )
+  assert.equal(
+    validatePushEndpoint('https://wns2-db5p.notify.windows.com/w/?token=opaque'),
+    'https://wns2-db5p.notify.windows.com/w/?token=opaque',
+  )
   for (const endpoint of [
     'browser://',
     'browser://bad/path',
@@ -26,7 +38,8 @@ test('browser push endpoints are in-app identifiers or public HTTPS URLs only', 
     'https://user:secret@push.example.com/subscription',
     'https://push.example.com/subscription',
     'https://fcm.googleapis.com:8443/fcm/send/subscription',
-  ]) assert.throws(() => validatePushEndpoint(endpoint))
+  ])
+    assert.throws(() => validatePushEndpoint(endpoint))
 })
 
 test('public URL validation rejects IPv4-mapped private IPv6 literals before any fetch', () => {
@@ -34,12 +47,13 @@ test('public URL validation rejects IPv4-mapped private IPv6 literals before any
     'https://[::ffff:127.0.0.1]/push',
     'https://[::ffff:10.0.0.1]/push',
     'https://[::ffff:169.254.169.254]/latest/meta-data',
-  ]) assert.throws(() => validatePublicHttpUrl(endpoint), /private_or_local_url/)
+  ])
+    assert.throws(() => validatePublicHttpUrl(endpoint), /private_or_local_url/)
 })
 
 test('web push delivery never follows an endpoint redirect', () => {
   const source = readFileSync('src/api/notifications.ts', 'utf8')
-  assert.match(source, /fetch\(endpoint, \{ method: 'POST', redirect: 'manual'/)
+  assert.match(source, /fetch\(endpoint,\s*\{[\s\S]*?method: 'POST',[\s\S]*?redirect: 'manual'/)
   assert.match(source, /Push service redirects are not allowed/)
 })
 

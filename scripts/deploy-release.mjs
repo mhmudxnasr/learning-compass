@@ -17,7 +17,9 @@ const requireReadiness = async (phase) => {
   })
   const body = await response.json().catch(() => ({}))
   if (!response.ok || body.ok !== true) {
-    throw new Error(`${phase} production readiness failed (${response.status}): ${JSON.stringify(body.blockers || body)}`)
+    throw new Error(
+      `${phase} production readiness failed (${response.status}): ${JSON.stringify(body.blockers || body)}`,
+    )
   }
   console.log(`${phase} production readiness passed`)
 }
@@ -26,6 +28,9 @@ run('Deterministic aggregate release gate', 'npm', ['run', 'verify:release'])
 await requireReadiness('Pre-deploy')
 run('Cloudflare Worker and assets deployment', 'npx', ['wrangler', 'deploy', '--config', 'wrangler.toml'])
 await requireReadiness('Post-deploy')
-run('Live deployment smoke verification', 'bash', ['/home/mahmud/.hermes/skills/workflow/recommendations-worker-ops/scripts/verify-deploy.sh', productionOrigin])
+run('Live deployment smoke verification', 'bash', [
+  '/home/mahmud/.hermes/skills/workflow/recommendations-worker-ops/scripts/verify-deploy.sh',
+  productionOrigin,
+])
 
 console.log('\nApplication release deployed and verified.')

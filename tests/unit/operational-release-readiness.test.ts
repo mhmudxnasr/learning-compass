@@ -16,21 +16,22 @@ const releaseSchema = [
   'trg_lite_visual_corpus_rollback_guard',
 ]
 
-const environment = (present = releaseSchema, overrides: Record<string, unknown> = {}) => ({
-  DB: {
-    prepare: () => ({
-      bind: (...expected: string[]) => ({
-        all: async () => ({ results: present.filter((name) => expected.includes(name)).map((name) => ({ name })) }),
+const environment = (present = releaseSchema, overrides: Record<string, unknown> = {}) =>
+  ({
+    DB: {
+      prepare: () => ({
+        bind: (...expected: string[]) => ({
+          all: async () => ({ results: present.filter((name) => expected.includes(name)).map((name) => ({ name })) }),
+        }),
       }),
-    }),
-  },
-  ARTIFACTS: {},
-  ASSETS: {},
-  AI: {},
-  COMPASS_VECTORS: {},
-  LITE_VISUAL_RECEIPT_SIGNING_KEY: 's'.repeat(32),
-  ...overrides,
-}) as any
+    },
+    ARTIFACTS: {},
+    ASSETS: {},
+    AI: {},
+    COMPASS_VECTORS: {},
+    LITE_VISUAL_RECEIPT_SIGNING_KEY: 's'.repeat(32),
+    ...overrides,
+  }) as any
 
 test('release readiness requires migration 0068 schema, production bindings, and signing key', async () => {
   const healthy = await loadReleaseContractHealth(environment())
@@ -38,10 +39,12 @@ test('release readiness requires migration 0068 schema, production bindings, and
   assert.deepEqual(healthy.schema.missing, [])
   assert.equal(healthy.signing_secret_configured, true)
 
-  const missing = await loadReleaseContractHealth(environment(releaseSchema.slice(1), {
-    AI: undefined,
-    LITE_VISUAL_RECEIPT_SIGNING_KEY: 'too-short',
-  }))
+  const missing = await loadReleaseContractHealth(
+    environment(releaseSchema.slice(1), {
+      AI: undefined,
+      LITE_VISUAL_RECEIPT_SIGNING_KEY: 'too-short',
+    }),
+  )
   assert.equal(missing.ok, false)
   assert.deepEqual(missing.schema.missing, ['lite_visual_corpora'])
   assert.equal(missing.bindings.ai, false)
@@ -49,7 +52,10 @@ test('release readiness requires migration 0068 schema, production bindings, and
 })
 
 test('release migration and recovery scripts fail closed on omitted evidence', () => {
-  const migration = readFileSync(new URL('../../migrations/0068_lite_visual_corpus_activation.sql', import.meta.url), 'utf8')
+  const migration = readFileSync(
+    new URL('../../migrations/0068_lite_visual_corpus_activation.sql', import.meta.url),
+    'utf8',
+  )
   const backup = readFileSync(new URL('../../scripts/backup-production.mjs', import.meta.url), 'utf8')
   const rehearsal = readFileSync(new URL('../../scripts/rehearse-recovery.mjs', import.meta.url), 'utf8')
   const verification = readFileSync(new URL('../../scripts/verify-recovery.mjs', import.meta.url), 'utf8')

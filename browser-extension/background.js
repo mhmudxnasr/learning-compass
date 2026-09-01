@@ -1,15 +1,23 @@
-const DEFAULT_ORIGIN = 'http://localhost:8787'
+import { DEFAULT_APP_ORIGIN } from './config.js'
 
 async function openCapture(source) {
-  const saved = await chrome.storage.local.get({ appOrigin: DEFAULT_ORIGIN })
-  const origin = String(saved.appOrigin || DEFAULT_ORIGIN).replace(/\/$/, '')
+  const saved = await chrome.storage.local.get({ appOrigin: DEFAULT_APP_ORIGIN })
+  const origin = String(saved.appOrigin || DEFAULT_APP_ORIGIN).replace(/\/$/, '')
   const href = `${origin}/#/library?mode=triage&focus=inbox&capture=${encodeURIComponent(source)}`
   await chrome.tabs.create({ url: href })
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({ id: 'capture-page', title: 'Capture page to Learning Compass', contexts: ['page', 'link'] })
-  chrome.contextMenus.create({ id: 'capture-selection', title: 'Capture selection to Learning Compass', contexts: ['selection'] })
+  chrome.contextMenus.create({
+    id: 'capture-page',
+    title: 'Capture page to Learning Compass',
+    contexts: ['page', 'link'],
+  })
+  chrome.contextMenus.create({
+    id: 'capture-selection',
+    title: 'Capture selection to Learning Compass',
+    contexts: ['selection'],
+  })
 })
 
 chrome.action.onClicked.addListener(async (tab) => {

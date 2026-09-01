@@ -11,12 +11,16 @@ test('recommendation enrichment batches related rows without correlated scans', 
         bind() {
           return {
             async all() {
-              if (query.includes('FROM notes')) return { results: [{ recommendation_id: 'rec-1', id: 'note-1', title: 'Note' }] }
-              if (query.includes('FROM srs_cards')) return { results: [{ recommendation_id: 'rec-1', recall_count: 2, due_count: 1 }] }
-              return { results: [
-                { recommendation_id: 'rec-1', id: 'html-1', media_type: 'text/html', filename: 'source.html' },
-                { recommendation_id: 'rec-1', id: 'pdf-1', media_type: 'application/pdf', filename: 'source.pdf' },
-              ] }
+              if (query.includes('FROM notes'))
+                return { results: [{ recommendation_id: 'rec-1', id: 'note-1', title: 'Note' }] }
+              if (query.includes('FROM srs_cards'))
+                return { results: [{ recommendation_id: 'rec-1', recall_count: 2, due_count: 1 }] }
+              return {
+                results: [
+                  { recommendation_id: 'rec-1', id: 'html-1', media_type: 'text/html', filename: 'source.html' },
+                  { recommendation_id: 'rec-1', id: 'pdf-1', media_type: 'application/pdf', filename: 'source.pdf' },
+                ],
+              }
             },
           }
         },

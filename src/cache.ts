@@ -37,7 +37,7 @@ export async function cached<T>(key: string, ttlMs: number, fetcher: () => Promi
     try {
       const cachedResponse = await edgeCache.match(makeCacheKey(key))
       if (cachedResponse) {
-        const data = await cachedResponse.json() as T
+        const data = (await cachedResponse.json()) as T
         store.set(key, { data, expiresAt: now + Math.min(ttlMs, 30000) })
         return data
       }
