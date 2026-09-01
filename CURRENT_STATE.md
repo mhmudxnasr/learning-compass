@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-02 (focused Recall review stage, local)
+
+Learn → Practice → Recall now presents the active due card as one intentional retrieval stage instead of a large generic panel. A compact due-position band, quieter source/branch and schedule ledger, centered Arabic reading treatment, explicit question/answer hierarchy, retrieval pause cue, and balanced grading controls keep the learner focused without changing FSRS behavior or review mutations. The phone layout uses deliberate two-by-two view and grading grids and retains the five-root dock without horizontal overflow.
+
+Verification passes ESLint, all 488 unit tests, TypeScript, the production build at 132.40 KB gzip for base JavaScript and 102.62 KB gzip for CSS, the complete Worker-backed E2E suite across five roots and 16 internal modes including Android/offline behavior, and `git diff --check`. Browser inspection passed the question and revealed-answer states at desktop and 390×844 phone widths with zero document overflow. This visual-only change is local; no deployment, migration, production data write, or corpus operation occurred.
+
 ## Current truth — 2026-09-01 (integrated learning workflows and production hardening, deployed)
 
 The deployed release consolidates the complete 2026-08-31 learning-workflow work into the repository and production branch: durable share-intake review, revisioned source anchors, non-destructive recall repair, verified offline packs, advisory source health and guarded replacement, Library-first Thread material organization, exact-Lesson material requests, and continuous next-Lesson navigation. The existing migrations through `0073_source_annotation_revisions.sql` remain the production schema truth; this application release did not reapply migrations or mutate the corpus.

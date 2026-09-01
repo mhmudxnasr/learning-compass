@@ -6,6 +6,11 @@ import { readStudioCss } from './support/read-studio-css.ts'
 const theme = readFileSync(new URL('../../client/src/theme.ts', import.meta.url), 'utf8')
 const studio = readStudioCss()
 const settings = readFileSync(new URL('../../client/src/workspaces/SettingsWorkspace.tsx', import.meta.url), 'utf8')
+const recallView = readFileSync(
+  new URL('../../client/src/workspaces/learn/LearnRecallView.tsx', import.meta.url),
+  'utf8',
+)
+const recallStyles = readFileSync(new URL('../../client/src/notes-recall.css', import.meta.url), 'utf8')
 
 test('custom visual-system JSON reaches the global startup and heading seams', () => {
   assert.match(theme, /getActiveCustomPalette\(\)/)
@@ -73,4 +78,13 @@ test('font presets and typography settings align semantic roles and Arabic suppo
   assert.match(settings, /Detailed typography/)
   assert.match(settings, /Live specimen/)
   assert.match(settings, /العلم النافع/)
+})
+
+test('due recall is a focused, responsive retrieval stage', () => {
+  assert.match(recallView, /class="recall-review-progress"/)
+  assert.match(recallView, /data-state=\{revealed \? 'answer' : 'question'\}/)
+  assert.match(recallView, /Pause and retrieve before revealing\./)
+  assert.match(recallStyles, /\.recall-prompt\s*\{[\s\S]*font-family: var\(--font-reading\)/)
+  assert.match(recallStyles, /\.recall-grades > div\s*\{[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/)
+  assert.match(recallStyles, /\.recall-view-switcher\s*\{[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/)
 })
