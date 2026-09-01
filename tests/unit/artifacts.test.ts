@@ -22,6 +22,7 @@ import {
 } from '../../src/artifact-metadata.ts'
 
 const receiptSigningKey = 'test-lite-visual-receipt-signing-key-2026-08-28'
+const receiptAttestationScripts = fileURLToPath(new URL('../fixtures/lite-visual/', import.meta.url))
 
 let artifactsApp: any
 let vite: ViteDevServer
@@ -329,7 +330,7 @@ test('atomic Lite Visual pair validation binds the receipt to exact code-only fi
 })
 
 test('Worker verifies a Python-signed receipt containing an integral float', async () => {
-  const code = `import json,sys; sys.path.insert(0,'/home/mahmud/.hermes/skills/lite-visual/scripts'); from receipt_attestation import attest_receipt; r={'schema_version':'fixture','canonical_character_trigram_overlap':1.0}; attest_receipt(r); print(json.dumps(r,separators=(',',':')))`
+  const code = `import json,sys; sys.path.insert(0,${JSON.stringify(receiptAttestationScripts)}); from receipt_attestation import attest_receipt; r={'schema_version':'fixture','canonical_character_trigram_overlap':1.0}; attest_receipt(r); print(json.dumps(r,separators=(',',':')))`
   const result = spawnSync('python3', ['-c', code], {
     encoding: 'utf8',
     env: { ...process.env, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey },
@@ -340,7 +341,7 @@ test('Worker verifies a Python-signed receipt containing an integral float', asy
 
 test('receipt canonicalization rejects cross-runtime ambiguous numbers and keys', () => {
   for (const literal of ["{'ratio':1e-7}", "{'𐀀':1,'\ue000':2}", "{'count':9007199254740992}"]) {
-    const code = `import sys; sys.path.insert(0,'/home/mahmud/.hermes/skills/lite-visual/scripts'); from receipt_attestation import attest_receipt; r=${literal}\ntry: attest_receipt(r)\nexcept ValueError as e: print(e); raise SystemExit(0)\nraise SystemExit(1)`
+    const code = `import sys; sys.path.insert(0,${JSON.stringify(receiptAttestationScripts)}); from receipt_attestation import attest_receipt; r=${literal}\ntry: attest_receipt(r)\nexcept ValueError as e: print(e); raise SystemExit(0)\nraise SystemExit(1)`
     const result = spawnSync('python3', ['-c', code], {
       encoding: 'utf8',
       env: { ...process.env, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey },
