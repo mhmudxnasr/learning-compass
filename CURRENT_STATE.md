@@ -1,10 +1,10 @@
 # Learning Compass — Current State
 
-## Current truth — 2026-09-02 (automatic Level and lesson continuation, local)
+## Current truth — 2026-09-02 (automatic Level and lesson continuation, deployed)
 
 Direct lesson completion now owns the complete continuation transition. Completing an available lesson activates its Level without a separate Start Level action; every completion starts the next unfinished lesson, and a Level's final completion activates the next Level plus its first lesson. Home and typed Lesson views expose the same Complete action for ready lessons and reload from canonical state, so the dashboard advances automatically. The compatibility Level-start route remains available for old clients, but the current interface no longer requires or presents it. The PWA shell cache advances to `learning-compass-shell-v53`.
 
-Local quality, 489/489 unit tests, TypeScript, all standalone Worker/D1 integrations, production build, and the updated Worker-backed E2E suite pass. Production release remains blocked before deployment because the Hermes contract gate reports unrelated Compass-profile file-set drift in `hermes-configuration-operations`; this task does not modify another profile or absorb uncommitted primary-checkout work to bypass that boundary.
+PR #6 merged the change into `main` at `2acbea0`; both GitHub Verify runs and GitGuardian passed. Worker version `fd9edfee-dca7-4fea-bd29-a6d629942286` is deployed at 100%, with `7d6401be-004d-4eb5-8b04-089ba6a4c720` retained as the immediate rollback version. Live shell v53 and fingerprinted client assets return HTTP 200 and contain the new Level/Lesson actions; `/dashboard/briefing` and the Abrahamic Thread path return HTTP 200. Because Level 0 had already completed under the prior Worker, one canonical lesson mutation activated Level 1 and its first lesson after deployment, and readback confirmed both are `in_progress`. Overall `/health` remains `needs_attention` for four pre-existing overdue retries and a recovery snapshot just beyond its freshness window; D1, R2, assets, schema, bindings, signing, and integrity are healthy.
 
 ## Current truth — 2026-09-01 (integrated learning workflows and production hardening, deployed)
 
