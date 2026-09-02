@@ -1,5 +1,3 @@
-import { useState } from 'preact/hooks'
-import { api } from '../../api'
 import { routeHref } from '../../app/router'
 import { Icon } from '../../components/Icon'
 import { lessonHref, lessonReadiness, percent, statusLabel } from './helpers'
@@ -19,9 +17,6 @@ export function StageView({
   threadTitle: string
   onChanged: () => void
 }) {
-  const [working, setWorking] = useState(false)
-  const [error, setError] = useState('')
-
   const completedLessons = stage.lessons.filter((lesson) => lesson.status === 'completed').length
   const totalLessons = stage.lessons.length
   const lessonCompletion = percent(completedLessons, totalLessons)
@@ -36,21 +31,6 @@ export function StageView({
       ? proposedNextLesson
       : stage.lessons.find((lesson) => ['ready', 'in_progress'].includes(lessonReadiness(lesson)))
   const lessonsNeedingMaterial = stage.lessons.filter((lesson) => lessonReadiness(lesson) === 'needs_material').length
-
-  const startLevel = async () => {
-    setWorking(true)
-    setError('')
-    try {
-      await api(`/learning/core/threads/${encodeURIComponent(threadId)}/stages/${encodeURIComponent(stage.id)}/start`, {
-        method: 'POST',
-      })
-      onChanged()
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Level start failed.')
-    } finally {
-      setWorking(false)
-    }
-  }
 
   return (
     <>
@@ -97,20 +77,16 @@ export function StageView({
       {stage.status === 'available' && (
         <section class="course-next-action">
           <div>
-            <p class="folio-object-kicker">Ready when you are</p>
-            <h3>Start this Level</h3>
-            <p>Starting makes its sequential lessons and project actionable.</p>
+            <p class="folio-object-kicker">Ready to study</p>
+            <h3>{nextLesson?.title || 'Open this Level'}</h3>
+            <p>The Level becomes active automatically when you complete its first lesson.</p>
           </div>
-          <button class="button primary folio-primary" disabled={working} onClick={startLevel}>
-            {working ? 'Starting…' : 'Start Level'}
-          </button>
+          {nextLesson && (
+            <a class="button primary folio-primary" href={lessonHref(threadId, nextLesson.id)}>
+              Open first lesson <Icon name="chevron" size={14} />
+            </a>
+          )}
         </section>
-      )}
-
-      {error && (
-        <p class="folio-status" role="alert">
-          {error}
-        </p>
       )}
 
       {stage.status === 'in_progress' && nextLesson && (

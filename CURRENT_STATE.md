@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-02 (automatic Level and lesson continuation, local)
+
+Direct lesson completion now owns the complete continuation transition. Completing an available lesson activates its Level without a separate Start Level action; every completion starts the next unfinished lesson, and a Level's final completion activates the next Level plus its first lesson. Home and typed Lesson views expose the same Complete action for ready lessons and reload from canonical state, so the dashboard advances automatically. The compatibility Level-start route remains available for old clients, but the current interface no longer requires or presents it. The PWA shell cache advances to `learning-compass-shell-v53`.
+
+Local quality, 489/489 unit tests, TypeScript, all standalone Worker/D1 integrations, production build, and the updated Worker-backed E2E suite pass. Production release remains blocked before deployment because the Hermes contract gate reports unrelated Compass-profile file-set drift in `hermes-configuration-operations`; this task does not modify another profile or absorb uncommitted primary-checkout work to bypass that boundary.
+
 ## Current truth — 2026-09-01 (integrated learning workflows and production hardening, deployed)
 
 The deployed release consolidates the complete 2026-08-31 learning-workflow work into the repository and production branch: durable share-intake review, revisioned source anchors, non-destructive recall repair, verified offline packs, advisory source health and guarded replacement, Library-first Thread material organization, exact-Lesson material requests, and continuous next-Lesson navigation. The existing migrations through `0073_source_annotation_revisions.sql` remain the production schema truth; this application release did not reapply migrations or mutate the corpus.

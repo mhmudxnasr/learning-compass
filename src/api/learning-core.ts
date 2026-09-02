@@ -5,6 +5,7 @@ import {
   deriveLevelStatus,
   deriveThreadStatus,
   recordLearningEvent,
+  shouldAutoStartNextLesson,
 } from '../services/learning-core'
 import { selectLearningSourceRenditions } from '../services/learning-material-renditions'
 import { loadNotebookLearningStates, summarizeNotebookLearningState } from '../services/notebooklm-learning'
@@ -328,7 +329,7 @@ app.use('*', async (c, next) => {
   }
 })
 
-async function syncPathStatuses(db: any, threadId: string) {
+export async function syncPathStatuses(db: any, threadId: string, autoAdvance = false) {
   const stages = await db
     .prepare(`SELECT id,status,position FROM learning_path_stages WHERE thread_id=? ORDER BY position`)
     .bind(threadId)
@@ -337,18 +338,43 @@ async function syncPathStatuses(db: any, threadId: string) {
   for (const stage of stages.results || []) {
     const lessons: any = await db
       .prepare(
-        `SELECT COUNT(*) total, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) completed FROM thread_lessons WHERE stage_id=?`,
+        `SELECT COUNT(*) total,
+          SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) completed,
+          SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END) in_progress,
+          SUM(CASE WHEN status='not_started' THEN 1 ELSE 0 END) not_started
+        FROM thread_lessons WHERE stage_id=?`,
       )
       .bind(stage.id)
       .first()
     const totalLessons = Number(lessons?.total || 0)
     const completedLessons = Number(lessons?.completed || 0)
     const current = String(stage.status || 'locked')
-    const next = deriveLevelStatus({ priorComplete, totalLessons, completedLessons, currentStatus: current })
+    const next = deriveLevelStatus({
+      priorComplete,
+      totalLessons,
+      completedLessons,
+      currentStatus: current,
+      autoAdvance,
+    })
     if (next !== current)
       await db
         .prepare(`UPDATE learning_path_stages SET status=?,updated_at=datetime('now') WHERE id=?`)
         .bind(next, stage.id)
+        .run()
+    if (
+      shouldAutoStartNextLesson({
+        autoAdvance,
+        levelStatus: next,
+        inProgressLessons: Number(lessons?.in_progress || 0),
+        notStartedLessons: Number(lessons?.not_started || 0),
+      })
+    )
+      await db
+        .prepare(
+          `UPDATE thread_lessons SET status='in_progress',updated_at=datetime('now')
+          WHERE id=(SELECT id FROM thread_lessons WHERE stage_id=? AND status='not_started' ORDER BY position,id LIMIT 1)`,
+        )
+        .bind(stage.id)
         .run()
     priorComplete = completedStage(next)
   }
@@ -768,7 +794,6 @@ app.patch('/threads/:id/lessons/:lessonId', async (c) => {
   if (!status) return c.json({ error: 'invalid lesson status' }, 400)
   if (lesson.stage_status === 'locked')
     return c.json({ error: 'level is locked; complete the previous Level first' }, 409)
-  if (lesson.stage_status === 'available') return c.json({ error: 'start the level before updating its lessons' }, 409)
   if (completedStage(lesson.stage_status) && status === 'completed')
     return c.json({ error: 'completed Levels are read-only unless a lesson is explicitly reopened' }, 409)
   const statements: D1PreparedStatement[] = [
@@ -783,6 +808,12 @@ app.patch('/threads/:id/lessons/:lessonId', async (c) => {
       lesson.id,
     ),
   ]
+  if (lesson.stage_status === 'available' && status !== 'not_started')
+    statements.unshift(
+      c.env.DB.prepare(
+        `UPDATE learning_path_stages SET status='in_progress',updated_at=datetime('now') WHERE id=?`,
+      ).bind(lesson.stage_id),
+    )
   if (lesson.legacy_item_id)
     statements.push(
       c.env.DB.prepare(
@@ -790,7 +821,7 @@ app.patch('/threads/:id/lessons/:lessonId', async (c) => {
       ).bind(status, status, lesson.legacy_item_id),
     )
   await c.env.DB.batch(statements)
-  await syncPathStatuses(c.env.DB, c.req.param('id'))
+  await syncPathStatuses(c.env.DB, c.req.param('id'), status === 'completed')
   return c.json({ ok: true, id: lesson.id, status, legacy_item_id: lesson.legacy_item_id || null })
 })
 

@@ -80,6 +80,8 @@ test('Lesson route exposes only essential actions and compact material icons', (
   assert.match(studioCss, /\.course-material-icon-action\s*\{/)
   assert.doesNotMatch(threadView, /class="lesson-gate-note"|class="lesson-learning-contract"|<LessonContent/)
   assert.doesNotMatch(threadView, /class="course-lesson-top-nav"|class="course-lesson-footer"/)
+  assert.match(threadView, /Mark lesson complete/)
+  assert.doesNotMatch(threadView, />Start lesson<|>Start Level</)
 })
 
 test('Vertical Journey preserves direct progression language and ships a fresh PWA shell', () => {
@@ -87,7 +89,7 @@ test('Vertical Journey preserves direct progression language and ships a fresh P
   assert.match(threadView, /Projects are optional practice/)
   assert.equal((threadView.match(/vertical-thread-next-link button/g) || []).length, 1)
   assert.doesNotMatch(threadView, /optional evidence/)
-  assert.match(serviceWorker, /learning-compass-shell-v52/)
+  assert.match(serviceWorker, /learning-compass-shell-v53/)
 })
 
 test('locked Levels distinguish prerequisites from missing material', () => {

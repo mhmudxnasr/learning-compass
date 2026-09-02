@@ -451,7 +451,9 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
                   const completionError =
                     lesson && lessonCompletionError?.lessonId === lesson.id ? lessonCompletionError.message : ''
                   const canFinish = Boolean(
-                    lesson && stage?.status === 'in_progress' && lessonReadiness(lesson) !== 'needs_material',
+                    lesson &&
+                    ['available', 'in_progress'].includes(String(stage?.status || '')) &&
+                    lessonReadiness(lesson) !== 'needs_material',
                   )
                   return (
                     <article

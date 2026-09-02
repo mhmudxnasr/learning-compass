@@ -14,6 +14,7 @@ test('Home completion uses the canonical direct lesson mutation and refreshes in
   )
   assert.match(home, /JSON\.stringify\(\{ status: 'completed' \}\)/)
   assert.match(home, /lessonReadiness\(lesson\) !== 'needs_material'/)
+  assert.match(home, /\['available', 'in_progress'\]\.includes/)
   assert.match(home, /window\.setTimeout\(\(\) => \{[\s\S]*reload\(\)[\s\S]*\}, 520\)/)
 })
 
