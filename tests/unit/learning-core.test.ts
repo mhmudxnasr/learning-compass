@@ -1,6 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { deriveLevelStatus, deriveThreadStatus, normalizeDisposition } from '../../src/services/learning-core.ts'
+import {
+  deriveLevelStatus,
+  deriveThreadStatus,
+  normalizeDisposition,
+  shouldAutoStartNextLesson,
+} from '../../src/services/learning-core.ts'
 
 test('explicit learning disposition is independent from taste score', () => {
   assert.equal(normalizeDisposition('apply'), 'apply')
@@ -31,4 +36,35 @@ test('reopening an earlier Level locks later Levels without erasing lesson compl
     'locked',
   )
   assert.equal(deriveThreadStatus('abandoned', false), 'abandoned')
+})
+
+test('direct completion activates the newly unlocked Level and its next lesson', () => {
+  assert.equal(
+    deriveLevelStatus({
+      priorComplete: true,
+      totalLessons: 3,
+      completedLessons: 0,
+      currentStatus: 'locked',
+      autoAdvance: true,
+    }),
+    'in_progress',
+  )
+  assert.equal(
+    shouldAutoStartNextLesson({
+      autoAdvance: true,
+      levelStatus: 'in_progress',
+      inProgressLessons: 0,
+      notStartedLessons: 3,
+    }),
+    true,
+  )
+  assert.equal(
+    shouldAutoStartNextLesson({
+      autoAdvance: true,
+      levelStatus: 'in_progress',
+      inProgressLessons: 1,
+      notStartedLessons: 2,
+    }),
+    false,
+  )
 })

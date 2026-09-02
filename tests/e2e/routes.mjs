@@ -2389,24 +2389,14 @@ try {
   )
     throw new Error('Lesson breadcrumb did not return to its exact Level inside the Thread Lessons tab')
   if (
-    !(await page.getByText('Level not started', { exact: true }).count()) ||
-    (await page.getByRole('button', { name: 'Mark lesson complete' }).count())
+    !(await page.getByText('Ready to study', { exact: true }).count()) ||
+    !(await page.getByRole('button', { name: 'Mark lesson complete' }).count())
   )
-    throw new Error('Lesson deep link bypassed or duplicated the explicit Level start gate')
-  const blockedLessonUpdate = await fetch(
-    `${baseUrl}/learning/core/threads/${materialThread.id}/lessons/${materialLesson.id}`,
-    {
-      method: 'PATCH',
-      headers: { ...materialHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ status: 'completed' }),
-    },
-  )
-  if (blockedLessonUpdate.status !== 409) throw new Error('API allowed Lesson completion before its Level was started')
+    throw new Error('Available Level lesson did not expose direct completion')
   await page.goto(`${baseUrl}/#/learn/t/${materialThread.id}/v/${materialStage.id}`, { waitUntil: 'networkidle' })
-  await page.getByRole('button', { name: 'Start Level' }).click()
-  await page.getByText('In progress', { exact: true }).first().waitFor({ state: 'visible' })
-  await page.goto(`${baseUrl}/#/learn/t/${materialThread.id}/l/${materialLesson.id}`, { waitUntil: 'networkidle' })
-  await page.getByRole('button', { name: 'Start lesson' }).click()
+  if (await page.getByRole('button', { name: 'Start Level' }).count())
+    throw new Error('Level workspace still exposes the retired manual start gate')
+  await page.getByRole('link', { name: 'Open first lesson' }).click()
   await page.getByRole('button', { name: 'Mark lesson complete' }).waitFor({ state: 'visible' })
   await page.locator('.course-level-materials > summary').click()
   for (const ownedMaterial of ['Lesson-owned observation', 'lesson-owned.txt', 'أي نطاق يملك البطاقة دي؟'])
@@ -2449,6 +2439,11 @@ try {
   await page.getByRole('button', { name: 'Mark lesson complete' }).click()
   await page.waitForURL((url) => url.hash === `#/learn/t/${materialThread.id}/l/${materialNextLesson.id}`)
   await page.getByRole('heading', { level: 1, name: 'Compare source formats' }).waitFor({ state: 'visible' })
+  const advancedMaterialPath = await requestMaterialJson(`/learning/core/threads/${materialThread.id}/path`)
+  const advancedMaterialStage = advancedMaterialPath.stages.find((stage) => stage.id === materialStage.id)
+  const advancedMaterialLesson = advancedMaterialStage?.lessons.find((lesson) => lesson.id === materialNextLesson.id)
+  if (advancedMaterialStage?.status !== 'in_progress' || advancedMaterialLesson?.status !== 'in_progress')
+    throw new Error('Lesson completion did not atomically start the next ordered lesson and refresh the path')
   for (const artifact of [materialHtml, materialPdf, materialLessonFile]) {
     const cleanup = await fetch(`${baseUrl}/artifacts/${artifact.id}`, {
       method: 'DELETE',
@@ -2771,9 +2766,9 @@ try {
     homeCompletionPath.stages[0].lessons.find((lesson) => lesson.id === homeCompletionLesson.id)?.status !==
       'completed' ||
     homeCompletionPath.stages[0].lessons.find((lesson) => lesson.id === homeCompletionNextLesson.id)?.status !==
-      'not_started'
+      'in_progress'
   )
-    throw new Error('Home lesson completion did not preserve direct ordered progression')
+    throw new Error('Home lesson completion did not automatically start the next ordered lesson')
 
   await page.goto(`${baseUrl}/#/library?mode=assets&focus=files`, { waitUntil: 'networkidle' })
   if (artifacts.artifacts.length === 0) {

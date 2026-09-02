@@ -19,6 +19,7 @@ export function deriveLevelStatus(input: {
   totalLessons: number
   completedLessons: number
   currentStatus: string
+  autoAdvance?: boolean
 }) {
   if (!input.priorComplete) return 'locked'
   if (input.totalLessons > 0 && input.completedLessons === input.totalLessons) return 'verified'
@@ -28,7 +29,22 @@ export function deriveLevelStatus(input: {
     completedLearningStatus(input.currentStatus)
   )
     return 'in_progress'
+  if (input.autoAdvance && input.totalLessons > input.completedLessons) return 'in_progress'
   return 'available'
+}
+
+export function shouldAutoStartNextLesson(input: {
+  autoAdvance: boolean
+  levelStatus: string
+  inProgressLessons: number
+  notStartedLessons: number
+}) {
+  return (
+    input.autoAdvance &&
+    input.levelStatus === 'in_progress' &&
+    input.inProgressLessons === 0 &&
+    input.notStartedLessons > 0
+  )
 }
 
 export function deriveThreadStatus(currentStatus: string, complete: boolean) {

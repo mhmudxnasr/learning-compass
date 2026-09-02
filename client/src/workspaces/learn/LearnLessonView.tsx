@@ -30,10 +30,9 @@ export function LessonView({
   const [error, setError] = useState('')
   const isCompleted = lesson.status === 'completed'
   const readiness = lessonReadiness(lesson)
-  const canStudy = stage.status === 'in_progress'
-  const canComplete = readiness !== 'needs_material' && canStudy
-  const displayState =
-    stage.status === 'locked' ? 'locked' : stage.status === 'available' ? 'level_not_started' : readiness
+  const canStudy = ['available', 'in_progress'].includes(stage.status)
+  const canComplete = isCompleted || (readiness !== 'needs_material' && canStudy)
+  const displayState = stage.status === 'locked' ? 'locked' : readiness
   const canRequestMaterial =
     ['available', 'in_progress'].includes(stage.status) &&
     lesson.status !== 'completed' &&
@@ -60,22 +59,6 @@ export function LessonView({
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Lesson update failed.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const startLesson = async () => {
-    setSaving(true)
-    setError('')
-    try {
-      await api(`/learning/core/threads/${encodeURIComponent(threadId)}/lessons/${encodeURIComponent(lesson.id)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: 'in_progress' }),
-      })
-      onChanged()
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Lesson could not be started.')
     } finally {
       setSaving(false)
     }
@@ -119,15 +102,13 @@ export function LessonView({
             <span>
               {displayState === 'locked'
                 ? 'Locked'
-                : displayState === 'level_not_started'
-                  ? 'Level not started'
-                  : isCompleted
-                    ? 'Completed'
-                    : displayState === 'needs_material'
-                      ? 'Needs material'
-                      : displayState === 'in_progress'
-                        ? 'In progress'
-                        : 'Ready to study'}
+                : isCompleted
+                  ? 'Completed'
+                  : displayState === 'needs_material'
+                    ? 'Needs material'
+                    : displayState === 'in_progress'
+                      ? 'In progress'
+                      : 'Ready to study'}
             </span>
           </span>
         </div>
@@ -167,23 +148,15 @@ export function LessonView({
           </div>
           {canComplete && (
             <div class="course-lesson-actions">
-              {lesson.status === 'not_started' && canStudy ? (
-                <button class="button primary folio-primary" type="button" onClick={startLesson} disabled={saving}>
-                  Start lesson
-                </button>
-              ) : (
-                <button
-                  class={`button ${isCompleted ? 'secondary course-lesson-completed-btn' : 'primary folio-primary'}`}
-                  type="button"
-                  onClick={toggleComplete}
-                  disabled={saving}
-                >
-                  <Icon name="check" size={15} />
-                  <span>
-                    {saving ? 'Updating…' : isCompleted ? 'Completed · Reopen lesson' : 'Mark lesson complete'}
-                  </span>
-                </button>
-              )}
+              <button
+                class={`button ${isCompleted ? 'secondary course-lesson-completed-btn' : 'primary folio-primary'}`}
+                type="button"
+                onClick={toggleComplete}
+                disabled={saving}
+              >
+                <Icon name="check" size={15} />
+                <span>{saving ? 'Updating…' : isCompleted ? 'Completed · Reopen lesson' : 'Mark lesson complete'}</span>
+              </button>
               {error && (
                 <p class="learning-material-error" role="alert">
                   {error}
