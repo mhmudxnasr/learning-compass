@@ -1,5 +1,24 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-05 (all branch histories merged)
+
+At Mahmood's request, all ten previously unmerged local branches now have explicit merge commits in the combined `main` history. Existing cherry-picked and adapted implementations remain current; conflicts from older snapshots, competing profile layouts, retired pages/MCP tooling, outdated release receipts, and duplicate tests were resolved against the verified release. The full branch histories remain reachable, and branch names/worktrees were retained.
+
+| Branch                                         | Merge commit |
+| ---------------------------------------------- | ------------ |
+| `hermes/native-compass-tools`                  | `1483860`    |
+| `codex/preferences-redesign-20260830`          | `3eec9ea`    |
+| `codex/item-pages-20260905`                    | `534dfd4`    |
+| `codex/resurfacing-card-source-route-20260901` | `1365623`    |
+| `codex/system-hardening-m0-20260829`           | `df3bc50`    |
+| `codex/deploy-everything-20260829`             | `8ed7733`    |
+| `codex/learning-compass-threadscoped-no`       | `b6e2d9e`    |
+| `codex/profile-redesign-20260830`              | `c3b7831`    |
+| `codex/profile-release-20260830`               | `832b2cd`    |
+| `codex/release-all-20260905`                   | `6b1465d`    |
+
+All ten tips pass Git ancestry checks, and all 20 local branches are contained in the combined history. Runtime code, assets, schemas, tests, dependencies, and Hermes integration files are identical to the verified release at `725527e`; only merge documentation and the architecture explanation of existing budget headroom changed. Post-merge verification passes quality checks, 542/542 unit tests, TypeScript, and the native Hermes contract/prompt checks. The 19 newly reachable non-merge commits pass the credential-pattern scan, and diff checks pass. Production remains Worker `cd7fa264-dac3-4069-b73f-b878c9f00c8a` with PWA v56, so no additional deployment or data operation is needed.
+
 ## Current truth — 2026-09-05 (integrated application release, deployed)
 
 This is the active application state; dated entries below retain historical implementation and rollout details. GitHub `main` now reconciles the primary checkout and outstanding Hardcover, resurfacing, Recall, item-page, Threads, Preferences, profile-presentation, direct Lite Visual, native-Hermes, and production-lineage work. It preserves the modular client architecture and exact applied migrations through `0076`. Older detached frontend prototypes remain recoverable. Every dirty worktree was preserved as a patch and untracked-file archive under `.tmp/release-20260905/worktree-snapshots`; the primary source snapshot is commit `5e997cc`.
