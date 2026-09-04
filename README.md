@@ -336,7 +336,7 @@ python3 /home/mahmud/.hermes/skills/lite-visual/scripts/extract_source.py '<URL-
 
 ## Deployment
 
-Run `npm run verify:release` and the full [release checklist](docs/release-checklist.md), then deploy only from this repository. Application-only deployments require a fresh complete D1-plus-R2 backup with verified restore, healthy readiness, exact migration parity, and no corpus mutation. Corpus registration, staging, upload, activation, and rollback remain separately prohibited until every immutable target has accepted semantic-completeness evidence, the aggregate corpus audit passes, and independent review accepts it. Migrations through `0074` are applied in production and at exact repository parity; never replay them.
+Run `npm run verify:release` and the full [release checklist](docs/release-checklist.md), then deploy only from this repository. Application-only deployments require a fresh complete D1-plus-R2 backup with verified restore, healthy readiness, exact migration parity, and no corpus mutation. Corpus registration, staging, upload, activation, and rollback remain separately prohibited until every immutable target has accepted semantic-completeness evidence, the aggregate corpus audit passes, and independent review accepts it. Migrations through `0075` are applied in production and at exact repository parity; never replay them.
 
 ```bash
 npx wrangler deploy --config wrangler.toml

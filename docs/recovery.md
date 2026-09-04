@@ -53,10 +53,10 @@ This verifies the SQL bytes and migration inventory but intentionally reports th
 Before any production migration:
 
 1. inspect the remote migration ledger;
-2. require the remote ledger to end at applied `0073_source_annotation_revisions.sql` and `0074_lite_visual_corpus_scope_lineage.sql` to be the only pending migration; migrations through `0073` must not be replayed;
+2. compare it with the repository inventory; migrations through `0075_riyadh_legacy_pair_visibility.sql` are applied and must not be replayed;
 3. capture the current Worker version;
 4. complete and retain the full D1-plus-R2 snapshot and verified restore receipt; and
-5. record a D1 Time Travel bookmark immediately before applying `0074`, then verify the ledger and readiness after migration.
+5. record a D1 Time Travel bookmark immediately before applying any new pending migration, then verify the ledger and readiness after migration.
 
 The signed-v6 semantic-completeness and aggregate corpus-audit hold blocks corpus registration, staging, upload, activation, and rollback. It does not block an application-only deployment that performs no corpus mutation and passes the full code release, backup/restore, migration-parity, and readiness gates. Do not configure `ALLOW_UNAUTHENTICATED_LOCAL_WRITES` remotely.
 
