@@ -5,6 +5,7 @@ export const REQUIRED_RELEASE_SCHEMA = [
   'lite_visual_corpus_targets',
   'lite_visual_pairs',
   'lite_visual_active_corpora',
+  'lite_visual_thread_source_placements',
   'idx_lite_visual_pairs_corpus_state',
   'idx_lite_visual_pairs_recommendation_state',
   'trg_lite_visual_staged_pair_guard',

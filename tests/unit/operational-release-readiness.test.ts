@@ -39,7 +39,7 @@ const environment = (
     ...overrides,
   }) as any
 
-test('release readiness requires migrations 0068–0073 schema, production bindings, and signing key', async () => {
+test('release readiness requires migrations 0068–0074 schema, production bindings, and signing key', async () => {
   const healthy = await loadReleaseContractHealth(environment())
   assert.equal(healthy.ok, true)
   assert.deepEqual(healthy.schema.missing, [])

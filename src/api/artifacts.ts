@@ -560,10 +560,12 @@ app.post('/corpora', async (c) => {
     const ids = group.map((target) => target.recommendation_id)
     const [recommendations, jobs] = await Promise.all([
       c.env.DB.prepare(
-        `SELECT r.id,r.video_url,r.video_title,ts.thread_id,ts.status source_status
-        FROM recommendations r JOIN thread_sources ts ON ts.recommendation_id=r.id
-        WHERE r.id IN (${placeholders}) AND ts.thread_id=? AND ts.status!='removed'
-          AND r.status IN ('active','consumed') AND r.deleted_at IS NULL`,
+        `SELECT r.id,r.video_url,r.video_title
+        FROM recommendations r
+        WHERE r.id IN (${placeholders})
+          AND r.status IN ('active','consumed') AND r.deleted_at IS NULL
+          AND EXISTS (SELECT 1 FROM lite_visual_thread_source_placements sp
+            WHERE sp.recommendation_id=r.id AND sp.thread_id=?)`,
       )
         .bind(...ids, threadId)
         .all<any>(),

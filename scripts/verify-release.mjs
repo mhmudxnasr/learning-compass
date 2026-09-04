@@ -92,7 +92,7 @@ const assertNoRetiredClientAuth = () => {
   for (const [relativePath, required] of [
     ['workflow/learning-compass-site-operator/SKILL.md', 'ordinary reads and writes are public at the transport layer'],
     [
-      'workflow/recommendations-worker-ops/SKILL.md',
+      'workflow/recommendations-worker-ops/references/api-and-learning-contracts.md',
       'Ordinary Learning Compass reads and writes are public at the transport layer',
     ],
   ]) {

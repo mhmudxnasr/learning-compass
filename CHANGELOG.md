@@ -4,6 +4,10 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Cleared the 210 unrebuilt Riyadh companion slots on explicit request, retiring exactly 420 HTML/PDF artifacts while preserving the 84 redesigned pairs, original sources, lesson progress, and recovery history.
+
+- Retire six exact duplicate legacy Riyadh companion pairs only when their complete successors remain available, preserving files and lesson progress for the audited replacement release.
+
 ### Changed
 
 - Made Library → Books display the existing Hardcover mirror as read-only reading history without importing it, deduplicating unambiguous matches while keeping mirror-only titles external and mutation-free.
@@ -12,6 +16,10 @@ This file records user-visible behavior, architecture, dependency, and operating
 - Rebuilt Threads as a learning desk with direct next-lesson links, Planning, priority and pause controls, remembered search, readiness filters, and material-gap navigation. New Threads open a usable first-Level setup flow. Thread overviews now include editable outcomes, scoped notes, and an optional saved reflection; lessons have a searchable course navigator, persistent focus mode, and readable authored text.
 - Thread summaries exclude completed lessons from material gaps and expose the exact next lesson, duration coverage, and study dates backed by explicit lesson-status events. Existing curriculum progression and passive source access remain intact.
 
+
+- Allowed an explicitly user-directed Riyadh early release only as an exact ordered prefix of the hash-bound authoritative 294-recording manifest. Included pairs still require signed v6 validation, a clean aggregate anti-template audit, atomic activation, canonical readback, and rollback lineage; omitted lessons keep their current companions and the prefix never counts as full completion.
+- Replaced the shared Lite Visual presentation shell for the first 84 rebuilt Riyadh companions with source-signature- and semantic-group-scoped layouts, eliminating the forbidden kicker/accent treatment and all aggregate template-similarity flags.
+- Allowed guarded Lite Visual corpora to resolve canonical source ownership from direct Thread, Level, or Lesson placement. Migration `0074_lite_visual_corpus_scope_lineage.sql` applies the same fail-closed placement rule to activation and rollback, so lesson-scoped course material no longer needs a duplicate Thread-level attachment.
 - Updated the GitHub Verify workflow to the official Node 24-based checkout and setup-node v7 actions.
 
 ### Removed

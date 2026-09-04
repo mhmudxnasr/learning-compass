@@ -10,7 +10,15 @@ const mediaTranscription = readFileSync(
   '/home/mahmud/.hermes/skills/media/media-transcription-systems/SKILL.md',
   'utf8',
 )
-const liteVisual = readFileSync('/home/mahmud/.hermes/skills/lite-visual/SKILL.md', 'utf8')
+const liteVisual = [
+  'SKILL.md',
+  'references/source-extraction.md',
+  'references/coverage-contract.md',
+  'references/reading-companion-design.md',
+  'references/publication-and-recovery.md',
+]
+  .map((file) => readFileSync(`/home/mahmud/.hermes/skills/lite-visual/${file}`, 'utf8'))
+  .join('\n')
 const selfEvolution = readFileSync(
   '/home/mahmud/.hermes/skills/workflow/learning-compass-self-evolution/SKILL.md',
   'utf8',
