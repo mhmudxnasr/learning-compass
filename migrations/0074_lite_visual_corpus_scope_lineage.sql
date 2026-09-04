@@ -1,6 +1,8 @@
 -- Accept canonical source placement at any supported level of a Thread.
 -- Corpus activation and rollback remain fail-closed on source identity,
 -- placement, artifact parity, job lineage, and supersession history.
+-- Parenthesized CASE expressions are required by the remote D1 statement
+-- splitter when a migration contains CREATE TRIGGER bodies.
 
 DROP TRIGGER IF EXISTS trg_lite_visual_corpus_activation_guard;
 DROP TRIGGER IF EXISTS trg_lite_visual_corpus_rollback_guard;
@@ -24,12 +26,12 @@ CREATE TRIGGER trg_lite_visual_corpus_activation_guard
 BEFORE UPDATE OF state ON lite_visual_corpora
 WHEN NEW.state='active' AND OLD.state='staging'
 BEGIN
-  SELECT CASE WHEN (SELECT COUNT(*) FROM lite_visual_corpus_targets WHERE corpus_id=NEW.id) != NEW.expected_pairs
-    THEN RAISE(ABORT,'lite_visual_corpus_target_count_mismatch') END;
-  SELECT CASE WHEN (SELECT COUNT(*) FROM lite_visual_pairs WHERE corpus_id=NEW.id) != NEW.expected_pairs
-    THEN RAISE(ABORT,'lite_visual_corpus_pair_count_mismatch') END;
+  SELECT (CASE WHEN (SELECT COUNT(*) FROM lite_visual_corpus_targets WHERE corpus_id=NEW.id) != NEW.expected_pairs
+    THEN RAISE(ABORT,'lite_visual_corpus_target_count_mismatch') END);
+  SELECT (CASE WHEN (SELECT COUNT(*) FROM lite_visual_pairs WHERE corpus_id=NEW.id) != NEW.expected_pairs
+    THEN RAISE(ABORT,'lite_visual_corpus_pair_count_mismatch') END);
 
-  SELECT CASE WHEN EXISTS (
+  SELECT (CASE WHEN EXISTS (
     SELECT 1 FROM lite_visual_corpus_targets t
     LEFT JOIN lite_visual_pairs p ON p.corpus_id=t.corpus_id AND p.pair_id=t.pair_id
     LEFT JOIN agent_jobs j ON j.id=t.job_id
@@ -54,9 +56,9 @@ BEGIN
         JOIN lite_visual_thread_source_placements sp ON sp.thread_id=c.thread_id AND sp.recommendation_id=t.recommendation_id
         WHERE c.id=t.corpus_id)
     )
-  ) THEN RAISE(ABORT,'lite_visual_corpus_lineage_mismatch') END;
+  ) THEN RAISE(ABORT,'lite_visual_corpus_lineage_mismatch') END);
 
-  SELECT CASE WHEN EXISTS (
+  SELECT (CASE WHEN EXISTS (
     SELECT 1 FROM lite_visual_corpus_targets t
     WHERE t.corpus_id=NEW.id AND (
       (t.supersedes_pair_id IS NULL AND EXISTS (
@@ -84,22 +86,22 @@ BEGIN
             AND json_extract(a.metadata_json,'$.pair_id')!=t.supersedes_pair_id)
       ))
     )
-  ) THEN RAISE(ABORT,'lite_visual_corpus_supersession_mismatch') END;
+  ) THEN RAISE(ABORT,'lite_visual_corpus_supersession_mismatch') END);
 END;
 
 CREATE TRIGGER trg_lite_visual_corpus_rollback_guard
 BEFORE UPDATE OF state ON lite_visual_corpora
 WHEN NEW.state='superseded' AND OLD.state='active' AND NEW.rolled_back_at IS NOT NULL
 BEGIN
-  SELECT CASE WHEN NOT EXISTS (
+  SELECT (CASE WHEN NOT EXISTS (
     SELECT 1 FROM lite_visual_active_corpora a WHERE a.thread_id=OLD.thread_id AND a.corpus_id=OLD.id
-  ) THEN RAISE(ABORT,'lite_visual_rollback_pointer_mismatch') END;
+  ) THEN RAISE(ABORT,'lite_visual_rollback_pointer_mismatch') END);
 
-  SELECT CASE WHEN (SELECT COUNT(*) FROM lite_visual_corpus_targets WHERE corpus_id=OLD.id) != OLD.expected_pairs
+  SELECT (CASE WHEN (SELECT COUNT(*) FROM lite_visual_corpus_targets WHERE corpus_id=OLD.id) != OLD.expected_pairs
     OR (SELECT COUNT(*) FROM lite_visual_pairs WHERE corpus_id=OLD.id AND state='active') != OLD.expected_pairs
-    THEN RAISE(ABORT,'lite_visual_rollback_active_count_mismatch') END;
+    THEN RAISE(ABORT,'lite_visual_rollback_active_count_mismatch') END);
 
-  SELECT CASE WHEN EXISTS (
+  SELECT (CASE WHEN EXISTS (
     SELECT 1 FROM lite_visual_corpus_targets t
     LEFT JOIN lite_visual_pairs current_pair ON current_pair.corpus_id=t.corpus_id AND current_pair.pair_id=t.pair_id
     LEFT JOIN recommendations r ON r.id=t.recommendation_id
@@ -124,9 +126,9 @@ BEGIN
           AND json_extract(a.metadata_json,'$.publication_state')='ready'
           AND json_extract(a.metadata_json,'$.pair_id')!=t.pair_id)
     )
-  ) THEN RAISE(ABORT,'lite_visual_rollback_current_lineage_mismatch') END;
+  ) THEN RAISE(ABORT,'lite_visual_rollback_current_lineage_mismatch') END);
 
-  SELECT CASE WHEN EXISTS (
+  SELECT (CASE WHEN EXISTS (
     SELECT 1 FROM lite_visual_corpus_targets t
     WHERE t.corpus_id=OLD.id AND t.supersedes_pair_id IS NOT NULL AND (
       NOT EXISTS (SELECT 1 FROM lite_visual_pairs previous_pair
@@ -143,12 +145,12 @@ BEGIN
           AND json_extract(a.metadata_json,'$.validation_status')='passed'
           AND json_extract(a.metadata_json,'$.role') IN ('html','pdf'))
     )
-  ) THEN RAISE(ABORT,'lite_visual_rollback_predecessor_mismatch') END;
+  ) THEN RAISE(ABORT,'lite_visual_rollback_predecessor_mismatch') END);
 
-  SELECT CASE WHEN OLD.previous_corpus_id IS NOT NULL AND (
+  SELECT (CASE WHEN OLD.previous_corpus_id IS NOT NULL AND (
     NOT EXISTS (SELECT 1 FROM lite_visual_corpora previous_corpus
       WHERE previous_corpus.id=OLD.previous_corpus_id AND previous_corpus.thread_id=OLD.thread_id
         AND previous_corpus.state='superseded' AND previous_corpus.expected_pairs=OLD.expected_pairs)
     OR EXISTS (SELECT 1 FROM lite_visual_corpus_targets t WHERE t.corpus_id=OLD.id AND t.supersedes_pair_id IS NULL)
-  ) THEN RAISE(ABORT,'lite_visual_rollback_previous_corpus_mismatch') END;
+  ) THEN RAISE(ABORT,'lite_visual_rollback_previous_corpus_mismatch') END);
 END;

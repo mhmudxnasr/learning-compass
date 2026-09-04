@@ -13,6 +13,11 @@ const scopeLineageMigration = readFileSync(
 )
 const hash = (character: string) => character.repeat(64)
 
+test('scope-lineage trigger guards use the remote D1-compatible CASE form', () => {
+  assert.match(scopeLineageMigration, /SELECT \(CASE WHEN/)
+  assert.doesNotMatch(scopeLineageMigration, /SELECT CASE WHEN/)
+})
+
 function database() {
   const db = new DatabaseSync(':memory:')
   db.exec(`PRAGMA foreign_keys=ON;
