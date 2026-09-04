@@ -4,7 +4,6 @@ import hashlib
 import json
 import subprocess
 import sys
-import tempfile
 import yaml
 
 ROOT = Path(__file__).resolve().parent
@@ -28,16 +27,13 @@ for tool,args in [('compass_read',{'path':'/health','field':'status'}),('compass
     report[tool]={'ok':True,'exit_code':result['exit_code']}
 # Native tool registration is verified by runtime dispatch above, not file text.
 report['tool_names']=[name for name in registry.get_all_tool_names() if name.startswith('compass_')]
-# Keep versioned skill snapshots outside the active skills tree.
+# Check active skill metadata without rewriting historical snapshots.
 paths=['workflow/learning-compass-site-operator','workflow/learning-compass-operating-system','media/media-transcription-systems','learning-notes-extractor','notebooklm','personal/taste-rec']
 for relative in paths:
     p=HOME/'skills'/relative/'SKILL.md'; text=p.read_text(); front=yaml.safe_load(text.split('---',2)[1]); assert front.get('name') and front.get('description')
-    destination=ROOT/'skill-snapshots'/relative/'SKILL.md';destination.parent.mkdir(parents=True,exist_ok=True);destination.write_text(text)
-ref=HOME/'skills/workflow/learning-compass-site-operator/references/native-tools.md'
-dest=ROOT/'skill-snapshots/workflow/learning-compass-site-operator/references/native-tools.md';dest.parent.mkdir(parents=True,exist_ok=True);dest.write_text(ref.read_text())
 report['skill_frontmatter']='passed'
 report['retired_skills_archived']=all((HOME/'skill-archives/native-compass-tools'/name/'SKILL.md').exists() for name in ['learning-compass-bridge','learning-thread-curation','learning-compass-visual-companion-operations'])
 assert report['retired_skills_archived']
-report['global_gate']='blocked: old repository checker rejects unrelated enabled skills and expects the retired Compass profile'
+report['global_gate']='not_run: execute npm run verify:release separately for the complete repository release gate'
 (ROOT/'verification.json').write_text(json.dumps(report,indent=2))
 print(json.dumps({k:v for k,v in report.items() if k not in ('installed_hashes',) and not k.startswith(('python ','hermes '))},indent=2))
