@@ -813,7 +813,18 @@ function CanonDomainDetail({ domainId }: { domainId: string }) {
                 <div class="canon-row-main">
                   <div class="canon-row-identity">
                     <div>
-                      <h3 class="canon-book-heading">{entry.recommendation_id ? <a class="item-title-link" href={`#/library/book/${encodeURIComponent(entry.recommendation_id)}`}>{entry.title}</a> : entry.title}</h3>
+                      <h3 class="canon-book-heading">
+                        {entry.recommendation_id ? (
+                          <a
+                            class="item-title-link"
+                            href={`#/library/book/${encodeURIComponent(entry.recommendation_id)}`}
+                          >
+                            {entry.title}
+                          </a>
+                        ) : (
+                          entry.title
+                        )}
+                      </h3>
                       <p class="canon-book-byline">by {entry.author}</p>
                     </div>
 

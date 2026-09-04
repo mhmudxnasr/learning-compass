@@ -1,5 +1,45 @@
-export const DAILY_READ_BUDGET = 5_000_000
-export const DAILY_WRITE_BUDGET = 100_000
+export const CLOUDFLARE_FREE_READ_LIMIT = 5_000_000
+export const CLOUDFLARE_FREE_WRITE_LIMIT = 100_000
+export const REQUIRED_READ_HEADROOM = 1_000_000
+export const REQUIRED_WRITE_HEADROOM = 30_000
+export const DAILY_READ_BUDGET = 4_000_000
+export const DAILY_WRITE_BUDGET = 70_000
+
+export function getFreeTierBudgetPolicy(readBudget = DAILY_READ_BUDGET, writeBudget = DAILY_WRITE_BUDGET) {
+  const reads = {
+    budget: readBudget,
+    cloudflare_limit: CLOUDFLARE_FREE_READ_LIMIT,
+    headroom: CLOUDFLARE_FREE_READ_LIMIT - readBudget,
+    required_headroom: REQUIRED_READ_HEADROOM,
+  }
+  const writes = {
+    budget: writeBudget,
+    cloudflare_limit: CLOUDFLARE_FREE_WRITE_LIMIT,
+    headroom: CLOUDFLARE_FREE_WRITE_LIMIT - writeBudget,
+    required_headroom: REQUIRED_WRITE_HEADROOM,
+  }
+  const blockers = [
+    ...(!Number.isSafeInteger(readBudget) || readBudget <= 0 || reads.headroom < reads.required_headroom
+      ? ['read_budget_missing_required_headroom']
+      : []),
+    ...(!Number.isSafeInteger(writeBudget) || writeBudget <= 0 || writes.headroom < writes.required_headroom
+      ? ['write_budget_missing_required_headroom']
+      : []),
+  ]
+  return { ok: blockers.length === 0, reads, writes, blockers }
+}
+
+export function describeFreeTierUsage(usage: {
+  estimated_rows_read?: number | string | null
+  estimated_rows_written?: number | string | null
+}) {
+  const policy = getFreeTierBudgetPolicy()
+  return {
+    reads: { estimated: Number(usage.estimated_rows_read || 0), ...policy.reads },
+    writes: { estimated: Number(usage.estimated_rows_written || 0), ...policy.writes },
+    policy: { ok: policy.ok, blockers: policy.blockers },
+  }
+}
 
 const readCost = (path: string) => {
   if (path === '/recommendations/list' || /^\/brain\/branches\/[^/]+\/items$/.test(path)) return 5_000

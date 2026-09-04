@@ -7,7 +7,6 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const home = process.env.HOME || '/home/mahmud'
 const hermesRoot = join(home, '.hermes')
 const canonicalSkills = join(hermesRoot, 'skills')
-const profileSkills = join(hermesRoot, 'profiles', 'compass', 'skills')
 const managerRoot = join(hermesRoot, 'hermes-agent')
 
 const run = (label, command, args, cwd = repoRoot) => {
@@ -41,18 +40,11 @@ const relevantFiles = (root) => {
     .sort()
 }
 
-const assertMirror = (skillPath) => {
-  const canonical = join(canonicalSkills, skillPath)
-  const profile = join(profileSkills, skillPath)
-  const canonicalFiles = relevantFiles(canonical).map((path) => relative(canonical, path))
-  const profileFiles = relevantFiles(profile).map((path) => relative(profile, path))
-  if (JSON.stringify(canonicalFiles) !== JSON.stringify(profileFiles)) {
-    throw new Error(`Canonical/profile file-set drift: ${skillPath}`)
-  }
-  for (const file of canonicalFiles) {
-    const left = readFileSync(join(canonical, file))
-    const right = readFileSync(join(profile, file))
-    if (!left.equals(right)) throw new Error(`Canonical/profile content drift: ${skillPath}/${file}`)
+const assertNativeAdapter = () => {
+  for (const file of ['plugin.yaml', '__init__.py', 'tools.py', 'pdf_worker.py']) {
+    const source = readFileSync(join(repoRoot, 'integrations', 'hermes-compass', file))
+    const installed = readFileSync(join(hermesRoot, 'plugins', 'compass-native', file))
+    if (!source.equals(installed)) throw new Error(`Native Compass adapter drift: ${file}`)
   }
 }
 
@@ -79,7 +71,7 @@ const assertNoRetiredClientAuth = () => {
     ],
   ]
   for (const [relativePath, patterns] of executableChecks) {
-    for (const root of [canonicalSkills, profileSkills]) {
+    for (const root of [canonicalSkills]) {
       const file = join(root, relativePath)
       const source = readFileSync(file, 'utf8')
       for (const pattern of patterns) {
@@ -96,7 +88,7 @@ const assertNoRetiredClientAuth = () => {
       'Ordinary Learning Compass reads and writes are public at the transport layer',
     ],
   ]) {
-    for (const root of [canonicalSkills, profileSkills]) {
+    for (const root of [canonicalSkills]) {
       const source = readFileSync(join(root, relativePath), 'utf8')
       if (!source.includes(required))
         throw new Error(`Public Learning Compass API contract is missing from ${join(root, relativePath)}`)
@@ -125,9 +117,11 @@ const assertNoRetiredReleaseDocsAuth = () => {
 }
 
 const changedFiles = () => {
+  const base = capture('git', ['merge-base', 'HEAD', 'origin/main']).trim()
+  const committed = capture('git', ['diff', base, 'HEAD', '--name-only', '--diff-filter=ACMRTUXB']).split('\n')
   const tracked = capture('git', ['diff', 'HEAD', '--name-only', '--diff-filter=ACMRTUXB']).split('\n')
   const untracked = capture('git', ['ls-files', '--others', '--exclude-standard']).split('\n')
-  return [...new Set([...tracked, ...untracked].filter(Boolean))]
+  return [...new Set([...committed, ...tracked, ...untracked].filter(Boolean))]
 }
 
 const textExtensions = new Set([
@@ -175,28 +169,22 @@ const inspectChangedFiles = () => {
 
 const pythonRoots = [
   join(canonicalSkills, 'workflow', 'learning-compass-site-operator'),
-  join(profileSkills, 'workflow', 'learning-compass-site-operator'),
   join(canonicalSkills, 'lite-visual'),
-  join(profileSkills, 'lite-visual'),
 ]
 for (const root of pythonRoots) if (!existsSync(root)) throw new Error(`Required installed client is missing: ${root}`)
 if (!existsSync(join(managerRoot, 'scripts', 'run_tests.sh')))
   throw new Error('Deterministic Hermes manager harness is missing')
 
 inspectChangedFiles()
-for (const skillPath of [
-  'workflow/learning-compass-site-operator',
-  'workflow/recommendations-worker-ops',
-  'lite-visual',
-])
-  assertMirror(skillPath)
+assertNativeAdapter()
 assertNoRetiredClientAuth()
 assertNoRetiredReleaseDocsAuth()
 
 run('Code style and static analysis', 'npm', ['run', 'quality'])
+run('Free-tier budget policy', 'npm', ['run', 'verify:budget'])
 run('Unit tests and TypeScript', 'npm', ['test'])
-run('Standalone Worker and D1 integration scenarios', 'npm', ['run', 'test:integration'])
 run('Production build and bundle budget', 'npm', ['run', 'build'])
+run('Standalone Worker and D1 integration scenarios', 'npm', ['run', 'test:integration'])
 run('Worker-backed responsive, PWA, offline, and public-boundary E2E', 'npm', ['run', 'test:e2e'])
 run('Hermes contracts and Telegram prompt budgets', 'npm', ['run', 'verify:hermes'])
 run('Fresh and idempotent migration rehearsal', 'npm', ['run', 'verify:migrations'])
@@ -208,10 +196,7 @@ run(
   managerRoot,
 )
 
-for (const root of [
-  join(canonicalSkills, 'workflow', 'learning-compass-site-operator'),
-  join(profileSkills, 'workflow', 'learning-compass-site-operator'),
-]) {
+for (const root of [join(canonicalSkills, 'workflow', 'learning-compass-site-operator')]) {
   run(`Installed site-client tests: ${root}`, 'python3', [
     '-m',
     'unittest',
@@ -228,11 +213,13 @@ run('Installed Python client syntax', 'python3', [
   "from pathlib import Path; import sys; [compile(p.read_text(), str(p), 'exec') for root in sys.argv[1:] for p in Path(root).rglob('*.py') if '__pycache__' not in p.parts]",
   ...pythonRoots,
 ])
-for (const root of [join(canonicalSkills, 'lite-visual'), join(profileSkills, 'lite-visual')]) {
+for (const root of [join(canonicalSkills, 'lite-visual')]) {
   for (const file of relevantFiles(root).filter((path) => ['.js', '.mjs', '.cjs'].includes(extname(path)))) {
     run(`Installed Node client syntax: ${file}`, process.execPath, ['--check', file])
   }
 }
+
+run('Native Compass adapter tests', 'python3', ['integrations/hermes-compass/test_native.py', '-v'])
 
 run('Final tracked diff check', 'git', ['diff', 'HEAD', '--check'])
 inspectChangedFiles()

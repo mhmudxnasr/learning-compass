@@ -804,9 +804,10 @@ app.post('/analytics/hermes/repair', async (c) => {
 })
 
 app.get('/analytics/hermes/improvements', async (c) => {
-  const rows = await c.env.DB.prepare(
-    `SELECT * FROM self_improvement_runs ORDER BY created_at DESC LIMIT 100`,
-  ).all<any>()
+  const id = c.req.query('id')?.trim()
+  const rows = id
+    ? await c.env.DB.prepare('SELECT * FROM self_improvement_runs WHERE id=? LIMIT 1').bind(id).all<any>()
+    : await c.env.DB.prepare('SELECT * FROM self_improvement_runs ORDER BY created_at DESC LIMIT 100').all<any>()
   return c.json({
     runs: (rows.results || []).map((row: any) => ({
       ...row,

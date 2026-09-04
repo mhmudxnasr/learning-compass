@@ -3,12 +3,25 @@
   "name": "learning-compass-hermes",
   "router": "learning-compass-operating-system",
   "self_evolution_owner": "learning-compass-self-evolution",
-  "native_adapter": {"plugin": "compass-native", "profile": "default", "toolset": "compass_native", "source": "integrations/hermes-compass", "transport": "first-party site_request.py", "mcp_servers": false, "core_changes": false, "provider": "NotebookLM CLI", "discovery": "optional Exa; Tavily default preserved"},
+  "native_adapter": {
+    "plugin": "compass-native",
+    "profile": "default",
+    "toolset": "compass_native",
+    "source": "integrations/hermes-compass",
+    "transport": "first-party site_request.py",
+    "mcp_servers": false,
+    "core_changes": false,
+    "provider": "NotebookLM CLI",
+    "discovery": "optional Exa; Tavily default preserved"
+  },
   "agent_control": {
     "contract_version": "2026-08-31",
     "protocol": "learning-compass-agent-http/2",
     "context": "canonical Queue, completed Threads, profile and branch state, plus explicit component health; recommendation gaps come from /compass/context",
-    "tools": ["list_capabilities", "site_request"],
+    "tools": [
+      "list_capabilities",
+      "site_request"
+    ],
     "mutations": "dry-run plus required idempotency, high-risk confirmation/precondition, canonical readback, and receipt",
     "turn_ledger": {
       "owner": "learning-compass-site-operator/scripts/site_request.py",
@@ -20,37 +33,161 @@
     }
   },
   "skill_graph": {
-    "active": [
-      {"name": "learning-compass-operating-system", "path": "workflow/learning-compass-operating-system", "role": "router"},
-      {"name": "learning-compass-self-evolution", "path": "workflow/learning-compass-self-evolution", "role": "self_evolution"},
-      {"name": "learning-compass-site-operator", "path": "workflow/learning-compass-site-operator", "role": "api_execution"},
-      {"name": "recommendations-worker-ops", "path": "workflow/recommendations-worker-ops", "role": "product_operations"},
-      {"name": "cloudflare-ai-pipeline-operations", "path": "devops/cloudflare-ai-pipeline-operations", "role": "cloudflare_ai_media_operations"},
-      {"name": "taste-mapper", "path": "taste-mapper", "role": "feedback_profile"},
-      {"name": "taste-rec", "path": "personal/taste-rec", "role": "recommendations"},
-      {"name": "learning-notes-extractor", "path": "learning-notes-extractor", "role": "notes_units_recall"},
-      {"name": "lite-visual", "path": "lite-visual", "role": "reading_companions"},
-      {"name": "arab-writer", "path": "arab-writer", "role": "arabic_writing"},
-      {"name": "visual-mind", "path": "visual-mind", "role": "standalone_code_diagrams_only"},
-      {"name": "notebooklm", "path": "notebooklm", "role": "grounding_studio"},
-      {"name": "rss-feed", "path": "productivity/rss-feed", "role": "feeds"},
-      {"name": "agent-cli-delegation", "path": "workflow/agent-cli-delegation", "role": "explicit_agy_delegation"},
-      {"name": "youtube-playlist-verification", "path": "workflow/youtube-playlist-verification", "role": "youtube_source_verification"},
-      {"name": "media-transcription-systems", "path": "media/media-transcription-systems", "role": "caption_first_timed_media_transcription"},
-      {"name": "learning-thread-authoring", "path": "learning/learning-thread-authoring", "role": "thread_authoring"},
-      {"name": "riyadh-salihin-al-badr", "path": "learning/riyadh-salihin-al-badr", "role": "riyadh_salihin_course_operations"},
-      {"name": "progressive-learning-curriculum", "path": "learning/progressive-learning-curriculum", "role": "curriculum_design"},
-      {"name": "learning-compass-source-ingestion", "path": "workflow/learning-compass-source-ingestion", "role": "capture_triage"},
-      {"name": "learning-hub-companion-authoring", "path": "learning/learning-hub-companion-authoring", "role": "hub_companion_source_routing"},
-      {"name": "compass-recommendation-workflows", "path": "learning/compass-recommendation-workflows", "role": "multi_item_recommendations"},
-      {"name": "hermes-configuration-operations", "path": "workflow/hermes-configuration-operations", "role": "hermes_configuration"},
-      {"name": "learning-compass-feedback-corrections", "path": "workflow/learning-compass-feedback-corrections", "role": "feedback_state_repair"},
-      {"name": "learning-compass-foundation-curation", "path": "workflow/learning-compass-foundation-curation", "role": "foundation_branch_curation"},
-      {"name": "learning-compass-job-backlog-operations", "path": "workflow/learning-compass-job-backlog-operations", "role": "job_backlog_operations"}
-      ,{"name": "hermes-learning-compass", "path": "workflow/hermes-learning-compass", "role": "reference_index"}
-      ,{"name": "epub-repair", "path": "workflow/epub-repair", "role": "epub_repair"}
+    "additional_native_skills": [
+      "impeccable",
+      "linux-computer-use",
+      "cua-driver"
     ],
-    "retired": ["taste-enhancer", "compass-queue-fill", "learning-compass-curator-policy", "master-editorial-synthesis", "learning-thread-curation", "learning-compass-bridge"]
+    "active": [
+      {
+        "name": "learning-compass-operating-system",
+        "path": "workflow/learning-compass-operating-system",
+        "role": "router"
+      },
+      {
+        "name": "learning-compass-self-evolution",
+        "path": "workflow/learning-compass-self-evolution",
+        "role": "self_evolution"
+      },
+      {
+        "name": "learning-compass-site-operator",
+        "path": "workflow/learning-compass-site-operator",
+        "role": "api_execution"
+      },
+      {
+        "name": "recommendations-worker-ops",
+        "path": "workflow/recommendations-worker-ops",
+        "role": "product_operations"
+      },
+      {
+        "name": "cloudflare-ai-pipeline-operations",
+        "path": "devops/cloudflare-ai-pipeline-operations",
+        "role": "cloudflare_ai_media_operations"
+      },
+      {
+        "name": "taste-mapper",
+        "path": "taste-mapper",
+        "role": "feedback_profile"
+      },
+      {
+        "name": "taste-rec",
+        "path": "personal/taste-rec",
+        "role": "recommendations"
+      },
+      {
+        "name": "learning-notes-extractor",
+        "path": "learning-notes-extractor",
+        "role": "notes_units_recall"
+      },
+      {
+        "name": "lite-visual",
+        "path": "lite-visual",
+        "role": "reading_companions"
+      },
+      {
+        "name": "arab-writer",
+        "path": "arab-writer",
+        "role": "arabic_writing"
+      },
+      {
+        "name": "visual-mind",
+        "path": "visual-mind",
+        "role": "standalone_code_diagrams_only"
+      },
+      {
+        "name": "notebooklm",
+        "path": "notebooklm",
+        "role": "grounding_studio"
+      },
+      {
+        "name": "rss-feed",
+        "path": "productivity/rss-feed",
+        "role": "feeds"
+      },
+      {
+        "name": "agent-cli-delegation",
+        "path": "workflow/agent-cli-delegation",
+        "role": "explicit_agy_delegation"
+      },
+      {
+        "name": "youtube-playlist-verification",
+        "path": "workflow/youtube-playlist-verification",
+        "role": "youtube_source_verification"
+      },
+      {
+        "name": "media-transcription-systems",
+        "path": "media/media-transcription-systems",
+        "role": "caption_first_timed_media_transcription"
+      },
+      {
+        "name": "learning-thread-authoring",
+        "path": "learning/learning-thread-authoring",
+        "role": "thread_authoring"
+      },
+      {
+        "name": "riyadh-salihin-al-badr",
+        "path": "learning/riyadh-salihin-al-badr",
+        "role": "riyadh_salihin_course_operations"
+      },
+      {
+        "name": "progressive-learning-curriculum",
+        "path": "learning/progressive-learning-curriculum",
+        "role": "curriculum_design"
+      },
+      {
+        "name": "learning-compass-source-ingestion",
+        "path": "workflow/learning-compass-source-ingestion",
+        "role": "capture_triage"
+      },
+      {
+        "name": "learning-hub-companion-authoring",
+        "path": "learning/learning-hub-companion-authoring",
+        "role": "hub_companion_source_routing"
+      },
+      {
+        "name": "compass-recommendation-workflows",
+        "path": "learning/compass-recommendation-workflows",
+        "role": "multi_item_recommendations"
+      },
+      {
+        "name": "hermes-configuration-operations",
+        "path": "workflow/hermes-configuration-operations",
+        "role": "hermes_configuration"
+      },
+      {
+        "name": "learning-compass-feedback-corrections",
+        "path": "workflow/learning-compass-feedback-corrections",
+        "role": "feedback_state_repair"
+      },
+      {
+        "name": "learning-compass-foundation-curation",
+        "path": "workflow/learning-compass-foundation-curation",
+        "role": "foundation_branch_curation"
+      },
+      {
+        "name": "learning-compass-job-backlog-operations",
+        "path": "workflow/learning-compass-job-backlog-operations",
+        "role": "job_backlog_operations"
+      },
+      {
+        "name": "hermes-learning-compass",
+        "path": "workflow/hermes-learning-compass",
+        "role": "reference_index"
+      },
+      {
+        "name": "epub-repair",
+        "path": "workflow/epub-repair",
+        "role": "epub_repair"
+      }
+    ],
+    "retired": [
+      "taste-enhancer",
+      "compass-queue-fill",
+      "learning-compass-curator-policy",
+      "master-editorial-synthesis",
+      "learning-thread-curation",
+      "learning-compass-bridge"
+    ]
   },
   "canonical_sources": {
     "structured_state": "D1",
@@ -67,7 +204,10 @@
     "learning_compass_api_token_required": false,
     "browser_session_exchange": false,
     "access": "open Worker reads and writes",
-    "dedicated_boundaries": ["telegram_webhook", "external_provider_secrets"],
+    "dedicated_boundaries": [
+      "telegram_webhook",
+      "external_provider_secrets"
+    ],
     "local_write_bypass": "explicit ALLOW_UNAUTHENTICATED_LOCAL_WRITES=true bypasses only the in-process write-rate limiter on exact loopback unsafe requests; forbidden in production"
   },
   "runtime_budgets": {
@@ -75,11 +215,11 @@
       "default_telegram": "docs/hermes-prompt-budget.json"
     },
     "default_telegram": {
-      "max_system_prompt_bytes": 25723,
+      "max_system_prompt_bytes": 52000,
       "max_tool_schema_bytes": 24098,
-      "max_fixed_payload_bytes": 49821,
-      "max_skills_index_bytes": 2927,
-      "exact_tools": 13
+      "max_fixed_payload_bytes": 76098,
+      "max_skills_index_bytes": 3600,
+      "exact_tools": 15
     },
     "memory_chars": {
       "MEMORY.md": 2200,
@@ -104,7 +244,12 @@
     "self_evolution": {
       "enabled": true,
       "scope": "verified_system_improvement",
-      "trigger": ["specialist evolution handoff", "observed skill failure", "validated better path", "explicit audit"],
+      "trigger": [
+        "specialist evolution handoff",
+        "observed skill failure",
+        "validated better path",
+        "explicit audit"
+      ],
       "automatic_when": [
         "the current conversation provides evidence",
         "the improvement is reversible and narrowly scoped",
@@ -116,7 +261,14 @@
       "skill_source_edits": "automatic_after_replay_or_test_gate_in_active_conversation",
       "code_schema_workflow_edits": "automatic_after_full_verification_in_active_conversation",
       "deployment": "automatic_after_release_verification_with_observed_live_smoke",
-      "never": ["unverified rules", "silent policy weakening", "destructive deletion", "external publication", "scheduled self-improvement", "background self-improvement"]
+      "never": [
+        "unverified rules",
+        "silent policy weakening",
+        "destructive deletion",
+        "external publication",
+        "scheduled self-improvement",
+        "background self-improvement"
+      ]
     },
     "feedback": "preserve the exact reflection plus completion_state, reason_tags, expected, actual, effort, length_minutes, rating, and separate disposition; in_progress/not_now is neutral, stopped requires a reason, Compass exposure retains branch/domain/lane/target context, every write returns a receipt, proposals or evidence-backed no_change follow profile_v2 policy, and feedback never recommends",
     "recommendation_objective": "learning_value_v2: available rating 25%, explicit disposition 25%, strongest downstream evidence 50%; administrative exclusion and not_now are non-utility",
@@ -151,18 +303,49 @@
   "side_effect_tiers": {
     "automatic": {
       "requires": "active conversation plus profile_v2 evidence policy, or fully verified reversible system change",
-      "allows": ["profile", "map", "scoring", "feedback receipts", "durable job completion", "verified skills", "verified prompts", "verified code", "verified tests", "additive schema migrations", "verified workflows", "verified Learning Compass deployment"]
+      "allows": [
+        "profile",
+        "map",
+        "scoring",
+        "feedback receipts",
+        "durable job completion",
+        "verified skills",
+        "verified prompts",
+        "verified code",
+        "verified tests",
+        "additive schema migrations",
+        "verified workflows",
+        "verified Learning Compass deployment"
+      ]
     },
     "proposal_only": {
       "requires": "reviewable proposal and evidence receipt",
-      "allows": ["broad or insufficiently verified skills", "prompts", "code", "tests", "schema", "runtime configuration"]
+      "allows": [
+        "broad or insufficiently verified skills",
+        "prompts",
+        "code",
+        "tests",
+        "schema",
+        "runtime configuration"
+      ]
     },
     "explicit_only": {
       "requires": "separate explicit user instruction for the exact target",
-      "allows": ["destructive deletion", "external publication"]
+      "allows": [
+        "destructive deletion",
+        "external publication"
+      ]
     }
   },
-  "specialist_receipt": ["intent", "target", "before", "mutation_or_job", "after", "evidence", "blocker"],
+  "specialist_receipt": [
+    "intent",
+    "target",
+    "before",
+    "mutation_or_job",
+    "after",
+    "evidence",
+    "blocker"
+  ],
   "response_presentation": {
     "evidence": "Preserve exact identifiers, before/after state, verification, and blockers in the existing operation receipt or specialist handoff.",
     "user_reply": "Explain the verified outcome naturally, with material limitations and blockers. Include internal IDs when requested or useful for inspection; no mandatory seven-field template or literal label.",
@@ -170,151 +353,589 @@
     "verification": "Presentation never substitutes for canonical readback or permits invented success."
   },
   "route_ownership": {
-    "GET /agent/capabilities": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /agent/system": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /agent/context": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /agent/briefing": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /agent/activity": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /agent/memory/context": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /compass/context": {"owner": "taste-rec", "permission": "explicit_recommendation_research"},
-    "POST /compass/semantic/index": {"owner": "taste-rec", "permission": "explicit_changed_internal_document_indexing"},
-    "POST /feedback/record": {"owner": "learning-compass-operating-system", "permission": "explicit_feedback"},
-    "GET /learning/core/hub": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_hub_read"},
-    "GET /notes/hub": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_hub_read"},
-    "GET /artifacts/:id/record": {"owner": "learning-compass-site-operator", "permission": "read_exact_file_metadata"},
-    "GET /artifacts/hub": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_hub_read"},
-    "GET /learning/core/threads/:id/path": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_hub_read"},
-    "GET /learning/core/threads/:id/material-sources": {"owner": "learning-compass-site-operator", "permission": "library_first_material_search"},
-    "POST /learning/core/threads/:id/stages/:stageId/start": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_progression"},
-    "POST /learning/core/threads": {"owner": "learning-compass-operating-system", "permission": "explicit_learning_objective_with_interview_brief"},
-    "POST /learning/core/threads/:id/stages": {"owner": "learning-compass-site-operator", "permission": "explicit_curriculum_authoring"},
-    "PATCH /learning/core/threads/:id/stages/:stageId": {"owner": "learning-compass-site-operator", "permission": "explicit_curriculum_authoring"},
-    "POST /learning/core/threads/:id/stages/:stageId/sources": {"owner": "learning-compass-site-operator", "permission": "explicit_structure_preserving_source_attachment"},
-    "PATCH /learning/core/threads/:id/stages/:stageId/sources/:sourceId": {"owner": "learning-compass-site-operator", "permission": "explicit_material_placement_edit"},
-    "DELETE /learning/core/threads/:id/stages/:stageId/sources/:sourceId": {"owner": "learning-compass-site-operator", "permission": "reversible_source_detachment"},
-    "GET /learning/core/threads": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_thread_read"},
-    "GET /learning/core/threads/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_thread_read"},
-    "GET /learning/core/threads/:id/export": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_thread_export"},
-    "GET /learning/core/weekly": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_thread_read"},
-    "GET /learning/core/counterevidence": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_thread_read"},
-    "PATCH /learning/core/threads/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_thread_authoring"},
-    "POST /learning/core/threads/:id/status": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_thread_lifecycle"},
-    "POST /learning/core/threads/:id/sources": {"owner": "learning-compass-site-operator", "permission": "explicit_structure_preserving_source_attachment"},
-    "PATCH /learning/core/threads/:id/sources/:sourceId": {"owner": "learning-compass-site-operator", "permission": "explicit_material_placement_edit"},
-    "DELETE /learning/core/threads/:id/sources/:sourceId": {"owner": "learning-compass-site-operator", "permission": "reversible_source_detachment"},
-    "DELETE /learning/core/threads/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_irreversible_exact_thread_deletion"},
-    "PATCH /learning/core/threads/:id/lessons/:lessonId": {"owner": "learning-compass-site-operator", "permission": "explicit_curriculum_authoring"},
-    "POST /learning/core/threads/:id/lessons/:lessonId/sources": {"owner": "learning-compass-site-operator", "permission": "explicit_structure_preserving_source_attachment"},
-    "PATCH /learning/core/threads/:id/lessons/:lessonId/sources/:sourceId": {"owner": "learning-compass-site-operator", "permission": "explicit_material_placement_edit"},
-    "DELETE /learning/core/threads/:id/lessons/:lessonId/sources/:sourceId": {"owner": "learning-compass-site-operator", "permission": "reversible_source_detachment"},
-    "GET /learning/core/threads/:id/lessons/:lessonId/material-request": {"owner": "learning-compass-site-operator", "permission": "read_exact_explicit_material_request"},
-    "POST /learning/core/threads/:id/lessons/:lessonId/material-request": {"owner": "learning-compass-site-operator", "permission": "explicit_library_first_material_research_only"},
-    "PATCH /learning/core/threads/:id/projects/:projectId": {"owner": "learning-compass-site-operator", "permission": "optional_project_metadata_only"},
-    "GET /learning/core/units/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_thread_read"},
-    "POST /learning/core/units": {"owner": "learning-compass-site-operator", "permission": "explicit_anchored_unit_creation"},
-    "POST /learning/core/units/:id/relations": {"owner": "learning-compass-site-operator", "permission": "explicit_anchored_semantic_relation"},
-    "GET /learning/core/contradictions": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "PATCH /learning/core/contradictions/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_reversible_contradiction_review"},
-    "GET /notes/:id": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "POST /notes": {"owner": "learning-compass-site-operator", "permission": "explicit_source_anchored_note_creation"},
-    "DELETE /notes/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_irreversible_exact_note_deletion"},
-    "POST /notes/:id/distillation/highlights": {"owner": "learning-compass-site-operator", "permission": "explicit_user_claim_highlight"},
-    "POST /notes/:id/distillation/syntheses": {"owner": "learning-compass-site-operator", "permission": "explicit_user_synthesis_revision"},
-    "POST /notes/:id/distillation/highlights/:highlightId/promote": {"owner": "learning-compass-site-operator", "permission": "explicit_anchored_unit_promotion"},
-    "GET /learning/srs/cards/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_recall_read"},
-    "GET /learning/srs/repair": {"owner": "learning-compass-site-operator", "permission": "explicit_recall_repair_read"},
-    "PUT /learning/srs/cards/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_arabic_recall_revision"},
-    "POST /learning/srs/cards/:id/status": {"owner": "learning-compass-site-operator", "permission": "explicit_reversible_recall_status"},
-    "POST /learning/srs/cards/:id/reset": {"owner": "learning-compass-site-operator", "permission": "explicit_confirmed_schedule_reset"},
-    "PUT /srs/drafts/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_arabic_recall_edit"},
-    "POST /learning/srs/create": {"owner": "learning-compass-site-operator", "permission": "explicit_arabic_recall_creation"},
-    "POST /learning/srs/review": {"owner": "learning-compass-site-operator", "permission": "learner_supplied_or_confirmed_recall_only"},
-    "POST /recommendations/map": {"owner": "learning-compass-site-operator", "permission": "explicit_map_maintenance"},
-    "POST /feedback/proposals/:id/approve": {"owner": "learning-compass-site-operator", "permission": "explicit_user_override"},
-    "POST /feedback/proposals/:id/apply": {"owner": "taste-mapper", "permission": "profile_v2_policy"},
-    "POST /feedback/proposals/:id/revert": {"owner": "learning-compass-site-operator", "permission": "reversible_profile_change"},
-    "GET /brain/profile/intelligence": {"owner": "learning-compass-operating-system", "permission": "read"},
-    "GET /brain/branch-deck": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /brain/branches/:id/items": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /brain/resurfacing": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "PATCH /brain/resurfacing/:recommendationId/preference": {"owner": "learning-compass-site-operator", "permission": "explicit_resurfacing_preference"},
-    "POST /brain/resurfacing/presentations": {"owner": "learning-compass-site-operator", "permission": "exact_rendered_source_observation"},
-    "POST /brain/resurfacing/:eventId/action": {"owner": "learning-compass-site-operator", "permission": "explicit_resurfacing_action"},
-    "GET /capture/queue": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /capture/personal": {"owner": "learning-compass-site-operator", "permission": "read_personal_library"},
-    "GET /capture/personal/:id": {"owner": "learning-compass-site-operator", "permission": "read_exact_personal_record"},
-    "POST /capture/personal": {"owner": "learning-compass-site-operator", "permission": "explicit_branch_verified_personal_create"},
-    "PATCH /capture/personal/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_personal_edit_with_readback"},
-    "POST /assistant/interpret": {"owner": "learning-compass-site-operator", "permission": "explicit_personal_assistant_interpretation_no_write"},
-    "GET /hardcover": {"owner": "learning-compass-site-operator", "permission": "read_hardcover_mirror"},
-    "POST /hardcover/sync": {"owner": "learning-compass-site-operator", "permission": "explicit_hardcover_sync"},
-    "POST /hardcover/import": {"owner": "learning-compass-site-operator", "permission": "explicit_branch_verified_hardcover_import"},
-    "GET /capture/:id/record": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /recommendations/:id/source-health": {"owner": "learning-compass-site-operator", "permission": "read_advisory_source_health"},
-    "POST /recommendations/:id/source-health/check": {"owner": "learning-compass-site-operator", "permission": "explicit_current_url_verification"},
-    "POST /recommendations/:id/source-url/verify": {"owner": "learning-compass-site-operator", "permission": "explicit_replacement_candidate_verification_no_write"},
-    "PATCH /recommendations/:id/source-url": {"owner": "learning-compass-site-operator", "permission": "explicit_verified_guarded_source_replacement"},
-    "GET /annotations": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /annotations/resolve": {"owner": "learning-compass-site-operator", "permission": "resolve_existing_source_for_anchor"},
-    "POST /annotations": {"owner": "learning-compass-site-operator", "permission": "explicit_source_annotation"},
-    "GET /annotations/:id": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "PATCH /annotations/:id": {"owner": "learning-compass-site-operator", "permission": "explicit_source_annotation_edit"},
-    "POST /annotations/:id/archive": {"owner": "learning-compass-site-operator", "permission": "reversible_evidence_archive"},
-    "GET /search/evidence": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /notebooklm/learning/receipts": {"owner": "notebooklm", "permission": "explicit_notebooklm_learning_read"},
-    "POST /notebooklm/learning/route": {"owner": "notebooklm", "permission": "explicit_source_grounded_studio_request"},
-    "POST /notebooklm/learning/receipts": {"owner": "notebooklm", "permission": "exact_provider_observation_only"},
-    "POST /brain/branch-explanations": {"owner": "learning-compass-site-operator", "permission": "explicit_branch_metadata_update"},
-    "POST /capture/:id/branch-map": {"owner": "learning-compass-site-operator", "permission": "direct_high_confidence_source_mapping_with_readback"},
-    "POST /brain/branch-swipe": {"owner": "learning-compass-site-operator", "permission": "explicit_branch_decision"},
-    "POST /brain/branch-suggest": {"owner": "learning-compass-site-operator", "permission": "explicit_suggest_request"},
-    "PUT /brain/profile/assertions/:key": {"owner": "learning-compass-site-operator", "permission": "explicit_profile_edit"},
-    "POST /brain/profile/revisions/:id/revert": {"owner": "learning-compass-site-operator", "permission": "explicit_profile_undo"},
-    "GET /compass/pick": {"owner": "taste-rec", "permission": "explicit_recommendation"},
-    "GET /compass/pick/:id": {"owner": "taste-rec", "permission": "exact_recommendation_decision_readback"},
-    "POST /compass/picks": {"owner": "taste-rec", "permission": "explicit_recommendation"},
-    "POST /compass/pick/:id/candidates": {"owner": "taste-rec", "permission": "post_abstention_candidate_expansion"},
-    "POST /compass/evaluate": {"owner": "taste-rec", "permission": "shadow_dry_run"},
-    "POST /compass/pick/:id/start": {"owner": "learning-compass-site-operator", "permission": "explicit_start"},
-    "POST /compass/pick/:id/feedback": {"owner": "learning-compass-site-operator", "permission": "explicit_feedback"},
-    "GET /analytics/hermes/engine": {"owner": "learning-compass-self-evolution", "permission": "read"},
-    "POST /analytics/hermes/engine/activate": {"owner": "learning-compass-self-evolution", "permission": "evidence_gated_rollout"},
-    "POST /analytics/hermes/engine/rollback": {"owner": "learning-compass-self-evolution", "permission": "conversation_bound_rollback"},
-    "POST /analytics/hermes/recalibrate": {"owner": "learning-compass-self-evolution", "permission": "conversation_bound_evidence_gate"},
-    "GET /analytics/hermes/weekly": {"owner": "learning-compass-self-evolution", "permission": "read"},
-    "POST /analytics/hermes/evaluate": {"owner": "learning-compass-self-evolution", "permission": "conversation_bound_review_proposals"},
-    "POST /analytics/hermes/backfill": {"owner": "learning-compass-self-evolution", "permission": "dry_run_or_conversation_bound_apply"},
-    "GET /analytics/hermes/repair": {"owner": "learning-compass-self-evolution", "permission": "dry_run"},
-    "POST /analytics/hermes/repair": {"owner": "learning-compass-self-evolution", "permission": "snapshot_guarded"},
-    "GET /analytics/hermes/improvements": {"owner": "learning-compass-self-evolution", "permission": "read"},
-    "POST /analytics/hermes/improvements": {"owner": "learning-compass-self-evolution", "permission": "active_conversation"},
-    "POST /analytics/hermes/improvements/:id/complete": {"owner": "learning-compass-self-evolution", "permission": "verification_failure_or_no_change_gated"},
-    "POST /analytics/hermes/improvements/:id/revert": {"owner": "learning-compass-self-evolution", "permission": "rollback_receipt"},
-    "GET /agent/jobs": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /agent/jobs/active": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /agent/jobs/health": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "GET /agent/jobs/:id": {"owner": "learning-compass-site-operator", "permission": "read"},
-    "POST /agent/jobs/reconcile": {"owner": "recommendations-worker-ops", "permission": "explicit_conservative_job_reconciliation"},
-    "POST /agent/jobs/:id/claim": {"owner": "focused_specialist", "permission": "exact_job_only"},
-    "POST /agent/jobs/:id/heartbeat": {"owner": "focused_specialist", "permission": "claimed_live_lease_only"},
-    "POST /agent/jobs/:id/checkpoint": {"owner": "focused_specialist", "permission": "claimed_linear_job_only"},
-    "POST /agent/jobs/:id/complete": {"owner": "focused_specialist", "permission": "claimed_job_only"},
-    "POST /agent/jobs/:id/fail": {"owner": "focused_specialist", "permission": "claimed_job_only"},
-    "POST /agent/jobs/:id/replay": {"owner": "learning-compass-site-operator", "permission": "explicit_understood_failure_replay"},
-    "POST /agent/jobs/:id/cancel": {"owner": "learning-compass-site-operator", "permission": "explicit_pending_or_retrying_job_only"},
-    "GET /agent/memory": {"owner": "learning-compass-self-evolution", "permission": "read_or_verified_skill_evolution"},
-    "POST /agent/memory": {"owner": "learning-compass-self-evolution", "permission": "verified_skill_evolution_only"},
-    "POST /artifacts": {"owner": "learning-compass-site-operator", "permission": "explicit_media_request"},
-    "POST /artifacts/pairs": {"owner": "lite-visual", "permission": "validated_atomic_pair_only"},
-    "POST /artifacts/corpora": {"owner": "lite-visual", "permission": "exact_audited_corpus_stage_only"},
-    "GET /artifacts/corpora/:id": {"owner": "lite-visual", "permission": "exact_corpus_readback"},
-    "GET /artifacts/corpora/:id/pairs/:pairId": {"owner": "lite-visual", "permission": "exact_staged_pair_readback"},
-    "POST /artifacts/corpora/:id/activate": {"owner": "lite-visual", "permission": "complete_corpus_atomic_activation_only"},
-    "POST /artifacts/corpora/:id/abort": {"owner": "lite-visual", "permission": "exact_staging_corpus_abort_only"},
-    "POST /artifacts/corpora/:id/rollback": {"owner": "lite-visual", "permission": "exact_active_corpus_guarded_rollback_only"},
-    "GET /recommendations/books": {"owner": "learning-compass-site-operator", "permission": "explicit_books_read"},
-    "POST /recommendations/books/:id/chapters": {"owner": "learning-compass-site-operator", "permission": "explicit_book_chapter_metadata"},
-    "POST /recommendations/books/:id/chapters/:chapterKey/complete": {"owner": "learning-compass-site-operator", "permission": "explicit_book_chapter_completion"},
-    "npx wrangler deploy --config wrangler.toml": {"owner": "recommendations-worker-ops", "permission": "explicit_deployment"}
+    "GET /agent/capabilities": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /agent/system": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /agent/context": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /agent/briefing": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /agent/activity": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /agent/memory/context": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /compass/context": {
+      "owner": "taste-rec",
+      "permission": "explicit_recommendation_research"
+    },
+    "POST /compass/semantic/index": {
+      "owner": "taste-rec",
+      "permission": "explicit_changed_internal_document_indexing"
+    },
+    "POST /feedback/record": {
+      "owner": "learning-compass-operating-system",
+      "permission": "explicit_feedback"
+    },
+    "GET /learning/core/hub": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_learning_hub_read"
+    },
+    "GET /notes/hub": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_learning_hub_read"
+    },
+    "GET /artifacts/:id/record": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read_exact_file_metadata"
+    },
+    "GET /artifacts/hub": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_learning_hub_read"
+    },
+    "GET /learning/core/threads/:id/path": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_learning_hub_read"
+    },
+    "GET /learning/core/threads/:id/material-sources": {
+      "owner": "learning-compass-site-operator",
+      "permission": "library_first_material_search"
+    },
+    "POST /learning/core/threads/:id/stages/:stageId/start": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_learning_progression"
+    },
+    "POST /learning/core/threads": {
+      "owner": "learning-compass-operating-system",
+      "permission": "explicit_learning_objective_with_interview_brief"
+    },
+    "POST /learning/core/threads/:id/stages": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_curriculum_authoring"
+    },
+    "PATCH /learning/core/threads/:id/stages/:stageId": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_curriculum_authoring"
+    },
+    "POST /learning/core/threads/:id/stages/:stageId/sources": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_structure_preserving_source_attachment"
+    },
+    "PATCH /learning/core/threads/:id/stages/:stageId/sources/:sourceId": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_material_placement_edit"
+    },
+    "DELETE /learning/core/threads/:id/stages/:stageId/sources/:sourceId": {
+      "owner": "learning-compass-site-operator",
+      "permission": "reversible_source_detachment"
+    },
+    "GET /learning/core/threads": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_learning_thread_read"
+    },
+    "GET /learning/core/threads/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_learning_thread_read"
+    },
+    "GET /learning/core/threads/:id/export": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_learning_thread_export"
+    },
+    "GET /learning/core/weekly": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_learning_thread_read"
+    },
+    "GET /learning/core/counterevidence": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_learning_thread_read"
+    },
+    "PATCH /learning/core/threads/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_learning_thread_authoring"
+    },
+    "POST /learning/core/threads/:id/status": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_learning_thread_lifecycle"
+    },
+    "POST /learning/core/threads/:id/sources": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_structure_preserving_source_attachment"
+    },
+    "PATCH /learning/core/threads/:id/sources/:sourceId": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_material_placement_edit"
+    },
+    "DELETE /learning/core/threads/:id/sources/:sourceId": {
+      "owner": "learning-compass-site-operator",
+      "permission": "reversible_source_detachment"
+    },
+    "DELETE /learning/core/threads/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_irreversible_exact_thread_deletion"
+    },
+    "PATCH /learning/core/threads/:id/lessons/:lessonId": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_curriculum_authoring"
+    },
+    "POST /learning/core/threads/:id/lessons/:lessonId/sources": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_structure_preserving_source_attachment"
+    },
+    "PATCH /learning/core/threads/:id/lessons/:lessonId/sources/:sourceId": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_material_placement_edit"
+    },
+    "DELETE /learning/core/threads/:id/lessons/:lessonId/sources/:sourceId": {
+      "owner": "learning-compass-site-operator",
+      "permission": "reversible_source_detachment"
+    },
+    "GET /learning/core/threads/:id/lessons/:lessonId/material-request": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read_exact_explicit_material_request"
+    },
+    "POST /learning/core/threads/:id/lessons/:lessonId/material-request": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_library_first_material_research_only"
+    },
+    "PATCH /learning/core/threads/:id/projects/:projectId": {
+      "owner": "learning-compass-site-operator",
+      "permission": "optional_project_metadata_only"
+    },
+    "GET /learning/core/units/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_learning_thread_read"
+    },
+    "POST /learning/core/units": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_anchored_unit_creation"
+    },
+    "POST /learning/core/units/:id/relations": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_anchored_semantic_relation"
+    },
+    "GET /learning/core/contradictions": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "PATCH /learning/core/contradictions/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_reversible_contradiction_review"
+    },
+    "GET /notes/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "POST /notes": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_source_anchored_note_creation"
+    },
+    "DELETE /notes/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_irreversible_exact_note_deletion"
+    },
+    "POST /notes/:id/distillation/highlights": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_user_claim_highlight"
+    },
+    "POST /notes/:id/distillation/syntheses": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_user_synthesis_revision"
+    },
+    "POST /notes/:id/distillation/highlights/:highlightId/promote": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_anchored_unit_promotion"
+    },
+    "GET /learning/srs/cards/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_recall_read"
+    },
+    "GET /learning/srs/repair": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_recall_repair_read"
+    },
+    "PUT /learning/srs/cards/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_arabic_recall_revision"
+    },
+    "POST /learning/srs/cards/:id/status": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_reversible_recall_status"
+    },
+    "POST /learning/srs/cards/:id/reset": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_confirmed_schedule_reset"
+    },
+    "PUT /srs/drafts/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_arabic_recall_edit"
+    },
+    "POST /learning/srs/create": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_arabic_recall_creation"
+    },
+    "POST /learning/srs/review": {
+      "owner": "learning-compass-site-operator",
+      "permission": "learner_supplied_or_confirmed_recall_only"
+    },
+    "POST /recommendations/map": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_map_maintenance"
+    },
+    "POST /feedback/proposals/:id/approve": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_user_override"
+    },
+    "POST /feedback/proposals/:id/apply": {
+      "owner": "taste-mapper",
+      "permission": "profile_v2_policy"
+    },
+    "POST /feedback/proposals/:id/revert": {
+      "owner": "learning-compass-site-operator",
+      "permission": "reversible_profile_change"
+    },
+    "GET /brain/profile/intelligence": {
+      "owner": "learning-compass-operating-system",
+      "permission": "read"
+    },
+    "GET /brain/branch-deck": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /brain/branches/:id/items": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /brain/resurfacing": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "PATCH /brain/resurfacing/:recommendationId/preference": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_resurfacing_preference"
+    },
+    "POST /brain/resurfacing/presentations": {
+      "owner": "learning-compass-site-operator",
+      "permission": "exact_rendered_source_observation"
+    },
+    "POST /brain/resurfacing/:eventId/action": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_resurfacing_action"
+    },
+    "GET /capture/queue": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /capture/personal": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read_personal_library"
+    },
+    "GET /capture/personal/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read_exact_personal_record"
+    },
+    "POST /capture/personal": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_branch_verified_personal_create"
+    },
+    "PATCH /capture/personal/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_personal_edit_with_readback"
+    },
+    "POST /assistant/interpret": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_personal_assistant_interpretation_no_write"
+    },
+    "GET /hardcover": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read_hardcover_mirror"
+    },
+    "POST /hardcover/sync": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_hardcover_sync"
+    },
+    "POST /hardcover/import": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_branch_verified_hardcover_import"
+    },
+    "GET /capture/:id/record": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /recommendations/:id/source-health": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read_advisory_source_health"
+    },
+    "POST /recommendations/:id/source-health/check": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_current_url_verification"
+    },
+    "POST /recommendations/:id/source-url/verify": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_replacement_candidate_verification_no_write"
+    },
+    "PATCH /recommendations/:id/source-url": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_verified_guarded_source_replacement"
+    },
+    "GET /annotations": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /annotations/resolve": {
+      "owner": "learning-compass-site-operator",
+      "permission": "resolve_existing_source_for_anchor"
+    },
+    "POST /annotations": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_source_annotation"
+    },
+    "GET /annotations/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "PATCH /annotations/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_source_annotation_edit"
+    },
+    "POST /annotations/:id/archive": {
+      "owner": "learning-compass-site-operator",
+      "permission": "reversible_evidence_archive"
+    },
+    "GET /search/evidence": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /notebooklm/learning/receipts": {
+      "owner": "notebooklm",
+      "permission": "explicit_notebooklm_learning_read"
+    },
+    "POST /notebooklm/learning/route": {
+      "owner": "notebooklm",
+      "permission": "explicit_source_grounded_studio_request"
+    },
+    "POST /notebooklm/learning/receipts": {
+      "owner": "notebooklm",
+      "permission": "exact_provider_observation_only"
+    },
+    "POST /brain/branch-explanations": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_branch_metadata_update"
+    },
+    "POST /capture/:id/branch-map": {
+      "owner": "learning-compass-site-operator",
+      "permission": "direct_high_confidence_source_mapping_with_readback"
+    },
+    "POST /brain/branch-swipe": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_branch_decision"
+    },
+    "POST /brain/branch-suggest": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_suggest_request"
+    },
+    "PUT /brain/profile/assertions/:key": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_profile_edit"
+    },
+    "POST /brain/profile/revisions/:id/revert": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_profile_undo"
+    },
+    "GET /compass/pick": {
+      "owner": "taste-rec",
+      "permission": "explicit_recommendation"
+    },
+    "GET /compass/pick/:id": {
+      "owner": "taste-rec",
+      "permission": "exact_recommendation_decision_readback"
+    },
+    "POST /compass/picks": {
+      "owner": "taste-rec",
+      "permission": "explicit_recommendation"
+    },
+    "POST /compass/pick/:id/candidates": {
+      "owner": "taste-rec",
+      "permission": "post_abstention_candidate_expansion"
+    },
+    "POST /compass/evaluate": {
+      "owner": "taste-rec",
+      "permission": "shadow_dry_run"
+    },
+    "POST /compass/pick/:id/start": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_start"
+    },
+    "POST /compass/pick/:id/feedback": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_feedback"
+    },
+    "GET /analytics/hermes/engine": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "read"
+    },
+    "POST /analytics/hermes/engine/activate": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "evidence_gated_rollout"
+    },
+    "POST /analytics/hermes/engine/rollback": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "conversation_bound_rollback"
+    },
+    "POST /analytics/hermes/recalibrate": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "conversation_bound_evidence_gate"
+    },
+    "GET /analytics/hermes/weekly": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "read"
+    },
+    "POST /analytics/hermes/evaluate": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "conversation_bound_review_proposals"
+    },
+    "POST /analytics/hermes/backfill": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "dry_run_or_conversation_bound_apply"
+    },
+    "GET /analytics/hermes/repair": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "dry_run"
+    },
+    "POST /analytics/hermes/repair": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "snapshot_guarded"
+    },
+    "GET /analytics/hermes/improvements": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "read"
+    },
+    "POST /analytics/hermes/improvements": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "active_conversation"
+    },
+    "POST /analytics/hermes/improvements/:id/complete": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "verification_failure_or_no_change_gated"
+    },
+    "POST /analytics/hermes/improvements/:id/revert": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "rollback_receipt"
+    },
+    "GET /agent/jobs": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /agent/jobs/active": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /agent/jobs/health": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "GET /agent/jobs/:id": {
+      "owner": "learning-compass-site-operator",
+      "permission": "read"
+    },
+    "POST /agent/jobs/reconcile": {
+      "owner": "recommendations-worker-ops",
+      "permission": "explicit_conservative_job_reconciliation"
+    },
+    "POST /agent/jobs/:id/claim": {
+      "owner": "focused_specialist",
+      "permission": "exact_job_only"
+    },
+    "POST /agent/jobs/:id/heartbeat": {
+      "owner": "focused_specialist",
+      "permission": "claimed_live_lease_only"
+    },
+    "POST /agent/jobs/:id/checkpoint": {
+      "owner": "focused_specialist",
+      "permission": "claimed_linear_job_only"
+    },
+    "POST /agent/jobs/:id/complete": {
+      "owner": "focused_specialist",
+      "permission": "claimed_job_only"
+    },
+    "POST /agent/jobs/:id/fail": {
+      "owner": "focused_specialist",
+      "permission": "claimed_job_only"
+    },
+    "POST /agent/jobs/:id/replay": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_understood_failure_replay"
+    },
+    "POST /agent/jobs/:id/cancel": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_pending_or_retrying_job_only"
+    },
+    "GET /agent/memory": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "read_or_verified_skill_evolution"
+    },
+    "POST /agent/memory": {
+      "owner": "learning-compass-self-evolution",
+      "permission": "verified_skill_evolution_only"
+    },
+    "POST /artifacts": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_media_request"
+    },
+    "POST /artifacts/pairs": {
+      "owner": "lite-visual",
+      "permission": "validated_atomic_pair_only"
+    },
+    "POST /artifacts/corpora": {
+      "owner": "lite-visual",
+      "permission": "exact_audited_corpus_stage_only"
+    },
+    "GET /artifacts/corpora/:id": {
+      "owner": "lite-visual",
+      "permission": "exact_corpus_readback"
+    },
+    "GET /artifacts/corpora/:id/pairs/:pairId": {
+      "owner": "lite-visual",
+      "permission": "exact_staged_pair_readback"
+    },
+    "POST /artifacts/corpora/:id/activate": {
+      "owner": "lite-visual",
+      "permission": "complete_corpus_atomic_activation_only"
+    },
+    "POST /artifacts/corpora/:id/abort": {
+      "owner": "lite-visual",
+      "permission": "exact_staging_corpus_abort_only"
+    },
+    "POST /artifacts/corpora/:id/rollback": {
+      "owner": "lite-visual",
+      "permission": "exact_active_corpus_guarded_rollback_only"
+    },
+    "GET /recommendations/books": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_books_read"
+    },
+    "POST /recommendations/books/:id/chapters": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_book_chapter_metadata"
+    },
+    "POST /recommendations/books/:id/chapters/:chapterKey/complete": {
+      "owner": "learning-compass-site-operator",
+      "permission": "explicit_book_chapter_completion"
+    },
+    "npx wrangler deploy --config wrangler.toml": {
+      "owner": "recommendations-worker-ops",
+      "permission": "explicit_deployment"
+    }
   }
 }

@@ -78,10 +78,22 @@ test('Preferences keeps one indexed decision canvas with an in-flow preview befo
   const mainIndex = settingsSource.indexOf('<div class="preferences-main">', layoutStart)
   const previewIndex = settingsSource.indexOf('<section class="preferences-preview-stage"', mainIndex)
   const presetIndex = settingsSource.indexOf('<section class="visual-presets-section"', previewIndex)
-  assert.ok(layoutStart >= 0 && indexStart > layoutStart && mainIndex > indexStart && previewIndex > mainIndex && presetIndex > previewIndex)
-  assert.match(studioCss, /\.preferences-page \.preferences-layout \{[\s\S]*grid-template-columns: 210px minmax\(0, 1fr\);/)
+  assert.ok(
+    layoutStart >= 0 &&
+      indexStart > layoutStart &&
+      mainIndex > indexStart &&
+      previewIndex > mainIndex &&
+      presetIndex > previewIndex,
+  )
+  assert.match(
+    studioCss,
+    /\.preferences-page \.preferences-layout \{[\s\S]*grid-template-columns: 210px minmax\(0, 1fr\);/,
+  )
   assert.match(studioCss, /\.preferences-index \{[\s\S]*position: sticky;/)
-  assert.match(studioCss, /@media \(max-width: 880px\)[\s\S]*\.preferences-index \.settings-jump-nav \{[\s\S]*display: flex;/)
+  assert.match(
+    studioCss,
+    /@media \(max-width: 880px\)[\s\S]*\.preferences-index \.settings-jump-nav \{[\s\S]*display: flex;/,
+  )
 })
 
 test('custom theme workshop audits rendered tokens and keeps transfer tools progressive', () => {

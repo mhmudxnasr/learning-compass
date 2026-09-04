@@ -32,12 +32,7 @@ import analyticsApi from './api/analytics'
 import learningCoreApi from './api/learning-core'
 import canonApi from './api/canon'
 import annotationsApi from './api/annotations'
-import {
-  DAILY_READ_BUDGET,
-  DAILY_WRITE_BUDGET,
-  reserveFreeTierBudget,
-  secondsUntilUtcReset,
-} from './services/free-tier-budget'
+import { describeFreeTierUsage, reserveFreeTierBudget, secondsUntilUtcReset } from './services/free-tier-budget'
 import { DURABLE_UNKNOWN_MUTATION_EXPIRES_AT, mutationReservationDisposition } from './services/mutation-recovery'
 import {
   classifyShareIntake,
@@ -403,16 +398,7 @@ app.get('/health/free-tier-budget', async (c) => {
   ).first<any>()
   return c.json({
     day_utc: new Date().toISOString().slice(0, 10),
-    reads: {
-      estimated: Number(usage?.estimated_rows_read || 0),
-      budget: DAILY_READ_BUDGET,
-      cloudflare_limit: 5_000_000,
-    },
-    writes: {
-      estimated: Number(usage?.estimated_rows_written || 0),
-      budget: DAILY_WRITE_BUDGET,
-      cloudflare_limit: 100_000,
-    },
+    ...describeFreeTierUsage(usage || {}),
     requests: { reads: Number(usage?.read_requests || 0), writes: Number(usage?.write_requests || 0) },
     updated_at: usage?.updated_at || null,
   })

@@ -106,7 +106,7 @@ function MaterialDock({
   )
 }
 
-export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspaceProps) {
+export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: HomeWorkspaceProps) {
   const { data, error, loading, reload } = useData<LibraryRecord>('/dashboard/briefing')
   const { data: feedsData } = useData<{ feeds?: LibraryRecord[] }>('/capture/feeds')
   const { data: resurfacingData, reload: reloadResurfacing } = useData<{ item?: ResurfacingItem | null }>(

@@ -2002,7 +2002,7 @@ try {
   const globalArtifacts = await requestJson('/artifacts')
   if (globalArtifacts.artifacts.some((file) => file.id === hubUploadBody.id))
     throw new Error('global files list leaked a hub-owned file')
-  for (const [id, title] of [
+  for (const [id] of [
     [hubUploadBody.id, 'hub-path.txt'],
     [hubStageUploadBody.id, 'hub-stage.txt'],
     [chapterArtifact.id, 'artifact-only-chapter.html'],

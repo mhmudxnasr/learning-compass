@@ -203,6 +203,25 @@ test('mutation capability schemas match canonical Queue, feedback, personal, and
 })
 
 test('verification readbacks resolve srs, feedback, and batch targets exactly', () => {
+  const improvementRoutes = [
+    ['POST', '/analytics/hermes/improvements', 'Open a receipt'],
+    ['POST', '/analytics/hermes/improvements/:id/complete', 'Complete a receipt'],
+    ['POST', '/analytics/hermes/improvements/:id/revert', 'Revert a receipt'],
+  ] as const satisfies readonly CapabilityTuple[]
+  for (const capability of buildCapabilityCatalog(improvementRoutes)) {
+    assert.equal(capability.verification_path, '/analytics/hermes/improvements?id=:id')
+    assert.deepEqual(
+      resolveCapabilityReadbacks(
+        `${capability.method} ${capability.path}`,
+        capability.verification_path,
+        capability.path,
+        capability.path.replace(':id', 'improvement-1'),
+        {},
+        { id: 'improvement-1' },
+      ),
+      ['/analytics/hermes/improvements?id=improvement-1'],
+    )
+  }
   assert.deepEqual(
     resolveCapabilityReadbacks(
       'POST /capture/feeds/:id/sync',
@@ -265,6 +284,32 @@ test('verification readbacks resolve srs, feedback, and batch targets exactly', 
     ),
     ['/capture/rec-1/record', '/capture/rec-2/record'],
   )
+})
+
+test('improvement readback selects one exact receipt without changing the list response shape', async () => {
+  const app = (await vite.ssrLoadModule('/src/api/intelligence.ts')).default
+  let sql = ''
+  let params: unknown[] = []
+  const DB = {
+    prepare(query: string) {
+      sql = query
+      const statement = {
+        bind(...values: unknown[]) {
+          params = values
+          return statement
+        },
+        async all() {
+          return { results: [{ id: 'exact-receipt', evidence_json: '["observed"]' }] }
+        },
+      }
+      return statement
+    },
+  }
+  const response = await app.request('https://compass.test/analytics/hermes/improvements?id=exact-receipt', {}, { DB })
+  assert.equal(response.status, 200)
+  assert.match(sql, /WHERE id=\? LIMIT 1/)
+  assert.deepEqual(params, ['exact-receipt'])
+  assert.deepEqual((await response.json()).runs[0].evidence, ['observed'])
 })
 
 test('Compass creation, job lifecycle, and exact note deletion declare canonical readbacks', () => {

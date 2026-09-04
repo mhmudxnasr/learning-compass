@@ -396,8 +396,38 @@ const retiredSkills = contract.skill_graph?.retired || []
 if (activeSkills.length !== 28 || new Set(activeSkills.map((skill) => skill.name)).size !== activeSkills.length) {
   throw new Error('Canonical Hermes active skill graph is incomplete or duplicated')
 }
-for (const name of ['learning-compass-operating-system', 'learning-compass-self-evolution', 'learning-compass-site-operator', 'recommendations-worker-ops', 'cloudflare-ai-pipeline-operations', 'taste-mapper', 'taste-rec', 'learning-notes-extractor', 'lite-visual', 'arab-writer', 'visual-mind', 'notebooklm', 'rss-feed', 'agent-cli-delegation', 'youtube-playlist-verification', 'media-transcription-systems', 'learning-thread-authoring', 'riyadh-salihin-al-badr', 'progressive-learning-curriculum', 'learning-compass-source-ingestion', 'learning-hub-companion-authoring', 'compass-recommendation-workflows', 'hermes-configuration-operations', 'learning-compass-feedback-corrections', 'learning-compass-foundation-curation', 'learning-compass-job-backlog-operations', 'hermes-learning-compass', 'epub-repair']) {
-  if (!activeSkills.some((skill) => skill.name === name && skill.path && skill.role)) throw new Error(`Canonical active skill missing: ${name}`)
+for (const name of [
+  'learning-compass-operating-system',
+  'learning-compass-self-evolution',
+  'learning-compass-site-operator',
+  'recommendations-worker-ops',
+  'cloudflare-ai-pipeline-operations',
+  'taste-mapper',
+  'taste-rec',
+  'learning-notes-extractor',
+  'lite-visual',
+  'arab-writer',
+  'visual-mind',
+  'notebooklm',
+  'rss-feed',
+  'agent-cli-delegation',
+  'youtube-playlist-verification',
+  'media-transcription-systems',
+  'learning-thread-authoring',
+  'riyadh-salihin-al-badr',
+  'progressive-learning-curriculum',
+  'learning-compass-source-ingestion',
+  'learning-hub-companion-authoring',
+  'compass-recommendation-workflows',
+  'hermes-configuration-operations',
+  'learning-compass-feedback-corrections',
+  'learning-compass-foundation-curation',
+  'learning-compass-job-backlog-operations',
+  'hermes-learning-compass',
+  'epub-repair',
+]) {
+  if (!activeSkills.some((skill) => skill.name === name && skill.path && skill.role))
+    throw new Error(`Canonical active skill missing: ${name}`)
 }
 for (const name of [
   'taste-enhancer',
@@ -576,7 +606,10 @@ if (existsSync(localSkillsRoot)) {
     .map((file) => readFileSync(file, 'utf8').match(/^name:\s*([^\s]+)\s*$/m)?.[1])
     .filter(Boolean)
   const activeNames = new Set(activeSkills.map((skill) => skill.name))
-  const unownedEnabled = installedSkillNames.filter((name) => !activeNames.has(name) && !disabledSkills.has(name))
+  const nativeNames = new Set(contract.skill_graph.additional_native_skills || [])
+  const unownedEnabled = installedSkillNames.filter(
+    (name) => !activeNames.has(name) && !nativeNames.has(name) && !disabledSkills.has(name),
+  )
   if (unownedEnabled.length) throw new Error(`Unowned Hermes skills remain enabled: ${unownedEnabled.join(', ')}`)
 
   const relevantFiles = (dir) =>
@@ -650,15 +683,10 @@ if (existsSync(localSkillsRoot)) {
   }
 
   for (const [label, text] of [['default', configText]]) {
-    for (const requiredConfig of [
-      /default:\s*gpt-5\.6-sol/,
-      /provider:\s*openai-codex/,
-      /service_tier:\s*fast/,
-      /reasoning_effort:\s*medium/,
-      /model:\s*gpt-5\.6-terra/,
-      /model:\s*gpt-5\.6-luna/,
-    ])
-      if (!requiredConfig.test(text)) throw new Error(`${label} Hermes model configuration drift: ${requiredConfig}`)
+    // Model selection belongs to the native Hermes configuration. The actual
+    // configured tool schemas, memory loading, and prompt size are checked offline.
+    if (!/^model:\n(?:[ \t]+.*\n)*?[ \t]+default:\s*\S+/m.test(text))
+      throw new Error(`${label} Hermes has no configured default model`)
     if (/^mcp(?:_servers)?:/m.test(text)) throw new Error(`${label} Hermes profile has an unintended MCP registration`)
     if ([...text.matchAll(/^\s+webhook:\n\s+enabled:\s*false\s*$/gm)].length < 2)
       throw new Error(`${label} Hermes profile must keep the unused webhook listeners disabled`)

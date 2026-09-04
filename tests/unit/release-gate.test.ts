@@ -19,7 +19,7 @@ test('the combined release gate is complete and local-only', () => {
     "run('Fresh and idempotent migration rehearsal', 'npm', ['run', 'verify:migrations'])",
     "run('Agent control contract', 'npm', ['run', 'verify:agent-contract'])",
     'test_manager_routing_harness.py',
-    'assertMirror(skillPath)',
+    'assertNativeAdapter()',
     'assertNoRetiredClientAuth()',
     'assertNoRetiredReleaseDocsAuth()',
     'Retired Learning Compass auth credential remains in release documentation',
@@ -31,6 +31,12 @@ test('the combined release gate is complete and local-only', () => {
   assert.doesNotMatch(gate, /wrangler\s+(?:deploy|rollback)/)
   assert.doesNotMatch(gate, /--remote/)
   assert.doesNotMatch(gate, /backup:production/)
+  assert.doesNotMatch(gate, /profileSkills|assertMirror|profiles.*compass/)
+  assert.match(gate, /test_native\.py/)
+  assert.ok(
+    gate.indexOf("run('Production build") < gate.indexOf("run('Standalone Worker"),
+    'fresh worktrees must build assets before starting integration Workers',
+  )
 
   const deploy = read('scripts/deploy-release.mjs')
   assert.match(deploy, /npm', \['run', 'verify:release'\]/)

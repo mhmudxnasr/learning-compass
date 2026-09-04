@@ -7,7 +7,6 @@ import { join } from 'node:path'
 
 const validator = '/home/mahmud/.hermes/skills/lite-visual/scripts/validate_artifact.py'
 const uploader = '/home/mahmud/.hermes/skills/lite-visual/scripts/upload_pair.py'
-const extractor = '/home/mahmud/.hermes/skills/lite-visual/scripts/extract_source.py'
 const browserRenderer = '/home/mahmud/.hermes/skills/lite-visual/scripts/render_page.mjs'
 const publicUrlValidator = '/home/mahmud/.hermes/skills/lite-visual/scripts/validate_public_url.py'
 const scopeBuilder = '/home/mahmud/.hermes/skills/lite-visual/scripts/build_source_scope.py'

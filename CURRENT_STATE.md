@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Release integration — 2026-09-05 (verification in progress)
+
+The release candidate reconciles GitHub main with the primary checkout and outstanding Hardcover, resurfacing, Recall, item-page, Threads, Preferences, profile-presentation, native-Hermes, and production-lineage work. It preserves the modular client architecture and the exact applied migrations through `0076`. Older detached frontend prototypes remain recoverable and do not replace the current application. Every dirty worktree was preserved as a patch and untracked-file archive under `.tmp/release-20260905/worktree-snapshots`; the primary source snapshot is commit `5e997cc`.
+
+Integration fixes include native-only Hermes release checks with real offline tool-schema and memory-loading verification, exact guarded improvement-receipt readback, restored 4,000,000/70,000 daily D1 budgets and release-status evidence, source/file navigation across split Thread modules, portable native-tool tests, and building web assets before database integration tests. The installed PWA cache advances to v56. Initial verification passed 540 unit tests plus TypeScript and static checks; the final complete release gate and deployment are still pending. No production application or corpus was changed during integration.
+
 ## Current truth — 2026-09-05 (Arab Writer installed and connected)
 
 Mahmood requested Arab Writer for Arabic writing. The documentation-only installation at `~/.hermes/skills/arab-writer` preserves seven original Markdown resources from `turky015-oss/Arab-Writer` commit `664a21784520a6ed115561de4e647a2461e53792`, with package and file hashes in `upstream.json`. A 4,082-byte local entrypoint replaces the 16,531-byte upstream entrypoint for normal use; detailed references load only when needed. Codex links to the same native directory. Lite Visual, Arabic Notes Extractor explanations, project routing, the active skill registry, and durable USER preferences now use it.

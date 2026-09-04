@@ -12,3 +12,5 @@ package-lock.json
 schema.sql
 test-results/
 .wrangler/
+integrations/hermes-compass/plugin.yaml
+integrations/hermes-compass/skill-snapshots/

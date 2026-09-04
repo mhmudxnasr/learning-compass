@@ -257,20 +257,7 @@ const coverageSimilarity = (leftValue: unknown, rightValue: unknown) => {
 }
 
 const coverageCandidateText = (item: any) =>
-  [
-    item?.title,
-    item?.source_class,
-    item?.topic,
-    item?.branch_id,
-    item?.branch,
-    ...textList(item?.topics),
-    ...textList(item?.concepts),
-    ...textList(item?.mechanisms),
-    item?.mechanism,
-    item?.summary,
-  ]
-    .filter(Boolean)
-    .join(' ')
+  [candidateContextText(item), item?.branch, item?.mechanism].filter(Boolean).join(' ')
 
 export function matchThreadCoverage(item: any, anchors: ThreadCoverageAnchor[] = []): ThreadCoverageMatch | null {
   const candidate = coverageCandidateText(item)
@@ -280,7 +267,7 @@ export function matchThreadCoverage(item: any, anchors: ThreadCoverageAnchor[] =
     const phrase = exactEntityMatch(candidate, anchor.label)
     const topicScore = coverageSimilarity(candidate, anchor.label)
     const contextScore = coverageSimilarity(candidate, anchor.text)
-    const matched = phrase || topicScore >= 0.72 || (contextScore >= 0.78 && topicScore >= 0.34)
+    const matched = phrase || topicScore >= 0.72 || contextScore >= 0.78
     if (!matched) continue
     const score = phrase ? 1 : Math.max(topicScore, contextScore)
     const matchKind: ThreadCoverageMatch['matchKind'] = phrase ? 'phrase' : topicScore >= 0.72 ? 'topic' : 'context'

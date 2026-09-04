@@ -862,6 +862,9 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /agent/jobs/:id/heartbeat': '/agent/jobs/:id',
   'PUT /settings/:key': '/settings',
   'PUT /dashboard/layout': '/dashboard/layout',
+  'POST /analytics/hermes/improvements': '/analytics/hermes/improvements?id=:id',
+  'POST /analytics/hermes/improvements/:id/complete': '/analytics/hermes/improvements?id=:id',
+  'POST /analytics/hermes/improvements/:id/revert': '/analytics/hermes/improvements?id=:id',
 }
 
 const PRECONDITION_OVERRIDES: Record<string, string[]> = {
@@ -929,6 +932,7 @@ const PRECONDITION_PATH_OVERRIDES: Record<string, string> = {
 }
 
 const VERIFICATION_ID_SOURCES: Record<string, string[]> = {
+  'POST /analytics/hermes/improvements': ['response.id'],
   'POST /capture': ['response.id'],
   'POST /capture/personal': ['response.item.id'],
   'PATCH /capture/personal/:id': ['response.item.id'],

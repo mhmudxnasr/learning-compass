@@ -1,11 +1,12 @@
-import test from 'node:test'
+import nodeTest from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const scripts = '/home/mahmud/.hermes/skills/lite-visual/scripts'
+const test = existsSync(`${scripts}/validate_artifact.py`) ? nodeTest : nodeTest.skip
 const importValidator = `import sys; sys.path.insert(0,${JSON.stringify(scripts)}); import validate_artifact as v\n`
 function python(code: string) {
   const result = spawnSync('python3', ['-c', importValidator + code], { encoding: 'utf8' })
@@ -13,26 +14,38 @@ function python(code: string) {
   return result.stdout.trim()
 }
 const passage = 'الفكرة هنا إننا نفهم السبب خطوة بخطوة ونوضح إزاي النتيجة حصلت وإمتى التفسير ده يفضل صحيح.'
-const document = (css = '') => `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>شرح السبب والنتيجة</title><style>@page{size:A4;margin:18mm}body{font-family:Tahoma,sans-serif;font-size:18px;line-height:1.9;color:#111;background:#fff;margin:20px}h1,h2{line-height:1.4}p{overflow-wrap:anywhere}@media print{body{margin:0}}${css}</style></head><body><main><article data-canonical-content="true"><h1>إزاي نفهم السبب؟</h1><section id="explanation" data-source-scope="scope-01"><h2>السبب والنتيجة</h2><p>${passage}</p></section><section id="exact-source"><h2>النص الكامل للمصدر</h2><p data-exact-source-scope="scope-01">النص الأصلي بيعرض الفكرة والمثال والنتيجة والحدود عشان نقدر نراجع المعنى بدقة.</p></section></article></main></body></html>`
+const document = (css = '') =>
+  `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>شرح السبب والنتيجة</title><style>@page{size:A4;margin:18mm}body{font-family:Tahoma,sans-serif;font-size:18px;line-height:1.9;color:#111;background:#fff;margin:20px}h1,h2{line-height:1.4}p{overflow-wrap:anywhere}@media print{body{margin:0}}${css}</style></head><body><main><article data-canonical-content="true"><h1>إزاي نفهم السبب؟</h1><section id="explanation" data-source-scope="scope-01"><h2>السبب والنتيجة</h2><p>${passage}</p></section><section id="exact-source"><h2>النص الكامل للمصدر</h2><p data-exact-source-scope="scope-01">النص الأصلي بيعرض الفكرة والمثال والنتيجة والحدود عشان نقدر نراجع المعنى بدقة.</p></section></article></main></body></html>`
 
 for (const [name, css, mode] of [
   ['hidden authored explanation', '#explanation{display:none}', 'unreadable'],
   ['low-contrast authored explanation', '#explanation p{color:#fff}', 'unreadable'],
   ['print-only omission', '@media print{#explanation{display:none}}', 'print media'],
-  ['fixed-size text clipped after actual enlargement', '#explanation p{font-size:16px;line-height:24px;height:28px;overflow:hidden}', '200% text size'],
+  [
+    'fixed-size text clipped after actual enlargement',
+    '#explanation p{font-size:16px;line-height:24px;height:28px;overflow:hidden}',
+    '200% text size',
+  ],
 ]) {
   test(`reading gate rejects ${name} even when the complete source stays visible`, () => {
     const dir = mkdtempSync(join(tmpdir(), 'lite-teaching-browser-'))
     try {
       const html = join(dir, 'companion.html')
       // The enlargement fixture gets a single short line before resizing.
-      writeFileSync(html, name.startsWith('fixed-size') ? document(css).replace(passage, 'الشرح واضح ومقروء قبل تكبير حجم النص.') : document(css))
+      writeFileSync(
+        html,
+        name.startsWith('fixed-size')
+          ? document(css).replace(passage, 'الشرح واضح ومقروء قبل تكبير حجم النص.')
+          : document(css),
+      )
       const result = python(`from pathlib import Path
 try: v.check_browser(Path(${JSON.stringify(html)}),1)
 except v.ValidationError as e: print(e)
 else: raise AssertionError('unreadable authored content was accepted')`)
       assert.match(result, new RegExp(mode))
-    } finally { rmSync(dir, { recursive: true, force: true }) }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 }
 
@@ -115,7 +128,8 @@ with tempfile.TemporaryDirectory() as folder:
 test('PDF renderer produces tags/bookmarks and preserves an existing PDF when a resource is blocked', () => {
   const dir = mkdtempSync(join(tmpdir(), 'lite-teaching-pdf-'))
   try {
-    const html = join(dir, 'companion.html'), pdf = join(dir, 'companion.pdf')
+    const html = join(dir, 'companion.html'),
+      pdf = join(dir, 'companion.pdf')
     writeFileSync(html, document())
     const render = () => spawnSync('node', [join(scripts, 'render_pdf.mjs'), html, pdf], { encoding: 'utf8' })
     const result = render()
@@ -127,10 +141,15 @@ test('PDF renderer produces tags/bookmarks and preserves an existing PDF when a 
     assert.equal(info.status, 0, info.stderr)
     assert.match(info.stdout, /Tagged:\s+yes/)
     assert.match(info.stdout, /Page size:\s+[\d.]+ x [\d.]+ pts \(A4\)/)
-    writeFileSync(html, document().replace('</head>', '<link rel="stylesheet" href="https://example.invalid/disallowed.css"></head>'))
+    writeFileSync(
+      html,
+      document().replace('</head>', '<link rel="stylesheet" href="https://example.invalid/disallowed.css"></head>'),
+    )
     const blocked = render()
     assert.notEqual(blocked.status, 0)
     assert.match(blocked.stderr, /not self-contained/)
     assert.deepEqual(readFileSync(pdf), contents)
-  } finally { rmSync(dir, { recursive: true, force: true }) }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

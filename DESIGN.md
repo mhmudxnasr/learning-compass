@@ -228,6 +228,7 @@ The canonical article contains the authored explanation. A duplicate source appe
 - **Don't** use multi-pixel colored side-tab borders (≥2px colored border-left/right) on cards or list items.
 - **Don't** animate layout properties like `width`, `height`, `margin`, or `padding` that trigger layout recalculations.
 - **Don't** add decorative chunky colored top-borders to rounded cards.
+
 ### Dedicated item pages
 
 Item titles are ordinary links to their canonical detail route. Source and book details use a compact wrapping section bar with Overview, Files, Notes & passages, Recall, Connections, History, and Reflection; books add Chapters. The active section has a coral underline and retains a real URL for browser history and bookmarks. Item pages omit the parent workspace mode switcher, retain a clear return action, and keep their identity and verified branch visible. Sections show existing owned material, truthful empty states, and direct links to related objects. File rows separate their detail-page title from an explicit content-opening action. On phones, navigation wraps into touch-sized rows; surrounding controls remain independent of title links.

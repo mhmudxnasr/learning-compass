@@ -521,11 +521,7 @@ function ThreadMaterialsJourney({ path, onChanged }: { path: PathResponse; onCha
                               </>
                             )
                             return item.href ? (
-                              <a
-                                class="vertical-material-item"
-                                href={item.href}
-                                key={item.id}
-                              >
+                              <a class="vertical-material-item" href={item.href} key={item.id}>
                                 {content}
                               </a>
                             ) : (
@@ -733,11 +729,7 @@ export function ScopedMaterials({
 
         <MaterialColumn title="Files" count={files.length} empty="No files in this scope yet.">
           {files.map((file) => (
-            <a
-              class="learning-material-row"
-              href={objectHref('library', 'artifact', file.id)}
-              key={file.id}
-            >
+            <a class="learning-material-row" href={objectHref('library', 'artifact', file.id)} key={file.id}>
               <Icon name="file" size={14} />
               <span>
                 <strong>{file.filename}</strong>

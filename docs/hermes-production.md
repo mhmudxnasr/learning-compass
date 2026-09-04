@@ -8,7 +8,7 @@ The default-profile `compass-native` plugin provides a local native tool surface
 
 ## Architecture decision
 
-Run Learning Compass through native Hermes's `default` profile, using the skills in `~/.hermes/skills`. The separate Compass profile and alias are retired. Keep unrelated native capabilities and do not recreate a domain-specific profile or duplicate skill/memory tree. `npm run verify:hermes` checks the native installation and explicitly selects `default` for its prompt benchmark.
+Run Learning Compass through native Hermes's `default` profile, using the skills in `~/.hermes/skills`. The separate Compass profile and alias are retired. Keep unrelated native capabilities and do not recreate a domain-specific profile or duplicate skill/memory tree. `npm run verify:hermes` checks the native installation and builds the actual native Telegram inspection agent offline. `scripts/verify-hermes-prompt.py` runs in the installed Hermes virtual environment, checks the exact configured tool schema, and verifies that both complete memory files and their tails reach the prompt. It never makes a model call. The current baseline includes native lazy tool discovery and the larger project context; ceilings are 52,000 system bytes, 24,098 schema bytes, 76,098 combined bytes, and 3,600 skill-index bytes. User-selected models remain native configuration.
 
 The owned-system path is:
 
@@ -139,7 +139,7 @@ hermes gateway restart
 hermes gateway list
 ```
 
-Environment files override YAML. Keep `WEBHOOK_ENABLED=false` in both the default and Compass `.env` files as well as both YAML webhook blocks; otherwise a restart silently reopens the unused listener. After restart, verify the intended profile, Telegram authorization, model/fallback configuration, prompt budgets, zero Learning Compass/NotebookLM MCP registrations or subprocesses, no `:8644` listener, the authenticated API server bound only to loopback, and one production read. Never restart during an unresolved mutation or leased job. If restart fails, preserve the previous configuration, inspect bounded gateway logs without exposing secrets, and use the last known-good configuration.
+Environment files override YAML. Keep `WEBHOOK_ENABLED=false` in the native `.env` file as well as both YAML webhook blocks; otherwise a restart silently reopens the unused listener. After restart, verify the intended profile, Telegram authorization, model/fallback configuration, prompt budgets, zero Learning Compass/NotebookLM MCP registrations or subprocesses, no `:8644` listener, the authenticated API server bound only to loopback, and one production read. Never restart during an unresolved mutation or leased job. If restart fails, preserve the previous configuration, inspect bounded gateway logs without exposing secrets, and use the last known-good configuration.
 
 ## Benchmarks
 

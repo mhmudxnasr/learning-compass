@@ -27,9 +27,12 @@ const notebookLm = readFileSync('/home/mahmud/.hermes/skills/notebooklm/SKILL.md
 const validator = readFileSync('/home/mahmud/.hermes/skills/lite-visual/scripts/validate_artifact.py', 'utf8')
 const uploader = readFileSync('/home/mahmud/.hermes/skills/lite-visual/scripts/upload_pair.py', 'utf8')
 // Skill details are progressively loaded from the entrypoint's actual links.
-const liteVisualQuality = [liteVisual, ...Array.from(liteVisual.matchAll(/\]\((references\/[^)]+\.md)\)/g), match =>
-  readFileSync(`/home/mahmud/.hermes/skills/lite-visual/${match[1]}`, 'utf8'),
-)].join('\n')
+const liteVisualQuality = [
+  liteVisual,
+  ...Array.from(liteVisual.matchAll(/\]\((references\/[^)]+\.md)\)/g), (match) =>
+    readFileSync(`/home/mahmud/.hermes/skills/lite-visual/${match[1]}`, 'utf8'),
+  ),
+].join('\n')
 
 test('YouTube transcript adapter is Arabic-first with English fallback', () => {
   assert.match(adapter, /VERSION = "lite-visual-transcript\/3"/)
@@ -133,7 +136,10 @@ test('Lite Visual validator blocks the observed artifact defects', () => {
 })
 
 test('Visual Lite is source-designed code only with no image or template branch', () => {
-  assert.match(liteVisualQuality, /former `.agents\/skills\/intent` and `.agents\/skills\/frontend-design` paths have been retired/)
+  assert.match(
+    liteVisualQuality,
+    /former `.agents\/skills\/intent` and `.agents\/skills\/frontend-design` paths have been retired/,
+  )
   assert.match(liteVisualQuality, /apply the required Intent and Frontend Design reasoning directly/i)
   assert.match(liteVisualQuality, /source-specific CSS/)
   assert.match(liteVisualQuality, /minimal inline SVG/)

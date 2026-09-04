@@ -20,7 +20,7 @@
     "test:unit:portable": "node --test $(find tests/unit -name '*.test.ts' ! -name 'transcript-adapter.test.ts' ! -name 'lite-visual-source-extraction.test.ts' ! -name 'lite-visual-validator.test.ts' ! -name 'lite-visual-hardening.test.ts')",
     "test:integration": "for file in tests/integration/*.mjs; do node \"$file\" || exit; done",
     "test:e2e": "node tests/e2e/routes.mjs",
-    "verify:hermes": "node scripts/verify-hermes-contract.mjs && hermes -p default prompt-size --platform telegram --check-contract docs/hermes-prompt-budget.json",
+    "verify:hermes": "node scripts/verify-hermes-contract.mjs && python3 scripts/verify-hermes-prompt.py",
     "verify:agent-contract": "node --test tests/unit/agent-control.test.ts && node scripts/verify-hermes-contract.mjs",
     "verify:migrations": "node scripts/rehearse-migrations.mjs",
     "verify:release": "node scripts/verify-release.mjs",
@@ -32,7 +32,9 @@
     "test": "npm run test:unit && npm run typecheck",
     "dev": "vite --host 127.0.0.1",
     "dev:worker": "wrangler d1 execute recommendations-db --local --config wrangler.toml --file schema.sql && wrangler d1 migrations apply recommendations-db --local --config wrangler.toml && npm run build && wrangler dev --config wrangler.toml --var ALLOW_UNAUTHENTICATED_LOCAL_WRITES:true",
-    "deploy": "node scripts/deploy-release.mjs"
+    "deploy": "node scripts/deploy-release.mjs",
+    "verify:budget": "node scripts/verify-budget-policy.mjs",
+    "release:status": "node scripts/release-status.mjs"
   },
   "dependencies": {
     "cytoscape": "^3.34.2",

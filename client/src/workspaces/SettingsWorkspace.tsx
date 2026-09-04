@@ -437,51 +437,93 @@ function readableText(value: unknown): string {
   )
 }
 
-function readableTags(value: unknown, limit = 10): string[] {
-  const parsed = asValue(value)
-  if (Array.isArray(parsed))
-    return parsed
-      .flatMap((item) => {
-        if (typeof item === 'string' || typeof item === 'number') return [String(item)]
-        if (item && typeof item === 'object') {
-          const record = item as Record<string, unknown>
-          const candidate = record.label || record.name || record.topic || record.role || record.value
-          return candidate ? [String(candidate)] : []
-        }
-        return []
-      })
-      .slice(0, limit)
-  if (parsed && typeof parsed === 'object')
-    return Object.entries(parsed as Record<string, unknown>)
-      .slice(0, limit)
-      .map(([key, item]) => {
-        const valueText =
-          typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean' ? ` · ${item}` : ''
-        return `${labelize(key)}${valueText}`
-      })
-  const text = String(parsed || '').trim()
-  return text
-    ? text
-        .split(/[,\n]+/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .slice(0, limit)
-    : []
+function primitiveValue(value: unknown): value is string | number | boolean {
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+}
+
+function ProfileText({ text, compact = false }: { text: string; compact?: boolean }) {
+  const normalized = text.trim()
+  if (!normalized) return <p class="profile-empty">Not recorded</p>
+  const limit = compact ? 240 : 420
+  if (normalized.length <= limit) return <p class="profile-value-copy">{normalized}</p>
+  return (
+    <div class="profile-long-value">
+      <p class="profile-value-copy">{normalized.slice(0, limit).trimEnd()}…</p>
+      <details>
+        <summary>Read the complete preference</summary>
+        <p>{normalized}</p>
+      </details>
+    </div>
+  )
 }
 
 function ReadableValue({ value, compact = false }: { value: unknown; compact?: boolean }) {
-  const tags = readableTags(value, compact ? 6 : 12)
-  const text = readableText(value)
+  if (typeof value === 'string' && /^(?:\{|\[)/.test(value.trim())) {
+    try {
+      JSON.parse(value)
+    } catch {
+      return <p class="profile-empty">Structured value needs repair.</p>
+    }
+  }
+  const parsed = asValue(value)
+  if (parsed === null || parsed === undefined || parsed === '') return <p class="profile-empty">Not recorded</p>
+  if (primitiveValue(parsed))
+    return (
+      <div class="profile-readable-value">
+        <ProfileText text={String(parsed)} compact={compact} />
+      </div>
+    )
+  if (Array.isArray(parsed)) {
+    const tags = parsed.map((item) => {
+      if (primitiveValue(item)) return String(item)
+      if (item && typeof item === 'object') {
+        const record = item as Record<string, unknown>
+        const candidate = record.label || record.name || record.title || record.role || record.value
+        return candidate == null ? '' : String(candidate)
+      }
+      return ''
+    })
+    if (tags.length > 0 && tags.every(Boolean)) {
+      const visible = compact ? tags.slice(0, 10) : tags.slice(0, 18)
+      const remainder = tags.slice(visible.length)
+      return (
+        <div class="profile-readable-value">
+          <div class="profile-tag-list">
+            {visible.map((item, index) => (
+              <span key={`${item}-${index}`}>{item}</span>
+            ))}
+          </div>
+          {remainder.length > 0 && (
+            <details class="profile-value-more">
+              <summary>{remainder.length} more</summary>
+              <div class="profile-tag-list">
+                {remainder.map((item, index) => (
+                  <span key={`${item}-${index}`}>{item}</span>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )
+    }
+  }
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    return (
+      <dl class="profile-value-list">
+        {Object.entries(parsed as Record<string, unknown>).map(([key, item]) => (
+          <div key={key}>
+            <dt>{labelize(key)}</dt>
+            <dd>
+              <ReadableValue value={item} compact />
+            </dd>
+          </div>
+        ))}
+      </dl>
+    )
+  }
   return (
     <div class="profile-readable-value">
-      <p>{text}</p>
-      {tags.length > 0 && (
-        <div class="profile-tag-list">
-          {tags.map((tag) => (
-            <span key={tag}>{tag}</span>
-          ))}
-        </div>
-      )}
+      <ProfileText text={readableText(parsed)} compact={compact} />
     </div>
   )
 }
@@ -490,72 +532,92 @@ function profileValue(profile: ProfileRecord, ...keys: string[]) {
   return keys.map((key) => profile[key]).find((value) => value !== undefined && value !== null && value !== '')
 }
 
-function safeProfileValue(value: unknown, structured = false) {
-  if (!structured || typeof value !== 'string') return value
-  try {
-    return JSON.parse(value)
-  } catch {
-    return 'Needs review in the profile editor.'
-  }
-}
-
 function ProfileOverview({ profile }: { profile: ProfileRecord }) {
   const cards = [
     {
+      key: 'context',
       label: 'Learning context',
-      description: 'The context used to tailor examples and formats.',
+      description: 'Background, language, devices, and the context used to tailor examples.',
       value: profileValue(profile, 'identity_json', 'identity'),
-      structured: true,
     },
     {
+      key: 'priorities',
       label: 'Priority areas',
-      description: 'The subjects that deserve more attention.',
+      description: 'Subjects that deserve more attention when choosing and sequencing material.',
       value: profileValue(profile, 'mega_priority_json', 'mega_priority'),
-      structured: true,
     },
     {
+      key: 'boundaries',
       label: 'Content boundaries',
-      description: 'What to filter out before it reaches your queue.',
+      description: 'Material to filter out before it reaches your Queue.',
       value: profileValue(profile, 'core_filter'),
-      structured: false,
     },
     {
-      label: 'Quality standards',
-      description: 'The evidence and verification bar for new material.',
-      value: profileValue(profile, 'quality_rules_json'),
-      structured: true,
-    },
-    {
+      key: 'hermes',
       label: 'How Hermes works',
-      description: 'The operating style used when the system assists you.',
+      description: 'The operating style used when Learning Compass assists you.',
       value: profileValue(profile, 'operational_style_json'),
-      structured: true,
+    },
+    {
+      key: 'reaction',
+      label: 'Reaction style',
+      description: 'How feedback, tone, and directness should be interpreted.',
+      value: profileValue(profile, 'reaction_style_json', 'reaction_style'),
+    },
+    {
+      key: 'patterns',
+      label: 'Pattern summary',
+      description: 'Recurring learning behaviors and durable working preferences.',
+      value: profileValue(profile, 'patterns_summary_json', 'patterns_summary'),
+    },
+    {
+      key: 'quality',
+      label: 'Quality standards',
+      description: 'The evidence, originality, and verification bar for new material.',
+      value: profileValue(profile, 'quality_rules_json'),
+    },
+    {
+      key: 'recent',
+      label: 'Recent signal',
+      description: 'The latest approved signal influencing the profile.',
+      value: profileValue(profile, 'recent_signal'),
     },
   ]
   return (
     <section class="profile-overview profile-section" aria-labelledby="profile-overview-heading">
-      <div class="section-head">
+      <div class="section-head profile-section-heading">
         <div>
+          <span class="eyebrow">Canonical profile</span>
           <h2 id="profile-overview-heading">What shapes your learning</h2>
           <p class="section-description">
-            A readable summary of the preferences that influence curation, sequencing, and feedback.
+            One readable view of the preferences that influence curation, sequencing, and feedback.
           </p>
         </div>
-        <span>Editable below</span>
       </div>
       <div class="profile-overview-grid">
-        {cards.map((card) => (
-          <article class="profile-overview-card" key={card.label}>
+        {cards.map((card, index) => (
+          <article class={`profile-overview-card profile-card-${card.key}`} key={card.key}>
             <div class="profile-overview-card-head">
+              <span>{String(index + 1).padStart(2, '0')}</span>
               <strong>{card.label}</strong>
-              <span>Preference</span>
             </div>
             <p class="profile-overview-description">{card.description}</p>
-            <ReadableValue value={safeProfileValue(card.value, card.structured)} compact />
+            <ReadableValue value={card.value} compact={card.key !== 'quality'} />
           </article>
         ))}
       </div>
     </section>
+  )
+}
+
+function profileSignalValue(value: unknown) {
+  const parsed = asValue(value)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return parsed
+  const record = parsed as Record<string, unknown>
+  const hasReadableLabel = Boolean(record.label || record.name || record.title)
+  if (!hasReadableLabel) return record
+  return Object.fromEntries(
+    Object.entries(record).filter(([key]) => !['id', 'branch_id', 'node_id', 'topic'].includes(key)),
   )
 }
 
@@ -583,7 +645,7 @@ function ProfileSignals({ assertions }: { assertions: ProfileRecord[] }) {
     ...new Set(assertions.map((assertion) => String(assertion.category || 'profile').toLowerCase())),
   ].sort()
   return (
-    <details class="profile-panel profile-learned-panel">
+    <details class="profile-panel profile-learned-panel" open>
       <summary>
         <span>
           <strong>What Learning Compass has learned</strong>
@@ -633,7 +695,7 @@ function ProfileSignals({ assertions }: { assertions: ProfileRecord[] }) {
                     {labelize(assertion.status || 'active')}
                   </span>
                 </div>
-                <ReadableValue value={assertion.value} compact />
+                <ReadableValue value={profileSignalValue(assertion.value)} compact />
                 <small>
                   Confidence {Math.round(Number(assertion.confidence || 0) * 100)}% · version {assertion.version || 1}
                 </small>
@@ -650,50 +712,6 @@ function ProfileSignals({ assertions }: { assertions: ProfileRecord[] }) {
         {filtered.length > 24 && <p class="profile-list-limit">Showing 24 of {filtered.length} matching signals.</p>}
       </div>
     </details>
-  )
-}
-
-function ProfileFieldList({ profile }: { profile: ProfileRecord }) {
-  return (
-    <section class="profile-section profile-fields-section">
-      <div class="section-head">
-        <div>
-          <h2>Your learning preferences</h2>
-          <p class="section-description">These are the canonical inputs you can review and change.</p>
-        </div>
-        <span>Profile fields</span>
-      </div>
-      <div class="profile-fields">
-        {profileFields.map((field) => {
-          const value = profile[field.readKey || field.apiKey]
-          const parsed =
-            field.structured && typeof value === 'string'
-              ? (() => {
-                  try {
-                    return { value: JSON.parse(value), valid: true }
-                  } catch {
-                    return { value: null, valid: false }
-                  }
-                })()
-              : { value, valid: true }
-          return (
-            <article class="profile-field" key={field.key}>
-              <div class="profile-field-head">
-                <span>
-                  <strong>{field.label}</strong>
-                  <small>{field.description}</small>
-                </span>
-              </div>
-              {parsed.valid ? (
-                <ReadableValue value={parsed.value} />
-              ) : (
-                <p class="profile-empty">Needs review in the profile editor.</p>
-              )}
-            </article>
-          )
-        })}
-      </div>
-    </section>
   )
 }
 
@@ -741,14 +759,18 @@ function ProfileRecordList({
   )
 }
 
+function profileEditorValue(field: ProfileField, value: unknown) {
+  if (!field.structured) return value == null ? '' : String(value)
+  const parsed = asValue(value)
+  if (typeof value === 'string' && parsed === value) return value
+  return parsed == null || parsed === '' ? '' : JSON.stringify(parsed, null, 2)
+}
+
 function ProfileEditor({ profile, onSaved }: { profile: ProfileRecord; onSaved: () => void }) {
   const initial = useMemo(
     () =>
       Object.fromEntries(
-        profileFields.map((field) => {
-          const value = profile[field.readKey || field.apiKey]
-          return [field.key, typeof value === 'string' ? value : readableText(value)]
-        }),
+        profileFields.map((field) => [field.key, profileEditorValue(field, profile[field.readKey || field.apiKey])]),
       ),
     [profile],
   )
@@ -788,17 +810,29 @@ function ProfileEditor({ profile, onSaved }: { profile: ProfileRecord; onSaved: 
       open={open}
       onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
     >
-      <summary>Edit your learning profile</summary>
-      <p>
-        Update the preferences that shape recommendations. Structured values remain readable here, while legacy values
-        stay editable without exposing raw JSON in the normal view.
-      </p>
+      <summary>
+        <span>
+          <strong>Edit canonical profile</strong>
+          <small>Change the inputs that guide Learning Compass and Hermes.</small>
+        </span>
+        <span class="profile-editor-action">Edit</span>
+      </summary>
       {open && (
-        <>
+        <div class="profile-editor-body">
+          <p class="profile-editor-intro">
+            Plain language and structured values are both supported. Nothing is rewritten until you save.
+          </p>
           <div class="profile-editor-fields">
             {profileFields.map((field) => (
-              <label key={field.key}>
-                {field.label}
+              <label
+                class={
+                  field.key === 'core_filter' || field.key.includes('quality') || field.key.includes('patterns')
+                    ? 'profile-editor-wide'
+                    : ''
+                }
+                key={field.key}
+              >
+                <strong>{field.label}</strong>
                 <span>{field.description}</span>
                 <textarea
                   value={draft[field.key] || ''}
@@ -822,7 +856,7 @@ function ProfileEditor({ profile, onSaved }: { profile: ProfileRecord; onSaved: 
               {status}
             </output>
           )}
-        </>
+        </div>
       )}
     </details>
   )
@@ -836,24 +870,21 @@ function ProfileView() {
   const person = data.profile || {}
   const health = data.profile_health || {}
   const assertions = data.profile_assertions || []
-  const context = readableText(person.identity_json || person.identity || '')
   return (
     <div class="settings-page profile-settings-page">
-      <section class="model-header">
+      <section class="model-header profile-hero">
         <div class="model-header-main">
           <div class="model-identity">
             <span class="model-avatar" aria-hidden="true">
-              {String(person.name || 'L')
+              {String(person.name || 'M')
                 .slice(0, 1)
                 .toUpperCase()}
             </span>
             <div class="model-identity-copy">
-              <span class="eyebrow">Settings / Learning profile</span>
+              <span class="eyebrow">Personal / Learning profile</span>
               <h1>{person.name || 'Your learning profile'}</h1>
               <p class="model-context">
-                {context === 'Not recorded'
-                  ? 'This profile helps Learning Compass choose, filter, and sequence learning material for you.'
-                  : context}
+                The durable preferences Learning Compass uses to choose, filter, explain, and sequence material for you.
               </p>
             </div>
           </div>
@@ -878,96 +909,121 @@ function ProfileView() {
           </div>
         </div>
       </section>
-      <div class="profile-health-strip">
+      <div class="profile-health-strip" aria-label="Profile status">
         <div>
           <strong>{labelize(health.status || 'unknown')}</strong>
-          <span>profile health</span>
+          <span>Profile health</span>
         </div>
         <div>
           <strong>{health.active || assertions.length || 0}</strong>
-          <span>active preferences</span>
+          <span>Active signals</span>
         </div>
         <div>
           <strong>{health.hypotheses || 0}</strong>
-          <span>needs your review</span>
+          <span>Needs review</span>
         </div>
         <div>
           <strong>{data.infrastructure_stats?.pending_proposals_count || 0}</strong>
-          <span>changes waiting for approval</span>
+          <span>Pending changes</span>
         </div>
       </div>
       <ProfileOverview profile={person} />
-      <ProfileFieldList profile={person} />
       <ProfileEditor profile={person} onSaved={profile.reload} />
       {assertions.length ? (
         <ProfileSignals assertions={assertions} />
       ) : (
-        <Empty
-          title="No learned signals yet"
-          body="Evidence-backed preferences will appear here as you capture, consume, and reflect."
-        />
+        <details class="profile-panel profile-learned-panel">
+          <summary>
+            <span>
+              <strong>What Learning Compass has learned</strong>
+              <small>Evidence-backed signals used to shape future recommendations.</small>
+            </span>
+            <span>0 signals</span>
+          </summary>
+          <div class="profile-panel-content">
+            <Empty
+              title="No learned signals yet"
+              body="Evidence-backed preferences will appear here as you capture, consume, and reflect."
+            />
+          </div>
+        </details>
       )}
-      <div class="profile-record-columns">
-        <ProfileRecordList
-          title="Priorities"
-          items={data.priorities || []}
-          empty="No priorities recorded."
-          getTitle={(item) => item.label || item.branch_id || 'Priority'}
-          getMeta={(item) => (item.rank ? `Rank ${item.rank}` : '')}
-        />
-        <ProfileRecordList
-          title="Mastered knowledge"
-          items={data.mastered || []}
-          empty="No mastered topics recorded."
-          getTitle={(item) => item.label || item.name || item.id || 'Mastered topic'}
-          getMeta={(item) => item.kind || ''}
-        />
-        <ProfileRecordList
-          title="Exclusions"
-          items={data.blacklist || []}
-          empty="No exclusions recorded."
-          getTitle={(item) => [item.name, item.work].filter(Boolean).join(' · ') || 'Exclusion'}
-          getMeta={(item) => (item.severity == null ? '' : `Severity ${item.severity}`)}
-        />
-        <ProfileRecordList
-          title="Learned patterns"
-          items={data.patterns || []}
-          empty="No patterns recorded."
-          getTitle={(item) => item.description || item.id || 'Pattern'}
-          getMeta={(item) => item.strength || ''}
-        />
-        <ProfileRecordList
-          title="Taste affinities"
-          items={data.taste_vectors || []}
-          empty="No taste affinities recorded."
-          getTitle={(item) => item.label || item.topic || 'Topic'}
-          getMeta={(item) => `${item.consumption_count || 0} completed`}
-          getDetail={(item) =>
-            item.affinity_score == null ? '' : `Affinity score ${Number(item.affinity_score).toFixed(1)} / 5`
-          }
-        />
-        <ProfileRecordList
-          title="Creator history"
-          items={data.creator_trust || []}
-          empty="No creator history available."
-          getTitle={(item) => item.creator || 'Creator'}
-          getMeta={(item) => `${item.total || 0} consumed · ${item.average_score || '—'} avg`}
-        />
-        <ProfileRecordList
-          title="Recent reflections"
-          items={data.reflections || []}
-          empty="No written reflections recorded."
-          getTitle={(item) => item.video_title || 'Reflection'}
-          getMeta={(item) => (item.completed_at ? formatDate(item.completed_at) : '')}
-        />
-        <ProfileRecordList
-          title="Recent ratings"
-          items={data.rating_history || []}
-          empty="No ratings recorded."
-          getTitle={(item) => item.video_title || 'Rated source'}
-          getMeta={(item) => (item.user_score == null ? item.user_rating || '' : `${item.user_score}/10`)}
-        />
-      </div>
+      <details class="profile-panel profile-history-panel" open>
+        <summary>
+          <span>
+            <strong>Evidence and history</strong>
+            <small>Priorities, exclusions, activity, and the records behind this profile.</small>
+          </span>
+          <span>
+            {(data.priorities || []).length +
+              (data.mastered || []).length +
+              (data.blacklist || []).length +
+              (data.patterns || []).length}{' '}
+            core records
+          </span>
+        </summary>
+        <div class="profile-panel-content profile-record-columns">
+          <ProfileRecordList
+            title="Priorities"
+            items={data.priorities || []}
+            empty="No priorities recorded."
+            getTitle={(item) => item.label || item.branch_id || 'Priority'}
+            getMeta={(item) => (item.rank ? `Rank ${item.rank}` : '')}
+          />
+          <ProfileRecordList
+            title="Mastered knowledge"
+            items={data.mastered || []}
+            empty="No mastered topics recorded."
+            getTitle={(item) => item.label || item.name || item.id || 'Mastered topic'}
+            getMeta={(item) => item.kind || ''}
+          />
+          <ProfileRecordList
+            title="Exclusions"
+            items={data.blacklist || []}
+            empty="No exclusions recorded."
+            getTitle={(item) => [item.name, item.work].filter(Boolean).join(' · ') || 'Exclusion'}
+            getMeta={(item) => (item.severity == null ? '' : `Severity ${item.severity}`)}
+          />
+          <ProfileRecordList
+            title="Learned patterns"
+            items={data.patterns || []}
+            empty="No patterns recorded."
+            getTitle={(item) => item.description || item.id || 'Pattern'}
+            getMeta={(item) => item.strength || ''}
+          />
+          <ProfileRecordList
+            title="Taste affinities"
+            items={data.taste_vectors || []}
+            empty="No taste affinities recorded."
+            getTitle={(item) => item.label || item.topic || 'Topic'}
+            getMeta={(item) => `${item.consumption_count || 0} completed`}
+            getDetail={(item) =>
+              item.affinity_score == null ? '' : `Affinity score ${Number(item.affinity_score).toFixed(1)} / 5`
+            }
+          />
+          <ProfileRecordList
+            title="Creator history"
+            items={data.creator_trust || []}
+            empty="No creator history available."
+            getTitle={(item) => item.creator || 'Creator'}
+            getMeta={(item) => `${item.total || 0} consumed · ${item.average_score || '—'} avg`}
+          />
+          <ProfileRecordList
+            title="Recent reflections"
+            items={data.reflections || []}
+            empty="No written reflections recorded."
+            getTitle={(item) => item.video_title || 'Reflection'}
+            getMeta={(item) => (item.completed_at ? formatDate(item.completed_at) : '')}
+          />
+          <ProfileRecordList
+            title="Recent ratings"
+            items={data.rating_history || []}
+            empty="No ratings recorded."
+            getTitle={(item) => item.video_title || 'Rated source'}
+            getMeta={(item) => (item.user_score == null ? item.user_rating || '' : `${item.user_score}/10`)}
+          />
+        </div>
+      </details>
     </div>
   )
 }

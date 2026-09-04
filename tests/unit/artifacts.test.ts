@@ -50,7 +50,8 @@ test('pair contract advertises direct integrity receipts without claiming qualit
     workflow_contract: 'lite-visual-linear/v4',
     receipt_schemas: ['lite-visual-integrity/v1', 'lite-visual-validation/v6'],
     corpus_receipt_schemas: ['lite-visual-corpus-integrity/v1', 'lite-visual-corpus-audit/v1'],
-    default_verification_scope: 'integrity-only', default_quality_checks: 'not_run',
+    default_verification_scope: 'integrity-only',
+    default_quality_checks: 'not_run',
   })
 })
 
@@ -782,14 +783,26 @@ test('integrity-only pair publication stores honest quality metadata for both ro
   receipt.schema_version = 'lite-visual-integrity/v1'
   receipt.verification_scope = 'integrity-only'
   receipt.quality_checks = 'not_run'
-  receipt.checks = { source_extraction_binding: true, target_identity: true, artifact_hashes: true, canonical_body: true, render_binding: true }
+  receipt.checks = {
+    source_extraction_binding: true,
+    target_identity: true,
+    artifact_hashes: true,
+    canonical_body: true,
+    render_binding: true,
+  }
   receipt.attestation.signature = await liteVisualReceiptSignature(receipt, receiptSigningKey)
   form.set('validation_receipt', JSON.stringify(receipt))
   const db = new PairDatabase()
   const objects = new Map<string, any>()
   const response = await artifactsApp.request('https://compass.test/pairs', { method: 'POST', body: form }, {
-    DB: db, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey,
-    ARTIFACTS: { put: async (key: string, value: ArrayBuffer, options: any) => { objects.set(key, { size: value.byteLength, customMetadata: options.customMetadata }) }, head: async (key: string) => objects.get(key) },
+    DB: db,
+    LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey,
+    ARTIFACTS: {
+      put: async (key: string, value: ArrayBuffer, options: any) => {
+        objects.set(key, { size: value.byteLength, customMetadata: options.customMetadata })
+      },
+      head: async (key: string) => objects.get(key),
+    },
   } as any)
   assert.equal(response.status, 201, await response.text())
   for (const row of db.batchStatements.slice(0, 2)) {
@@ -860,9 +873,10 @@ test('atomic pair route retains request-owned R2 objects when D1 commit state is
   assert.deepEqual(deletes, [])
 })
 
-for (const integrityOnly of [false, true]) test(`one guarded activation publishes an exact ${integrityOnly ? 'integrity-only' : 'historical v6'} corpus and completes its immutable job`, async () => {
-  const sqlite = new DatabaseSync(':memory:')
-  sqlite.exec(`PRAGMA foreign_keys=ON;
+for (const integrityOnly of [false, true])
+  test(`one guarded activation publishes an exact ${integrityOnly ? 'integrity-only' : 'historical v6'} corpus and completes its immutable job`, async () => {
+    const sqlite = new DatabaseSync(':memory:')
+    sqlite.exec(`PRAGMA foreign_keys=ON;
     CREATE TABLE learning_threads(id TEXT PRIMARY KEY);
     CREATE TABLE recommendations(id TEXT PRIMARY KEY,video_url TEXT,video_title TEXT,status TEXT,deleted_at TEXT);
     CREATE TABLE recommendation_meta(recommendation_id TEXT PRIMARY KEY,source_metadata_json TEXT);
@@ -883,300 +897,398 @@ for (const integrityOnly of [false, true]) test(`one guarded activation publishe
     INSERT INTO thread_lessons(id,thread_id,stage_id) VALUES ('lesson-1','thread-1','stage-1');
     INSERT INTO thread_lesson_sources(lesson_id,recommendation_id) VALUES ('lesson-1','rec-1');
   `)
-  const db = new SqliteD1(sqlite)
-  const objects = new Map<string, any>()
-  const bucket = {
-    put: async (key: string, value: ArrayBuffer, options: any) => {
-      objects.set(key, { size: value.byteLength, customMetadata: options.customMetadata })
-    },
-    head: async (key: string) => objects.get(key) || null,
-    delete: async (key: string) => {
-      objects.delete(key)
-    },
-  }
-  const oldHtmlSha = 'a'.repeat(64)
-  const oldPdfSha = 'b'.repeat(64)
-  for (const role of ['html', 'pdf']) {
+    const db = new SqliteD1(sqlite)
+    const objects = new Map<string, any>()
+    const bucket = {
+      put: async (key: string, value: ArrayBuffer, options: any) => {
+        objects.set(key, { size: value.byteLength, customMetadata: options.customMetadata })
+      },
+      head: async (key: string) => objects.get(key) || null,
+      delete: async (key: string) => {
+        objects.delete(key)
+      },
+    }
+    const oldHtmlSha = 'a'.repeat(64)
+    const oldPdfSha = 'b'.repeat(64)
+    for (const role of ['html', 'pdf']) {
+      sqlite
+        .prepare('INSERT INTO artifacts(id,filename,media_type,r2_key,size_bytes,metadata_json) VALUES (?,?,?,?,1,?)')
+        .run(
+          `old-${role}`,
+          `old.${role}`,
+          role === 'html' ? 'text/html' : 'application/pdf',
+          `old/${role}`,
+          JSON.stringify({
+            pair_id: 'old-pair',
+            recommendation_id: 'rec-1',
+            role,
+            publication_state: 'ready',
+            validation_status: 'passed',
+            html_sha256: oldHtmlSha,
+            pdf_sha256: oldPdfSha,
+          }),
+        )
+      objects.set(`old/${role}`, {
+        size: 1,
+        customMetadata: { sha256: role === 'html' ? oldHtmlSha : oldPdfSha, pair_id: 'old-pair', role },
+      })
+    }
     sqlite
-      .prepare('INSERT INTO artifacts(id,filename,media_type,r2_key,size_bytes,metadata_json) VALUES (?,?,?,?,1,?)')
-      .run(
-        `old-${role}`,
-        `old.${role}`,
-        role === 'html' ? 'text/html' : 'application/pdf',
-        `old/${role}`,
-        JSON.stringify({
-          pair_id: 'old-pair',
-          recommendation_id: 'rec-1',
-          role,
-          publication_state: 'ready',
-          validation_status: 'passed',
-          html_sha256: oldHtmlSha,
-          pdf_sha256: oldPdfSha,
-        }),
-      )
-    objects.set(`old/${role}`, {
-      size: 1,
-      customMetadata: { sha256: role === 'html' ? oldHtmlSha : oldPdfSha, pair_id: 'old-pair', role },
-    })
-  }
-  sqlite
-    .prepare(
-      `INSERT INTO lite_visual_pairs(pair_id,recommendation_id,target_sha256,work_item_sha256,source_extraction_sha256,source_sha256,source_scope_sha256,coverage_ledger_sha256,html_sha256,pdf_sha256,receipt_sha256,html_artifact_id,pdf_artifact_id,html_r2_key,pdf_r2_key,html_size_bytes,pdf_size_bytes,r2_verified,state)
+      .prepare(
+        `INSERT INTO lite_visual_pairs(pair_id,recommendation_id,target_sha256,work_item_sha256,source_extraction_sha256,source_sha256,source_scope_sha256,coverage_ledger_sha256,html_sha256,pdf_sha256,receipt_sha256,html_artifact_id,pdf_artifact_id,html_r2_key,pdf_r2_key,html_size_bytes,pdf_size_bytes,r2_verified,state)
     VALUES ('old-pair','rec-1',?,?,?,?,?,?,?,?,?,'old-html','old-pdf','old/html','old/pdf',1,1,1,'active')`,
-    )
-    .run(
-      ...Array.from({ length: 6 }, (_, index) => String(index + 1).repeat(64)),
-      oldHtmlSha,
-      oldPdfSha,
-      'c'.repeat(64),
-    )
-
-  const form = await atomicPairForm()
-  const receipt = JSON.parse(String(form.get('validation_receipt')))
-  const metadata = JSON.parse(String(form.get('metadata')))
-  if (integrityOnly) {
-    receipt.schema_version = 'lite-visual-integrity/v1'
-    receipt.verification_scope = 'integrity-only'
-    receipt.quality_checks = 'not_run'
-    receipt.checks = { source_extraction_binding: true, target_identity: true, artifact_hashes: true, canonical_body: true, render_binding: true }
-    receipt.attestation.signature = await liteVisualReceiptSignature(receipt, receiptSigningKey)
-    form.set('validation_receipt', JSON.stringify(receipt))
-  }
-  const pairId = metadata.pair_id
-  const runId = 'run-1'
-  const jobId = 'job-1'
-  sqlite
-    .prepare(
-      `INSERT INTO agent_jobs(id,job_type,status,payload_json,result_json,recommendation_id,workflow_run_id,workflow_step,updated_at) VALUES (?,'visualise_source','pending',?,'{}','rec-1',?,'resolve_source',datetime('now'))`,
-    )
-    .run(
-      jobId,
-      JSON.stringify({
-        recommendation_id: 'rec-1',
-        source_url: 'https://source.test/item',
-        title: 'Source',
-        workflow_contract: LITE_VISUAL_WORKFLOW_CONTRACT,
-        revision_of_pair_id: 'old-pair',
-      }),
-      runId,
-    )
-  const manifestSha = '1'.repeat(64)
-  const targetSetSha = await sha256Hex(JSON.stringify([[1, 'rec-1', 'https://source.test/item', 'Source', '/work']]))
-  const receiptSha = await sha256Hex(String(form.get('validation_receipt')))
-  const target = { recording_number: 1, recommendation_id: 'rec-1', source_url: 'https://source.test/item', source_title: 'Source', workdir: '/work', pair_id: pairId, job_id: jobId, workflow_run_id: runId, supersedes_pair_id: 'old-pair', target_sha256: receipt.target_sha256, receipt_sha256: receiptSha, work_item_sha256: receipt.work_item_sha256, source_extraction_sha256: receipt.source_extraction_sha256, source_sha256: receipt.source_sha256, source_scope_sha256: receipt.source_scope_sha256, coverage_ledger_sha256: receipt.coverage_ledger_sha256, html_sha256: receipt.html_sha256, pdf_sha256: receipt.pdf_sha256 }
-  const auditSha = await sha256Hex(JSON.stringify([[target.recording_number, target.recommendation_id, '', target.source_url, target.source_title, target.workdir, target.pair_id, target.target_sha256, target.work_item_sha256, target.source_extraction_sha256, target.source_sha256, target.source_scope_sha256, target.coverage_ledger_sha256, target.html_sha256, target.pdf_sha256, target.receipt_sha256]]))
-  const auditReceipt: Record<string, unknown> = { schema_version: 'lite-visual-corpus-audit/v1', status: 'passed', thread_id: 'thread-1', manifest_sha256: manifestSha, target_set_sha256: targetSetSha, corpus_sha256: auditSha, expected: 1, audited: 1, failed: 0, ...LITE_VISUAL_AUDIT_PROVENANCE }
-  if (integrityOnly) Object.assign(auditReceipt, { schema_version: 'lite-visual-corpus-integrity/v1', verification_scope: 'integrity-only', quality_checks: 'not_run', checks: { ordered_targets: true, local_receipt_bindings: true, file_hashes: true } })
-  auditReceipt.attestation = { algorithm: 'hmac-sha256', key_id: LITE_VISUAL_ATTESTATION_KEY_ID, signature: await liteVisualReceiptSignature(auditReceipt, receiptSigningKey) }
-  const contract = { thread_id: 'thread-1', manifest_sha256: manifestSha, target_set_sha256: targetSetSha, audit_corpus_sha256: auditSha, expected_pairs: 1, audit_receipt: auditReceipt, targets: [target] }
-  const staleAuditReceipt = { ...auditReceipt, python_version: '3.11.14', attestation: undefined } as Record<string, unknown>
-  if (integrityOnly) staleAuditReceipt.quality_checks = 'passed'
-  staleAuditReceipt.attestation = { algorithm: 'hmac-sha256', key_id: LITE_VISUAL_ATTESTATION_KEY_ID, signature: await liteVisualReceiptSignature(staleAuditReceipt, receiptSigningKey) }
-  const staleAudit = await artifactsApp.request('https://compass.test/corpora', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...contract, audit_receipt: staleAuditReceipt }) }, { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any)
-  assert.equal(staleAudit.status, 422, await staleAudit.text())
-  const changedHash = { ...target, source_sha256: 'f'.repeat(64) }
-  const replayedAudit = await artifactsApp.request(
-    'https://compass.test/corpora',
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ...contract, targets: [changedHash] }),
-    },
-    { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
-  )
-  assert.equal(replayedAudit.status, 409, await replayedAudit.text())
-  const corpusResponse = await artifactsApp.request(
-    'https://compass.test/corpora',
-    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contract) },
-    { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
-  )
-  assert.equal(
-    corpusResponse.status,
-    201,
-    `${await corpusResponse.clone().text()}\n${JSON.stringify(sqlite.prepare('SELECT * FROM lite_visual_corpus_targets').all())}\n${JSON.stringify(target)}`,
-  )
-  const corpusId = ((await corpusResponse.json()) as any).corpus_id
-
-  sqlite
-    .prepare(
-      "UPDATE agent_jobs SET status='running',workflow_step='publish_pair',lease_owner='worker-1',lease_expires_at=datetime('now','+5 minutes') WHERE id=?",
-    )
-    .run(jobId)
-  metadata.corpus_id = corpusId
-  metadata.job_id = jobId
-  metadata.workflow_run_id = runId
-  metadata.worker_identity = 'worker-1'
-  metadata.supersedes_pair_id = 'old-pair'
-  form.set('metadata', JSON.stringify(metadata))
-  const pairResponse = await artifactsApp.request('https://compass.test/pairs', { method: 'POST', body: form }, {
-    DB: db,
-    ARTIFACTS: bucket,
-    LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey,
-  } as any)
-  assert.equal(pairResponse.status, 201, await pairResponse.clone().text())
-  const pair = (await pairResponse.json()) as any
-  sqlite
-    .prepare(
-      "UPDATE agent_jobs SET status='awaiting_activation',lease_owner=NULL,lease_expires_at=NULL,result_json=? WHERE id=?",
-    )
-    .run(JSON.stringify({ pair_id: pairId, receipt_sha256: receiptSha }), jobId)
-
-  db.beforeBatch = () =>
-    sqlite
-      .prepare(
-        "UPDATE lite_visual_corpora SET state='aborted',aborted_at=datetime('now') WHERE id=? AND state='staging'",
       )
-      .run(corpusId)
-  const staleActivation = await artifactsApp.request(
-    `https://compass.test/corpora/${corpusId}/activate`,
-    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contract) },
-    { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
-  )
-  assert.equal(staleActivation.status, 500, await staleActivation.clone().text())
-  assert.equal(
-    sqlite
-      .prepare("SELECT json_extract(metadata_json,'$.publication_state') state FROM artifacts WHERE id='old-html'")
-      .get().state,
-    'ready',
-  )
-  assert.equal(
-    sqlite
-      .prepare("SELECT json_extract(metadata_json,'$.publication_state') state FROM artifacts WHERE id=?")
-      .get(pair.html.id).state,
-    'staged',
-  )
-  assert.equal(sqlite.prepare("SELECT status FROM agent_jobs WHERE id='job-1'").get().status, 'awaiting_activation')
-  sqlite.prepare("UPDATE lite_visual_corpora SET state='staging',aborted_at=NULL WHERE id=?").run(corpusId)
-
-  db.beforeBatch = () => {
-    sqlite
-      .prepare(
-        "UPDATE lite_visual_corpora SET state='active',activated_at=datetime('now') WHERE id=? AND state='staging'",
+      .run(
+        ...Array.from({ length: 6 }, (_, index) => String(index + 1).repeat(64)),
+        oldHtmlSha,
+        oldPdfSha,
+        'c'.repeat(64),
       )
-      .run(corpusId)
+
+    const form = await atomicPairForm()
+    const receipt = JSON.parse(String(form.get('validation_receipt')))
+    const metadata = JSON.parse(String(form.get('metadata')))
+    if (integrityOnly) {
+      receipt.schema_version = 'lite-visual-integrity/v1'
+      receipt.verification_scope = 'integrity-only'
+      receipt.quality_checks = 'not_run'
+      receipt.checks = {
+        source_extraction_binding: true,
+        target_identity: true,
+        artifact_hashes: true,
+        canonical_body: true,
+        render_binding: true,
+      }
+      receipt.attestation.signature = await liteVisualReceiptSignature(receipt, receiptSigningKey)
+      form.set('validation_receipt', JSON.stringify(receipt))
+    }
+    const pairId = metadata.pair_id
+    const runId = 'run-1'
+    const jobId = 'job-1'
     sqlite
       .prepare(
-        "UPDATE artifacts SET metadata_json=json_set(metadata_json,'$.publication_state','superseded') WHERE json_extract(metadata_json,'$.pair_id')='old-pair'",
+        `INSERT INTO agent_jobs(id,job_type,status,payload_json,result_json,recommendation_id,workflow_run_id,workflow_step,updated_at) VALUES (?,'visualise_source','pending',?,'{}','rec-1',?,'resolve_source',datetime('now'))`,
+      )
+      .run(
+        jobId,
+        JSON.stringify({
+          recommendation_id: 'rec-1',
+          source_url: 'https://source.test/item',
+          title: 'Source',
+          workflow_contract: LITE_VISUAL_WORKFLOW_CONTRACT,
+          revision_of_pair_id: 'old-pair',
+        }),
+        runId,
+      )
+    const manifestSha = '1'.repeat(64)
+    const targetSetSha = await sha256Hex(JSON.stringify([[1, 'rec-1', 'https://source.test/item', 'Source', '/work']]))
+    const receiptSha = await sha256Hex(String(form.get('validation_receipt')))
+    const target = {
+      recording_number: 1,
+      recommendation_id: 'rec-1',
+      source_url: 'https://source.test/item',
+      source_title: 'Source',
+      workdir: '/work',
+      pair_id: pairId,
+      job_id: jobId,
+      workflow_run_id: runId,
+      supersedes_pair_id: 'old-pair',
+      target_sha256: receipt.target_sha256,
+      receipt_sha256: receiptSha,
+      work_item_sha256: receipt.work_item_sha256,
+      source_extraction_sha256: receipt.source_extraction_sha256,
+      source_sha256: receipt.source_sha256,
+      source_scope_sha256: receipt.source_scope_sha256,
+      coverage_ledger_sha256: receipt.coverage_ledger_sha256,
+      html_sha256: receipt.html_sha256,
+      pdf_sha256: receipt.pdf_sha256,
+    }
+    const auditSha = await sha256Hex(
+      JSON.stringify([
+        [
+          target.recording_number,
+          target.recommendation_id,
+          '',
+          target.source_url,
+          target.source_title,
+          target.workdir,
+          target.pair_id,
+          target.target_sha256,
+          target.work_item_sha256,
+          target.source_extraction_sha256,
+          target.source_sha256,
+          target.source_scope_sha256,
+          target.coverage_ledger_sha256,
+          target.html_sha256,
+          target.pdf_sha256,
+          target.receipt_sha256,
+        ],
+      ]),
+    )
+    const auditReceipt: Record<string, unknown> = {
+      schema_version: 'lite-visual-corpus-audit/v1',
+      status: 'passed',
+      thread_id: 'thread-1',
+      manifest_sha256: manifestSha,
+      target_set_sha256: targetSetSha,
+      corpus_sha256: auditSha,
+      expected: 1,
+      audited: 1,
+      failed: 0,
+      ...LITE_VISUAL_AUDIT_PROVENANCE,
+    }
+    if (integrityOnly)
+      Object.assign(auditReceipt, {
+        schema_version: 'lite-visual-corpus-integrity/v1',
+        verification_scope: 'integrity-only',
+        quality_checks: 'not_run',
+        checks: { ordered_targets: true, local_receipt_bindings: true, file_hashes: true },
+      })
+    auditReceipt.attestation = {
+      algorithm: 'hmac-sha256',
+      key_id: LITE_VISUAL_ATTESTATION_KEY_ID,
+      signature: await liteVisualReceiptSignature(auditReceipt, receiptSigningKey),
+    }
+    const contract = {
+      thread_id: 'thread-1',
+      manifest_sha256: manifestSha,
+      target_set_sha256: targetSetSha,
+      audit_corpus_sha256: auditSha,
+      expected_pairs: 1,
+      audit_receipt: auditReceipt,
+      targets: [target],
+    }
+    const staleAuditReceipt = { ...auditReceipt, python_version: '3.11.14', attestation: undefined } as Record<
+      string,
+      unknown
+    >
+    if (integrityOnly) staleAuditReceipt.quality_checks = 'passed'
+    staleAuditReceipt.attestation = {
+      algorithm: 'hmac-sha256',
+      key_id: LITE_VISUAL_ATTESTATION_KEY_ID,
+      signature: await liteVisualReceiptSignature(staleAuditReceipt, receiptSigningKey),
+    }
+    const staleAudit = await artifactsApp.request(
+      'https://compass.test/corpora',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...contract, audit_receipt: staleAuditReceipt }),
+      },
+      { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
+    )
+    assert.equal(staleAudit.status, 422, await staleAudit.text())
+    const changedHash = { ...target, source_sha256: 'f'.repeat(64) }
+    const replayedAudit = await artifactsApp.request(
+      'https://compass.test/corpora',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...contract, targets: [changedHash] }),
+      },
+      { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
+    )
+    assert.equal(replayedAudit.status, 409, await replayedAudit.text())
+    const corpusResponse = await artifactsApp.request(
+      'https://compass.test/corpora',
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contract) },
+      { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
+    )
+    assert.equal(
+      corpusResponse.status,
+      201,
+      `${await corpusResponse.clone().text()}\n${JSON.stringify(sqlite.prepare('SELECT * FROM lite_visual_corpus_targets').all())}\n${JSON.stringify(target)}`,
+    )
+    const corpusId = ((await corpusResponse.json()) as any).corpus_id
+
+    sqlite
+      .prepare(
+        "UPDATE agent_jobs SET status='running',workflow_step='publish_pair',lease_owner='worker-1',lease_expires_at=datetime('now','+5 minutes') WHERE id=?",
+      )
+      .run(jobId)
+    metadata.corpus_id = corpusId
+    metadata.job_id = jobId
+    metadata.workflow_run_id = runId
+    metadata.worker_identity = 'worker-1'
+    metadata.supersedes_pair_id = 'old-pair'
+    form.set('metadata', JSON.stringify(metadata))
+    const pairResponse = await artifactsApp.request('https://compass.test/pairs', { method: 'POST', body: form }, {
+      DB: db,
+      ARTIFACTS: bucket,
+      LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey,
+    } as any)
+    assert.equal(pairResponse.status, 201, await pairResponse.clone().text())
+    const pair = (await pairResponse.json()) as any
+    sqlite
+      .prepare(
+        "UPDATE agent_jobs SET status='awaiting_activation',lease_owner=NULL,lease_expires_at=NULL,result_json=? WHERE id=?",
+      )
+      .run(JSON.stringify({ pair_id: pairId, receipt_sha256: receiptSha }), jobId)
+
+    db.beforeBatch = () =>
+      sqlite
+        .prepare(
+          "UPDATE lite_visual_corpora SET state='aborted',aborted_at=datetime('now') WHERE id=? AND state='staging'",
+        )
+        .run(corpusId)
+    const staleActivation = await artifactsApp.request(
+      `https://compass.test/corpora/${corpusId}/activate`,
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contract) },
+      { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
+    )
+    assert.equal(staleActivation.status, 500, await staleActivation.clone().text())
+    assert.equal(
+      sqlite
+        .prepare("SELECT json_extract(metadata_json,'$.publication_state') state FROM artifacts WHERE id='old-html'")
+        .get().state,
+      'ready',
+    )
+    assert.equal(
+      sqlite
+        .prepare("SELECT json_extract(metadata_json,'$.publication_state') state FROM artifacts WHERE id=?")
+        .get(pair.html.id).state,
+      'staged',
+    )
+    assert.equal(sqlite.prepare("SELECT status FROM agent_jobs WHERE id='job-1'").get().status, 'awaiting_activation')
+    sqlite.prepare("UPDATE lite_visual_corpora SET state='staging',aborted_at=NULL WHERE id=?").run(corpusId)
+
+    db.beforeBatch = () => {
+      sqlite
+        .prepare(
+          "UPDATE lite_visual_corpora SET state='active',activated_at=datetime('now') WHERE id=? AND state='staging'",
+        )
+        .run(corpusId)
+      sqlite
+        .prepare(
+          "UPDATE artifacts SET metadata_json=json_set(metadata_json,'$.publication_state','superseded') WHERE json_extract(metadata_json,'$.pair_id')='old-pair'",
+        )
+        .run()
+      sqlite
+        .prepare(
+          "UPDATE artifacts SET metadata_json=json_set(metadata_json,'$.publication_state','ready') WHERE json_extract(metadata_json,'$.pair_id')=?",
+        )
+        .run(pairId)
+      sqlite.prepare("UPDATE lite_visual_pairs SET state='active' WHERE pair_id=?").run(pairId)
+      sqlite.prepare("UPDATE agent_jobs SET status='completed' WHERE id=?").run(jobId)
+      sqlite.prepare("INSERT INTO lite_visual_active_corpora(thread_id,corpus_id) VALUES ('thread-1',?)").run(corpusId)
+    }
+    const staleAbort = await artifactsApp.request(
+      `https://compass.test/corpora/${corpusId}/abort`,
+      { method: 'POST' },
+      {
+        DB: db,
+        ARTIFACTS: bucket,
+        LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey,
+      } as any,
+    )
+    assert.equal(staleAbort.status, 409, await staleAbort.clone().text())
+    assert.equal(
+      objects.has(sqlite.prepare('SELECT html_r2_key FROM lite_visual_pairs WHERE pair_id=?').get(pairId).html_r2_key),
+      true,
+    )
+    assert.equal(sqlite.prepare('SELECT state FROM lite_visual_pairs WHERE pair_id=?').get(pairId).state, 'active')
+    sqlite.prepare("DELETE FROM lite_visual_active_corpora WHERE thread_id='thread-1'").run()
+    sqlite.prepare("UPDATE lite_visual_corpora SET state='staging',activated_at=NULL WHERE id=?").run(corpusId)
+    sqlite
+      .prepare(
+        "UPDATE artifacts SET metadata_json=json_set(metadata_json,'$.publication_state','ready') WHERE json_extract(metadata_json,'$.pair_id')='old-pair'",
       )
       .run()
     sqlite
       .prepare(
-        "UPDATE artifacts SET metadata_json=json_set(metadata_json,'$.publication_state','ready') WHERE json_extract(metadata_json,'$.pair_id')=?",
+        "UPDATE artifacts SET metadata_json=json_set(metadata_json,'$.publication_state','staged') WHERE json_extract(metadata_json,'$.pair_id')=?",
       )
       .run(pairId)
-    sqlite.prepare("UPDATE lite_visual_pairs SET state='active' WHERE pair_id=?").run(pairId)
-    sqlite.prepare("UPDATE agent_jobs SET status='completed' WHERE id=?").run(jobId)
-    sqlite.prepare("INSERT INTO lite_visual_active_corpora(thread_id,corpus_id) VALUES ('thread-1',?)").run(corpusId)
-  }
-  const staleAbort = await artifactsApp.request(`https://compass.test/corpora/${corpusId}/abort`, { method: 'POST' }, {
-    DB: db,
-    ARTIFACTS: bucket,
-    LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey,
-  } as any)
-  assert.equal(staleAbort.status, 409, await staleAbort.clone().text())
-  assert.equal(
-    objects.has(sqlite.prepare('SELECT html_r2_key FROM lite_visual_pairs WHERE pair_id=?').get(pairId).html_r2_key),
-    true,
-  )
-  assert.equal(sqlite.prepare('SELECT state FROM lite_visual_pairs WHERE pair_id=?').get(pairId).state, 'active')
-  sqlite.prepare("DELETE FROM lite_visual_active_corpora WHERE thread_id='thread-1'").run()
-  sqlite.prepare("UPDATE lite_visual_corpora SET state='staging',activated_at=NULL WHERE id=?").run(corpusId)
-  sqlite
-    .prepare(
-      "UPDATE artifacts SET metadata_json=json_set(metadata_json,'$.publication_state','ready') WHERE json_extract(metadata_json,'$.pair_id')='old-pair'",
-    )
-    .run()
-  sqlite
-    .prepare(
-      "UPDATE artifacts SET metadata_json=json_set(metadata_json,'$.publication_state','staged') WHERE json_extract(metadata_json,'$.pair_id')=?",
-    )
-    .run(pairId)
-  sqlite.prepare("UPDATE lite_visual_pairs SET state='staged' WHERE pair_id=?").run(pairId)
-  sqlite.prepare("UPDATE agent_jobs SET status='awaiting_activation' WHERE id=?").run(jobId)
+    sqlite.prepare("UPDATE lite_visual_pairs SET state='staged' WHERE pair_id=?").run(pairId)
+    sqlite.prepare("UPDATE agent_jobs SET status='awaiting_activation' WHERE id=?").run(jobId)
 
-  const activation = await artifactsApp.request(
-    `https://compass.test/corpora/${corpusId}/activate`,
-    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contract) },
-    { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
-  )
-  assert.equal(activation.status, 200, await activation.text())
-  assert.equal(sqlite.prepare("SELECT status FROM agent_jobs WHERE id='job-1'").get().status, 'completed')
-  assert.equal(
-    sqlite
-      .prepare("SELECT json_extract(metadata_json,'$.publication_state') state FROM artifacts WHERE id='old-html'")
-      .get().state,
-    'superseded',
-  )
-  assert.equal(
-    sqlite.prepare('SELECT corpus_id FROM lite_visual_active_corpora WHERE thread_id=?').get('thread-1').corpus_id,
-    corpusId,
-  )
-  assert.equal(sqlite.prepare('SELECT state FROM lite_visual_pairs WHERE pair_id=?').get(pairId).state, 'active')
-  assert.ok(pair.html?.id && pair.pdf?.id)
+    const activation = await artifactsApp.request(
+      `https://compass.test/corpora/${corpusId}/activate`,
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contract) },
+      { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
+    )
+    assert.equal(activation.status, 200, await activation.text())
+    assert.equal(sqlite.prepare("SELECT status FROM agent_jobs WHERE id='job-1'").get().status, 'completed')
+    assert.equal(
+      sqlite
+        .prepare("SELECT json_extract(metadata_json,'$.publication_state') state FROM artifacts WHERE id='old-html'")
+        .get().state,
+      'superseded',
+    )
+    assert.equal(
+      sqlite.prepare('SELECT corpus_id FROM lite_visual_active_corpora WHERE thread_id=?').get('thread-1').corpus_id,
+      corpusId,
+    )
+    assert.equal(sqlite.prepare('SELECT state FROM lite_visual_pairs WHERE pair_id=?').get(pairId).state, 'active')
+    assert.ok(pair.html?.id && pair.pdf?.id)
 
-  const corpusRetry = await artifactsApp.request(
-    'https://compass.test/corpora',
-    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contract) },
-    { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
-  )
-  assert.equal(corpusRetry.status, 200, await corpusRetry.clone().text())
-  assert.equal(((await corpusRetry.json()) as any).state, 'active')
-  const pairRetryForm = await atomicPairForm()
-  pairRetryForm.set('validation_receipt', JSON.stringify(receipt))
-  const pairRetryMetadata = JSON.parse(String(pairRetryForm.get('metadata')))
-  Object.assign(pairRetryMetadata, {
-    corpus_id: corpusId,
-    job_id: jobId,
-    workflow_run_id: runId,
-    worker_identity: 'worker-1',
-    supersedes_pair_id: 'old-pair',
+    const corpusRetry = await artifactsApp.request(
+      'https://compass.test/corpora',
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contract) },
+      { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
+    )
+    assert.equal(corpusRetry.status, 200, await corpusRetry.clone().text())
+    assert.equal(((await corpusRetry.json()) as any).state, 'active')
+    const pairRetryForm = await atomicPairForm()
+    pairRetryForm.set('validation_receipt', JSON.stringify(receipt))
+    const pairRetryMetadata = JSON.parse(String(pairRetryForm.get('metadata')))
+    Object.assign(pairRetryMetadata, {
+      corpus_id: corpusId,
+      job_id: jobId,
+      workflow_run_id: runId,
+      worker_identity: 'worker-1',
+      supersedes_pair_id: 'old-pair',
+    })
+    pairRetryForm.set('metadata', JSON.stringify(pairRetryMetadata))
+    const pairRetry = await artifactsApp.request(
+      'https://compass.test/pairs',
+      { method: 'POST', body: pairRetryForm },
+      {
+        DB: db,
+        ARTIFACTS: bucket,
+        LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey,
+      } as any,
+    )
+    assert.equal(pairRetry.status, 200, await pairRetry.clone().text())
+    assert.equal(((await pairRetry.json()) as any).reused, true)
+
+    const rollback = await artifactsApp.request(
+      `https://compass.test/corpora/${corpusId}/rollback`,
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contract) },
+      { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
+    )
+    assert.equal(rollback.status, 200, await rollback.clone().text())
+    assert.equal(
+      sqlite
+        .prepare("SELECT json_extract(metadata_json,'$.publication_state') state FROM artifacts WHERE id='old-html'")
+        .get().state,
+      'ready',
+    )
+    assert.equal(
+      sqlite
+        .prepare("SELECT json_extract(metadata_json,'$.publication_state') state FROM artifacts WHERE id=?")
+        .get(pair.html.id).state,
+      'superseded',
+    )
+    assert.equal(
+      sqlite.prepare('SELECT corpus_id FROM lite_visual_active_corpora WHERE thread_id=?').get('thread-1'),
+      undefined,
+    )
+    assert.equal(sqlite.prepare('SELECT state FROM lite_visual_pairs WHERE pair_id=?').get(pairId).state, 'superseded')
+    assert.equal(sqlite.prepare("SELECT status FROM agent_jobs WHERE id='job-1'").get().status, 'completed')
+    assert.ok(
+      sqlite.prepare("SELECT json_extract(result_json,'$.rolled_back_at') value FROM agent_jobs WHERE id='job-1'").get()
+        .value,
+    )
+    const rollbackRetry = await artifactsApp.request(
+      `https://compass.test/corpora/${corpusId}/rollback`,
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contract) },
+      { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
+    )
+    assert.equal(rollbackRetry.status, 200, await rollbackRetry.clone().text())
+    assert.equal(((await rollbackRetry.json()) as any).reused, true)
+    sqlite.close()
   })
-  pairRetryForm.set('metadata', JSON.stringify(pairRetryMetadata))
-  const pairRetry = await artifactsApp.request('https://compass.test/pairs', { method: 'POST', body: pairRetryForm }, {
-    DB: db,
-    ARTIFACTS: bucket,
-    LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey,
-  } as any)
-  assert.equal(pairRetry.status, 200, await pairRetry.clone().text())
-  assert.equal(((await pairRetry.json()) as any).reused, true)
-
-  const rollback = await artifactsApp.request(
-    `https://compass.test/corpora/${corpusId}/rollback`,
-    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contract) },
-    { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
-  )
-  assert.equal(rollback.status, 200, await rollback.clone().text())
-  assert.equal(
-    sqlite
-      .prepare("SELECT json_extract(metadata_json,'$.publication_state') state FROM artifacts WHERE id='old-html'")
-      .get().state,
-    'ready',
-  )
-  assert.equal(
-    sqlite
-      .prepare("SELECT json_extract(metadata_json,'$.publication_state') state FROM artifacts WHERE id=?")
-      .get(pair.html.id).state,
-    'superseded',
-  )
-  assert.equal(
-    sqlite.prepare('SELECT corpus_id FROM lite_visual_active_corpora WHERE thread_id=?').get('thread-1'),
-    undefined,
-  )
-  assert.equal(sqlite.prepare('SELECT state FROM lite_visual_pairs WHERE pair_id=?').get(pairId).state, 'superseded')
-  assert.equal(sqlite.prepare("SELECT status FROM agent_jobs WHERE id='job-1'").get().status, 'completed')
-  assert.ok(
-    sqlite.prepare("SELECT json_extract(result_json,'$.rolled_back_at') value FROM agent_jobs WHERE id='job-1'").get()
-      .value,
-  )
-  const rollbackRetry = await artifactsApp.request(
-    `https://compass.test/corpora/${corpusId}/rollback`,
-    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contract) },
-    { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any,
-  )
-  assert.equal(rollbackRetry.status, 200, await rollbackRetry.clone().text())
-  assert.equal(((await rollbackRetry.json()) as any).reused, true)
-  sqlite.close()
-})
 test('exact file records include older book and Thread files without fetching their content', async () => {
   const sqlite = new DatabaseSync(':memory:')
   try {
@@ -1185,11 +1297,28 @@ test('exact file records include older book and Thread files without fetching th
       CREATE TABLE html_files(id TEXT PRIMARY KEY,filename TEXT,content TEXT,created_at TEXT);
       INSERT INTO recommendations VALUES ('owner','active',NULL);`)
     const insert = sqlite.prepare('INSERT INTO artifacts VALUES (?,?,?,?,?,?,?,?)')
-    insert.run('old-book-file','chapter.pdf','application/pdf',25,JSON.stringify({ recommendation_id: 'owner', scope: 'book' }),'2020-01-01',null,null)
-    insert.run('thread-file','exercise.md','text/markdown',12,'{}','2020-01-01','thread-1',null)
-    for (let i = 0; i < 205; i++) insert.run(`new-${i}`,'new.pdf','application/pdf',25,'{}','2026-09-05',null,null)
+    insert.run(
+      'old-book-file',
+      'chapter.pdf',
+      'application/pdf',
+      25,
+      JSON.stringify({ recommendation_id: 'owner', scope: 'book' }),
+      '2020-01-01',
+      null,
+      null,
+    )
+    insert.run('thread-file', 'exercise.md', 'text/markdown', 12, '{}', '2020-01-01', 'thread-1', null)
+    for (let i = 0; i < 205; i++)
+      insert.run(`new-${i}`, 'new.pdf', 'application/pdf', 25, '{}', '2026-09-05', null, null)
     sqlite.exec("INSERT INTO html_files VALUES ('legacy','old.html','<p>Legacy content</p>','2020-01-01')")
-    const env = { DB: new SqliteD1(sqlite), ARTIFACTS: { get() { throw new Error('Metadata must not download R2 content') } } }
+    const env = {
+      DB: new SqliteD1(sqlite),
+      ARTIFACTS: {
+        get() {
+          throw new Error('Metadata must not download R2 content')
+        },
+      },
+    }
     for (const id of ['old-book-file', 'thread-file', 'legacy']) {
       const response = await artifactsApp.request(`https://compass.test/${id}/record`, {}, env)
       assert.equal(response.status, 200)
@@ -1203,7 +1332,9 @@ test('exact file records include older book and Thread files without fetching th
     }
     const missing = await artifactsApp.request('https://compass.test/missing/record', {}, env)
     assert.equal(missing.status, 404)
-  } finally { sqlite.close() }
+  } finally {
+    sqlite.close()
+  }
 })
 
 test('exact file metadata hides staged, orphaned, and deleted-source files', async () => {
@@ -1214,12 +1345,16 @@ test('exact file metadata hides staged, orphaned, and deleted-source files', asy
       INSERT INTO recommendations VALUES ('deleted-owner','deleted','2026-09-01');`)
     const insert = sqlite.prepare('INSERT INTO artifacts VALUES (?,?,?,?,?,?,?,?)')
     for (const [id, metadata] of [
-      ['staged', { publication_state: 'staged' }], ['orphan', { recommendation_id: 'missing-owner' }], ['deleted', { recommendation_id: 'deleted-owner' }],
+      ['staged', { publication_state: 'staged' }],
+      ['orphan', { recommendation_id: 'missing-owner' }],
+      ['deleted', { recommendation_id: 'deleted-owner' }],
     ] as const) {
-      insert.run(id,'hidden.pdf','application/pdf',25,JSON.stringify(metadata),'2026-09-05',null,null)
+      insert.run(id, 'hidden.pdf', 'application/pdf', 25, JSON.stringify(metadata), '2026-09-05', null, null)
       const response = await artifactsApp.request(`https://compass.test/${id}/record`, {}, { DB: new SqliteD1(sqlite) })
       assert.equal(response.status, 404, id)
       assert.deepEqual(await response.json(), { error: 'not found' })
     }
-  } finally { sqlite.close() }
+  } finally {
+    sqlite.close()
+  }
 })

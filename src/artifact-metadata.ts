@@ -308,9 +308,14 @@ export async function validateLiteVisualPair(
   if (metadata.asset_policy !== 'code-only') failures.push('asset_policy must be code-only')
   if (metadata.recommended_start !== 'html') failures.push('recommended_start must be html for Lite Visual')
   const integrityOnly = receipt.schema_version === LITE_VISUAL_INTEGRITY_SCHEMA
-  if (!integrityOnly && receipt.schema_version !== LITE_VISUAL_RECEIPT_SCHEMA) failures.push(`validation receipt schema_version must be ${LITE_VISUAL_RECEIPT_SCHEMA} or ${LITE_VISUAL_INTEGRITY_SCHEMA}`)
-  if (integrityOnly && (receipt.verification_scope !== 'integrity-only' || receipt.quality_checks !== 'not_run')) failures.push('integrity receipt must explicitly declare integrity-only verification and quality_checks not_run')
-  if (receipt.workflow_contract !== LITE_VISUAL_WORKFLOW_CONTRACT) failures.push(`validation receipt workflow_contract must be ${LITE_VISUAL_WORKFLOW_CONTRACT}`)
+  if (!integrityOnly && receipt.schema_version !== LITE_VISUAL_RECEIPT_SCHEMA)
+    failures.push(
+      `validation receipt schema_version must be ${LITE_VISUAL_RECEIPT_SCHEMA} or ${LITE_VISUAL_INTEGRITY_SCHEMA}`,
+    )
+  if (integrityOnly && (receipt.verification_scope !== 'integrity-only' || receipt.quality_checks !== 'not_run'))
+    failures.push('integrity receipt must explicitly declare integrity-only verification and quality_checks not_run')
+  if (receipt.workflow_contract !== LITE_VISUAL_WORKFLOW_CONTRACT)
+    failures.push(`validation receipt workflow_contract must be ${LITE_VISUAL_WORKFLOW_CONTRACT}`)
   if (receipt.status !== 'passed') failures.push('validation receipt status must be passed')
   if (!(await validLiteVisualAttestation(receipt, signingKey)))
     failures.push('validation receipt attestation is missing or invalid')
@@ -327,11 +332,30 @@ export async function validateLiteVisualPair(
     if (!SHA256_RE.test(String(receipt[key] || '')))
       failures.push(`validation receipt ${key} must be a full lowercase SHA-256`)
   }
-  const checks = receipt.checks && typeof receipt.checks === 'object' && !Array.isArray(receipt.checks) ? receipt.checks as Record<string, unknown> : {}
+  const checks =
+    receipt.checks && typeof receipt.checks === 'object' && !Array.isArray(receipt.checks)
+      ? (receipt.checks as Record<string, unknown>)
+      : {}
   const requiredChecks: readonly string[] = integrityOnly
     ? ['source_extraction_binding', 'target_identity', 'artifact_hashes', 'canonical_body', 'render_binding']
-    : ['source_coverage', 'claim_traceability', 'exact_source_html', 'exact_source_pdf', 'canonical_html', 'code_only', 'rtl', 'accessibility', 'responsive', 'print_a4', 'pdf_parity']
-  if (Object.keys(checks).length !== requiredChecks.length || Object.keys(checks).some((key) => !requiredChecks.includes(key))) failures.push('validation receipt checks must contain only the exact declared schema check set')
+    : [
+        'source_coverage',
+        'claim_traceability',
+        'exact_source_html',
+        'exact_source_pdf',
+        'canonical_html',
+        'code_only',
+        'rtl',
+        'accessibility',
+        'responsive',
+        'print_a4',
+        'pdf_parity',
+      ]
+  if (
+    Object.keys(checks).length !== requiredChecks.length ||
+    Object.keys(checks).some((key) => !requiredChecks.includes(key))
+  )
+    failures.push('validation receipt checks must contain only the exact declared schema check set')
   for (const key of requiredChecks) {
     if (checks[key] !== true) failures.push(`validation receipt check ${key} must be true`)
   }
@@ -515,7 +539,20 @@ export function normalizeQualityAssurance(metadata: Record<string, unknown> = {}
     ? [...new Set([...(metadata.repair_reason ? [String(metadata.repair_reason)] : []), ...contractFailures])]
     : []
   return {
-    status: legacy || integrityOnly ? 'unverified' : liteVisual ? metadata.validation_status === 'passed' ? 'passed' : 'repair_required' : !notebookVideo ? 'unverified' : repairRequired ? 'repair_required' : metadata.qa_status === 'passed' ? 'passed' : 'unverified',
+    status:
+      legacy || integrityOnly
+        ? 'unverified'
+        : liteVisual
+          ? metadata.validation_status === 'passed'
+            ? 'passed'
+            : 'repair_required'
+          : !notebookVideo
+            ? 'unverified'
+            : repairRequired
+              ? 'repair_required'
+              : metadata.qa_status === 'passed'
+                ? 'passed'
+                : 'unverified',
     ...(integrityOnly ? { verification_scope: 'integrity-only', quality_checks: 'not_run' } : {}),
     score: null,
     video_format: metadata.video_format || null,

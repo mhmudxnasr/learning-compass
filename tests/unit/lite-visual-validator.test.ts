@@ -120,8 +120,22 @@ test('Visual Lite v6 validates exact source coverage and emits a hash-bound rece
       }),
     )
     const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="lite-visual-design-intent" content="قراءة سببية هادئة تتبع حركة هذا المصدر"><meta name="lite-visual-design-signature" content="خط جانبي يوضح انتقال السبب إلى النتيجة"><title>رفيق المصدر</title><style>@page{size:A4;margin:18mm 16mm}:root{font-size:18px;--ink:#18231d;--paper:#f8f8f4;--accent:#245c45}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font-family:"Noto Naskh Arabic","DejaVu Sans",sans-serif;font-size:1rem;line-height:1.9}main{max-width:46rem;margin:auto;padding:3rem 1.25rem}article{border-inline-start:.3rem solid var(--accent);padding-inline-start:clamp(1rem,4vw,2.5rem)}h1{font-size:clamp(2rem,7vw,4rem);line-height:1.15;margin:0 0 2rem}p{max-width:68ch;margin:0 0 1.2rem}@media(max-width:480px){main{padding:1.5rem .9rem}}@media print{body{background:#fff}main{max-width:none;padding:0}article{border:0;padding:0}h1{font-size:28pt}}</style></head><body><main><article data-canonical-content="true"><h1>كيف تنتقل الفكرة من السبب إلى النتيجة؟</h1><section id="source" data-source-scope="scope-01"><h2>الحجة الكاملة</h2><div data-exact-source-scope="scope-01"><p>${source}</p></div></section></article></main></body></html>`
-    writeFileSync(htmlPath, html.replace('<div data-exact-source-scope="scope-01">', `<p>${source}</p></section><section id="exact-source"><h2>النص الكامل للمصدر</h2><div data-exact-source-scope="scope-01">`))
-    const embedArgs = ['/home/mahmud/.hermes/skills/lite-visual/scripts/embed_exact_source.py', '--source', sourcePath, '--source-scope', scopePath, '--html', htmlPath]
+    writeFileSync(
+      htmlPath,
+      html.replace(
+        '<div data-exact-source-scope="scope-01">',
+        `<p>${source}</p></section><section id="exact-source"><h2>النص الكامل للمصدر</h2><div data-exact-source-scope="scope-01">`,
+      ),
+    )
+    const embedArgs = [
+      '/home/mahmud/.hermes/skills/lite-visual/scripts/embed_exact_source.py',
+      '--source',
+      sourcePath,
+      '--source-scope',
+      scopePath,
+      '--html',
+      htmlPath,
+    ]
     const embed = spawnSync('python3', embedArgs, { encoding: 'utf8' })
     assert.equal(embed.status, 0, embed.stderr)
     const reviewedHtml = readFileSync(htmlPath, 'utf8')
@@ -130,21 +144,50 @@ test('Visual Lite v6 validates exact source coverage and emits a hash-bound rece
     assert.equal(readFileSync(htmlPath, 'utf8'), reviewedHtml, 'source embedding must be idempotent')
     const digest = spawnSync('python3', [validator, '--authored-digest', htmlPath], { encoding: 'utf8' })
     assert.equal(digest.status, 0, digest.stderr)
-    writeFileSync(ledgerPath, JSON.stringify({
-      schema_version: 'lite-visual-coverage-ledger/v1',
-      source_sha256: hash(source),
-      source_items: ['1'],
-      claims: [{ id: 'claim-01', source_item: '1', source_scope_ids: ['scope-01'], source_anchor_text: 'الفكرة 1 تشرح السبب', source_summary: 'كل أفكار المصدر وأمثلته وشروطه وحدوده', html_section_id: 'source', html_anchor_text: 'الفكرة 1 تشرح السبب', meaning_units: [{ kind: 'mechanism', source_anchor_text: 'الفكرة 1 تشرح السبب', html_anchor_text: 'الفكرة 1 تشرح السبب' }] }],
-      editorial_review: {
-        schema_version: 'lite-visual-editorial-review/v1', language: 'egyptian-arabic',
-        reader_goal: 'Understand the causal explanation', assumed_knowledge: 'Introduce the mechanism before using it',
-        authored_text_sha256: digest.stdout.trim(),
-        passes: Object.fromEntries(['fidelity', 'teaching', 'language', 'continuity'].map(name => [name, {
-          section_id: 'source', anchor_text: 'الفكرة 1 تشرح السبب', note: `Fixture evidence for the ${name} pass`,
-        }])),
-      },
-    }))
-    const chrome = spawnSync('node', ['/home/mahmud/.hermes/skills/lite-visual/scripts/render_pdf.mjs', htmlPath, pdfPath], { encoding: 'utf8' })
+    writeFileSync(
+      ledgerPath,
+      JSON.stringify({
+        schema_version: 'lite-visual-coverage-ledger/v1',
+        source_sha256: hash(source),
+        source_items: ['1'],
+        claims: [
+          {
+            id: 'claim-01',
+            source_item: '1',
+            source_scope_ids: ['scope-01'],
+            source_anchor_text: 'الفكرة 1 تشرح السبب',
+            source_summary: 'كل أفكار المصدر وأمثلته وشروطه وحدوده',
+            html_section_id: 'source',
+            html_anchor_text: 'الفكرة 1 تشرح السبب',
+            meaning_units: [
+              { kind: 'mechanism', source_anchor_text: 'الفكرة 1 تشرح السبب', html_anchor_text: 'الفكرة 1 تشرح السبب' },
+            ],
+          },
+        ],
+        editorial_review: {
+          schema_version: 'lite-visual-editorial-review/v1',
+          language: 'egyptian-arabic',
+          reader_goal: 'Understand the causal explanation',
+          assumed_knowledge: 'Introduce the mechanism before using it',
+          authored_text_sha256: digest.stdout.trim(),
+          passes: Object.fromEntries(
+            ['fidelity', 'teaching', 'language', 'continuity'].map((name) => [
+              name,
+              {
+                section_id: 'source',
+                anchor_text: 'الفكرة 1 تشرح السبب',
+                note: `Fixture evidence for the ${name} pass`,
+              },
+            ]),
+          ),
+        },
+      }),
+    )
+    const chrome = spawnSync(
+      'node',
+      ['/home/mahmud/.hermes/skills/lite-visual/scripts/render_pdf.mjs', htmlPath, pdfPath],
+      { encoding: 'utf8' },
+    )
     assert.equal(chrome.status, 0, chrome.stderr)
     const baseArgs = [
       '--source',
@@ -198,26 +241,91 @@ test('Visual Lite v6 validates exact source coverage and emits a hash-bound rece
     const omittedPath = join(directory, 'omitted.html')
     const exactStart = reviewedHtml.indexOf('<section id="exact-source"')
     assert.ok(exactStart > 0)
-    writeFileSync(omittedPath, reviewedHtml.slice(0, exactStart) + reviewedHtml.slice(exactStart).replace('والحدود بوضوح كامل', 'والحذف بوضوح كامل'))
-    const omitted = spawnSync('python3', [validator, ...baseArgs, '--html', omittedPath, '--pdf', pdfPath, '--receipt-out', join(directory, 'omitted-receipt.json')], { encoding: 'utf8', env: signingEnv })
+    writeFileSync(
+      omittedPath,
+      reviewedHtml.slice(0, exactStart) +
+        reviewedHtml.slice(exactStart).replace('والحدود بوضوح كامل', 'والحذف بوضوح كامل'),
+    )
+    const omitted = spawnSync(
+      'python3',
+      [
+        validator,
+        ...baseArgs,
+        '--html',
+        omittedPath,
+        '--pdf',
+        pdfPath,
+        '--receipt-out',
+        join(directory, 'omitted-receipt.json'),
+      ],
+      { encoding: 'utf8', env: signingEnv },
+    )
     assert.notEqual(omitted.status, 0)
     assert.match(omitted.stderr, /exact source scope scope-01 differs/)
 
     const hiddenPrintPath = join(directory, 'hidden-print.html')
-    writeFileSync(hiddenPrintPath, reviewedHtml.replace('@media print{', '@media print{[data-exact-source-scope]{display:none}'))
-    const hiddenPrint = spawnSync('python3', [validator, ...baseArgs, '--html', hiddenPrintPath, '--pdf', pdfPath, '--receipt-out', join(directory, 'hidden-print-receipt.json')], { encoding: 'utf8', env: signingEnv })
+    writeFileSync(
+      hiddenPrintPath,
+      reviewedHtml.replace('@media print{', '@media print{[data-exact-source-scope]{display:none}'),
+    )
+    const hiddenPrint = spawnSync(
+      'python3',
+      [
+        validator,
+        ...baseArgs,
+        '--html',
+        hiddenPrintPath,
+        '--pdf',
+        pdfPath,
+        '--receipt-out',
+        join(directory, 'hidden-print-receipt.json'),
+      ],
+      { encoding: 'utf8', env: signingEnv },
+    )
     assert.notEqual(hiddenPrint.status, 0)
     assert.match(hiddenPrint.stderr, /print media/)
 
     const lowContrastPath = join(directory, 'low-contrast.html')
-    writeFileSync(lowContrastPath, reviewedHtml.replace('</style>', '[data-exact-source-scope]{color:#fff;background:#fff}</style>'))
-    const lowContrast = spawnSync('python3', [validator, ...baseArgs, '--html', lowContrastPath, '--pdf', pdfPath, '--receipt-out', join(directory, 'low-contrast-receipt.json')], { encoding: 'utf8', env: signingEnv })
+    writeFileSync(
+      lowContrastPath,
+      reviewedHtml.replace('</style>', '[data-exact-source-scope]{color:#fff;background:#fff}</style>'),
+    )
+    const lowContrast = spawnSync(
+      'python3',
+      [
+        validator,
+        ...baseArgs,
+        '--html',
+        lowContrastPath,
+        '--pdf',
+        pdfPath,
+        '--receipt-out',
+        join(directory, 'low-contrast-receipt.json'),
+      ],
+      { encoding: 'utf8', env: signingEnv },
+    )
     assert.notEqual(lowContrast.status, 0)
     assert.match(lowContrast.stderr, /unreadable/)
 
     const coveredPath = join(directory, 'covered.html')
-    writeFileSync(coveredPath, reviewedHtml.replace('<body>', '<body><div style="position:fixed;inset:0;background:#111;z-index:9999"></div>'))
-    const covered = spawnSync('python3', [validator, ...baseArgs, '--html', coveredPath, '--pdf', pdfPath, '--receipt-out', join(directory, 'covered-receipt.json')], { encoding: 'utf8', env: signingEnv })
+    writeFileSync(
+      coveredPath,
+      reviewedHtml.replace('<body>', '<body><div style="position:fixed;inset:0;background:#111;z-index:9999"></div>'),
+    )
+    const covered = spawnSync(
+      'python3',
+      [
+        validator,
+        ...baseArgs,
+        '--html',
+        coveredPath,
+        '--pdf',
+        pdfPath,
+        '--receipt-out',
+        join(directory, 'covered-receipt.json'),
+      ],
+      { encoding: 'utf8', env: signingEnv },
+    )
     assert.notEqual(covered.status, 0)
     assert.match(covered.stderr, /unreadable/)
   } finally {

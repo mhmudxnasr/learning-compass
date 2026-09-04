@@ -17,7 +17,6 @@ import {
 import {
   asView,
   listFrom,
-  objectHref,
   viewHref,
   type LibraryObjectType,
   type LibraryRecord,
@@ -197,7 +196,7 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     query.delete('focus')
     const href = itemHref(data.item)
     location.replace(`${href}${query.size ? `?${query}` : ''}`)
-  }, [objectType, activeRoute.objectId, data?.item?.id, data?.item?.content_type])
+  }, [objectType, activeRoute.objectId, activeRoute.query, data?.item])
   const [working, setWorking] = useState('')
   const [blockedId, setBlockedId] = useState('')
   const [notice, setNotice] = useState('')

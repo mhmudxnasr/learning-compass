@@ -30,6 +30,8 @@ tmp/
 test-results/
 backups/
 .impeccable/
+.codex-tmp/
+/whatsapp-insights-site/
 
 # Wrangler configs that may contain account IDs
 .wrangler/
