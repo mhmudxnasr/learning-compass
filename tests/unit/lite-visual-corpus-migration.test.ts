@@ -7,6 +7,10 @@ const migration = readFileSync(
   new URL('../../migrations/0068_lite_visual_corpus_activation.sql', import.meta.url),
   'utf8',
 )
+const scopeLineageMigration = readFileSync(
+  new URL('../../migrations/0074_lite_visual_corpus_scope_lineage.sql', import.meta.url),
+  'utf8',
+)
 const hash = (character: string) => character.repeat(64)
 
 function database() {
@@ -20,8 +24,13 @@ function database() {
     );
     CREATE TABLE artifacts(id TEXT PRIMARY KEY,r2_key TEXT,size_bytes INTEGER,metadata_json TEXT,created_at TEXT DEFAULT (datetime('now')));
     CREATE TABLE thread_sources(thread_id TEXT,recommendation_id TEXT,status TEXT,PRIMARY KEY(thread_id,recommendation_id));
+    CREATE TABLE learning_path_stages(id TEXT PRIMARY KEY,thread_id TEXT);
+    CREATE TABLE learning_path_sources(stage_id TEXT,recommendation_id TEXT,PRIMARY KEY(stage_id,recommendation_id));
+    CREATE TABLE thread_lessons(id TEXT PRIMARY KEY,thread_id TEXT,stage_id TEXT);
+    CREATE TABLE thread_lesson_sources(lesson_id TEXT,recommendation_id TEXT,PRIMARY KEY(lesson_id,recommendation_id));
   `)
   db.exec(migration)
+  db.exec(scopeLineageMigration)
   db.prepare('INSERT INTO learning_threads(id) VALUES (?)').run('thread-1')
   db.prepare(
     "INSERT INTO recommendations(id,video_url,video_title,status) VALUES (?,'https://source.test/1','Source','active')",
@@ -156,6 +165,34 @@ test('corpus trigger accepts exact immutable runs and supports a later revision 
   )
   assert.doesNotThrow(() => db.prepare("UPDATE lite_visual_corpora SET state='active' WHERE id='corpus-2'").run())
   assert.equal(db.prepare('SELECT COUNT(*) count FROM lite_visual_pairs').get().count, 2)
+  db.close()
+})
+
+test('corpus activation accepts a source placed only on a lesson in the same Thread', () => {
+  const db = database()
+  db.prepare("DELETE FROM thread_sources WHERE thread_id='thread-1' AND recommendation_id='rec-1'").run()
+  db.prepare("INSERT INTO learning_path_stages(id,thread_id) VALUES ('stage-1','thread-1')").run()
+  db.prepare("INSERT INTO thread_lessons(id,thread_id,stage_id) VALUES ('lesson-1','thread-1','stage-1')").run()
+  db.prepare("INSERT INTO thread_lesson_sources(lesson_id,recommendation_id) VALUES ('lesson-1','rec-1')").run()
+  addCorpus(db, 'lesson-corpus', 'lesson-pair', 'lesson-job', 'lesson-run', null, 1)
+
+  assert.doesNotThrow(() => db.prepare("UPDATE lite_visual_corpora SET state='active' WHERE id='lesson-corpus'").run())
+  db.close()
+})
+
+test('corpus activation rejects a source placed on a lesson in another Thread', () => {
+  const db = database()
+  db.prepare("DELETE FROM thread_sources WHERE thread_id='thread-1' AND recommendation_id='rec-1'").run()
+  db.prepare("INSERT INTO learning_threads(id) VALUES ('thread-2')").run()
+  db.prepare("INSERT INTO learning_path_stages(id,thread_id) VALUES ('stage-2','thread-2')").run()
+  db.prepare("INSERT INTO thread_lessons(id,thread_id,stage_id) VALUES ('lesson-2','thread-2','stage-2')").run()
+  db.prepare("INSERT INTO thread_lesson_sources(lesson_id,recommendation_id) VALUES ('lesson-2','rec-1')").run()
+  addCorpus(db, 'other-thread-corpus', 'other-thread-pair', 'other-thread-job', 'other-thread-run', null, 1)
+
+  assert.throws(
+    () => db.prepare("UPDATE lite_visual_corpora SET state='active' WHERE id='other-thread-corpus'").run(),
+    /lite_visual_corpus_lineage_mismatch/,
+  )
   db.close()
 })
 

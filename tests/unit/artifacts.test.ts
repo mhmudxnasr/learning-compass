@@ -831,14 +831,21 @@ test('one guarded activation publishes an exact persisted corpus and completes i
     CREATE TABLE recommendations(id TEXT PRIMARY KEY,video_url TEXT,video_title TEXT,status TEXT,deleted_at TEXT);
     CREATE TABLE recommendation_meta(recommendation_id TEXT PRIMARY KEY,source_metadata_json TEXT);
     CREATE TABLE thread_sources(thread_id TEXT,recommendation_id TEXT,status TEXT,PRIMARY KEY(thread_id,recommendation_id));
+    CREATE TABLE learning_path_stages(id TEXT PRIMARY KEY,thread_id TEXT);
+    CREATE TABLE learning_path_sources(stage_id TEXT,recommendation_id TEXT,PRIMARY KEY(stage_id,recommendation_id));
+    CREATE TABLE thread_lessons(id TEXT PRIMARY KEY,thread_id TEXT,stage_id TEXT);
+    CREATE TABLE thread_lesson_sources(lesson_id TEXT,recommendation_id TEXT,PRIMARY KEY(lesson_id,recommendation_id));
     CREATE TABLE agent_jobs(id TEXT PRIMARY KEY,job_type TEXT,status TEXT,payload_json TEXT,result_json TEXT,recommendation_id TEXT,workflow_run_id TEXT,workflow_step TEXT,lease_owner TEXT,lease_expires_at TEXT,error TEXT,updated_at TEXT);
     CREATE TABLE agent_job_retries(job_id TEXT PRIMARY KEY);
     CREATE TABLE artifacts(id TEXT PRIMARY KEY,filename TEXT,media_type TEXT,r2_key TEXT,size_bytes INTEGER,metadata_json TEXT,thread_id TEXT,stage_id TEXT,lesson_id TEXT,created_at TEXT DEFAULT (datetime('now')));
     ${readFileSync(new URL('../../migrations/0068_lite_visual_corpus_activation.sql', import.meta.url), 'utf8')}
+    ${readFileSync(new URL('../../migrations/0074_lite_visual_corpus_scope_lineage.sql', import.meta.url), 'utf8')}
     INSERT INTO learning_threads(id) VALUES ('thread-1');
     INSERT INTO recommendations(id,video_url,video_title,status) VALUES ('rec-1','https://source.test/item','Source','active');
     INSERT INTO recommendation_meta(recommendation_id,source_metadata_json) VALUES ('rec-1','{}');
-    INSERT INTO thread_sources(thread_id,recommendation_id,status) VALUES ('thread-1','rec-1','active');
+    INSERT INTO learning_path_stages(id,thread_id) VALUES ('stage-1','thread-1');
+    INSERT INTO thread_lessons(id,thread_id,stage_id) VALUES ('lesson-1','thread-1','stage-1');
+    INSERT INTO thread_lesson_sources(lesson_id,recommendation_id) VALUES ('lesson-1','rec-1');
   `)
   const db = new SqliteD1(sqlite)
   const objects = new Map<string, any>()
