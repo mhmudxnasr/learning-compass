@@ -20,6 +20,17 @@ test.before(async () => {
 
 test.after(async () => { await vite.close() })
 
+test('pair contract advertises direct integrity receipts without claiming quality approval', async () => {
+  const response = await artifactsApp.request('http://localhost/pair-contract', {}, {})
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), {
+    workflow_contract: 'lite-visual-linear/v4',
+    receipt_schemas: ['lite-visual-integrity/v1', 'lite-visual-validation/v6'],
+    corpus_receipt_schemas: ['lite-visual-corpus-integrity/v1', 'lite-visual-corpus-audit/v1'],
+    default_verification_scope: 'integrity-only', default_quality_checks: 'not_run',
+  })
+})
+
 function uploadForm(fields: Record<string, string>) {
   const form = new FormData()
   form.set('file', new Blob(['artifact'], { type: 'text/html' }), 'companion.html')
@@ -445,6 +456,31 @@ test('atomic pair route stores both objects before one D1 batch and retains the 
   assert.equal(htmlMetadata.validation_receipt.schema_version, LITE_VISUAL_RECEIPT_SCHEMA)
 })
 
+test('integrity-only pair publication stores honest quality metadata for both roles', async () => {
+  const form = await atomicPairForm()
+  const receipt = JSON.parse(String(form.get('validation_receipt')))
+  receipt.schema_version = 'lite-visual-integrity/v1'
+  receipt.verification_scope = 'integrity-only'
+  receipt.quality_checks = 'not_run'
+  receipt.checks = { source_extraction_binding: true, target_identity: true, artifact_hashes: true, canonical_body: true, render_binding: true }
+  receipt.attestation.signature = await liteVisualReceiptSignature(receipt, receiptSigningKey)
+  form.set('validation_receipt', JSON.stringify(receipt))
+  const db = new PairDatabase()
+  const objects = new Map<string, any>()
+  const response = await artifactsApp.request('https://compass.test/pairs', { method: 'POST', body: form }, {
+    DB: db, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey,
+    ARTIFACTS: { put: async (key: string, value: ArrayBuffer, options: any) => { objects.set(key, { size: value.byteLength, customMetadata: options.customMetadata }) }, head: async (key: string) => objects.get(key) },
+  } as any)
+  assert.equal(response.status, 201, await response.text())
+  for (const row of db.batchStatements.slice(0, 2)) {
+    const metadata = JSON.parse(row.values[5])
+    assert.equal(metadata.validation_receipt_schema, 'lite-visual-integrity/v1')
+    assert.equal(metadata.quality_checks, 'not_run')
+    assert.equal(metadata.verification_scope, 'integrity-only')
+    assert.equal(normalizeQualityAssurance(metadata).status, 'unverified')
+  }
+})
+
 test('atomic pair route removes both staged objects when the D1 commit fails', async () => {
   const db = new PairDatabase()
   db.failBatch = true
@@ -478,7 +514,7 @@ test('atomic pair route retains request-owned R2 objects when D1 commit state is
   assert.deepEqual(deletes, [])
 })
 
-test('one guarded activation publishes an exact persisted corpus and completes its immutable job', async () => {
+for (const integrityOnly of [false, true]) test(`one guarded activation publishes an exact ${integrityOnly ? 'integrity-only' : 'historical v6'} corpus and completes its immutable job`, async () => {
   const sqlite = new DatabaseSync(':memory:')
   sqlite.exec(`PRAGMA foreign_keys=ON;
     CREATE TABLE learning_threads(id TEXT PRIMARY KEY);
@@ -513,6 +549,14 @@ test('one guarded activation publishes an exact persisted corpus and completes i
   const form = await atomicPairForm()
   const receipt = JSON.parse(String(form.get('validation_receipt')))
   const metadata = JSON.parse(String(form.get('metadata')))
+  if (integrityOnly) {
+    receipt.schema_version = 'lite-visual-integrity/v1'
+    receipt.verification_scope = 'integrity-only'
+    receipt.quality_checks = 'not_run'
+    receipt.checks = { source_extraction_binding: true, target_identity: true, artifact_hashes: true, canonical_body: true, render_binding: true }
+    receipt.attestation.signature = await liteVisualReceiptSignature(receipt, receiptSigningKey)
+    form.set('validation_receipt', JSON.stringify(receipt))
+  }
   const pairId = metadata.pair_id
   const runId = 'run-1'
   const jobId = 'job-1'
@@ -523,9 +567,11 @@ test('one guarded activation publishes an exact persisted corpus and completes i
   const target = { recording_number: 1, recommendation_id: 'rec-1', source_url: 'https://source.test/item', source_title: 'Source', workdir: '/work', pair_id: pairId, job_id: jobId, workflow_run_id: runId, supersedes_pair_id: 'old-pair', target_sha256: receipt.target_sha256, receipt_sha256: receiptSha, work_item_sha256: receipt.work_item_sha256, source_extraction_sha256: receipt.source_extraction_sha256, source_sha256: receipt.source_sha256, source_scope_sha256: receipt.source_scope_sha256, coverage_ledger_sha256: receipt.coverage_ledger_sha256, html_sha256: receipt.html_sha256, pdf_sha256: receipt.pdf_sha256 }
   const auditSha = await sha256Hex(JSON.stringify([[target.recording_number, target.recommendation_id, '', target.source_url, target.source_title, target.workdir, target.pair_id, target.target_sha256, target.work_item_sha256, target.source_extraction_sha256, target.source_sha256, target.source_scope_sha256, target.coverage_ledger_sha256, target.html_sha256, target.pdf_sha256, target.receipt_sha256]]))
   const auditReceipt: Record<string, unknown> = { schema_version: 'lite-visual-corpus-audit/v1', status: 'passed', thread_id: 'thread-1', manifest_sha256: manifestSha, target_set_sha256: targetSetSha, corpus_sha256: auditSha, expected: 1, audited: 1, failed: 0, ...LITE_VISUAL_AUDIT_PROVENANCE }
+  if (integrityOnly) Object.assign(auditReceipt, { schema_version: 'lite-visual-corpus-integrity/v1', verification_scope: 'integrity-only', quality_checks: 'not_run', checks: { ordered_targets: true, local_receipt_bindings: true, file_hashes: true } })
   auditReceipt.attestation = { algorithm: 'hmac-sha256', key_id: LITE_VISUAL_ATTESTATION_KEY_ID, signature: await liteVisualReceiptSignature(auditReceipt, receiptSigningKey) }
   const contract = { thread_id: 'thread-1', manifest_sha256: manifestSha, target_set_sha256: targetSetSha, audit_corpus_sha256: auditSha, expected_pairs: 1, audit_receipt: auditReceipt, targets: [target] }
   const staleAuditReceipt = { ...auditReceipt, python_version: '3.11.14', attestation: undefined } as Record<string, unknown>
+  if (integrityOnly) staleAuditReceipt.quality_checks = 'passed'
   staleAuditReceipt.attestation = { algorithm: 'hmac-sha256', key_id: LITE_VISUAL_ATTESTATION_KEY_ID, signature: await liteVisualReceiptSignature(staleAuditReceipt, receiptSigningKey) }
   const staleAudit = await artifactsApp.request('https://compass.test/corpora', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...contract, audit_receipt: staleAuditReceipt }) }, { DB: db, ARTIFACTS: bucket, LITE_VISUAL_RECEIPT_SIGNING_KEY: receiptSigningKey } as any)
   assert.equal(staleAudit.status, 422, await staleAudit.text())
@@ -583,6 +629,7 @@ test('one guarded activation publishes an exact persisted corpus and completes i
   assert.equal(corpusRetry.status, 200, await corpusRetry.clone().text())
   assert.equal((await corpusRetry.json() as any).state, 'active')
   const pairRetryForm = await atomicPairForm()
+  pairRetryForm.set('validation_receipt', JSON.stringify(receipt))
   const pairRetryMetadata = JSON.parse(String(pairRetryForm.get('metadata')))
   Object.assign(pairRetryMetadata, { corpus_id: corpusId, job_id: jobId, workflow_run_id: runId, worker_identity: 'worker-1', supersedes_pair_id: 'old-pair' })
   pairRetryForm.set('metadata', JSON.stringify(pairRetryMetadata))
