@@ -70,20 +70,12 @@
   },
   "runtime_budgets": {
     "prompt_contracts": {
-      "default_telegram": "docs/hermes-prompt-budget.json",
-      "compass_telegram": "docs/hermes-compass-prompt-budget.json"
+      "default_telegram": "docs/hermes-prompt-budget.json"
     },
     "default_telegram": {
       "max_system_prompt_bytes": 25723,
       "max_tool_schema_bytes": 24098,
       "max_fixed_payload_bytes": 49821,
-      "max_skills_index_bytes": 2927,
-      "exact_tools": 13
-    },
-    "compass_telegram": {
-      "max_system_prompt_bytes": 26070,
-      "max_tool_schema_bytes": 24115,
-      "max_fixed_payload_bytes": 50185,
       "max_skills_index_bytes": 2927,
       "exact_tools": 13
     },
@@ -94,6 +86,9 @@
     "loaded_skill_bytes": {
       "learning-compass-operating-system": 8140,
       "learning-compass-site-operator": 9859,
+      "recommendations-worker-ops": 5000,
+      "taste-rec": 6000,
+      "lite-visual": 6000,
       "ordinary_router_plus_operator": 17993
     },
     "read_slo_ms": {
@@ -165,6 +160,12 @@
     }
   },
   "specialist_receipt": ["intent", "target", "before", "mutation_or_job", "after", "evidence", "blocker"],
+  "response_presentation": {
+    "evidence": "Preserve exact identifiers, before/after state, verification, and blockers in the existing operation receipt or specialist handoff.",
+    "user_reply": "Explain the verified outcome naturally, with material limitations and blockers. Include internal IDs when requested or useful for inspection; no mandatory seven-field template or literal label.",
+    "read_only": "Do not create an audit write just to answer a read-only question.",
+    "verification": "Presentation never substitutes for canonical readback or permits invented success."
+  },
   "route_ownership": {
     "GET /agent/capabilities": {"owner": "learning-compass-site-operator", "permission": "read"},
     "GET /agent/system": {"owner": "learning-compass-site-operator", "permission": "read"},

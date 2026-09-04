@@ -20,7 +20,7 @@
     "test:unit:portable": "node --test $(find tests/unit -name '*.test.ts' ! -name 'transcript-adapter.test.ts' ! -name 'lite-visual-source-extraction.test.ts' ! -name 'lite-visual-validator.test.ts' ! -name 'lite-visual-hardening.test.ts')",
     "test:integration": "for file in tests/integration/*.mjs; do node \"$file\" || exit; done",
     "test:e2e": "node tests/e2e/routes.mjs",
-    "verify:hermes": "node scripts/verify-hermes-contract.mjs && hermes prompt-size --platform telegram --check-contract docs/hermes-prompt-budget.json && hermes -p compass prompt-size --platform telegram --check-contract docs/hermes-compass-prompt-budget.json",
+    "verify:hermes": "node scripts/verify-hermes-contract.mjs && hermes -p default prompt-size --platform telegram --check-contract docs/hermes-prompt-budget.json",
     "verify:agent-contract": "node --test tests/unit/agent-control.test.ts && node scripts/verify-hermes-contract.mjs",
     "verify:migrations": "node scripts/rehearse-migrations.mjs",
     "verify:release": "node scripts/verify-release.mjs",

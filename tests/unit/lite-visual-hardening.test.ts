@@ -7,22 +7,11 @@ import { join } from 'node:path'
 
 const validator = '/home/mahmud/.hermes/skills/lite-visual/scripts/validate_artifact.py'
 const uploader = '/home/mahmud/.hermes/skills/lite-visual/scripts/upload_pair.py'
-const profileUploader = '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/upload_pair.py'
-const extractor = '/home/mahmud/.hermes/skills/lite-visual/scripts/extract_source.py'
-const profileExtractor = '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/extract_source.py'
 const browserRenderer = '/home/mahmud/.hermes/skills/lite-visual/scripts/render_page.mjs'
-const profileBrowserRenderer = '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/render_page.mjs'
 const publicUrlValidator = '/home/mahmud/.hermes/skills/lite-visual/scripts/validate_public_url.py'
-const profilePublicUrlValidator =
-  '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/validate_public_url.py'
-const profileValidator = '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/validate_artifact.py'
 const scopeBuilder = '/home/mahmud/.hermes/skills/lite-visual/scripts/build_source_scope.py'
-const profileScopeBuilder = '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/build_source_scope.py'
 const exactSourceEmbedder = '/home/mahmud/.hermes/skills/lite-visual/scripts/embed_exact_source.py'
-const profileExactSourceEmbedder =
-  '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/embed_exact_source.py'
 const runner = '/home/mahmud/.hermes/skills/lite-visual/scripts/run_workflow.py'
-const profileRunner = '/home/mahmud/.hermes/profiles/compass/skills/lite-visual/scripts/run_workflow.py'
 
 test('source scope rejects any gap in the complete extracted source', () => {
   const code = `import importlib.util,tempfile,json,hashlib,pathlib; s=importlib.util.spec_from_file_location('v','${validator}'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); d=pathlib.Path(tempfile.mkdtemp()); source=d/'source.txt'; source.write_text('واحد اثنان ثلاثة اربعة خمسة',encoding='utf-8'); scope=d/'scope.json'; scope.write_text(json.dumps({'schema_version':'lite-visual-source-scope/v2','source':{'sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'word_count':5},'spans':[{'id':'scope-01','word_start':0,'word_end':2,'anchor':'start','summary':'first'}]}),encoding='utf-8');\ntry: m.check_source_scope(source,scope)\nexcept m.ValidationError as e: print(e); raise SystemExit(0)\nraise SystemExit(1)`
@@ -114,15 +103,4 @@ test('workflow runner reuses an unchanged passing pair instead of rerendering a 
   const result = spawnSync('python3', ['-c', code], { encoding: 'utf8' })
   assert.equal(result.status, 0, result.stderr)
   assert.equal(result.stdout.trim(), 'passed\nNone')
-})
-
-test('Compass profile mirrors all canonical Lite Visual workflow scripts', () => {
-  assert.deepEqual(readFileSync(profileValidator), readFileSync(validator))
-  assert.deepEqual(readFileSync(profileScopeBuilder), readFileSync(scopeBuilder))
-  assert.deepEqual(readFileSync(profileExactSourceEmbedder), readFileSync(exactSourceEmbedder))
-  assert.deepEqual(readFileSync(profileRunner), readFileSync(runner))
-  assert.deepEqual(readFileSync(profileUploader), readFileSync(uploader))
-  assert.deepEqual(readFileSync(profileExtractor), readFileSync(extractor))
-  assert.deepEqual(readFileSync(profileBrowserRenderer), readFileSync(browserRenderer))
-  assert.deepEqual(readFileSync(profilePublicUrlValidator), readFileSync(publicUrlValidator))
 })

@@ -6,10 +6,12 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ### Changed
 
+- Shortened the Hermes operations, recommendation, and Lite Visual entry points with task-specific references and loaded-size budgets. The contract gate now validates npm commands, local instruction paths, stale migration claims, and forced response templates. User-facing replies may use natural prose while retaining exact verification evidence in operation receipts.
 - Updated the GitHub Verify workflow to the official Node 24-based checkout and setup-node v7 actions.
 
 ### Removed
 
+- Retired the separate Compass Hermes profile and command alias. Native Hermes retains the Learning Compass skills; verification targets the default profile and rejects instructions that recreate or select the retired profile.
 - Removed an empty, unconfigured `whatsapp-insights-site` gitlink that caused checkout cleanup warnings.
 
 ## 2026-09-01
