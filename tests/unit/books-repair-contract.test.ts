@@ -86,8 +86,8 @@ test('My Books groups titles by branch before reading state', () => {
   assert.match(booksView, /Filter My Books by Canon field/)
 })
 
-test('Book notes stay collapsed and open in the canonical formatted reader', () => {
-  assert.match(libraryViews, /<details class="book-dossier-notes">/)
+test('Book notes have their own section and open in the canonical formatted reader', () => {
+  assert.match(libraryViews, /<section hidden=\{active !== 'notes'\} id="book-study"/)
   assert.match(libraryViews, /href=\{noteHref\(String\(note\.id\)\)\}/)
   assert.doesNotMatch(libraryViews, /book-dossier-notes[^\n]+note\.sections/)
 })

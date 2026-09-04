@@ -29,6 +29,8 @@ A zero-noise, purpose-first personal knowledge ledger. Unlike generic read-it-la
 
 ## Capabilities and Constraints
 
+- **Dedicated item pages**: Saved item titles open their owning page from Home, Queue, Feeds, Archive, Search, Personal Data Studio, Canon, and lesson material. Sources and books group their existing records into Overview, Files, Notes & passages, Recall, Connections, History, and Reflection; books also include Chapters. Sections use bookmarkable `tab` query state and preserve unsaved input when switching within an item. Notes, cards, Units, and files link back to their source's material. File titles open details; separate Open/HTML/PDF controls access the content. Exploring a page never starts a session or creates learning records.
+
 - **Five Root Destinations**: `#/home` (Today), `#/library` (Books, Queue, RSS Feeds, Archive, Files), `#/learn` (Practice → Notes by default, plus Threads and Recall), `#/map` (Atlas, unified Branch Review), `#/settings` (Learning profile, Preferences, Data & recovery, System).
 - **Add Anything**: One global capture surface logs sources or typed books, movies, series, podcasts, courses, games, albums, and other media. Personal items require only title, status, and branch (plus author for books); optional detail stays progressively disclosed.
 - **Personal Data Studio**: Settings → Data & recovery visualizes real type, status, recent-edit, and branch distributions; searches and filters the complete ledger; and exposes every mutable personal field inline. It reports counts, never an opaque engagement or “AI quality” score.

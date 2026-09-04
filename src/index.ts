@@ -341,7 +341,7 @@ app.get('/manifest.json', async (c) => {
 
 app.get('/sw.js', async (c) => {
   const assetUrl = new URL(c.req.url)
-  assetUrl.searchParams.set('release', 'shell-v52-data-v5-packs-v1')
+  assetUrl.searchParams.set('release', 'shell-v53-data-v5-packs-v1')
   const asset = await c.env.ASSETS.fetch(assetUrl.toString())
   const headers = new Headers(asset.headers)
   headers.set('Content-Type', 'application/javascript; charset=utf-8')

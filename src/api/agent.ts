@@ -249,6 +249,7 @@ const CAPABILITIES = [
   ['POST', '/feedback/proposals/:id/revert', 'Revert one applied proposal and its typed profile revision.'],
   ['POST', '/feedback/proposals/:id/reject', 'Reject a proposed profile or map change.'],
   ['GET', '/artifacts', 'Read R2 artifact metadata and pairs.'],
+  ['GET', '/artifacts/:id/record', 'Read exact file metadata, including book and Thread files, without downloading content.'],
   ['POST', '/artifacts', 'Upload an HTML, PDF, or other source artifact.'],
   ['POST', '/artifacts/pairs', 'Publish one receipt-attested atomic Lite Visual HTML/PDF pair or stage it inside an exact corpus.'],
   ['POST', '/artifacts/corpora', 'Create one manifest-, target-set-, aggregate-audit-, and workflow-run-bound Lite Visual corpus.'],

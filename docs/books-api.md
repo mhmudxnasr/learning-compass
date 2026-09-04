@@ -76,6 +76,7 @@ Request `{ "completed": true|false }`. This changes chapter completion metadata 
 - Read and mutate book chapters through the Books routes.
 - Require and verify a non-pruned branch for every manual book intake; preserve its branch context everywhere the book renders.
 - Keep passive My books and dossier links separate from Queue-owned tracked Start/Resume actions.
+- Book pages use `?tab=overview|chapters|files|notes|recall|connections|history|feedback` to expose owned material. A generic source link resolves to the same book page after exact identity lookup. Read a known file through `GET /artifacts/:id/record`, including chapter and Thread files omitted from the global list.
 - Render a captured Canon selection once as a personal book identity with Canon domain/role metadata; Canon field summaries remain navigation context, not duplicate book cards.
 - Keep book chapter files book-scoped with `scope=book`.
 - Verify the owning book and chapter key before upload or completion.

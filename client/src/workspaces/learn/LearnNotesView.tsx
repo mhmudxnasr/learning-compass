@@ -2,6 +2,7 @@ import { ComponentChildren } from 'preact'
 import { useMemo, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { useData } from '../../app/useData'
+import { ItemParentLinks } from '../../components/ItemSections'
 import { objectHref, routeHref } from '../../app/router'
 import { Empty, ErrorState, Loading } from '../../components/States'
 import { Icon } from '../../components/Icon'
@@ -348,6 +349,7 @@ function NoteDetailWorkspace({ noteId, allNotes, reloadLibrary }: { noteId: stri
         <aside class="scholar-note-tools" aria-label="Study tools">
           <strong class="scholar-tools-title">Study tools</strong>
           <section><span>Knowledge branch</span><a class="folio-branch-pill" href={objectHref('map', 'branch', note.branch_id || note.branch_label || '')}>{note.branch_label || note.branch_id || 'Unassigned'}</a></section>
+          <ItemParentLinks sourceId={note.recommendation_id}/>
           <section><span>Source</span>{sourceUrl ? <a class="relation-source-link" href={sourceUrl} target="_blank" rel="noreferrer">Open original source <span class="folio-branch-pill">{note.branch_label || note.branch_id || 'Unassigned'}</span></a> : <p>No source link</p>}</section>
           <section><span>Record</span><p>{document.wordCount.toLocaleString()} words · {document.readingMinutes} min</p><p>{note.status || 'Published'} · {formatDate(note.updated_at)}</p></section>
           {sourceNote && <section><span>Source synthesis</span><a href={noteHref(sourceNote.id)}>{sourceNote.title}</a></section>}

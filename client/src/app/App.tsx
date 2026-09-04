@@ -68,7 +68,7 @@ function workspace(route: Route, onCapture: () => void, onInspect: (selection: I
   if (route.root === 'home') return <HomeWorkspace onCapture={onCapture} onInspect={(selection: HomeSelection) => onInspect(selection)} onNavigate={navigate}/>
   if (route.root === 'library') {
     const inspect = (selection: LibrarySelection | null) => { if (selection) onInspect(selection) }
-    return <LibraryWorkspace route={route} onInspect={inspect} onSelect={inspect} onNavigate={navigate}/>
+    return <LibraryWorkspace route={route} onInspect={inspect} onNavigate={navigate}/>
   }
   if (route.root === 'learn') return <LearnWorkspace route={route}/>
   if (route.root === 'map') {

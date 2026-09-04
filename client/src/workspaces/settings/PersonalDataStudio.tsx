@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { api, formatDate, labelize } from '../../api'
 import { useData } from '../../app/useData'
+import { itemHref } from '../../app/router'
 import { Empty, ErrorState, Loading } from '../../components/States'
 import { PersonalAssistant } from './PersonalAssistant'
 
@@ -316,7 +317,7 @@ export function PersonalDataStudio({ onCapture }: { onCapture?: () => void }) {
       {payload.items.length ? <div class="personal-data-ledger" role="table" aria-label="Editable personal records">
         <div class="personal-data-column-head" role="row"><span role="columnheader">Record</span><span role="columnheader">Status</span><span role="columnheader">Progress</span><span role="columnheader">Rating</span><span role="columnheader">Updated</span><span role="columnheader">Action</span></div>
         {payload.items.map((item) => <article class={editingId === item.id ? 'personal-data-row is-editing' : 'personal-data-row'} role="row" key={item.id}>
-          <div class="personal-data-row-main" role="cell" aria-label="Record"><span class="personal-type-label">{labelize(item.item_type)}</span><strong>{item.title}</strong><small>{[item.creator, item.release_year, item.branch?.label].filter(Boolean).join(' · ') || 'No creator or year recorded'}</small>{item.tags.length > 0 && <div class="personal-item-tags">{item.tags.slice(0, 4).map((tag) => <span key={tag}>{tag}</span>)}</div>}</div>
+          <div class="personal-data-row-main" role="cell" aria-label="Record"><span class="personal-type-label">{labelize(item.item_type)}</span><a class="item-title-link" href={itemHref(item)}><strong>{item.title}</strong></a><small>{[item.creator, item.release_year, item.branch?.label].filter(Boolean).join(' · ') || 'No creator or year recorded'}</small>{item.tags.length > 0 && <div class="personal-item-tags">{item.tags.slice(0, 4).map((tag) => <span key={tag}>{tag}</span>)}</div>}</div>
           <div role="cell" aria-label="Status"><span class={`personal-state personal-state-${item.state}`}>{stateLabel(item.state)}</span></div>
           <div role="cell" aria-label="Progress"><Progress item={item} /></div>
           <div role="cell" aria-label="Rating"><strong class="personal-item-rating">{item.rating == null ? '—' : `${item.rating}/10`}</strong></div>

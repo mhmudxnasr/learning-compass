@@ -66,7 +66,7 @@ export function LearnRecallView() {
 }
 
 function SourceLine({ item }: { item: RecallCard | RecallDraft }) {
-  return <div class="recall-source-line">{item.branch && <span class="recall-branch-badge">{item.branch}</span>}{item.card_type && <span>{item.card_type}</span>}{item.source_title && <span>{item.source_title}</span>}{item.source_anchor && <span class="recall-anchor">{item.source_anchor}</span>}</div>
+  return <div class="recall-source-line">{item.branch && <span class="recall-branch-badge">{item.branch}</span>}{item.card_type && <span>{item.card_type}</span>}{item.source_title && (item.recommendation_id ? <a class="item-title-link" href={libraryObjectHref('source', item.recommendation_id)}>{item.source_title}</a> : <span>{item.source_title}</span>)}{item.source_anchor && <span class="recall-anchor">{item.source_anchor}</span>}</div>
 }
 
 function recallPrecondition(card: RecallCard) {
@@ -286,5 +286,5 @@ function CardRow({ card, reload, setMessage }: { card: RecallCard; reload: () =>
       setMessage(cause instanceof Error ? cause.message : 'Status change failed.')
     } finally { setWorking('') }
   }
-  return <article class="recall-library-row"><div><SourceLine item={card} /><strong lang="ar" dir="rtl">{card.question}</strong><small>{status === 'active' ? `Due ${formatDate(card.due_at)}` : status} · {card.repetitions || 0} reviews · {card.lapses || 0} lapses</small></div><div>{card.note_id && <a class="button quiet" href={noteHref(card.note_id)}>Note</a>}{status === 'active' ? <><button class="button quiet" type="button" onClick={() => changeStatus('paused')} disabled={Boolean(working)}>Pause</button><button class="button quiet" type="button" onClick={() => changeStatus('retired')} disabled={Boolean(working)}>Retire</button></> : <button class="button quiet" type="button" onClick={() => changeStatus('active')} disabled={Boolean(working)}>{status === 'retired' ? 'Restore' : 'Resume'}</button>}</div></article>
+  return <article class="recall-library-row"><div><SourceLine item={card} /><a class="item-title-link" href={cardHref(card.id)} lang="ar" dir="rtl"><strong>{card.question}</strong></a><small>{status === 'active' ? `Due ${formatDate(card.due_at)}` : status} · {card.repetitions || 0} reviews · {card.lapses || 0} lapses</small></div><div>{card.note_id && <a class="button quiet" href={noteHref(card.note_id)}>Note</a>}{status === 'active' ? <><button class="button quiet" type="button" onClick={() => changeStatus('paused')} disabled={Boolean(working)}>Pause</button><button class="button quiet" type="button" onClick={() => changeStatus('retired')} disabled={Boolean(working)}>Retire</button></> : <button class="button quiet" type="button" onClick={() => changeStatus('active')} disabled={Boolean(working)}>{status === 'retired' ? 'Restore' : 'Resume'}</button>}</div></article>
 }

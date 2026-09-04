@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { uploadArtifact } from '../../app/upload'
-import { routeHref } from '../../app/router'
+import { objectHref, routeHref } from '../../app/router'
 import { Empty, ErrorState, Loading } from '../../components/States'
 import { Icon } from '../../components/Icon'
 import { OfflinePackControl } from '../../components/OfflinePackControl'
@@ -1581,7 +1581,7 @@ function ThreadMaterialsJourney({ path, onChanged }: { path: PathResponse; onCha
       title: file.filename,
       detail: file.media_type || 'Stored file',
       status: 'stored',
-      href: artifactHref(file.id),
+      href: objectHref('library', 'artifact', file.id),
       owner,
     })),
     ...owner.cards.map((card) => ({
@@ -1800,8 +1800,6 @@ function ThreadMaterialsJourney({ path, onChanged }: { path: PathResponse; onCha
                               <a
                                 class="vertical-material-item"
                                 href={item.href}
-                                target={item.kind === 'file' ? '_blank' : undefined}
-                                rel={item.kind === 'file' ? 'noreferrer' : undefined}
                                 key={item.id}
                               >
                                 {content}
@@ -2393,7 +2391,7 @@ function ScopedMaterials({
 
         <MaterialColumn title="Files" count={files.length} empty="No files in this scope yet.">
           {files.map((file) => (
-            <a class="learning-material-row" href={artifactHref(file.id)} target="_blank" rel="noreferrer" key={file.id}>
+            <a class="learning-material-row" href={objectHref('library', 'artifact', file.id)} key={file.id}>
               <Icon name="file" size={14} />
               <span>
                 <strong>{file.filename}</strong>
@@ -2861,7 +2859,7 @@ function SourceCard({ source }: { source: PathSource }) {
             </a>
           )}
         </div>
-        <strong class="course-source-title" dir="auto">{cleanTitle(source.video_title) || 'Untitled source'}</strong>
+        <a class="course-source-title item-title-link" href={`#/library/source/${encodeURIComponent(source.recommendation_id)}`} dir="auto">{cleanTitle(source.video_title) || 'Untitled source'}</a>
         {source.expected_contribution && <p class="course-source-rationale" dir="auto">{source.expected_contribution}</p>}
       </div>
       <SourceMaterialLauncher source={source} />

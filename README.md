@@ -21,6 +21,8 @@ capture → curate → consume externally → reflect → extract notes
 
 Feedback never requests another recommendation automatically. Finishing one item should close the loop, not create an endless feed.
 
+Saved item titles open dedicated pages with Files, Notes & passages, Recall, Connections, History, and Reflection sections. Books also retain their chapter view. Each section is bookmarkable, and notes/cards/files link back to their owning item's material. File details use an exact metadata lookup so book, Thread, and older files remain addressable independently of the general Files list. Opening an item is passive. The local item-page release candidate advances the PWA shell to v53; the deployed version listed below remains the production reference until release.
+
 ## System shape
 
 ```text

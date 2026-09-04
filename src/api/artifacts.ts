@@ -784,6 +784,24 @@ app.post('/:id/process', async (c) => {
   return c.json({ ok: true, status: job?.status || 'pending', job_id: job?.id || jobId }, 202)
 })
 
+// Exact metadata lookup includes book/Thread files and does not read R2 content.
+app.get('/:id/record', async (c) => {
+  const id = c.req.param('id')
+  const row = await c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.size_bytes,a.metadata_json,a.created_at,a.thread_id,a.stage_id,
+    r.id owner_id,r.status owner_status,r.deleted_at owner_deleted_at
+    FROM artifacts a LEFT JOIN recommendations r ON r.id=json_extract(a.metadata_json,'$.recommendation_id') WHERE a.id=?`).bind(id).first<any>()
+  if (row) {
+    if (hiddenArtifact(row)) return c.json({ error: 'not found' }, 404)
+    const { metadata_json, owner_id, owner_status, owner_deleted_at, ...artifact } = row
+    const metadata = parseMetadata(metadata_json)
+    return c.json({ artifact: { ...artifact, metadata, quality_assurance: normalizeQualityAssurance(metadata) } })
+  }
+  const legacy = await c.env.DB.prepare(`SELECT id,filename,CASE WHEN lower(filename) LIKE '%.pdf' THEN 'application/pdf' ELSE 'text/html' END media_type,
+    length(content) size_bytes,created_at FROM html_files WHERE id=?`).bind(id).first<any>()
+  if (!legacy) return c.json({ error: 'not found' }, 404)
+  return c.json({ artifact: { ...legacy, legacy: true, metadata: {} } })
+})
+
 app.get('/:id/view', async (c) => {
   const row = await c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.r2_key,a.size_bytes,a.metadata_json,r.id owner_id,r.status owner_status,r.deleted_at owner_deleted_at FROM artifacts a LEFT JOIN recommendations r ON r.id=json_extract(a.metadata_json,'$.recommendation_id') WHERE a.id=?`).bind(c.req.param('id')).first<any>()
   if (!row) return c.json({ error: 'not found' }, 404)
