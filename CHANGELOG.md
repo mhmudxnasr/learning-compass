@@ -4,6 +4,8 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Cleared the 210 unrebuilt Riyadh companion slots on explicit request, retiring exactly 420 HTML/PDF artifacts while preserving the 84 redesigned pairs, original sources, lesson progress, and recovery history.
+
 - Retire six exact duplicate legacy Riyadh companion pairs only when their complete successors remain available, preserving files and lesson progress for the audited replacement release.
 
 ### Changed

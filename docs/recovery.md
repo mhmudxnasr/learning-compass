@@ -53,7 +53,7 @@ This verifies the SQL bytes and migration inventory but intentionally reports th
 Before any production migration:
 
 1. inspect the remote migration ledger;
-2. compare it with the repository inventory; migrations through `0075_riyadh_legacy_pair_visibility.sql` are applied and must not be replayed;
+2. compare it with the repository inventory; migrations through `0076_retire_unrebuilt_riyadh_companions.sql` are applied and must not be replayed;
 3. capture the current Worker version;
 4. complete and retain the full D1-plus-R2 snapshot and verified restore receipt; and
 5. record a D1 Time Travel bookmark immediately before applying any new pending migration, then verify the ledger and readiness after migration.

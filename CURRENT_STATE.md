@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-05 Cairo (unrebuilt Riyadh slots cleared)
+
+Mahmood explicitly requested removal of the remaining 210 old companions for a fresh rebuild. Migration `0076_retire_unrebuilt_riyadh_companions.sql` retired the exact 420 live HTML/PDF artifacts and their non-corpus pair states. All 294 canonical source records were read back: the first 84 retain their exact redesigned artifact IDs, and each of the remaining 210 has no HTML or PDF companion. Original sources, all 294 lessons, and progress remain intact: 14 completed lessons, three completed Levels, current `باب 3 — الصبر`. Production readiness is healthy and the migration ledger has no pending entry. No Worker deployment was needed.
+
+The cleanup is recoverable: artifact rows and R2 bytes remain, marked `retirement_operation=riyadh-unrebuilt-210-20260904`. All 420 targeted objects were checksum-verified in restore-tested full snapshot `backup_20260904T190454Z`; the pre-cleanup Time Travel bookmark is `0000098c-00000000-000050dc-5a41507554d6ee8a4100b1a840ccb67d`. Verification passed a focused retirement regression, full live-inventory SQLite replay (420 retired; all 168 rebuilt artifacts byte-identical), repeat-run idempotency, clean/idempotent rehearsal of all 78 migrations, formatting, and diff checks. The application gate and the separate ongoing Hermes profile transition remain as recorded below; this data-only cleanup does not overwrite that session's files. Future work must rebuild the 210 empty companion slots and must not restore their retired low-quality pairs as current.
+
 ## Current truth — 2026-09-04 (84 Riyadh replacements live)
 
 The explicitly requested early release is active: recordings 1–84 now expose 84 redesigned HTML/PDF pairs. Corpus `lvc-6b0a55ca8ce85ff6c94264cf` activated at `2026-09-04 20:53:24` UTC. Every included source was read back with its exact new artifact IDs, and all 84 bound jobs are completed. Activation superseded 168 former artifacts; migration `0075` separately retired 12 duplicate legacy artifacts across six sources. All old files remain recoverable in R2/history. The remaining 210 sources retain their prior ready pairs; the full 294-recording redesign is not complete. Lesson progress is unchanged: 14 completed lessons, three completed Levels, and current Level `باب 3 — الصبر` in progress.
