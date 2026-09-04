@@ -6,7 +6,33 @@ import {
   normalizePersonalLibraryInput,
   personalLibraryDedupKey,
   personalStateFromBookState,
+  updatePersonalLibraryItem,
 } from '../../src/services/personal-library.ts'
+
+class PersonalUrlEditDatabase {
+  batches: unknown[] = []
+  prepare(sql: string) {
+    const statement = {
+      args: [] as unknown[],
+      bind: (...args: unknown[]) => { statement.args = args; return statement },
+      first: async () => {
+        if (sql.includes('FROM personal_library_items p')) return {
+          recommendation_id: 'personal-1', item_type: 'movie', personal_state: 'planned',
+          title: 'A film', creator: 'Director', video_url: 'https://example.com/original',
+          branch_id: 'film', branch_label: 'Film', branch_status: 'active',
+          release_year: null, duration_minutes: null, progress_current: null, progress_total: null,
+          progress_unit: 'minutes', user_score: null, tags_json: '[]', personal_note: '',
+        }
+        if (sql.includes('SELECT progress_current')) return { progress_current: null, progress_total: null }
+        if (sql.includes('SELECT n.id')) return { id: 'film', label: 'Film', status: 'active' }
+        if (sql.includes('SELECT video_url')) return { video_url: 'https://example.com/original' }
+        return null
+      },
+    }
+    return statement
+  }
+  async batch(statements: unknown[]) { this.batches.push(statements); return [] }
+}
 
 test('personal-library input normalizes typed progress, direct ratings, and bounded tags', () => {
   const result = normalizePersonalLibraryInput({
@@ -67,6 +93,20 @@ test('book and personal states synchronize without making Queue the reading mode
   assert.equal(bookStateFromPersonalState('completed'), 'finished')
 })
 
+test('personal metadata editing rejects a direct canonical URL rewrite before changing other fields', async () => {
+  const DB = new PersonalUrlEditDatabase()
+  const result = await updatePersonalLibraryItem(DB as any, 'personal-1', {
+    title: 'Renamed film',
+    url: 'https://example.com/replacement',
+  })
+  assert.equal(result.ok, false)
+  if (result.ok) return
+  assert.equal(result.status, 409)
+  assert.equal(result.error, 'source_url_replacement_required')
+  assert.equal(result.replacement_endpoint, '/recommendations/personal-1/source-url')
+  assert.equal(DB.batches.length, 0)
+})
+
 test('the API, global Capture, and Settings studio expose one editable personal-data contract', () => {
   const captureApi = readFileSync(new URL('../../src/api/capture.ts', import.meta.url), 'utf8')
   const recommendationsApi = readFileSync(new URL('../../src/api/recommendations.ts', import.meta.url), 'utf8')
@@ -84,6 +124,9 @@ test('the API, global Capture, and Settings studio expose one editable personal-
   assert.match(studio, /Where things stand/)
   assert.match(studio, /Edit every useful field/)
   assert.match(studio, /method: 'PATCH'/)
+  assert.match(studio, /Canonical link changes use the source record’s verified replacement flow/)
+  assert.doesNotMatch(studio, /url: draft\.url/)
+  assert.doesNotMatch(recommendationsApi.match(/app\.post\('\/books'[\s\S]*?\n\}\)\n\napp\.post\('\/push'/)?.[0] || '', /video_url=excluded\.video_url/)
 })
 
 test('book-state reconciliation repairs consumed books imported before explicit metadata existed', () => {

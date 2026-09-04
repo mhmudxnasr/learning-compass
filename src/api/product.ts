@@ -11,6 +11,7 @@ import { feedbackLifecycle, feedbackMetadata, normalizeStructuredFeedback, type 
 import { loadNormalizedUnitRelations } from '../services/cross-branch-bridges'
 import { appendSynthesisRevision, createClaimHighlight, loadNoteDistillation, promoteHighlightToUnit } from '../services/note-distillation'
 import { validateArabicRecall } from '../services/recall-language'
+import { loadSourceAnnotationEvidence, SourceAnnotationEvidenceError } from '../services/source-annotation-evidence'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const id = (prefix: string) => `${prefix}_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`
@@ -26,7 +27,7 @@ app.get('/feedback/context', async (c) => {
 app.post('/sessions/start', async (c) => {
   const body = await c.req.json<{ recommendation_id: string; intent?: string; thread_id?: string; target_kind?: string; target_artifact_id?: string }>()
   if (!body.recommendation_id) return c.json({ error: 'recommendation_id required' }, 400)
-  const recommendation = await c.env.DB.prepare(`SELECT id FROM recommendations WHERE id=? AND status='active'`).bind(body.recommendation_id).first()
+  const recommendation = await c.env.DB.prepare(`SELECT id,video_title,why_this FROM recommendations WHERE id=? AND status='active' AND deleted_at IS NULL`).bind(body.recommendation_id).first<any>()
   if (!recommendation) return c.json({ error: 'active recommendation not found' }, 404)
   const targetKind = ['original', 'html', 'pdf', 'notebooklm', 'artifact'].includes(body.target_kind || '') ? body.target_kind! : 'original'
   const activeThread = body.thread_id
@@ -36,7 +37,32 @@ app.post('/sessions/start', async (c) => {
   if (body.thread_id || threadId) {
     const thread = activeThread
     if (!thread) return c.json({ error: 'open learning thread not found' }, 404)
-    await c.env.DB.prepare(`INSERT INTO thread_sources (thread_id,recommendation_id,role,status) VALUES (?,?,'supporting','active') ON CONFLICT(thread_id,recommendation_id) DO UPDATE SET status='active',updated_at=datetime('now')`).bind(threadId, body.recommendation_id).run()
+    const expectedContribution = [body.intent, recommendation.why_this]
+      .map((value) => String(value || '').trim())
+      .find(Boolean)?.slice(0, 1000)
+      || `Opened as supporting material for this Thread in an explicit learning session: ${String(recommendation.video_title || recommendation.id).trim().slice(0, 840)}.`
+    const placement = await c.env.DB.prepare(`INSERT INTO thread_sources (thread_id,recommendation_id,role,expected_contribution,position,status)
+      SELECT placement_thread.id,placement_meta.recommendation_id,'supporting',?,
+        COALESCE((SELECT MAX(existing.position)+1 FROM thread_sources existing WHERE existing.thread_id=placement_thread.id AND existing.status!='removed'),0),'active'
+      FROM learning_threads placement_thread
+      JOIN recommendation_meta placement_meta ON placement_meta.recommendation_id=?
+      JOIN recommendations placement_source ON placement_source.id=placement_meta.recommendation_id
+        AND placement_source.deleted_at IS NULL AND placement_source.status='active'
+      JOIN tree_nodes placement_branch ON placement_branch.id=placement_meta.branch_id
+        AND placement_branch.type IN ('branch','leaf') AND lower(COALESCE(placement_branch.status,''))!='pruned'
+      JOIN tree_nodes placement_domain ON placement_domain.id=placement_branch.super_category
+        AND placement_domain.type='category' AND lower(COALESCE(placement_domain.status,''))!='pruned'
+      WHERE placement_thread.id=? AND placement_thread.superseded_at IS NULL
+        AND placement_thread.status NOT IN ('verified','abandoned')
+      ON CONFLICT(thread_id,recommendation_id) DO UPDATE SET
+        status='active',
+        position=CASE WHEN thread_sources.status='removed' THEN excluded.position ELSE thread_sources.position END,
+        expected_contribution=CASE
+          WHEN TRIM(COALESCE(thread_sources.expected_contribution,''))='' THEN excluded.expected_contribution
+          ELSE thread_sources.expected_contribution
+        END,
+        updated_at=datetime('now')`).bind(expectedContribution, body.recommendation_id, threadId).run()
+    if (placement.meta.changes !== 1) return c.json({ error: 'thread_source_attachment_conflict', message: 'The source no longer has a valid canonical branch and domain for this Thread. Reload it before starting a learning session.' }, 409)
   }
   const existing = await c.env.DB.prepare(`SELECT id FROM learning_sessions WHERE recommendation_id=? AND status IN ('active','returned') AND (? IS NULL OR thread_id=?) ORDER BY started_at DESC LIMIT 1`).bind(body.recommendation_id, threadId, threadId).first<{ id: string }>()
   if (existing) {
@@ -264,6 +290,36 @@ async function hubNotes(db: D1Database, scope: { thread_id?: string; stage_id?: 
   for (const section of sections.results || []) byNote.set(section.note_id, [...(byNote.get(section.note_id) || []), section])
   return notes.map((note: any) => ({ ...note, provenance: (() => { try { return JSON.parse(note.provenance_json || '[]') } catch { return [] } })(), provenance_json: undefined, sections: byNote.get(note.id) || [] }))
 }
+
+const normalizeNoteProvenance = (value: unknown) => Array.isArray(value)
+  ? value.slice(0, 20).map((item: any) => ({
+      annotation_id: String(item.annotation_id || '').trim().slice(0, 120),
+      reason: String(item.reason || '').trim().slice(0, 500),
+      confidence: item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))),
+    })).filter((item: any) => item.annotation_id)
+  : null
+
+async function validateNoteProvenance(
+  DB: D1Database,
+  provenance: Array<{ annotation_id: string }> | null,
+  owner: { recommendation_id?: string | null; branch_id?: string | null; thread_id?: string | null },
+) {
+  if (!provenance?.length) return null
+  const recommendationId = String(owner.recommendation_id || '').trim()
+  if (!recommendationId) return { error: 'annotation_source_required', message: 'Anchored note provenance requires its canonical source.', status: 400 as const }
+  const ids = [...new Set(provenance.map((item) => item.annotation_id))]
+  try {
+    await Promise.all(ids.map((annotationId) => loadSourceAnnotationEvidence(DB, annotationId, {
+      recommendationId,
+      branchId: owner.branch_id,
+      threadId: owner.thread_id,
+    })))
+  } catch (error) {
+    if (error instanceof SourceAnnotationEvidenceError) return { error: error.code, message: error.message, status: error.status }
+    throw error
+  }
+  return null
+}
 app.get('/notes', async (c) => {
   const kind = c.req.query('kind')
   const notes = kind
@@ -369,13 +425,19 @@ app.post('/notes', async (c) => {
   const threadId = String(body.thread_id || '').trim().slice(0, 120) || null
   const stageId = String(body.stage_id || '').trim().slice(0, 120) || null
   const lessonId = String(body.lesson_id || '').trim().slice(0, 120) || null
+  let ownerThreadId = threadId
   if ([threadId, stageId, lessonId].filter(Boolean).length > 1) return c.json({ error: 'note must have exactly one learning owner' }, 400)
   if (threadId || stageId || lessonId) {
-    try { await resolveLearningScope(c.env.DB, threadId ? { kind: 'thread', id: threadId } : stageId ? { kind: 'level', id: stageId } : { kind: 'lesson', id: lessonId! }) }
+    try {
+      const scope = await resolveLearningScope(c.env.DB, threadId ? { kind: 'thread', id: threadId } : stageId ? { kind: 'level', id: stageId } : { kind: 'lesson', id: lessonId! })
+      ownerThreadId = scope.threadId
+    }
     catch (error: any) { return c.json({ error: error?.code || 'invalid_scope', message: error?.message || 'Invalid learning scope.' }, 400) }
   }
   const noteId = body.id || id('note')
-  const provenance = Array.isArray(body.provenance) ? body.provenance.slice(0, 20).map((item: any) => ({ annotation_id: String(item.annotation_id || '').slice(0, 120), reason: String(item.reason || '').slice(0, 500), confidence: item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))) })).filter((item: any) => item.annotation_id) : []
+  const provenance = normalizeNoteProvenance(body.provenance) || []
+  const provenanceError = await validateNoteProvenance(c.env.DB, provenance, { recommendation_id: body.recommendation_id, branch_id: body.branch_id, thread_id: ownerThreadId })
+  if (provenanceError) return c.json({ error: provenanceError.error, message: provenanceError.message }, provenanceError.status)
   const statements = [c.env.DB.prepare(`INSERT INTO notes (id,recommendation_id,title,kind,branch_id,source_url,status,thread_id,stage_id,lesson_id,provenance_json,abstract) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).bind(noteId, body.recommendation_id || null, body.title.trim(), body.kind || 'note', body.branch_id || null, body.source_url || null, body.status || 'draft', threadId, stageId, lessonId, JSON.stringify(provenance), String(body.abstract || '').trim() || null)]
   for (const [index, section] of (body.sections || []).entries()) statements.push(c.env.DB.prepare(`INSERT INTO note_sections (id,note_id,section_key,label,content,direction,position) VALUES (?,?,?,?,?,?,?)`).bind(id('section'), noteId, section.section_key, section.label, section.content || '', section.direction || 'auto', index))
   await c.env.DB.batch(statements)
@@ -383,7 +445,16 @@ app.post('/notes', async (c) => {
 })
 app.put('/notes/:id', async (c) => {
   const body = await c.req.json<any>()
-  const provenance = Array.isArray(body.provenance) ? body.provenance.slice(0, 20).map((item: any) => ({ annotation_id: String(item.annotation_id || '').slice(0, 120), reason: String(item.reason || '').slice(0, 500), confidence: item.confidence == null ? null : Math.max(0, Math.min(1, Number(item.confidence))) })).filter((item: any) => item.annotation_id) : null
+  const existing = await c.env.DB.prepare(`SELECT n.id,n.recommendation_id,n.branch_id,COALESCE(n.thread_id,s.thread_id,l.thread_id) owner_thread_id
+    FROM notes n LEFT JOIN learning_path_stages s ON s.id=n.stage_id LEFT JOIN thread_lessons l ON l.id=n.lesson_id WHERE n.id=?`).bind(c.req.param('id')).first<any>()
+  if (!existing) return c.json({ error: 'not found' }, 404)
+  const provenance = normalizeNoteProvenance(body.provenance)
+  const provenanceError = await validateNoteProvenance(c.env.DB, provenance, {
+    recommendation_id: existing.recommendation_id,
+    branch_id: body.branch_id || existing.branch_id,
+    thread_id: existing.owner_thread_id,
+  })
+  if (provenanceError) return c.json({ error: provenanceError.error, message: provenanceError.message }, provenanceError.status)
   const statements = [c.env.DB.prepare(`UPDATE notes SET title=COALESCE(?,title),branch_id=COALESCE(?,branch_id),source_url=COALESCE(?,source_url),abstract=COALESCE(?,abstract),provenance_json=COALESCE(?,provenance_json),revision=revision+1,updated_at=datetime('now') WHERE id=?`).bind(body.title || null, body.branch_id || null, body.source_url || null, body.abstract || null, provenance ? JSON.stringify(provenance) : null, c.req.param('id'))]
   if (Array.isArray(body.sections)) {
     const keys = body.sections.map((section: any) => String(section.section_key || '').trim()).filter(Boolean)
@@ -472,7 +543,8 @@ app.get('/learning/srs/cards', async (c) => {
         'General'
       ) as branch,
       COALESCE(c.note_id, (SELECT id FROM notes WHERE recommendation_id = c.recommendation_id AND c.recommendation_id IS NOT NULL LIMIT 1)) as note_id,
-      COALESCE(c.source_anchor,(SELECT locator FROM unit_anchors WHERE unit_id=c.unit_id ORDER BY rowid LIMIT 1)) AS source_anchor
+      COALESCE(c.annotation_id,(SELECT a.annotation_id FROM unit_anchors a JOIN source_annotations sa ON sa.id=a.annotation_id AND sa.status='active' WHERE a.unit_id=c.unit_id AND a.annotation_id IS NOT NULL ORDER BY a.rowid LIMIT 1)) AS annotation_id,
+      COALESCE(c.source_anchor,(SELECT locator FROM unit_anchors WHERE unit_id=c.unit_id ORDER BY rowid LIMIT 1),(SELECT quote FROM source_annotations WHERE id=c.annotation_id AND status='active' LIMIT 1)) AS source_anchor
     FROM srs_cards c
     LEFT JOIN learning_units u ON u.id=c.unit_id
     ${where}

@@ -14,6 +14,9 @@ test('loadCaptureQueue never projects reading books into Queue', async () => {
   }]
   const mockDB = {
     prepare(sql: string) {
+      if (sql.includes('FROM artifacts')) return {
+        bind() { return { async all() { return { results: [] } } } },
+      }
       assert.match(sql, /COALESCE\(r\.content_type, ''\) != 'book'/)
       return {
         bind() {

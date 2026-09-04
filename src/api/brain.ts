@@ -192,7 +192,7 @@ app.get('/branches/:id/items', async (c) => {
       DB.prepare(`SELECT n.id,n.recommendation_id,n.title,n.kind,n.status,n.revision,n.updated_at,r.video_title source_title
         FROM notes n LEFT JOIN recommendations r ON r.id=n.recommendation_id WHERE n.branch_id=?
         ORDER BY n.updated_at DESC`).bind(id).all<any>(),
-      DB.prepare(`SELECT sc.id,sc.recommendation_id,sc.question,sc.answer,sc.topic,sc.due_at,sc.repetitions,sc.ease_factor,sc.scheduler_version,r.video_title source_title
+      DB.prepare(`SELECT sc.id,sc.recommendation_id,sc.question,sc.answer,sc.topic,sc.due_at,sc.repetitions,sc.ease_factor,sc.scheduler_version,sc.repair_status,sc.paused_at,sc.retired_at,r.video_title source_title
         FROM srs_cards sc LEFT JOIN recommendations r ON r.id=sc.recommendation_id
         WHERE COALESCE(sc.branch,'')=? OR EXISTS (SELECT 1 FROM notes n WHERE n.id=sc.note_id AND n.branch_id=?)
           OR sc.recommendation_id IN (SELECT m.recommendation_id FROM recommendation_meta m WHERE m.branch_id=?)

@@ -11,7 +11,7 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 
 ## Product Invariants
 
-- Product: **Learning Compass**. Visual language: **Botanical Folio / Evidence Studio** — a cypress/cream Evidence Ledger with a persistent desktop root rail, grouped workspace modes, a working canvas, and an optional contextual inspector. On mobile, the rail becomes a five-item bottom dock with inline compact, equal-width mode controls and wrapping subordinate filters. Library begins with one continuous Books room before Triage/Queue; Learn contains finite Threads and Practice. Books integrates the reading desk, My books, and evergreen three-book Canon fields without a Shelf/Canon tab split; Canon remains relationship data and never becomes a sixth root or a second book collection.
+- Product: **Learning Compass**. Visual language: **Continuum** — a warm editorial knowledge workspace with a labeled persistent dark desktop root rail, confident coral working signals, paper-like planes, grouped workspace modes, a working canvas, and an optional contextual inspector. Home leads with one lesson turn per active Thread, keeps the active Queue source visible, and exposes passive Original/HTML/PDF/NotebookLM links in place. Arabic and RTL treatment use clear type and comfortable line height without decorative religious motifs. On mobile, the rail becomes a five-item bottom dock with inline compact, equal-width mode controls and wrapping subordinate filters. Library begins with one continuous Books room before Triage/Queue; Learn contains finite Threads and Practice. Books integrates the reading desk, My books, and evergreen three-book Canon fields without a Shelf/Canon tab split; Canon remains relationship data and never becomes a sixth root or a second book collection.
 - Loop: capture → curate → consume externally → reflect → notes → review → map update → resurface.
 - D1 is canonical. R2 stores large artifacts. Obsidian is an archive/export for extracted non-book notes only; book and book-chapter notes remain in Learning Compass.
 - Every capture, including Telegram and share-target input, becomes a durable `captured` source record. Queue is a separate explicit commitment.
@@ -29,6 +29,8 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 - The route registry in `client/src/app/router.ts` exposes five root destinations and 12 grouped modes. Library → Archive contains completed and excluded sources only; All sources, Reading journal, and Collections are retired product surfaces. Every remaining root and mode/focus surface must resolve to a real product surface; no generic fallback screens or tabs may expose only infrastructure.
 
 ## Architecture Boundaries
+
+Lite Visual teaching uses natural Egyptian Arabic with precise terminology and source-register quotations. Every source, including every item in a large batch, receives full reading and fidelity/teaching/language/continuity revision. The ledger's meaning units and hash-bound editorial review are required for new validations; mechanical validation never certifies prose quality. Load the skill's teaching and batch references for the applicable work. Native Hermes owns one installed skill tree; do not recreate the retired Compass profile.
 
 - `src/`: Hono Cloudflare Worker, API routes, domain logic, and scheduled work.
 - `client/`: Vite + Preact + TypeScript application.

@@ -44,7 +44,7 @@ const saveSetting = (DB: D1Database, key: string, value: unknown) => DB.prepare(
 const deliveryFailure = (error: unknown, fallback: string) => error instanceof Error ? redactSensitiveText(error, 500) : fallback
 
 export async function deliverScheduledReminders(env: Bindings) {
-  const due = await env.DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE due_at<=date('now')`).first<any>()
+  const due = await env.DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE repair_status='active' AND due_at<=date('now')`).first<any>()
   const dueCount = Number(due?.count || 0)
   if (!dueCount) return { due: 0, deliveries: 0 }
   const already = await env.DB.prepare(`SELECT COUNT(*) count FROM notification_deliveries WHERE event_kind='review_due' AND date(attempted_at)=date('now')`).first<any>()

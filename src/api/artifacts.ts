@@ -86,14 +86,24 @@ async function readyPairMap(DB: D1Database, targets: Record<string, any>[]) {
   return complete
 }
 
-function artifactHeaders(row: { media_type?: unknown; filename?: unknown }) {
+function artifactHeaders(row: { id?: unknown; size_bytes?: unknown; media_type?: unknown; filename?: unknown; metadata_json?: string | null }) {
   const filename = row.filename
+  const metadata = parseMetadata(row.metadata_json)
   const headers: Record<string, string> = {
     'content-disposition': disposition('attachment', filename),
     'content-security-policy': inertAttachmentCsp,
     'cross-origin-resource-policy': 'same-origin',
     'referrer-policy': 'no-referrer',
     'x-content-type-options': 'nosniff',
+  }
+  if (metadata.pair_id) {
+    if (row.id) headers['x-learning-compass-artifact-id'] = String(row.id).replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 240)
+    const exactSize = Number(row.size_bytes)
+    if (Number.isSafeInteger(exactSize) && exactSize > 0) headers['x-learning-compass-size-bytes'] = String(exactSize)
+    headers['x-learning-compass-pair-id'] = String(metadata.pair_id).replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 240)
+    headers['x-learning-compass-pair-role'] = String(metadata.role || '').toLowerCase().slice(0, 20)
+    headers['x-learning-compass-publication-state'] = String(metadata.publication_state || '').toLowerCase().slice(0, 30)
+    headers['x-learning-compass-validation-status'] = String(metadata.validation_status || '').toLowerCase().slice(0, 30)
   }
   if (activeXmlArtifact(row)) {
     headers['content-type'] = 'application/octet-stream'
@@ -775,7 +785,7 @@ app.post('/:id/process', async (c) => {
 })
 
 app.get('/:id/view', async (c) => {
-  const row = await c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.r2_key,a.metadata_json,r.id owner_id,r.status owner_status,r.deleted_at owner_deleted_at FROM artifacts a LEFT JOIN recommendations r ON r.id=json_extract(a.metadata_json,'$.recommendation_id') WHERE a.id=?`).bind(c.req.param('id')).first<any>()
+  const row = await c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.r2_key,a.size_bytes,a.metadata_json,r.id owner_id,r.status owner_status,r.deleted_at owner_deleted_at FROM artifacts a LEFT JOIN recommendations r ON r.id=json_extract(a.metadata_json,'$.recommendation_id') WHERE a.id=?`).bind(c.req.param('id')).first<any>()
   if (!row) return c.json({ error: 'not found' }, 404)
   if (hiddenArtifact(row)) return c.json({ error: 'not found' }, 404)
   if (!textArtifact(row)) return c.redirect(`/artifacts/${row.id}`)
@@ -783,7 +793,7 @@ app.get('/:id/view', async (c) => {
   const object = await c.env.ARTIFACTS.get(row.r2_key)
   if (!object) return c.json({ error: 'artifact missing' }, 404)
   const markdown = await object.text()
-  return new Response(markdownToHtml(markdown, row.filename), { headers: { ...artifactHeaders({ media_type: 'text/html', filename: row.filename }), 'content-security-policy': artifactCsp } })
+  return new Response(markdownToHtml(markdown, row.filename), { headers: { ...artifactHeaders({ id: row.id, size_bytes: row.size_bytes, media_type: 'text/html', filename: row.filename, metadata_json: row.metadata_json }), 'content-security-policy': artifactCsp } })
 })
 
 app.get('/:id', async (c) => {

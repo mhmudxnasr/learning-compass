@@ -19,6 +19,8 @@ The command creates `learning-compass-full-recovery-v2` under `${LEARNING_COMPAS
 5. invokes the disposable restore rehearsal; and
 6. only after successful rehearsal records the verified backup receipt in `recovery_backups`.
 
+Each R2 object read has four bounded attempts with exponential backoff for transient Cloudflare control-plane failures. Exhausting those attempts still fails the entire snapshot; cached bytes or a partial download never satisfy recovery evidence.
+
 Use `--no-record` only for a non-authoritative rehearsal that must not mutate production:
 
 ```bash
@@ -51,10 +53,10 @@ This verifies the SQL bytes and migration inventory but intentionally reports th
 Before any production migration:
 
 1. inspect the remote migration ledger;
-2. require `0068_lite_visual_corpus_activation.sql` to be the sole pending migration—`0066` and `0067` are already applied and must not be replayed;
+2. require the remote ledger to end at applied `0068_lite_visual_corpus_activation.sql` and the exact ordered pending set to be `0069_recall_repair.sql`, `0070_source_health.sql`, `0071_thread_material_organizer.sql`, `0072_share_intakes.sql`, and `0073_source_annotation_revisions.sql`; migrations through `0068` must not be replayed;
 3. capture the current Worker version;
 4. complete and retain the full D1-plus-R2 snapshot and verified restore receipt; and
-5. record a D1 Time Travel bookmark immediately before applying `0068`.
+5. record a D1 Time Travel bookmark immediately before applying the ordered `0069`–`0073` set, then verify the ledger and readiness after each migration.
 
 The signed-v6 semantic-completeness and aggregate corpus-audit hold blocks corpus registration, staging, upload, activation, and rollback. It does not block an application-only deployment that performs no corpus mutation and passes the full code release, backup/restore, migration-parity, and readiness gates. Do not configure `ALLOW_UNAUTHENTICATED_LOCAL_WRITES` remotely.
 

@@ -1,6 +1,6 @@
 import { Component, type ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
-import { flushOfflineMutations } from '../api'
+import { api, flushOfflineMutations } from '../api'
 import { CaptureDialog } from '../shell/CaptureDialog'
 import { SearchDialog } from '../shell/SearchDialog'
 import { StudioShell } from '../shell/StudioShell'
@@ -13,6 +13,7 @@ import type { LibrarySelection } from '../workspaces/library/types'
 import { AndroidInstallBanner } from './android'
 import { Inspector, type InspectorSelection, type MapSelection } from './inspector'
 import { objectHref, routeHref, useRoute, type Route } from './router'
+import { ShareIntakeReviewDialog, shareIntakeCompletionKind, type ShareIntake } from './ShareIntakeReviewDialog'
 
 type ErrorBoundaryProps = { children: ComponentChildren }
 type ErrorBoundaryState = { error: Error | null }
@@ -81,17 +82,71 @@ export function App() {
   const route = useRoute()
   const capturePayload = route.query.get('capture') || ''
   const captureAction = route.query.get('action') === 'capture'
+  const shareIntakeId = route.query.get('share_intake') || ''
   const shareState = route.query.get('share')
-  const captureNotice = shareState === 'retry'
-    ? 'The shared source was not saved. Your input is preserved—try again when the connection is stable.'
-    : shareState === 'invalid'
-      ? 'The shared item was empty or too large. Add a link, title, or note before saving.'
-      : ''
   const [captureOpen, setCaptureOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [selection, setSelection] = useState<InspectorSelection | null>(null)
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [shareIntake, setShareIntake] = useState<ShareIntake | null>(null)
+  const [shareIntakeError, setShareIntakeError] = useState('')
+  const shareCompletionKind = shareIntakeCompletionKind(shareIntake)
+
+  const resolvedCapturePayload = capturePayload || (shareCompletionKind === 'capture' ? shareIntake?.source_url || shareIntake?.shared_text || '' : '')
+  const captureNotice = shareState === 'retry'
+    ? 'The share could not be persisted. Your input is preserved—try again when the connection is stable.'
+    : shareState === 'invalid'
+      ? 'The shared item was empty or too large. Add a link, title, or note before saving.'
+      : shareIntakeError
+        ? `The saved share could not be loaded: ${shareIntakeError}`
+        : shareIntakeId && !shareIntake
+          ? 'Loading the saved share…'
+          : shareCompletionKind === 'capture'
+            ? 'Shared input recovered. Choose its reviewed branch to finish capture.'
+            : ''
+
+  useEffect(() => {
+    let live = true
+    setShareIntake(null)
+    setShareIntakeError('')
+    if (!shareIntakeId) return () => { live = false }
+    api<{ intake: ShareIntake }>(`/api/share-intakes/${encodeURIComponent(shareIntakeId)}`)
+      .then(({ intake }) => {
+        if (!live) return
+        setShareIntake(intake)
+        const completionKind = shareIntakeCompletionKind(intake)
+        if (intake.status !== 'consumed') {
+          if (intake.kind === 'review' && completionKind === 'capture' && !captureAction) {
+            navigate(`#/home?action=capture&share_intake=${encodeURIComponent(intake.id)}`)
+          } else if (intake.kind === 'review' && completionKind === 'anchor' && route.root !== 'learn') {
+            navigate(`#/learn?mode=practice&focus=notes&share_intake=${encodeURIComponent(intake.id)}`)
+          }
+          return
+        }
+        setCaptureOpen(false)
+        if (completionKind === 'capture' && intake.recommendation_id) navigate(objectHref('library', 'source', intake.recommendation_id))
+        else if (completionKind === 'anchor' && intake.annotation_id) navigate(`#/learn?mode=practice&focus=notes&annotation=${encodeURIComponent(intake.annotation_id)}`)
+      })
+      .catch((error: any) => { if (live) setShareIntakeError(error?.message || 'Saved share unavailable.') })
+    return () => { live = false }
+  }, [shareIntakeId])
+
+  useEffect(() => {
+    if (route.root !== 'home' || capturePayload || captureAction || shareIntakeId) return
+    let live = true
+    api<{ intakes: ShareIntake[] }>('/api/share-intakes/pending?limit=1').then(({ intakes }) => {
+      if (!live || !intakes[0]) return
+      const intake = intakes[0]
+      const completionKind = shareIntakeCompletionKind(intake)
+      navigate(completionKind === 'anchor'
+        ? `#/learn?mode=practice&focus=notes&share_intake=${encodeURIComponent(intake.id)}`
+        : completionKind === 'capture'
+          ? `#/home?action=capture&share_intake=${encodeURIComponent(intake.id)}`
+          : `#/home?action=review-share&share_intake=${encodeURIComponent(intake.id)}`)
+    }).catch(() => undefined)
+    return () => { live = false }
+  }, [])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -155,7 +210,7 @@ export function App() {
   const refreshWorkspace = () => setRefreshKey((value) => value + 1)
   const closeCapture = () => {
     setCaptureOpen(false)
-    if (capturePayload || captureAction) navigate(routeHref('home'))
+    if (capturePayload || captureAction || shareIntakeId) navigate(routeHref('home'))
   }
   const workspaceKey = route.root === 'map'
     ? `map-${route.mode}:${refreshKey}`
@@ -175,7 +230,26 @@ export function App() {
         {workspace(route, () => setCaptureOpen(true), setSelection)}
       </div>
     </StudioShell>
-    <CaptureDialog open={captureOpen} initialSource={capturePayload} initialStatus={captureNotice} onClose={closeCapture} onCaptured={refreshWorkspace}/>
+    <CaptureDialog
+      open={captureOpen}
+      initialSource={resolvedCapturePayload}
+      initialTitle={shareCompletionKind === 'capture' ? shareIntake?.title || '' : ''}
+      initialStatus={captureNotice}
+      shareIntakeId={shareCompletionKind === 'capture' && shareIntake?.status === 'pending' ? shareIntake.id : ''}
+      onClose={closeCapture}
+      onCaptured={refreshWorkspace}
+    />
+    {shareIntake?.kind === 'review' && !shareCompletionKind && shareIntake.status === 'pending' && <ShareIntakeReviewDialog
+      intake={shareIntake}
+      onResolved={(intake) => {
+        setShareIntake(intake)
+        const completionKind = shareIntakeCompletionKind(intake)
+        navigate(completionKind === 'anchor'
+          ? `#/learn?mode=practice&focus=notes&share_intake=${encodeURIComponent(intake.id)}`
+          : `#/home?action=capture&share_intake=${encodeURIComponent(intake.id)}`)
+      }}
+      onDefer={() => navigate(routeHref('home'))}
+    />}
     <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)}/>
   </AppErrorBoundary>
 }

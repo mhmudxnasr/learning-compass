@@ -27,7 +27,7 @@ app.post('/push', async (c) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            video_title=excluded.video_title, creator=excluded.creator, content_type=excluded.content_type,
-           video_url=excluded.video_url, why_this=excluded.why_this, status=excluded.status,
+           why_this=excluded.why_this, status=excluded.status,
            user_rating=excluded.user_rating, user_score=excluded.user_score, user_review=excluded.user_review`
       ).bind(rec.id, rec.video_title, rec.creator || null, rec.content_type || 'article',
         rec.video_url, rec.why_this || null, rec.verified || now.split('T')[0],

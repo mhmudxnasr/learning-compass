@@ -4,6 +4,7 @@ import { Icon } from '../components/Icon'
 
 const groupMeta: Record<string, { label: string; href: (item: any) => string }> = {
   recs: { label: 'Sources', href: (item) => `#/library/source/${encodeURIComponent(item.id)}` },
+  annotations: { label: 'Source anchors', href: (item) => `#/library/source/${encodeURIComponent(item.recommendation_id)}?annotation=${encodeURIComponent(item.id)}` },
   threads: { label: 'Threads', href: (item) => `#/learn/thread/${encodeURIComponent(item.id)}` },
   notes: { label: 'Notes', href: (item) => `#/learn/note/${encodeURIComponent(item.id)}` },
   artifacts: { label: 'Files', href: (item) => `#/library/artifact/${encodeURIComponent(item.id)}` },
@@ -14,7 +15,16 @@ const groupMeta: Record<string, { label: string; href: (item: any) => string }> 
 }
 
 function resultTitle(item: any) {
+  if (item.quote) return item.quote.length > 180 ? `${item.quote.slice(0, 177)}…` : item.quote
   return item.title || item.label || item.filename || item.statement || item.memory_key || item.assertion_key || item.id
+}
+
+function resultMeta(groupKey: string, item: any) {
+  if (groupKey === 'annotations') {
+    const locator = item.selector?.locator || item.selector?.url || item.locator_type || 'exact passage'
+    return [item.source_title || 'Source', locator].filter(Boolean).join(' · ')
+  }
+  return item.creator || item.kind || item.type || item.content_type || 'Learning object'
 }
 
 export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -190,7 +200,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
                   >
                     <span>
                       <strong>{resultTitle(item)}</strong>
-                      <small>{item.creator || item.kind || item.type || item.content_type || 'Learning object'}</small>
+                      <small>{resultMeta(key, item)}</small>
                     </span>
                     <Icon name="chevron" size={16} />
                   </a>

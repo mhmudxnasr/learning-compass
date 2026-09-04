@@ -9,4 +9,4 @@ This is a deliberately small Manifest V3 capture seam. It requests only `activeT
 3. Open the extension options and set the Learning Compass app origin.
 4. Use the toolbar button or page/selection context menu.
 
-The origin must already be reachable from the browser. Ordinary Learning Compass reads and writes are public; the extension never receives or persists an API credential or creates a browser unlock session.
+The origin must already be reachable from the browser. Ordinary Learning Compass reads and writes are public; the extension never receives or persists an API credential or creates a browser unlock session. A selected passage over 10,000 characters opens the app's limit explanation and is not sent or partially anchored.

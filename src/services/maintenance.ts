@@ -2,6 +2,7 @@ import { deliverScheduledReminders } from '../api/notifications'
 import type { Bindings } from '../lib'
 import { syncAllFeeds } from './rss'
 import { backfillResurfacing } from './resurfacing'
+import { refreshScopedSourceHealth } from './source-health'
 
 export const MAINTENANCE_CRON = '0 */6 * * *'
 export const MAINTENANCE_STALE_AFTER_MS = 8 * 60 * 60 * 1000
@@ -65,7 +66,14 @@ async function rebuildSearch(DB: D1Database) {
     DB.prepare("INSERT INTO search_idx(source,ref_id,text) SELECT 'note',n.id,TRIM(COALESCE(n.title,'') || ' ' || COALESCE(GROUP_CONCAT(s.content,' '),'')) FROM notes n LEFT JOIN note_sections s ON s.note_id=n.id GROUP BY n.id"),
     DB.prepare("INSERT INTO search_idx(source,ref_id,text) SELECT 'assertion',assertion_key,TRIM(assertion_key || ' ' || COALESCE(value_json,'')) FROM profile_assertions WHERE status='active'"),
     DB.prepare("INSERT INTO search_idx(source,ref_id,text) SELECT 'memory',id,TRIM(COALESCE(memory_key,'') || ' ' || COALESCE(value_json,'')) FROM hermes_memory WHERE status IN ('active','approved')"),
-    DB.prepare("INSERT INTO search_idx(source,ref_id,text) SELECT 'annotation',id,TRIM(COALESCE(quote,'') || ' ' || COALESCE(context_before,'') || ' ' || COALESCE(context_after,'') || ' ' || COALESCE(language,'')) FROM source_annotations WHERE status='active'"),
+    DB.prepare(`INSERT INTO search_idx(source,ref_id,text)
+      SELECT 'annotation',a.id,TRIM(COALESCE(a.quote,'') || ' ' || COALESCE(a.context_before,'') || ' ' || COALESCE(a.context_after,'') || ' ' || COALESCE(a.language,''))
+      FROM source_annotations a
+      JOIN recommendations r ON r.id=a.recommendation_id AND r.deleted_at IS NULL AND lower(COALESCE(r.status,''))!='deleted'
+      JOIN recommendation_meta m ON m.recommendation_id=r.id AND m.branch_id=a.branch_id
+      JOIN tree_nodes b ON b.id=m.branch_id AND b.type IN ('branch','leaf') AND lower(COALESCE(b.status,''))!='pruned'
+      JOIN tree_nodes d ON d.id=b.super_category AND d.type='category' AND lower(COALESCE(d.status,''))!='pruned'
+      WHERE a.status='active'`),
     DB.prepare("INSERT OR REPLACE INTO kv_store(key,value) VALUES ('fts_last_sync',?)").bind(indexedAt),
   ])
   const count = await DB.prepare('SELECT COUNT(*) count FROM search_idx').first<{ count: number }>()
@@ -131,6 +139,7 @@ export async function runMaintenance(env: Bindings, trigger = 'scheduled'): Prom
     await step('feeds', () => refreshFeeds(env.DB)),
     await step('reminders', () => deliverScheduledReminders(env)),
     await step('cleanup', () => cleanExpired(env.DB)),
+    await step('source_health', () => refreshScopedSourceHealth(env.DB)),
     await step('search', () => rebuildSearch(env.DB)),
     await step('resurfacing', async () => {
       const backfill = await backfillResurfacing(env.DB)

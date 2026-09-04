@@ -192,7 +192,6 @@ export function PersonalDataStudio({ onCapture }: { onCapture?: () => void }) {
           creator: draft.creator,
           state: draft.state,
           branch_id: draft.branch_id,
-          url: draft.url,
           release_year: numberValue(draft.release_year),
           duration_minutes: numberValue(draft.duration_minutes),
           progress_current: numberValue(draft.progress_current),
@@ -331,7 +330,7 @@ export function PersonalDataStudio({ onCapture }: { onCapture?: () => void }) {
               <label><span>{item.item_type === 'book' ? 'Author' : 'Creator'}</span><input value={draft.creator} required={item.item_type === 'book'} onInput={(event) => updateDraft('creator', (event.currentTarget as HTMLInputElement).value)} /></label>
               <label><span>Status</span><select value={draft.state} onChange={(event) => updateDraft('state', (event.currentTarget as HTMLSelectElement).value)}>{stateOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
               <label><span>Knowledge branch</span><select value={draft.branch_id} required onChange={(event) => updateDraft('branch_id', (event.currentTarget as HTMLSelectElement).value)}><option value="">Choose a branch</option>{branchOptions.map((branch) => <option key={branch.id} value={branch.id}>{branch.label}{branch.category_label ? ` · ${branch.category_label}` : ''}</option>)}</select></label>
-              <label class="personal-editor-wide"><span>Canonical link</span><input type="url" value={draft.url} placeholder="Optional" onInput={(event) => updateDraft('url', (event.currentTarget as HTMLInputElement).value)} /></label>
+              <label class="personal-editor-wide"><span>Canonical link</span><input type="url" value={draft.url} placeholder="No canonical link" readOnly aria-describedby={`personal-url-help-${item.id}`} /><small id={`personal-url-help-${item.id}`}>Canonical link changes use the source record’s verified replacement flow.</small></label>
               <label><span>Release year</span><input type="number" min="1800" max={new Date().getFullYear() + 5} value={draft.release_year} onInput={(event) => updateDraft('release_year', (event.currentTarget as HTMLInputElement).value)} /></label>
               <label><span>Duration (minutes)</span><input type="number" min="0" value={draft.duration_minutes} onInput={(event) => updateDraft('duration_minutes', (event.currentTarget as HTMLInputElement).value)} /></label>
               <label><span>Progress</span><input type="number" min="0" value={draft.progress_current} onInput={(event) => updateDraft('progress_current', (event.currentTarget as HTMLInputElement).value)} /></label>

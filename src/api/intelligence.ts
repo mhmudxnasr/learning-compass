@@ -13,11 +13,11 @@ const allOr = async (statement: D1PreparedStatement) => { try { return await all
 async function engineReadiness(DB: D1Database) {
   const [setting, shadow, outcomes, lanes, invalid, shadowPicks] = await Promise.all([
     DB.prepare(`SELECT value_json,updated_at FROM user_settings WHERE setting_key='recommendation_engine'`).first<any>(),
-    DB.prepare(`SELECT COUNT(*) count,SUM(CASE WHEN json_valid(shadow_json) AND json_extract(shadow_json,'$.disagreement')=1 THEN 1 ELSE 0 END) disagreements FROM compass_picks WHERE engine_version='v1' AND objective_version='learning_value_v2'`).first<any>(),
+    DB.prepare(`SELECT COUNT(*) count,SUM(CASE WHEN json_valid(shadow_json) AND json_extract(shadow_json,'$.disagreement')=1 THEN 1 ELSE 0 END) disagreements FROM compass_picks WHERE workflow_scope='general' AND engine_version='v1' AND objective_version='learning_value_v2'`).first<any>(),
     DB.prepare(`SELECT COUNT(*) count FROM recommendation_training_outcomes_v2`).first<any>(),
-    DB.prepare(`SELECT p.strategy,COUNT(DISTINCT o.recommendation_id) count FROM recommendation_training_outcomes_v2 o JOIN compass_picks p ON p.recommendation_id=o.recommendation_id GROUP BY p.strategy`).all<any>(),
-    DB.prepare(`SELECT COUNT(*) count FROM compass_picks WHERE objective_version='learning_value_v2' AND shadow_json IS NOT NULL AND json_valid(shadow_json) AND json_extract(shadow_json,'$.v2.evidence_status')='invalid'`).first<any>(),
-    DB.prepare(`SELECT p.shadow_json,o.outcome_status FROM compass_picks p LEFT JOIN recommendation_outcomes o ON o.recommendation_id=p.recommendation_id WHERE p.shadow_json IS NOT NULL AND p.shadow_json != '{}' AND json_valid(p.shadow_json)`).all<any>(),
+    DB.prepare(`SELECT p.strategy,COUNT(DISTINCT o.recommendation_id) count FROM recommendation_training_outcomes_v2 o JOIN compass_picks p ON p.recommendation_id=o.recommendation_id WHERE p.workflow_scope='general' GROUP BY p.strategy`).all<any>(),
+    DB.prepare(`SELECT COUNT(*) count FROM compass_picks WHERE workflow_scope='general' AND objective_version='learning_value_v2' AND shadow_json IS NOT NULL AND json_valid(shadow_json) AND json_extract(shadow_json,'$.v2.evidence_status')='invalid'`).first<any>(),
+    DB.prepare(`SELECT p.shadow_json,o.outcome_status FROM compass_picks p LEFT JOIN recommendation_outcomes o ON o.recommendation_id=p.recommendation_id WHERE p.workflow_scope='general' AND p.shadow_json IS NOT NULL AND p.shadow_json != '{}' AND json_valid(p.shadow_json)`).all<any>(),
   ])
   let resolved: any = { mode: 'shadow', engine_version: 'v2', objective_version: LEARNING_OBJECTIVE_VERSION }
   try { resolved = { ...resolved, ...JSON.parse(setting?.value_json || '{}') } } catch {}
@@ -140,8 +140,8 @@ app.get('/analytics/heatmaps', async (c) => {
 })
 app.get('/analytics/forecast', async (c) => {
   const [due7, due30, cards, gaps] = await Promise.all([
-    c.env.DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE due_at<=date('now','+7 days')`).first<any>(),
-    c.env.DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE due_at<=date('now','+30 days')`).first<any>(),
+    c.env.DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE repair_status='active' AND due_at<=date('now','+7 days')`).first<any>(),
+    c.env.DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE repair_status='active' AND due_at<=date('now','+30 days')`).first<any>(),
     c.env.DB.prepare(`SELECT COUNT(*) count FROM srs_cards`).first<any>(),
     c.env.DB.prepare(`SELECT COUNT(*) count FROM tree_nodes WHERE type IN ('branch','leaf')`).first<any>(),
   ])

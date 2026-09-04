@@ -6,7 +6,7 @@ Books is the first Library workspace and contains the reading desk, **My books**
 
 `POST /recommendations/books`
 
-Requires `title`, `author`, and `branch_id`; `isbn`, `url`, and `why_this` are optional. The branch must exist, be a branch node, and not be pruned. The write atomically stores the canonical branch ID plus its label and super category and creates a `captured` record. Missing, unknown, or pruned branches return HTTP 400. If the deduplication key already resolves to a book, the update preserves its explicit personal reading state; only a genuinely new book initializes as `saved`.
+Requires `title`, `author`, and `branch_id`; `isbn`, `url`, and `why_this` are optional. The branch must exist, be a branch node, and not be pruned. The write atomically stores the canonical branch ID plus its label and super category and creates a `captured` record. Missing, unknown, or pruned branches return HTTP 400. If the deduplication key already resolves to a book, the update preserves its explicit personal reading state and canonical URL; an explicitly different `url` returns `409 source_url_replacement_required` and must use the verified guarded source-URL replacement route. Only a genuinely new book initializes as `saved`.
 
 ## Read
 

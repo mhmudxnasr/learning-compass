@@ -24,7 +24,7 @@ export type TasteMapSettings = {
 }
 
 export const defaultSettings: TasteMapSettings = {
-  appearance: { theme: 'botanical', density: 'balanced' },
+  appearance: { theme: 'continuum', density: 'balanced', radius: 'soft', font_size: 'medium', font: 'studio' },
   learning: { retention: 90, queue_cap: 5 },
   srs_drafts: { enabled: true, minimum_rating: 7, auto_extract: false },
   ai_curation: { enrich_capture: false },
@@ -76,15 +76,18 @@ export function normalizeSettings(input: unknown): TasteMapSettings {
       ? [[key, Math.min(max, Math.max(min, value))]]
       : []
   }))
+  const requestedTheme = typeof appearance.theme === 'string' && /^[a-z0-9_-]{1,40}$/.test(appearance.theme)
+    ? appearance.theme
+    : defaultSettings.appearance.theme
   return {
     appearance: {
-      theme: typeof appearance.theme === 'string' && /^[a-z0-9_-]{1,40}$/.test(appearance.theme) ? appearance.theme : defaultSettings.appearance.theme,
+      theme: requestedTheme === 'botanical' ? 'continuum' : requestedTheme,
       density: oneOf(appearance.density, ['comfortable', 'balanced', 'compact'] as const, defaultSettings.appearance.density),
       radius: oneOf(appearance.radius, ['sharp', 'soft', 'round'] as const, 'soft'),
       font_size: oneOf(appearance.font_size, ['small', 'medium', 'large'] as const, 'medium'),
       reduced_motion: bool(appearance.reduced_motion, false),
       ...(Object.keys(custom_palette).length ? { custom_palette } : {}),
-      ...(typeof appearance.font === 'string' && /^[a-z0-9_-]{1,40}$/.test(appearance.font) ? { font: appearance.font } : {}),
+      font: typeof appearance.font === 'string' && /^[a-z0-9_-]{1,40}$/.test(appearance.font) ? appearance.font : defaultSettings.appearance.font,
       ...(Object.keys(custom_font).length ? { custom_font } : {}),
       ...(Object.keys(typography).length ? { typography } : {}),
     },

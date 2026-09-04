@@ -42,7 +42,7 @@ export async function loadHermesBrief(DB: Database) {
       WHERE r.status='active' AND COALESCE(r.content_type,'')!='book'
         AND COALESCE(m.learning_state,'queued') IN ('queued','in_progress')
       ORDER BY CASE WHEN m.learning_state='in_progress' THEN 0 ELSE 1 END,COALESCE(m.priority_rank,999),r.created_at DESC LIMIT 1`),
-    DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE due_at<=date('now')`),
+    DB.prepare(`SELECT COUNT(*) count FROM srs_cards WHERE repair_status='active' AND due_at<=date('now')`),
     DB.prepare(`SELECT COUNT(*) count FROM srs_drafts WHERE status='draft'`),
     DB.prepare(`SELECT COUNT(*) count FROM recommendations r JOIN recommendation_meta m ON m.recommendation_id=r.id
       WHERE r.status='active' AND COALESCE(r.content_type,'')!='book' AND m.learning_state='captured'`),

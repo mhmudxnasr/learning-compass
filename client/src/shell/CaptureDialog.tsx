@@ -48,13 +48,17 @@ export function CaptureDialog({
   onClose,
   onCaptured,
   initialSource = '',
+  initialTitle = '',
   initialStatus = '',
+  shareIntakeId = '',
 }: {
   open: boolean
   onClose: () => void
   onCaptured: () => void
   initialSource?: string
+  initialTitle?: string
   initialStatus?: string
+  shareIntakeId?: string
 }) {
   const [kind, setKind] = useState<CaptureKind>('source')
   const [source, setSource] = useState('')
@@ -100,6 +104,7 @@ export function CaptureDialog({
       setKind('source')
       setSource(initialSource)
     }
+    if (initialTitle && !title) setTitle(initialTitle)
     if (initialStatus && !status) setStatus(initialStatus)
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
@@ -109,7 +114,7 @@ export function CaptureDialog({
     }
     document.addEventListener('keydown', closeOnEscape, true)
     return () => document.removeEventListener('keydown', closeOnEscape, true)
-  }, [open, onClose, initialSource, initialStatus, source, status, saving])
+  }, [open, onClose, initialSource, initialTitle, initialStatus, source, title, status, saving])
 
   const chooseKind = (next: CaptureKind) => {
     setKind(next)
@@ -164,9 +169,19 @@ export function CaptureDialog({
         const artifact = file ? await uploadArtifact(file) : null
         const result = await api<any>('/capture', {
           method: 'POST',
-          body: JSON.stringify({ source: file?.name || source.trim(), artifact_id: artifact?.id, branch_id: branchId }),
+          body: JSON.stringify({ source: file?.name || source.trim(), title: initialTitle.trim() || undefined, artifact_id: artifact?.id, branch_id: branchId }),
         })
-        setStatus(result?.duplicate ? 'Source already exists. Existing record preserved.' : 'Source saved.')
+        let intakePending = false
+        if (shareIntakeId) {
+          try {
+            await api(`/api/share-intakes/${encodeURIComponent(shareIntakeId)}/consume`, {
+              method: 'POST', body: JSON.stringify({ recommendation_id: result.id }),
+            })
+          } catch { intakePending = true }
+        }
+        setStatus(intakePending
+          ? 'Source saved. The share receipt remains recoverable until its completion marker syncs.'
+          : result?.duplicate ? 'Source already exists. Existing record preserved.' : 'Source saved.')
       } else {
         await api('/capture/personal', {
           method: 'POST',

@@ -12,7 +12,10 @@ const selfEvolution = readFileSync('/home/mahmud/.hermes/skills/workflow/learnin
 const notebookLm = readFileSync('/home/mahmud/.hermes/skills/notebooklm/SKILL.md', 'utf8')
 const validator = readFileSync('/home/mahmud/.hermes/skills/lite-visual/scripts/validate_artifact.py', 'utf8')
 const uploader = readFileSync('/home/mahmud/.hermes/skills/lite-visual/scripts/upload_pair.py', 'utf8')
-const liteVisualQuality = readFileSync('/home/mahmud/.hermes/skills/lite-visual/SKILL.md', 'utf8')
+// Skill details are progressively loaded from the entrypoint's actual links.
+const liteVisualQuality = [liteVisual, ...Array.from(liteVisual.matchAll(/\]\((references\/[^)]+\.md)\)/g), match =>
+  readFileSync(`/home/mahmud/.hermes/skills/lite-visual/${match[1]}`, 'utf8'),
+)].join('\n')
 
 test('YouTube transcript adapter is Arabic-first with English fallback', () => {
   assert.match(adapter, /VERSION = "lite-visual-transcript\/3"/)
@@ -87,7 +90,7 @@ test('media transcription skill owns the strict YouTube no-caption gate', () => 
 test('Visual Lite forbids the English-only transcript default', () => {
   assert.match(liteVisual, /scripts\/extract_source\.py/)
   assert.match(liteVisual, /references\/source-extraction\.md/)
-  assert.match(liteVisual, /semantic HTML document in Arabic/)
+  assert.match(liteVisualQuality, /semantic HTML document in Arabic/)
 })
 
 test('Hermes self-evolution repairs observed failures before closing no_change', () => {
@@ -108,18 +111,17 @@ test('Lite Visual validator blocks the observed artifact defects', () => {
 })
 
 test('Visual Lite is source-designed code only with no image or template branch', () => {
-  assert.match(liteVisual, /former `.agents\/skills\/intent` and `.agents\/skills\/frontend-design` paths have been retired/)
-  assert.match(liteVisual, /apply the required Intent and Frontend Design reasoning directly/i)
-  assert.match(liteVisual, /source-specific CSS/)
-  assert.match(liteVisual, /minimal inline SVG/)
-  assert.match(liteVisual, /Do not invoke Visual Mind, AGY, Antigravity, ImageGen/)
-  assert.match(liteVisual, /Do not create or request raster images/)
+  assert.match(liteVisualQuality, /former `.agents\/skills\/intent` and `.agents\/skills\/frontend-design` paths have been retired/)
+  assert.match(liteVisualQuality, /apply the required Intent and Frontend Design reasoning directly/i)
+  assert.match(liteVisualQuality, /source-specific CSS/)
+  assert.match(liteVisualQuality, /minimal inline SVG/)
+  assert.match(liteVisual, /No raster\/generated images, image agents, Visual Mind, preset themes\/palettes\/layouts/)
   assert.doesNotMatch(liteVisual, /call AGY automatically|generated-image/)
 })
 
 test('Hard-topic Lite Visual and NotebookLM outputs teach beginners and stay synchronized', () => {
-  assert.match(liteVisual, /semantic equation markup when notation is essential/)
-  assert.match(liteVisual, /explain every symbol in Arabic/)
+  assert.match(liteVisualQuality, /semantic equation markup when notation is essential/)
+  assert.match(liteVisualQuality, /explain every symbol in Arabic/)
   assert.match(notebookLm, /hard technical, mathematical, physical, or equation-heavy material must assume a beginner/)
   assert.match(notebookLm, /Audio Overview must follow the HTML\/PDF's concept order, terminology, examples, and section anchors/)
 })
@@ -134,9 +136,9 @@ test('NotebookLM learning defaults to focused retrieval and truthful provider re
 })
 
 test('Lite Visual keeps the repaired companion quality baseline for future files', () => {
-  assert.match(liteVisualQuality, /complete Arabic reading companion/)
-  assert.match(liteVisualQuality, /only canonical reading body/)
-  assert.match(liteVisualQuality, /replace consuming the source/)
+  assert.match(liteVisualQuality, /complete source-faithful Arabic reading companion/)
+  assert.match(liteVisualQuality, /whose only canonical body is/)
+  assert.match(liteVisualQuality, /deep enough to replace the original/)
   assert.match(liteVisualQuality, /mechanism, examples, evidence, qualifications, disagreements, and conclusion/)
   assert.match(liteVisualQuality, /gapless source coverage/)
   assert.match(liteVisualQuality, /source-specific CSS/)

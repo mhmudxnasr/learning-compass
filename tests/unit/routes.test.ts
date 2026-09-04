@@ -19,7 +19,8 @@ test('Compass bounds repeated current-pick context and persistence work', () => 
   assert.match(currentPick, /coverageAnchors \|\|= await loadThreadCoverageAnchors\(DB\)/)
   assert.match(currentPick, /storedPickCoverageConflict\(DB, pick\.id, coverageAnchors\)/)
   assert.equal((currentPick.match(/loadThreadCoverageAnchors\(DB\)/g) || []).length, 1)
-  assert.match(source, /DB\.batch\(decisions\.v2\.scored\.map/)
+  assert.match(source, /persistence\.push\(\.\.\.decisions\.v2\.scored\.map/)
+  assert.match(source, /DB\.batch\(persistence\)/)
 })
 
 test('Compass reports comparative selection and current learning load', () => {
@@ -27,7 +28,7 @@ test('Compass reports comparative selection and current learning load', () => {
   assert.match(source, /selection_explanation: selectionExplanation/)
   assert.match(source, /alternatives, learning_load: learningLoad/)
   assert.match(source, /start_recommended:/)
-  assert.match(source, /srs_cards WHERE due_at<=date\('now'\)/)
+  assert.match(source, /srs_cards WHERE repair_status='active' AND due_at<=date\('now'\)/)
   assert.match(source, /consolidation_runs WHERE state NOT IN \('closed','waived'\)/)
 })
 test('Compass derives differentiated Worker-owned features from metadata and evidence', () => {

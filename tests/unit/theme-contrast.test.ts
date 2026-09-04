@@ -1,15 +1,20 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import {
   auditThemeContrast,
   computeThemeVariables,
   contrastRatio,
+  FONT_PRESETS,
   THEME_PRESETS,
   THEME_VARIANTS,
+  VISUAL_PRESETS,
   type CustomPalette,
   type ThemeMode,
 } from '../../client/src/theme.ts'
+
+const clientIndex = readFileSync(new URL('../../client/index.html', import.meta.url), 'utf8')
 
 const TEXT_TOKENS = ['--studio-ink', '--studio-secondary', '--studio-muted'] as const
 const TEXT_PLANES = ['--studio-shell', '--studio-canvas', '--studio-surface'] as const
@@ -43,6 +48,12 @@ test('preset and paired themes keep rendered semantic text readable', () => {
       highlight: preset.swatches[2],
       accent: preset.swatches[3],
       ink: preset.ink,
+      surface: preset.surface,
+      rail: preset.rail,
+      seam: preset.seam,
+      due: preset.due,
+      danger: preset.danger,
+      map: preset.map,
     }
     assertAccessibleText(preset.id, palette, preset.mode)
     assertRenderedAudit(preset.id, palette, preset.mode)
@@ -53,6 +64,48 @@ test('preset and paired themes keep rendered semantic text readable', () => {
     assertAccessibleText(`${variant.name} night`, variant.night, 'dark')
     assertRenderedAudit(`${variant.name} day`, variant.day, 'light')
     assertRenderedAudit(`${variant.name} night`, variant.night, 'dark')
+  }
+})
+
+test('Continuum defaults to the warm editorial coral reference system', () => {
+  const continuumTheme = THEME_PRESETS[0]
+  const continuumPreset = VISUAL_PRESETS[0]
+
+  assert.equal(continuumTheme.id, 'continuum')
+  assert.equal(continuumTheme.name, 'Attio Coral')
+  assert.equal(continuumTheme.mode, 'light')
+  assert.deepEqual(continuumTheme.swatches, ['#e55a42', '#fcfaf6', '#f8d8d0', '#665f58'])
+  assert.equal(continuumPreset.inspiration, 'Inspired by Attio')
+  assert.equal(continuumPreset.display.radius, 'round')
+  assert.equal(continuumPreset.display.density, 'comfortable')
+})
+
+test('complete workspace presets bind every art direction to a real loaded font system', () => {
+  assert.equal(VISUAL_PRESETS.length, THEME_PRESETS.length)
+  assert.equal(new Set(VISUAL_PRESETS.map((preset) => preset.id)).size, VISUAL_PRESETS.length)
+  assert.equal(new Set(VISUAL_PRESETS.map((preset) => preset.theme)).size, THEME_PRESETS.length)
+  assert.equal(new Set(VISUAL_PRESETS.map((preset) => preset.inspiration)).size, VISUAL_PRESETS.length)
+  assert.equal(new Set(VISUAL_PRESETS.map((preset) => preset.font)).size, VISUAL_PRESETS.length)
+
+  for (const preset of VISUAL_PRESETS) {
+    const theme = THEME_PRESETS.find((candidate) => candidate.id === preset.theme)
+    const font = FONT_PRESETS.find((candidate) => candidate.id === preset.font)
+    assert.ok(theme, `${preset.name} must reference a shipped theme`)
+    assert.ok(font, `${preset.name} must reference a shipped font system`)
+    assert.match(preset.inspiration, /^Inspired by /, `${preset.name} must name its premium product reference`)
+    assert.ok(preset.typography.readingMeasure >= 45 && preset.typography.readingMeasure <= 75)
+
+    if (font?.id !== 'system') {
+      const primaryFamily = font?.ui.match(/"([^"]+)"/)?.[1]
+      assert.ok(primaryFamily, `${preset.name} must expose a primary UI family`)
+      assert.match(clientIndex.replaceAll('+', ' '), new RegExp(`family=${primaryFamily!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
+    }
+  }
+
+  for (const theme of THEME_PRESETS) {
+    for (const signal of ['ink', 'surface', 'rail', 'seam', 'due', 'danger', 'map'] as const) {
+      assert.ok(theme[signal], `${theme.name} must author ${signal} explicitly`)
+    }
   }
 })
 

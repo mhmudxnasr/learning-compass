@@ -60,7 +60,7 @@ export async function buildLearningBalance(DB: Db, windowDays = 90) {
     safeAll(DB.prepare(`SELECT r.id,r.status,r.user_rating,r.user_score,r.consumed_date,r.dedup_key,m.branch_id
       FROM recommendations r LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id`)),
     safeAll(DB.prepare('SELECT id,branch_id,updated_at,created_at FROM notes')),
-    safeAll(DB.prepare('SELECT id,recommendation_id,topic,due_at FROM srs_cards')),
+    safeAll(DB.prepare('SELECT id,recommendation_id,topic,due_at,repair_status FROM srs_cards')),
     safeAll(DB.prepare('SELECT card_id,grade,reviewed_at FROM srs_review_events')),
     safeAll(DB.prepare(`SELECT u.id,COALESCE(n.branch_id,m.branch_id) branch_id FROM learning_units u
       LEFT JOIN notes n ON n.id=u.note_id
@@ -164,7 +164,7 @@ export async function buildLearningBalance(DB: Db, windowDays = 90) {
     if (!node) continue
     addToPath(node, (value) => {
       value.srs += 1
-      if (card.due_at && String(card.due_at) <= dateOnly(new Date())) value.due += 1
+      if (card.repair_status === 'active' && card.due_at && String(card.due_at) <= dateOnly(new Date())) value.due += 1
       for (const grade of gradesByCard.get(String(card.id)) || []) value.grades.push(grade)
       const latest = latestReviewByCard.get(String(card.id))
       if (latest && (!value.latestReview || latest.reviewedAt > value.latestReview)) {
