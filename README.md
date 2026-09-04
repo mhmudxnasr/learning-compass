@@ -351,6 +351,6 @@ npx wrangler deploy --config wrangler.toml
 
 Code deployment and data changes are separate operations. D1 or R2 data-only writes do not require a Worker deployment.
 
-Deployment IDs, recovery snapshots, and the active PWA shell revision change independently of the architecture. Record and verify them in [CURRENT_STATE.md](CURRENT_STATE.md) during each release instead of copying volatile values across documents.
+Deployment IDs, recovery snapshots, and the active PWA shell revision change independently of the architecture. Record and verify them in [CURRENT_STATE.md](CURRENT_STATE.md) during each release. [The release snapshot](docs/release-snapshot.json) records the observed source commit, deployed version, migration parity, health, recovery receipt, and budget policy at its timestamp.
 
 The production Worker, R2 bucket, cache names, protocol name, cron name, and Hermes paths retain legacy identifiers for compatibility even though the product and repository are named Learning Compass.
