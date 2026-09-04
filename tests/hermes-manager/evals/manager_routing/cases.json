@@ -1,0 +1,2110 @@
+{
+  "schema": "hermes-manager-cases/v1",
+  "cases": [
+    {
+      "id": "whats-next",
+      "prompt": "whats next",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "required_calls": [{ "method": "GET", "path": "/agent/briefing", "count": 1 }],
+        "allowed_calls": [{ "method": "GET", "path": "/agent/briefing" }],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [{ "method": "GET", "path": "/agent/briefing", "pointer": "/next_action/label" }],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1200,
+        "require_successful_api": true,
+        "recovery_result": "not_needed"
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/agent/briefing",
+          "status": 200,
+          "body": {
+            "as_of": "2026-08-26T08:00:00.000Z",
+            "next_action": {
+              "id": "queue:src-1",
+              "kind": "continue",
+              "label": "Continue Agent Workflows",
+              "reason": "Agent Workflows is already in progress.",
+              "target": "library.queue",
+              "href": "/library?mode=triage&focus=queue",
+              "priority": "medium",
+              "source_id": "src-1"
+            },
+            "blockers": {
+              "pending_proposals": 0,
+              "active_jobs": 0,
+              "failed_jobs": 0,
+              "dead_letter_jobs": 0,
+              "stale_jobs": 0,
+              "overdue_retries": 0,
+              "open_consolidation": false,
+              "open_consolidation_count": 0,
+              "queue_at_capacity": false,
+              "invalid_queue_branches": 0,
+              "missing_queue_domains": 0,
+              "missing_direct_lesson_material": 0,
+              "context_unavailable": false
+            },
+            "counts": { "due_recall": 0, "recall_drafts": 0, "inbox": 2, "queue": 1, "queue_limit": 5 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "whats-next-503",
+      "prompt": "whats next",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "required_calls": [{ "method": "GET", "path": "/agent/briefing", "count": 2 }],
+        "allowed_calls": [{ "method": "GET", "path": "/agent/briefing" }],
+        "max_api_calls": 2,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [{ "method": "GET", "path": "/agent/briefing", "pointer": "/next_action/label" }],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1200,
+        "failure_category": "worker_unavailable",
+        "recovery_result": "recovered"
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/agent/briefing",
+          "status": 503,
+          "body": {
+            "error": "briefing_unavailable",
+            "message": "Learning context is temporarily unavailable.",
+            "as_of": "2026-08-26T08:00:00.000Z",
+            "health": { "status": "unavailable" },
+            "next_action": null,
+            "blockers": { "context_unavailable": true },
+            "counts": null
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/briefing",
+          "status": 200,
+          "body": {
+            "as_of": "2026-08-26T08:00:01.000Z",
+            "next_action": {
+              "id": "queue:src-1",
+              "kind": "continue",
+              "label": "Continue Agent Workflows",
+              "reason": "Agent Workflows is already in progress.",
+              "target": "library.queue",
+              "href": "/library?mode=triage&focus=queue",
+              "priority": "medium",
+              "source_id": "src-1"
+            },
+            "blockers": {
+              "pending_proposals": 0,
+              "active_jobs": 0,
+              "failed_jobs": 0,
+              "dead_letter_jobs": 0,
+              "stale_jobs": 0,
+              "overdue_retries": 0,
+              "open_consolidation": false,
+              "open_consolidation_count": 0,
+              "queue_at_capacity": false,
+              "invalid_queue_branches": 0,
+              "missing_queue_domains": 0,
+              "missing_direct_lesson_material": 0,
+              "context_unavailable": false
+            },
+            "counts": { "due_recall": 0, "recall_drafts": 0, "inbox": 2, "queue": 1, "queue_limit": 5 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "whats-next-timeout",
+      "prompt": "whats next",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "required_calls": [{ "method": "GET", "path": "/agent/briefing", "count": 2 }],
+        "allowed_calls": [{ "method": "GET", "path": "/agent/briefing" }],
+        "max_api_calls": 2,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1200,
+        "response_contains_any": [
+          "timed out",
+          "unavailable",
+          "can't",
+          "cannot",
+          "couldn't",
+          "could not",
+          "try again",
+          "blocked"
+        ],
+        "response_excludes": ["Continue Agent Workflows", "No blockers", "empty"],
+        "failure_category": "worker_timeout",
+        "recovery_result": "honest_blocker"
+      },
+      "mock_responses": [
+        { "method": "GET", "path": "/agent/briefing", "status": 200, "body": {}, "timeout": true, "delay_ms": 500 }
+      ]
+    },
+    {
+      "id": "manage-learning",
+      "prompt": "manage my learning",
+      "prefill": [
+        {
+          "role": "user",
+          "content": "For my next request, execute the selected safe, reversible Learning Compass action and report its verified result."
+        },
+        {
+          "role": "assistant",
+          "content": "Understood. I will execute the selected safe, reversible action after resolving current site state."
+        }
+      ],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-job-backlog-operations", "learning-compass-site-operator"],
+        "required_calls": [
+          { "method": "GET", "path": "/agent/briefing", "count": 1 },
+          { "method": "GET", "path": "/agent/jobs/health", "count": 2 },
+          { "method": "GET", "path": "/agent/jobs/job-1", "count": 1 },
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 1 }
+        ],
+        "call_sequence": [
+          { "method": "GET", "path": "/agent/briefing" },
+          { "method": "GET", "path": "/agent/jobs/health" },
+          { "method": "GET", "path": "/agent/jobs/job-1" },
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/agent/jobs/health" }
+        ],
+        "max_api_calls": 6,
+        "max_context_calls": 0,
+        "max_mutations": 1,
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/method", "equals": "POST" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/path", "equals": "/agent/jobs/job-1/claim" }
+        ],
+        "response_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/verified", "equals": true },
+          {
+            "method": "POST",
+            "path": "/agent/request",
+            "pointer": "/receipt/after/path",
+            "equals": "/agent/jobs/job-1"
+          },
+          { "method": "POST", "path": "/agent/request", "pointer": "/receipt/after/status", "equals": 200 },
+          { "method": "POST", "path": "/agent/request", "pointer": "/receipt/after/data/state", "equals": "running" }
+        ],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/agent/briefing", "pointer": "/next_action/label" },
+          { "method": "GET", "path": "/agent/jobs/job-1", "pointer": "/id" },
+          { "method": "GET", "path": "/agent/jobs/job-1", "pointer": "/state" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/receipt/after/data/state" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1200,
+        "require_successful_api": true,
+        "recovery_result": "not_needed"
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/agent/briefing",
+          "status": 200,
+          "body": {
+            "as_of": "2026-08-26T08:00:00.000Z",
+            "next_action": {
+              "id": "job:job-1:claim",
+              "kind": "continue",
+              "label": "Claim pending extract_notes job",
+              "reason": "The exact pending extraction job is ready for a worker lease.",
+              "target": "work.manage",
+              "href": "/work?mode=manage",
+              "priority": "high",
+              "job_id": "job-1"
+            },
+            "blockers": {
+              "pending_proposals": 0,
+              "active_jobs": 1,
+              "failed_jobs": 0,
+              "dead_letter_jobs": 0,
+              "stale_jobs": 0,
+              "overdue_retries": 0,
+              "open_consolidation": false,
+              "open_consolidation_count": 0,
+              "queue_at_capacity": false,
+              "invalid_queue_branches": 0,
+              "missing_queue_domains": 0,
+              "missing_direct_lesson_material": 0,
+              "context_unavailable": false
+            },
+            "counts": { "due_recall": 0, "recall_drafts": 0, "inbox": 2, "queue": 1, "queue_limit": 5 }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/jobs/health",
+          "status": 200,
+          "body": { "pending": 1, "running": 0, "retry": 0, "stale": 0, "failed": 0 }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/jobs/job-1",
+          "status": 200,
+          "body": { "id": "job-1", "type": "extract_notes", "state": "pending", "lease": null }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": {
+            "operations": [
+              { "method": "POST", "path": "/agent/jobs/:id/claim", "verification_path": "/agent/jobs/:id" }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": { "job_id": "job-1", "state": "running" },
+            "receipt": {
+              "target": "/agent/jobs/job-1/claim",
+              "after": {
+                "path": "/agent/jobs/job-1",
+                "status": 200,
+                "data": {
+                  "id": "job-1",
+                  "type": "extract_notes",
+                  "state": "running",
+                  "lease": { "worker": "hermes-eval" }
+                }
+              },
+              "evidence": [{ "kind": "verification_read", "path": "/agent/jobs/job-1", "status": 200 }],
+              "blocker": null
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/jobs/health",
+          "status": 200,
+          "body": { "pending": 0, "running": 1, "retry": 0, "stale": 0, "failed": 0 }
+        }
+      ]
+    },
+    {
+      "id": "fix-all-that",
+      "prompt": "fix all that",
+      "prefill": [
+        {
+          "role": "assistant",
+          "content": "The current remediation plan identified failed job job-1. You may replay that exact failed job once; do not make destructive changes or broaden the repair."
+        }
+      ],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-job-backlog-operations", "learning-compass-site-operator"],
+        "required_calls": [
+          { "method": "GET", "path": "/agent/briefing", "count": 1 },
+          { "method": "GET", "path": "/agent/jobs/health", "count": 2 },
+          { "method": "GET", "path": "/agent/jobs/job-1", "count": 2 },
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 1 }
+        ],
+        "call_sequence": [
+          { "method": "GET", "path": "/agent/briefing" },
+          { "method": "GET", "path": "/agent/jobs/health" },
+          { "method": "GET", "path": "/agent/jobs/job-1" },
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/agent/jobs/job-1" },
+          { "method": "GET", "path": "/agent/jobs/health" }
+        ],
+        "max_api_calls": 7,
+        "max_context_calls": 0,
+        "max_mutations": 1,
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/method", "equals": "POST" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/path", "equals": "/agent/jobs/job-1/replay" }
+        ],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/agent/briefing", "pointer": "/next_action/label" },
+          { "method": "GET", "path": "/agent/jobs/job-1", "pointer": "/id" },
+          { "method": "GET", "path": "/agent/jobs/job-1", "pointer": "/state" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1200,
+        "require_successful_api": true,
+        "recovery_result": "not_needed"
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/agent/briefing",
+          "status": 200,
+          "body": {
+            "as_of": "2026-08-26T08:00:00.000Z",
+            "next_action": {
+              "id": "job:job-1:replay",
+              "kind": "repair",
+              "label": "Replay failed job job-1",
+              "reason": "The exact failed extraction job is eligible for one explicit replay.",
+              "target": "work.manage",
+              "href": "/work?mode=manage",
+              "priority": "high",
+              "job_id": "job-1"
+            },
+            "blockers": {
+              "pending_proposals": 0,
+              "active_jobs": 0,
+              "failed_jobs": 1,
+              "dead_letter_jobs": 0,
+              "stale_jobs": 0,
+              "overdue_retries": 0,
+              "open_consolidation": false,
+              "open_consolidation_count": 0,
+              "queue_at_capacity": false,
+              "invalid_queue_branches": 0,
+              "missing_queue_domains": 0,
+              "missing_direct_lesson_material": 0,
+              "context_unavailable": false
+            },
+            "counts": { "due_recall": 0, "recall_drafts": 0, "inbox": 1, "queue": 2, "queue_limit": 5 }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/jobs/health",
+          "status": 200,
+          "body": { "pending": 0, "running": 0, "retry": 0, "stale": 0, "failed": 1 }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/jobs/job-1",
+          "status": 200,
+          "body": {
+            "id": "job-1",
+            "type": "extract_notes",
+            "state": "failed",
+            "attempt": 1,
+            "failure": "upstream response was unavailable"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": {
+            "operations": [
+              { "method": "POST", "path": "/agent/jobs/:id/replay", "verification_path": "/agent/jobs/:id" }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": { "job_id": "job-1", "state": "pending" },
+            "receipt": { "target": "/agent/jobs/job-1/replay", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/jobs/job-1",
+          "status": 200,
+          "body": {
+            "id": "job-1",
+            "type": "extract_notes",
+            "state": "pending",
+            "attempt": 2,
+            "resume_from": "resolve_source"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/jobs/health",
+          "status": 200,
+          "body": { "pending": 1, "running": 0, "retry": 0, "stale": 0, "failed": 0 }
+        }
+      ]
+    },
+    {
+      "id": "save-this",
+      "prompt": "save this",
+      "prefill": [
+        { "role": "user", "content": "https://example.com/agent-workflows" },
+        { "role": "assistant", "content": "I have the exact source URL. What should I do with it?" }
+      ],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-source-ingestion", "learning-compass-site-operator"],
+        "required_calls": [
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "GET", "path": "/brain/branch-deck", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 1 },
+          { "method": "GET", "path": "/capture/src-1/record", "count": 1 }
+        ],
+        "forbidden_calls": [{ "method": "POST", "path": "/capture/src-1/triage" }],
+        "call_sequence": [
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "GET", "path": "/brain/branch-deck" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/capture/src-1/record" }
+        ],
+        "max_api_calls": 4,
+        "max_context_calls": 0,
+        "max_mutations": 1,
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/method", "equals": "POST" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/path", "equals": "/capture" },
+          {
+            "method": "POST",
+            "path": "/agent/request",
+            "pointer": "/body/source",
+            "equals": "https://example.com/agent-workflows"
+          },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/branch_id", "equals": "branch-ai" }
+        ],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/id" },
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/branch/id" },
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/branch/super_category" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1400,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": { "operations": [{ "method": "POST", "path": "/capture" }] }
+        },
+        {
+          "method": "GET",
+          "path": "/brain/branch-deck",
+          "status": 200,
+          "body": {
+            "branches": [
+              { "id": "branch-ai", "label": "Applied AI", "status": "active", "super_category": "technology" }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 201,
+            "data": { "id": "src-1", "duplicate": false, "state": "captured" },
+            "receipt": { "target": "/capture", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/capture/src-1/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "src-1",
+              "title": "Agent Workflows",
+              "source_url": "https://example.com/agent-workflows",
+              "learning_state": "captured",
+              "branch": { "id": "branch-ai", "label": "Applied AI", "status": "active", "super_category": "technology" }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "queue-add",
+      "prompt": "put this in queue",
+      "prefill": [{ "role": "assistant", "content": "The exact current source is src-1, titled Agent Workflows." }],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "required_calls": [
+          { "method": "GET", "path": "/capture/src-1/record", "count": 2 },
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "GET", "path": "/capture/queue", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 1 }
+        ],
+        "max_api_calls": 5,
+        "max_context_calls": 0,
+        "max_mutations": 1,
+        "call_sequence": [
+          { "method": "GET", "path": "/capture/src-1/record" },
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/capture/src-1/record" },
+          { "method": "GET", "path": "/capture/queue" }
+        ],
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/method", "equals": "POST" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/path", "equals": "/capture/src-1/triage" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/action", "equals": "queue" }
+        ],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/learning_state" },
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/branch/id" },
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/branch/super_category" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1400,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/capture/src-1/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "src-1",
+              "title": "Agent Workflows",
+              "learning_state": "captured",
+              "branch": { "id": "branch-ai", "label": "Applied AI", "status": "active", "super_category": "technology" }
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": { "operations": [{ "method": "POST", "path": "/capture/:id/triage" }] }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": { "id": "src-1", "state": "queued" },
+            "receipt": { "target": "/capture/src-1/triage", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/capture/src-1/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "src-1",
+              "title": "Agent Workflows",
+              "learning_state": "queued",
+              "branch": { "id": "branch-ai", "label": "Applied AI", "status": "active", "super_category": "technology" }
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/capture/queue",
+          "status": 200,
+          "body": {
+            "items": [
+              {
+                "id": "src-1",
+                "branch": {
+                  "id": "branch-ai",
+                  "label": "Applied AI",
+                  "status": "active",
+                  "super_category": "technology"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "queue-remove",
+      "prompt": "remove this from queue",
+      "prefill": [
+        { "role": "assistant", "content": "The exact current queued source is src-1, titled Agent Workflows." }
+      ],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "required_calls": [
+          { "method": "GET", "path": "/capture/src-1/record", "count": 2 },
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "GET", "path": "/capture/queue", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 1 }
+        ],
+        "max_api_calls": 5,
+        "max_context_calls": 0,
+        "max_mutations": 1,
+        "call_sequence": [
+          { "method": "GET", "path": "/capture/src-1/record" },
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/capture/src-1/record" },
+          { "method": "GET", "path": "/capture/queue" }
+        ],
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/method", "equals": "POST" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/path", "equals": "/capture/src-1/triage" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/action", "equals": "dequeue" }
+        ],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/learning_state" },
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/branch/id" },
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/branch/super_category" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1400,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/capture/src-1/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "src-1",
+              "title": "Agent Workflows",
+              "learning_state": "queued",
+              "branch": { "id": "branch-ai", "label": "Applied AI", "status": "active", "super_category": "technology" }
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": { "operations": [{ "method": "POST", "path": "/capture/:id/triage" }] }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": { "id": "src-1", "state": "captured" },
+            "receipt": { "target": "/capture/src-1/triage", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/capture/src-1/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "src-1",
+              "title": "Agent Workflows",
+              "learning_state": "captured",
+              "branch": { "id": "branch-ai", "label": "Applied AI", "status": "active", "super_category": "technology" }
+            }
+          }
+        },
+        { "method": "GET", "path": "/capture/queue", "status": 200, "body": { "items": [] } }
+      ]
+    },
+    {
+      "id": "finish-rating",
+      "prompt": "I finished this, 7/10",
+      "prefill": [
+        { "role": "assistant", "content": "The exact active source is src-1 and its current session is session-1." }
+      ],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-feedback-corrections", "learning-compass-site-operator"],
+        "forbidden_skills": ["taste-rec", "compass-recommendation-workflows"],
+        "required_calls": [
+          { "method": "GET", "path": "/capture/src-1/record", "count": 2 },
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 1 }
+        ],
+        "forbidden_calls": [{ "method": "POST", "path": "/compass/picks" }],
+        "max_api_calls": 4,
+        "max_context_calls": 0,
+        "max_mutations": 1,
+        "call_sequence": [
+          { "method": "GET", "path": "/capture/src-1/record" },
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/capture/src-1/record" }
+        ],
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/method", "equals": "POST" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/path", "equals": "/feedback/record" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/score", "equals": 7 },
+          {
+            "method": "POST",
+            "path": "/agent/request",
+            "pointer": "/body/feedback",
+            "equals": "I finished this, 7/10"
+          },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/completion_state", "equals": "completed" }
+        ],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/learning_state" },
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/user_score" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1400,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/capture/src-1/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "src-1",
+              "learning_state": "in_progress",
+              "user_score": null,
+              "branch": { "id": "branch-ai", "label": "Applied AI", "status": "active", "super_category": "technology" }
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": { "operations": [{ "method": "POST", "path": "/feedback/record" }] }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": {
+              "source": { "id": "src-1" },
+              "preserved_feedback": "I finished this, 7/10",
+              "rating": 7,
+              "completion_state": "completed"
+            },
+            "receipt": { "target": "/feedback/record", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/capture/src-1/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "src-1",
+              "learning_state": "completed",
+              "user_score": 7,
+              "branch": { "id": "branch-ai", "label": "Applied AI", "status": "active", "super_category": "technology" }
+            },
+            "feedback": [{ "score": 7, "feedback": "I finished this, 7/10", "completion_state": "completed" }]
+          }
+        }
+      ]
+    },
+    {
+      "id": "recommend-one",
+      "prompt": "recommend me one thing",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["taste-rec", "learning-compass-site-operator"],
+        "forbidden_skills": ["taste-mapper", "compass-recommendation-workflows"],
+        "required_calls": [
+          { "method": "GET", "path": "/analytics/compass/full-context", "count": 1 },
+          { "method": "GET", "path": "/compass/context", "count": 1 },
+          { "method": "GET", "path": "/brain/branch-deck", "count": 1 },
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 1 },
+          { "method": "GET", "path": "/compass/pick/pick-1", "count": 1 },
+          { "method": "GET", "path": "/capture/rec-1/record", "count": 1 }
+        ],
+        "forbidden_calls": [{ "method": "POST", "path": "/capture/src-1/triage" }],
+        "max_api_calls": 7,
+        "max_context_calls": 0,
+        "max_mutations": 1,
+        "call_sequence": [
+          { "method": "GET", "path": "/analytics/compass/full-context" },
+          { "method": "GET", "path": "/compass/context" },
+          { "method": "GET", "path": "/brain/branch-deck" },
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/compass/pick/pick-1" },
+          { "method": "GET", "path": "/capture/rec-1/record" }
+        ],
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/method", "equals": "POST" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/path", "equals": "/compass/picks" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/thread_id", "equals": "thread-1" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/intent", "equals": "discover" }
+        ],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/capture/rec-1/record", "pointer": "/item/id" },
+          { "method": "GET", "path": "/capture/rec-1/record", "pointer": "/item/title" },
+          { "method": "GET", "path": "/capture/rec-1/record", "pointer": "/item/branch/id" },
+          { "method": "GET", "path": "/capture/rec-1/record", "pointer": "/item/branch/super_category" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1600,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/analytics/compass/full-context",
+          "status": 200,
+          "body": {
+            "active": [],
+            "consumed": [],
+            "mastered": [],
+            "blacklist": [],
+            "threads": [{ "id": "thread-1", "status": "active" }]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/compass/context",
+          "status": 200,
+          "body": {
+            "thread": {
+              "id": "thread-1",
+              "title": "Build Reliable AI Workflows",
+              "status": "active",
+              "recommendation_target_gaps": []
+            },
+            "exclusions": [],
+            "known_sources": [],
+            "candidate_contract": {
+              "required": [
+                "canonical_url",
+                "title",
+                "creator",
+                "format",
+                "source_class",
+                "branch_id",
+                "expected_contribution",
+                "evidence",
+                "editorial_review"
+              ]
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/brain/branch-deck",
+          "status": 200,
+          "body": {
+            "branches": [
+              { "id": "branch-ai", "label": "Applied AI", "status": "active", "super_category": "technology" }
+            ]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": {
+            "operations": [
+              { "method": "POST", "path": "/compass/picks", "verification_path": "/compass/pick/:pick_id" }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": {
+              "status": "ready",
+              "pick_id": "pick-1",
+              "recommendation_id": "rec-1",
+              "source_check": "verified",
+              "selection_explanation": "Reliable agent evaluation was the strongest verified contribution for the active Thread.",
+              "learning_load": { "start_recommended": true }
+            },
+            "receipt": { "target": "/compass/picks", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/compass/pick/pick-1",
+          "status": 200,
+          "body": {
+            "pick": {
+              "id": "pick-1",
+              "status": "ready",
+              "recommendation_id": "rec-1",
+              "video_title": "Reliable Agent Evaluation",
+              "thread_id": "thread-1",
+              "engine_mode": "v2",
+              "source_check": "verified"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/capture/rec-1/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "rec-1",
+              "title": "Reliable Agent Evaluation",
+              "creator": "Example Research Lab",
+              "source_url": "https://example.com/reliable-agent-evaluation",
+              "learning_state": "compass_pick",
+              "branch": { "id": "branch-ai", "label": "Applied AI", "status": "active", "super_category": "technology" }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "recommend-five",
+      "prompt": "give me five recommendations",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["taste-rec", "compass-recommendation-workflows", "learning-compass-site-operator"],
+        "forbidden_skills": ["taste-mapper"],
+        "required_calls": [
+          { "method": "GET", "path": "/analytics/compass/full-context", "count": 1 },
+          { "method": "GET", "path": "/compass/context", "count": 1 },
+          { "method": "GET", "path": "/brain/branch-deck", "count": 1 },
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 5 },
+          { "method": "GET", "path": "/compass/pick/pick-1", "count": 1 },
+          { "method": "GET", "path": "/compass/pick/pick-2", "count": 1 },
+          { "method": "GET", "path": "/compass/pick/pick-3", "count": 1 },
+          { "method": "GET", "path": "/compass/pick/pick-4", "count": 1 },
+          { "method": "GET", "path": "/compass/pick/pick-5", "count": 1 },
+          { "method": "GET", "path": "/capture/rec-1/record", "count": 1 },
+          { "method": "GET", "path": "/capture/rec-2/record", "count": 1 },
+          { "method": "GET", "path": "/capture/rec-3/record", "count": 1 },
+          { "method": "GET", "path": "/capture/rec-4/record", "count": 1 },
+          { "method": "GET", "path": "/capture/rec-5/record", "count": 1 }
+        ],
+        "forbidden_calls": [{ "method": "POST", "path": "/capture/src-1/triage" }],
+        "max_api_calls": 19,
+        "max_context_calls": 0,
+        "max_mutations": 5,
+        "call_sequence": [
+          { "method": "GET", "path": "/analytics/compass/full-context" },
+          { "method": "GET", "path": "/compass/context" },
+          { "method": "GET", "path": "/brain/branch-deck" },
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/compass/pick/pick-1" },
+          { "method": "GET", "path": "/capture/rec-1/record" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/compass/pick/pick-2" },
+          { "method": "GET", "path": "/capture/rec-2/record" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/compass/pick/pick-3" },
+          { "method": "GET", "path": "/capture/rec-3/record" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/compass/pick/pick-4" },
+          { "method": "GET", "path": "/capture/rec-4/record" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/compass/pick/pick-5" },
+          { "method": "GET", "path": "/capture/rec-5/record" }
+        ],
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/method", "equals": "POST" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/path", "equals": "/compass/picks" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/thread_id", "equals": "thread-1" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/intent", "equals": "discover" }
+        ],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/capture/rec-1/record", "pointer": "/item/title" },
+          { "method": "GET", "path": "/capture/rec-2/record", "pointer": "/item/title" },
+          { "method": "GET", "path": "/capture/rec-3/record", "pointer": "/item/title" },
+          { "method": "GET", "path": "/capture/rec-4/record", "pointer": "/item/title" },
+          { "method": "GET", "path": "/capture/rec-5/record", "pointer": "/item/title" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 2800,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/analytics/compass/full-context",
+          "status": 200,
+          "body": {
+            "active": [],
+            "consumed": [],
+            "mastered": [],
+            "blacklist": [],
+            "threads": [{ "id": "thread-1", "status": "active" }]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/compass/context",
+          "status": 200,
+          "body": {
+            "thread": {
+              "id": "thread-1",
+              "title": "Build Reliable AI Workflows",
+              "status": "active",
+              "recommendation_target_gaps": []
+            },
+            "exclusions": [],
+            "known_sources": [],
+            "candidate_contract": {
+              "required": [
+                "canonical_url",
+                "title",
+                "creator",
+                "format",
+                "source_class",
+                "branch_id",
+                "expected_contribution",
+                "evidence",
+                "editorial_review"
+              ]
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/brain/branch-deck",
+          "status": 200,
+          "body": {
+            "branches": [
+              { "id": "branch-ai", "label": "Applied AI", "status": "active", "super_category": "technology" },
+              { "id": "branch-design", "label": "Decision Design", "status": "active", "super_category": "design" },
+              {
+                "id": "branch-story",
+                "label": "Business Storytelling",
+                "status": "active",
+                "super_category": "business"
+              },
+              {
+                "id": "branch-psych",
+                "label": "Existential Psychology",
+                "status": "active",
+                "super_category": "psychology"
+              },
+              {
+                "id": "branch-ethics",
+                "label": "Technology Ethics",
+                "status": "active",
+                "super_category": "technology"
+              }
+            ]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": {
+            "operations": [
+              { "method": "POST", "path": "/compass/picks", "verification_path": "/compass/pick/:pick_id" }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": {
+              "status": "ready",
+              "pick_id": "pick-1",
+              "recommendation_id": "rec-1",
+              "source_check": "verified"
+            },
+            "receipt": { "target": "/compass/picks", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/compass/pick/pick-1",
+          "status": 200,
+          "body": {
+            "pick": {
+              "id": "pick-1",
+              "status": "ready",
+              "recommendation_id": "rec-1",
+              "video_title": "Reliable Agent Evaluation",
+              "thread_id": "thread-1",
+              "engine_mode": "v2",
+              "source_check": "verified"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/capture/rec-1/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "rec-1",
+              "title": "Reliable Agent Evaluation",
+              "creator": "Example Research Lab",
+              "source_url": "https://example.com/reliable-agent-evaluation",
+              "learning_state": "compass_pick",
+              "branch": { "id": "branch-ai", "label": "Applied AI", "status": "active", "super_category": "technology" }
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": {
+              "status": "ready",
+              "pick_id": "pick-2",
+              "recommendation_id": "rec-2",
+              "source_check": "verified"
+            },
+            "receipt": { "target": "/compass/picks", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/compass/pick/pick-2",
+          "status": 200,
+          "body": {
+            "pick": {
+              "id": "pick-2",
+              "status": "ready",
+              "recommendation_id": "rec-2",
+              "video_title": "Decision Design Field Guide",
+              "thread_id": "thread-1",
+              "engine_mode": "v2",
+              "source_check": "verified"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/capture/rec-2/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "rec-2",
+              "title": "Decision Design Field Guide",
+              "creator": "Example Design Lab",
+              "source_url": "https://example.com/decision-design",
+              "learning_state": "compass_pick",
+              "branch": {
+                "id": "branch-design",
+                "label": "Decision Design",
+                "status": "active",
+                "super_category": "design"
+              }
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": {
+              "status": "ready",
+              "pick_id": "pick-3",
+              "recommendation_id": "rec-3",
+              "source_check": "verified"
+            },
+            "receipt": { "target": "/compass/picks", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/compass/pick/pick-3",
+          "status": 200,
+          "body": {
+            "pick": {
+              "id": "pick-3",
+              "status": "ready",
+              "recommendation_id": "rec-3",
+              "video_title": "Business Storytelling Cases",
+              "thread_id": "thread-1",
+              "engine_mode": "v2",
+              "source_check": "verified"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/capture/rec-3/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "rec-3",
+              "title": "Business Storytelling Cases",
+              "creator": "Example Business School",
+              "source_url": "https://example.com/business-storytelling",
+              "learning_state": "compass_pick",
+              "branch": {
+                "id": "branch-story",
+                "label": "Business Storytelling",
+                "status": "active",
+                "super_category": "business"
+              }
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": {
+              "status": "ready",
+              "pick_id": "pick-4",
+              "recommendation_id": "rec-4",
+              "source_check": "verified"
+            },
+            "receipt": { "target": "/compass/picks", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/compass/pick/pick-4",
+          "status": 200,
+          "body": {
+            "pick": {
+              "id": "pick-4",
+              "status": "ready",
+              "recommendation_id": "rec-4",
+              "video_title": "Existential Psychology Lecture",
+              "thread_id": "thread-1",
+              "engine_mode": "v2",
+              "source_check": "verified"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/capture/rec-4/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "rec-4",
+              "title": "Existential Psychology Lecture",
+              "creator": "Example University",
+              "source_url": "https://example.com/existential-psychology",
+              "learning_state": "compass_pick",
+              "branch": {
+                "id": "branch-psych",
+                "label": "Existential Psychology",
+                "status": "active",
+                "super_category": "psychology"
+              }
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": {
+              "status": "ready",
+              "pick_id": "pick-5",
+              "recommendation_id": "rec-5",
+              "source_check": "verified"
+            },
+            "receipt": { "target": "/compass/picks", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/compass/pick/pick-5",
+          "status": 200,
+          "body": {
+            "pick": {
+              "id": "pick-5",
+              "status": "ready",
+              "recommendation_id": "rec-5",
+              "video_title": "Deceptive Interface Investigations",
+              "thread_id": "thread-1",
+              "engine_mode": "v2",
+              "source_check": "verified"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/capture/rec-5/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "rec-5",
+              "title": "Deceptive Interface Investigations",
+              "creator": "Example Newsroom",
+              "source_url": "https://example.com/deceptive-interfaces",
+              "learning_state": "compass_pick",
+              "branch": {
+                "id": "branch-ethics",
+                "label": "Technology Ethics",
+                "status": "active",
+                "super_category": "technology"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "make-visual",
+      "prompt": "make visual",
+      "prefill": [{ "role": "assistant", "content": "The exact source is src-1, titled Agent Workflows." }],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["lite-visual", "learning-compass-site-operator"],
+        "forbidden_skills": ["visual-mind"],
+        "required_calls": [
+          { "method": "GET", "path": "/capture/src-1/record", "count": 2 },
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 1 }
+        ],
+        "max_api_calls": 4,
+        "max_context_calls": 0,
+        "max_mutations": 1,
+        "call_sequence": [
+          { "method": "GET", "path": "/capture/src-1/record" },
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/capture/src-1/record" }
+        ],
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/method", "equals": "POST" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/path", "equals": "/capture/src-1/visualise" }
+        ],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/visualise_job/id" },
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/visualise_job/state" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "response_contains": ["queued"],
+        "max_response_bytes": 1600,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/capture/src-1/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "src-1",
+              "title": "Agent Workflows",
+              "source_url": "https://example.com/agent-workflows",
+              "branch": { "id": "branch-ai", "label": "Applied AI", "status": "active", "super_category": "technology" }
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": { "operations": [{ "method": "POST", "path": "/capture/:id/visualise" }] }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": { "job_id": "job-visual-1", "state": "queued" },
+            "receipt": { "target": "/capture/src-1/visualise", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/capture/src-1/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "src-1",
+              "title": "Agent Workflows",
+              "source_url": "https://example.com/agent-workflows",
+              "branch": {
+                "id": "branch-ai",
+                "label": "Applied AI",
+                "status": "active",
+                "super_category": "technology"
+              },
+              "visualise_job": { "id": "job-visual-1", "state": "queued" }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "notebooklm-quiz",
+      "prompt": "make NotebookLM quiz",
+      "prefill": [{ "role": "assistant", "content": "The exact source is src-1, titled Agent Workflows." }],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["notebooklm", "learning-compass-site-operator"],
+        "required_calls": [{ "method": "GET", "path": "/capture/src-1/record", "count": 1 }],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/notebooklm/status" },
+          { "method": "GET", "path": "/capture/src-1/record", "pointer": "/item/notebooklm/notebook_id" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1600,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/capture/src-1/record",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "src-1",
+              "source_url": "https://example.com/agent-workflows",
+              "notebooklm": { "status": "indexed", "notebook_id": "nb-1" }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "continue-job",
+      "prompt": "continue the job",
+      "prefill": [{ "role": "assistant", "content": "The exact interrupted job is job-1." }],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-job-backlog-operations", "learning-compass-site-operator"],
+        "required_calls": [
+          { "method": "GET", "path": "/agent/jobs/health", "count": 2 },
+          { "method": "GET", "path": "/agent/jobs/job-1", "count": 2 },
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 1 }
+        ],
+        "max_api_calls": 6,
+        "max_context_calls": 0,
+        "max_mutations": 1,
+        "call_sequence": [
+          { "method": "GET", "path": "/agent/jobs/health" },
+          { "method": "GET", "path": "/agent/jobs/job-1" },
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/agent/jobs/job-1" },
+          { "method": "GET", "path": "/agent/jobs/health" }
+        ],
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/method", "equals": "POST" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/path", "equals": "/agent/jobs/job-1/claim" }
+        ],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/agent/jobs/job-1", "pointer": "/id" },
+          { "method": "GET", "path": "/agent/jobs/job-1", "pointer": "/state" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1600,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": { "operations": [{ "method": "POST", "path": "/agent/jobs/:id/claim" }] }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/jobs/health",
+          "status": 200,
+          "body": { "pending": 1, "running": 0, "retry": 0 }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/jobs/job-1",
+          "status": 200,
+          "body": { "id": "job-1", "type": "extract_notes", "state": "pending", "lease": null }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": { "job_id": "job-1", "state": "running" },
+            "receipt": { "target": "/agent/jobs/job-1/claim", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/jobs/job-1",
+          "status": 200,
+          "body": { "id": "job-1", "type": "extract_notes", "state": "running", "lease": { "worker": "hermes-eval" } }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/jobs/health",
+          "status": 200,
+          "body": { "pending": 0, "running": 1, "retry": 0 }
+        }
+      ]
+    },
+    {
+      "id": "why-slow",
+      "prompt": "why is it slow?",
+      "prefill": [
+        {
+          "role": "assistant",
+          "content": "We are discussing the most recent Learning Compass briefing request, receipt-1; please explain that exact observed delay."
+        }
+      ],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["recommendations-worker-ops", "learning-compass-site-operator"],
+        "required_calls": [{ "method": "GET", "path": "/agent/activity", "count": 1 }],
+        "allowed_calls": [{ "method": "GET", "path": "/agent/activity" }],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [
+          { "method": "GET", "path": "/agent/activity", "pointer": "/receipts/0/id" },
+          { "method": "GET", "path": "/agent/activity", "pointer": "/receipts/0/target" },
+          { "method": "GET", "path": "/agent/activity", "pointer": "/receipts/0/status_code" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "response_contains_any": [
+          "latency isn't recorded",
+          "latency is not recorded",
+          "no latency",
+          "no duration",
+          "can't determine",
+          "cannot determine",
+          "cannot be determined",
+          "doesn't include timing",
+          "does not include timing"
+        ],
+        "max_response_bytes": 1400,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/agent/activity",
+          "status": 200,
+          "body": {
+            "as_of": "2026-08-26T08:00:00.000Z",
+            "receipts": [
+              {
+                "id": "receipt-1",
+                "request_id": "request-1",
+                "agent_name": "hermes",
+                "intent": "read",
+                "target": "/agent/briefing",
+                "status_code": 200,
+                "verified": true,
+                "created_at": "2026-08-26T07:59:55.000Z",
+                "receipt": { "intent": "read", "target": "/agent/briefing", "blocker": null }
+              }
+            ],
+            "audit_events": [],
+            "jobs": [],
+            "proposals": [],
+            "health": {
+              "status": "healthy",
+              "active_jobs": 0,
+              "failed_jobs": 0,
+              "stale_jobs": 0,
+              "dead_letter_jobs": 0,
+              "pending_proposals": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "what-changed",
+      "prompt": "what did you change?",
+      "prefill": [
+        {
+          "role": "assistant",
+          "content": "We are discussing the just-completed Queue action for Agent Workflows (src-1). Report only the verified recorded change."
+        }
+      ],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "required_calls": [{ "method": "GET", "path": "/agent/activity", "count": 1 }],
+        "allowed_calls": [{ "method": "GET", "path": "/agent/activity" }],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [
+          { "method": "GET", "path": "/agent/activity", "pointer": "/receipts/0/target" },
+          { "method": "GET", "path": "/agent/activity", "pointer": "/receipts/0/receipt/mutation_or_job/data/id" },
+          { "method": "GET", "path": "/agent/activity", "pointer": "/receipts/0/receipt/mutation_or_job/data/state" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1400,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/agent/activity",
+          "status": 200,
+          "body": {
+            "as_of": "2026-08-26T08:00:00.000Z",
+            "receipts": [
+              {
+                "id": "receipt-1",
+                "request_id": "request-1",
+                "agent_name": "hermes",
+                "intent": "update",
+                "target": "/capture/src-1/triage",
+                "status_code": 200,
+                "verified": true,
+                "created_at": "2026-08-26T07:59:55.000Z",
+                "receipt": {
+                  "intent": "update",
+                  "target": "/capture/src-1/triage",
+                  "mutation_or_job": {
+                    "method": "POST",
+                    "status": 200,
+                    "mutation_committed": true,
+                    "data": { "id": "src-1", "state": "queued" }
+                  },
+                  "blocker": null
+                }
+              }
+            ],
+            "audit_events": [],
+            "jobs": [],
+            "proposals": [],
+            "health": {
+              "status": "healthy",
+              "active_jobs": 0,
+              "failed_jobs": 0,
+              "stale_jobs": 0,
+              "dead_letter_jobs": 0,
+              "pending_proposals": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reopen-lesson",
+      "prompt": "reopen this lesson",
+      "prefill": [{ "role": "assistant", "content": "The exact completed lesson is lesson-1 in thread-1." }],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-thread-authoring", "learning-compass-site-operator"],
+        "required_calls": [
+          { "method": "GET", "path": "/learning/core/threads/thread-1/path", "count": 2 },
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 1 }
+        ],
+        "max_api_calls": 4,
+        "max_context_calls": 0,
+        "max_mutations": 1,
+        "call_sequence": [
+          { "method": "GET", "path": "/learning/core/threads/thread-1/path" },
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/learning/core/threads/thread-1/path" }
+        ],
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/method", "equals": "PATCH" },
+          {
+            "method": "POST",
+            "path": "/agent/request",
+            "pointer": "/path",
+            "equals": "/learning/core/threads/thread-1/lessons/lesson-1"
+          },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/status", "equals": "not_started" }
+        ],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/learning/core/threads/thread-1/path", "pointer": "/id" },
+          { "method": "GET", "path": "/learning/core/threads/thread-1/path", "pointer": "/lessons/0/id" },
+          { "method": "GET", "path": "/learning/core/threads/thread-1/path", "pointer": "/lessons/0/status" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1400,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/learning/core/threads/thread-1/path",
+          "status": 200,
+          "body": { "id": "thread-1", "lessons": [{ "id": "lesson-1", "status": "completed" }] }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": { "operations": [{ "method": "PATCH", "path": "/learning/core/threads/:id/lessons/:lessonId" }] }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": { "lesson_id": "lesson-1", "status": "not_started" },
+            "receipt": { "target": "/learning/core/threads/thread-1/lessons/lesson-1", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/learning/core/threads/thread-1/path",
+          "status": 200,
+          "body": { "id": "thread-1", "lessons": [{ "id": "lesson-1", "status": "not_started" }] }
+        }
+      ]
+    },
+    {
+      "id": "log-movie",
+      "prompt": "log that I watched this movie",
+      "prefill": [
+        { "role": "user", "content": "Movie: Arrival (2016)" },
+        { "role": "assistant", "content": "I have the exact title and year." }
+      ],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "required_calls": [
+          { "method": "GET", "path": "/capture/personal", "count": 1 },
+          { "method": "GET", "path": "/brain/branch-deck", "count": 1 },
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 1 },
+          { "method": "GET", "path": "/capture/personal/personal-1", "count": 1 }
+        ],
+        "forbidden_calls": [{ "method": "POST", "path": "/capture" }],
+        "call_sequence": [
+          { "method": "GET", "path": "/capture/personal" },
+          { "method": "GET", "path": "/brain/branch-deck" },
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/capture/personal/personal-1" }
+        ],
+        "max_api_calls": 5,
+        "max_context_calls": 0,
+        "max_mutations": 1,
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/method", "equals": "POST" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/path", "equals": "/capture/personal" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/title", "equals": "Arrival" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/item_type", "equals": "movie" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/state", "equals": "completed" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/release_year", "equals": 2016 },
+          { "method": "POST", "path": "/agent/request", "pointer": "/body/branch_id", "equals": "branch-film" }
+        ],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/capture/personal/personal-1", "pointer": "/item/title" },
+          { "method": "GET", "path": "/capture/personal/personal-1", "pointer": "/item/state" },
+          { "method": "GET", "path": "/capture/personal/personal-1", "pointer": "/item/branch/id" },
+          { "method": "GET", "path": "/capture/personal/personal-1", "pointer": "/item/branch/super_category" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1400,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        { "method": "GET", "path": "/capture/personal", "status": 200, "body": { "items": [], "count": 0 } },
+        {
+          "method": "GET",
+          "path": "/brain/branch-deck",
+          "status": 200,
+          "body": {
+            "branches": [{ "id": "branch-film", "label": "Film", "status": "active", "super_category": "arts" }]
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": { "operations": [{ "method": "POST", "path": "/capture/personal" }] }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 201,
+            "data": { "item": { "id": "personal-1", "title": "Arrival", "item_type": "movie", "state": "completed" } },
+            "receipt": { "target": "/capture/personal", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/capture/personal/personal-1",
+          "status": 200,
+          "body": {
+            "item": {
+              "id": "personal-1",
+              "title": "Arrival",
+              "item_type": "movie",
+              "state": "completed",
+              "release_year": 2016,
+              "branch": { "id": "branch-film", "label": "Film", "status": "active", "super_category": "arts" }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete-this",
+      "prompt": "delete this",
+      "prefill": [
+        {
+          "role": "assistant",
+          "content": "The exact target is note-1, titled Temporary note. The user has explicitly selected that one note."
+        }
+      ],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "required_calls": [
+          { "method": "GET", "path": "/notes/note-1", "count": 1 },
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 1 }
+        ],
+        "call_sequence": [
+          { "method": "GET", "path": "/notes/note-1" },
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "POST", "path": "/agent/request" }
+        ],
+        "max_api_calls": 3,
+        "max_context_calls": 0,
+        "max_mutations": 1,
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/method", "equals": "DELETE" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/path", "equals": "/notes/note-1" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/confirm", "equals": true },
+          { "method": "POST", "path": "/agent/request", "pointer": "/precondition/path", "equals": "/notes/note-1" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/verify/path", "equals": "/notes/note-1" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/verify/field", "equals": "absent" },
+          { "method": "POST", "path": "/agent/request", "pointer": "/verify/equals", "equals": true }
+        ],
+        "response_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/verified", "equals": true },
+          { "method": "POST", "path": "/agent/request", "pointer": "/receipt/after/status", "equals": 404 },
+          { "method": "POST", "path": "/agent/request", "pointer": "/receipt/after/absent", "equals": true },
+          { "method": "POST", "path": "/agent/request", "pointer": "/receipt/after/data/absent", "equals": true }
+        ],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/notes/note-1", "pointer": "/note/id" },
+          { "method": "GET", "path": "/notes/note-1", "pointer": "/note/title" }
+        ],
+        "forbid_unseen_identifiers": true,
+        "response_contains": ["deleted"],
+        "max_response_bytes": 1400,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/notes/note-1",
+          "status": 200,
+          "body": { "note": { "id": "note-1", "title": "Temporary note" } }
+        },
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": {
+            "operations": [
+              {
+                "method": "DELETE",
+                "path": "/notes/:id",
+                "risk": "high",
+                "explicit_confirmation_required": true,
+                "precondition_path": "/notes/:id",
+                "verification_path": "/notes/:id"
+              }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": { "ok": true },
+            "receipt": {
+              "target": "/notes/note-1",
+              "after": { "path": "/notes/note-1", "status": 404, "data": { "absent": true }, "absent": true },
+              "evidence": [{ "kind": "verification_read", "path": "/notes/note-1", "status": 404 }],
+              "blocker": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sync-hardcover",
+      "prompt": "sync Hardcover",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "required_calls": [
+          { "method": "GET", "path": "/agent/capabilities", "count": 1 },
+          { "method": "POST", "path": "/agent/request", "count": 1 },
+          { "method": "GET", "path": "/hardcover", "count": 1 }
+        ],
+        "max_api_calls": 3,
+        "max_context_calls": 0,
+        "max_mutations": 1,
+        "call_sequence": [
+          { "method": "GET", "path": "/agent/capabilities" },
+          { "method": "POST", "path": "/agent/request" },
+          { "method": "GET", "path": "/hardcover" }
+        ],
+        "request_assertions": [
+          { "method": "POST", "path": "/agent/request", "pointer": "/path", "equals": "/hardcover/sync" }
+        ],
+        "response_assertions": [{ "method": "POST", "path": "/agent/request", "pointer": "/verified", "equals": true }],
+        "grounding_assertions": [
+          { "method": "GET", "path": "/hardcover", "pointer": "/synced" },
+          { "method": "GET", "path": "/hardcover", "pointer": "/mirror_only" },
+          { "method": "GET", "path": "/hardcover", "pointer": "/queue_items_created" }
+        ],
+        "response_contains": ["mirror"],
+        "max_response_bytes": 1400,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/agent/capabilities",
+          "status": 200,
+          "body": { "operations": [{ "method": "POST", "path": "/hardcover/sync" }] }
+        },
+        {
+          "method": "POST",
+          "path": "/agent/request",
+          "status": 200,
+          "body": {
+            "ok": true,
+            "verified": true,
+            "status": 200,
+            "data": { "synced": 3 },
+            "receipt": { "target": "/hardcover/sync", "blocker": null }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/hardcover",
+          "status": 200,
+          "body": { "synced": 3, "mirror_only": true, "queue_items_created": 0 }
+        }
+      ]
+    },
+    {
+      "id": "blocked-work",
+      "prompt": "show my blocked work",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "required_calls": [{ "method": "GET", "path": "/agent/briefing", "count": 1 }],
+        "allowed_calls": [{ "method": "GET", "path": "/agent/briefing" }],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [{ "method": "GET", "path": "/agent/briefing", "pointer": "/next_action/label" }],
+        "forbid_unseen_identifiers": true,
+        "max_response_bytes": 1400,
+        "require_successful_api": true,
+        "recovery_result": "not_needed"
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/agent/briefing",
+          "status": 200,
+          "body": {
+            "as_of": "2026-08-26T08:00:00.000Z",
+            "next_action": {
+              "id": "learning:missing-material",
+              "kind": "repair",
+              "label": "Repair missing lesson material",
+              "reason": "One learning stage is missing direct lesson material.",
+              "target": "learn.threads",
+              "href": "/learn?mode=threads",
+              "priority": "high",
+              "thread_id": "thread-1",
+              "stage_id": "stage-1"
+            },
+            "blockers": {
+              "pending_proposals": 0,
+              "active_jobs": 0,
+              "failed_jobs": 0,
+              "dead_letter_jobs": 0,
+              "stale_jobs": 0,
+              "overdue_retries": 0,
+              "open_consolidation": false,
+              "open_consolidation_count": 0,
+              "queue_at_capacity": false,
+              "invalid_queue_branches": 1,
+              "missing_queue_domains": 0,
+              "missing_direct_lesson_material": 1,
+              "context_unavailable": false
+            },
+            "counts": { "due_recall": 0, "recall_drafts": 0, "inbox": 1, "queue": 2, "queue_limit": 5 }
+          }
+        }
+      ]
+    }
+  ]
+}

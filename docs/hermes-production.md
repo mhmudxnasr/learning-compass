@@ -195,19 +195,17 @@ The final matched eight-read production observation on 2026-08-26 measured filte
 
 ## Deterministic manager evaluation
 
-Run the manager harness documented by the Hermes runtime, then the Worker contract tests:
+Run the repository-owned manager fixtures against the installed native Hermes runtime, then the Worker contract tests:
 
 ```bash
-cd /home/mahmud/.hermes/hermes-agent
-scripts/run_tests.sh tests/evals/test_manager_routing_harness.py -q
-
 cd /home/mahmud/recommendations-worker
+npm run verify:manager
 npm run verify:agent-contract
 ```
 
 The isolated runner copies and loads the real production `/home/mahmud/AGENTS.md`, records its hash and byte count in every trace, normalizes only resolved local skill identities, and uses sequential pre/post fixtures so a verified write changes its canonical reread. Raw direct mutation probes remain failures. The fixture set covers typo/ambiguity routing, one-call context policy, feedback without recommendation, capture without Queue, branch/domain enforcement, exact feedback preservation, direct-lesson-only progression, high-risk deletion, timeout recovery, blocked work, and truthful receipts. Deterministic assertions are the mandatory release baseline. Real-model slates are diagnostic sampling: preserve exact results and require focused regression evidence for observed defects, but do not use nondeterministic aggregate sampling as a Worker deployment gate. Record task success, route, expected/actual API calls, model/tool turns when sampled, input/output bytes, wall time, failure category, recovery result, and receipt correctness.
 
-The original 2026-08-26 full release slate passed only 4/21; its saved artifact remains historical failure evidence and must not be regraded. After correcting the procedures and fixtures, all 21 cases passed across saved focused reruns (4 mutation, 9 management/recovery, and 8 specialist cases). Later combined samples varied between 19/21 and 20/21 and remain preserved diagnostic evidence. The deterministic 37-test harness plus focused regression artifacts is the canonical manager release gate.
+The original 2026-08-26 full release slate passed only 4/21; its saved artifact remains historical failure evidence and must not be regraded. After correcting the procedures and fixtures, all 21 cases passed across saved focused reruns (4 mutation, 9 management/recovery, and 8 specialist cases). Later combined samples varied between 19/21 and 20/21 and remain preserved diagnostic evidence. The deterministic harness plus focused regression artifacts is the canonical manager release gate. Its preserved fixtures now live in `tests/hermes-manager` so Hermes updates cannot remove them; the wrapper requires at least 38 passing tests, no skips, and a real JUnit report, including actual production-context loading.
 
 ## Production SLOs and signals
 

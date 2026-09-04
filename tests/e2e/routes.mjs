@@ -2808,9 +2808,24 @@ try {
   await resurfacingPage.locator('.folio-object-view').waitFor({ state: 'visible', timeout: 15000 })
   if (!resurfacingPage.url().includes(`#/library/source/${encodeURIComponent(resurfacingNavigationSource.id)}`))
     throw new Error('Home resurfacing card did not preserve the source identity in its destination')
-  for (const heading of ['Source access', 'Branch', 'Recall cards', 'Feedback & outcome', 'Files']) {
-    if (!(await resurfacingPage.getByRole('heading', { name: heading }).isVisible()))
-      throw new Error(`Home resurfacing card destination is missing ${heading}`)
+  await resurfacingPage.getByRole('heading', { name: 'Source access', exact: true }).waitFor({ state: 'visible' })
+  const resurfacingBranch = resurfacingPage.locator('.item-page-context').getByRole('link', {
+    name: 'Readable fixture branch',
+    exact: true,
+  })
+  if (
+    !(await resurfacingBranch.isVisible()) ||
+    (await resurfacingBranch.getAttribute('href')) !== '#/map/branch/fixture-branch-id'
+  )
+    throw new Error('Home resurfacing destination lost its verified branch badge')
+  const resurfacingSections = resurfacingPage.getByRole('navigation', { name: 'Item sections', exact: true })
+  for (const [label, heading] of [
+    ['Recall', 'Recall cards'],
+    ['Reflection', 'Feedback & outcome'],
+    ['Files', 'Files & reading companions'],
+  ]) {
+    await resurfacingSections.getByRole('link', { name: new RegExp('^' + label) }).click()
+    await resurfacingPage.getByRole('heading', { name: heading, exact: true }).waitFor({ state: 'visible' })
   }
   await resurfacingPage.close()
   await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })

@@ -189,12 +189,7 @@ run('Worker-backed responsive, PWA, offline, and public-boundary E2E', 'npm', ['
 run('Hermes contracts and Telegram prompt budgets', 'npm', ['run', 'verify:hermes'])
 run('Fresh and idempotent migration rehearsal', 'npm', ['run', 'verify:migrations'])
 run('Agent control contract', 'npm', ['run', 'verify:agent-contract'])
-run(
-  'Deterministic Hermes manager harness',
-  'scripts/run_tests.sh',
-  ['tests/evals/test_manager_routing_harness.py', '-q'],
-  managerRoot,
-)
+run('Deterministic Hermes manager harness', 'npm', ['run', 'verify:manager'])
 
 for (const root of [join(canonicalSkills, 'workflow', 'learning-compass-site-operator')]) {
   run(`Installed site-client tests: ${root}`, 'python3', [

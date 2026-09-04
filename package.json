@@ -21,6 +21,7 @@
     "test:integration": "for file in tests/integration/*.mjs; do node \"$file\" || exit; done",
     "test:e2e": "node tests/e2e/routes.mjs",
     "verify:hermes": "node scripts/verify-hermes-contract.mjs && python3 scripts/verify-hermes-prompt.py",
+    "verify:manager": "node scripts/verify-manager.mjs",
     "verify:agent-contract": "node --test tests/unit/agent-control.test.ts && node scripts/verify-hermes-contract.mjs",
     "verify:migrations": "node scripts/rehearse-migrations.mjs",
     "verify:release": "node scripts/verify-release.mjs",

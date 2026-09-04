@@ -187,6 +187,7 @@ The checked-in development commands retain their loopback-only write-rate-limit 
 | `npm run build`             | Create the production client bundle                                                                                           |
 | `npm run test:e2e`          | Create a fresh temporary D1 database and test all root destinations, grouped modes, and responsive shell behavior in Chromium |
 | `npm run verify:release`    | Run the local release gate, including repository and installed Hermes contracts; it does not deploy                           |
+| `npm run verify:manager`    | Run preserved manager fixtures against native Hermes and require a complete passing test report                               |
 | `npm run backup:production` | Export remote D1 and every canonical R2 object, verify checksums, and rehearse a local restore before release                 |
 | `npm run deploy`            | Run the guarded release script and deploy with the repository Wrangler config                                                 |
 

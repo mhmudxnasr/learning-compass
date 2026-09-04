@@ -18,7 +18,7 @@ test('the combined release gate is complete and local-only', () => {
     "run('Hermes contracts and Telegram prompt budgets', 'npm', ['run', 'verify:hermes'])",
     "run('Fresh and idempotent migration rehearsal', 'npm', ['run', 'verify:migrations'])",
     "run('Agent control contract', 'npm', ['run', 'verify:agent-contract'])",
-    'test_manager_routing_harness.py',
+    "run('Deterministic Hermes manager harness', 'npm', ['run', 'verify:manager'])",
     'assertNativeAdapter()',
     'assertNoRetiredClientAuth()',
     'assertNoRetiredReleaseDocsAuth()',
