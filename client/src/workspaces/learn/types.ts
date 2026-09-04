@@ -18,6 +18,20 @@ export interface PathRecord {
   completed_lesson_count?: number
   needs_material_count?: number
   updated_at?: string | null
+  priority?: number
+  last_studied_at?: string | null
+  future_material_count?: number
+  remaining_minutes?: number
+  estimated_lesson_count?: number
+  next_lesson?: {
+    id: string
+    stage_id: string
+    stage_title: string
+    title: string
+    objective?: string | null
+    estimated_minutes?: number | null
+    readiness: 'ready' | 'in_progress' | 'needs_material' | 'locked'
+  } | null
 }
 
 export interface PathHubResponse {

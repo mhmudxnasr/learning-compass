@@ -65,9 +65,9 @@ test('Level and owner disclosures stay exact, bounded, and recoverable', () => {
 test('Threads index leads with resumable work instead of dashboard metrics', () => {
   for (const label of ['In progress', 'Paused', 'Completed', 'All'])
     assert.match(pathsView, new RegExp(`label: '${label}'`))
-  assert.match(pathsView, /const \[filter, setFilter\] = useState\('active'\)/)
-  assert.match(pathsView, /Continue Thread/)
-  assert.match(pathsView, /thread-index-summary/)
+  assert.match(pathsView, /savedPreferences\(\).filter \|\| 'active'/)
+  assert.match(pathsView, /Continue lesson/)
+  assert.match(pathsView, /thread-desk-pulse/)
   assert.doesNotMatch(pathsView, /Current Work|thread-summary-card|Structured Learning Threads/)
 })
 
@@ -89,7 +89,7 @@ test('Vertical Journey preserves direct progression language and ships a fresh P
   assert.match(threadView, /Projects are optional practice/)
   assert.equal((threadView.match(/vertical-thread-next-link button/g) || []).length, 1)
   assert.doesNotMatch(threadView, /optional evidence/)
-  assert.match(serviceWorker, /learning-compass-shell-v53/)
+  assert.match(serviceWorker, /learning-compass-shell-v54/)
 })
 
 test('locked Levels distinguish prerequisites from missing material', () => {

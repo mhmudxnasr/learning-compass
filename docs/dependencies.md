@@ -22,6 +22,8 @@ Do not remove these as "unused" without checking the installed Hermes extraction
 
 ## Version holds
 
+The 2026-09-05 Threads redesign uses the existing lockfile and adds no dependencies. `npm audit` reports zero vulnerabilities. Newer releases of the Cloudflare types, Node types, ESLint, globals, Hono, ts-fsrs, TypeScript, and Wrangler are available; their upgrades remain a separate dependency change so this UI release does not alter the Worker, scheduler, or compiler baseline.
+
 TypeScript is held on the current 6.x line because the installed `typescript-eslint` release declares support through TypeScript 6.x, not 7.x. Upgrade TypeScript 7 only after the lint toolchain declares compatible peer support and the complete typecheck, unit, build, and E2E gates pass. This is a compatibility hold, not an invitation to ignore other updates.
 
 Vite 8 uses Rolldown configuration under `build.rolldownOptions`. Do not restore the removed Rollup object-form `manualChunks` configuration; use the function form in `vite.config.ts` and verify the base bundle budget after upgrades.

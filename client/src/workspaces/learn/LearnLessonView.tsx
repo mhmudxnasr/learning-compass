@@ -167,9 +167,46 @@ export function LessonView({
         </div>
       )}
 
-      {canRequestMaterial ? <FindLessonMaterial threadId={threadId} lesson={lesson} onChanged={onChanged} /> : null}
+      {canRequestMaterial ? (
+        <>
+          <a
+            class="button secondary"
+            href={`${threadTabHref(threadId, 'materials')}&lesson=${encodeURIComponent(lesson.id)}`}
+          >
+            Choose saved material
+            <Icon name="library" size={16} />
+          </a>
+          <FindLessonMaterial threadId={threadId} lesson={lesson} onChanged={onChanged} />
+        </>
+      ) : null}
 
       {lesson.sources?.length ? <SourceSection sources={lesson.sources} /> : null}
+
+      {lesson.content?.trim() && (
+        <section class="lesson-authored-text" aria-label="Lesson text">
+          <span class="desk-eyebrow">Study text</span>
+          <div>
+            {lesson.content.split(/\n\s*\n/).map((paragraph, index) => (
+              <p key={index} dir="auto">
+                {paragraph}
+              </p>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {isCompleted && !followingLesson && (
+        <section class="lesson-finish-note">
+          <Icon name="check" size={20} />
+          <div>
+            <h2>You have reached the end of this curriculum.</h2>
+            <p>Return to the Thread to revisit your notes and save a closing reflection.</p>
+            <a class="button secondary" href={threadTabHref(threadId, 'overview')}>
+              Return to Thread
+            </a>
+          </div>
+        </section>
+      )}
 
       <details class="course-level-materials is-lesson-tools">
         <summary>

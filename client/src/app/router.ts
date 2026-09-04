@@ -88,7 +88,12 @@ export const modes: Record<RootKey, ModeDefinition[]> = {
     },
   ],
   learn: [
-    { key: 'paths', label: 'Threads', description: 'Build and follow finite learning paths.', defaultView: 'paths' },
+    {
+      key: 'paths',
+      label: 'Threads',
+      description: 'Plan your learning, resume a lesson, and revisit your understanding.',
+      defaultView: 'paths',
+    },
     {
       key: 'practice',
       label: 'Practice',
