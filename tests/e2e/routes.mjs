@@ -1388,7 +1388,6 @@ try {
 
   browserIp = 'e2e-browser-preferences'
   await page.goto(`${baseUrl}/#/settings?focus=preferences`, { waitUntil: 'networkidle' })
-  await page.locator('.settings-jump-disclosure > summary').click()
   for (const section of [
     'visual-presets-heading',
     'interface-tokens',
@@ -1397,12 +1396,12 @@ try {
     'learning-preferences',
     'atlas-preferences',
   ]) {
-    await page.locator(`.settings-jump-nav a[href="#${section}"]`).click()
+    await page.locator(`.preferences-index .settings-jump-nav a[href="#${section}"]`).click()
     await page.waitForTimeout(80)
     const jumpState = await page.evaluate((id) => {
       const canvas = document.querySelector('.workspace-canvas')
       const target = document.getElementById(id)
-      const jumpNav = document.querySelector('.settings-jump-nav')
+      const jumpNav = document.querySelector('.preferences-index')
       return {
         hash: location.hash,
         heading: document.querySelector('h1')?.textContent,
@@ -1434,6 +1433,8 @@ try {
     throw new Error('appearance preview must not expose fake actions')
   if ((await page.locator('.preferences-preview-rail').count()) !== 1)
     throw new Error('Preferences must keep one contextual appearance preview')
+  if ((await page.locator('.preferences-index .settings-jump-nav a').count()) !== 6)
+    throw new Error('Preferences must expose a persistent, scannable section index')
   const saveRadio = async (group, option) => {
     const radio = page
       .getByRole('group', { name: new RegExp(`^${group}`) })
@@ -1450,7 +1451,7 @@ try {
     page.evaluate(() => {
       const root = document.documentElement
       const canvas = document.querySelector('.workspace-canvas')
-      const row = document.querySelector('.setting-row')
+      const row = document.querySelector('.preference-choice-options label')
       const intro = document.querySelector('.settings-intro p')
       const sampleButton = document.querySelector('.visual-preset-card')
       return {
@@ -1589,14 +1590,14 @@ try {
       .count()) !== 9
   )
     throw new Error('theme choices did not render semantic studio previews')
-  const themeReadingOrder = await page.locator('.preferences-layout').evaluate((layout) => {
-    const children = [...layout.children]
+  const themeReadingOrder = await page.locator('.preferences-main').evaluate((main) => {
+    const children = [...main.children]
     return {
-      preview: children.findIndex((node) => node.classList.contains('preferences-preview-rail')),
-      main: children.findIndex((node) => node.classList.contains('preferences-main')),
+      preview: children.findIndex((node) => node.classList.contains('preferences-preview-stage')),
+      presets: children.findIndex((node) => node.classList.contains('visual-presets-section')),
     }
   })
-  if (themeReadingOrder.preview < 0 || themeReadingOrder.main <= themeReadingOrder.preview)
+  if (themeReadingOrder.preview < 0 || themeReadingOrder.presets <= themeReadingOrder.preview)
     throw new Error(`appearance preview is not before controls in reading order: ${JSON.stringify(themeReadingOrder)}`)
   const customTheme = page.locator('.theme-custom-card')
   await Promise.all([

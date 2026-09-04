@@ -97,6 +97,14 @@ The visual references are functional. Linear informs shell precision and list de
 - Typed object views, the inspector, Capture, Search, and other dialogs use the same Canvas, Surface, Inspector, Seam, and Coral roles as their owning workspace. An ambiguous Android URL-plus-prose share opens a focused two-choice dialog: whole-source Capture or exact selected passage, with the original title, URL, and text visible and a non-destructive Decide later exit.
 - At 940px and below, the rail becomes a sticky utility bar and five-item bottom dock. Content moves to one column without changing task order.
 
+- Desktop uses a 108px navigation-only root rail and a separate 64px workspace command bar. Root location, grouped modes, global search, and capture share that command plane instead of competing inside the rail or appearing as a detached second header.
+- Ordinary workspaces use a centered canvas capped at 1280px. Atlas alone remains edge-to-edge because the graph is the work surface rather than content inside a page.
+- Grouped modes live in the desktop command bar with one restrained active rule. Subordinate filters stay in the working field only where the active mode needs them; compact layouts return the modes to equal-width inline controls.
+- Home is a master-detail workbench, not a card dashboard: current source and Queue share the decision row; Current rotation and incoming publications share the supporting row; seams define hierarchy without four floating boxes.
+- Map Review preserves the branch index beside a readable dossier on normal laptops. Signals and decisions move beneath the dossier instead of forcing a cramped third permanent rail.
+- Settings → Preferences is a settings studio rather than a component gallery: a compact section index anchors the desktop, the current visual system has one truthful summary, a single in-flow studio preview demonstrates the combined result, and controls progress from complete workspace styles to comfort, expert appearance, learning behavior, and Map tuning. The index becomes a horizontal section strip on compact layouts; the preview never competes as a permanent third rail.
+- Below 940px, the root rail becomes a branded sticky utility bar and five-item bottom dock. Root modes use equal-width grids sized to their actual count, including a single four-column Library row at phone widths.
+
 ## Colors
 
 Attio Coral is the default Continuum theme. Preferences offers eight complete art directions rather than palette-only recolors: Continuum, Raycast Command, Superhuman Focus, Reader Study, Notion Minimal, Craft Journal, Arc Space, and Are.na Index. Each is an original Learning Compass interpretation of one premium product reference and binds a distinct semantic palette, loaded font system, reading measure, density, text scale, and corner system; individual Day/Night palettes and expert controls remain available below them.
