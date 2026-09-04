@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
+import { auditInstructions, instructionDocuments, formatInstructionIssues } from './hermes-instruction-audit.mjs'
 
 const root = new URL('..', import.meta.url).pathname
 const read = (file) => readFileSync(join(root, file), 'utf8')
@@ -42,7 +43,6 @@ const required = [
   ['docs/API.md', 'Hermes API contract'],
   ['docs/hermes-contract.json', 'canonical machine-readable Hermes contract'],
   ['docs/hermes-prompt-budget.json', 'default Telegram prompt budget'],
-  ['docs/hermes-compass-prompt-budget.json', 'Compass Telegram prompt budget'],
   ['docs/hermes-production.md', 'Hermes production runbook'],
   ['.hermes.md', 'repository Hermes contract'],
 ]
@@ -208,18 +208,19 @@ if (contract.version !== 8) throw new Error('Canonical Hermes contract version d
 const runtimeBudgets = contract.runtime_budgets
 if (
   !runtimeBudgets?.default_telegram ||
-  !runtimeBudgets?.compass_telegram ||
   !runtimeBudgets?.memory_chars ||
   !runtimeBudgets?.loaded_skill_bytes ||
   !runtimeBudgets?.read_slo_ms
 ) {
   throw new Error('Canonical Hermes runtime budget contract is incomplete')
 }
-for (const [name, file] of Object.entries(runtimeBudgets.prompt_contracts || {})) {
+if (JSON.stringify(Object.keys(runtimeBudgets.prompt_contracts || {})) !== JSON.stringify(['default_telegram']))
+  throw new Error('Hermes prompt checks must target the native default profile')
+for (const [name, file] of Object.entries(runtimeBudgets.prompt_contracts)) {
   if (typeof file !== 'string' || !existsSync(join(root, file)))
     throw new Error(`Hermes prompt contract path is invalid: ${name}`)
   const promptContract = JSON.parse(read(file))
-  const expected = name === 'default_telegram' ? runtimeBudgets.default_telegram : runtimeBudgets.compass_telegram
+  const expected = runtimeBudgets[name]
   if (promptContract.schema !== 'hermes-prompt-budget/v1' || promptContract.platform !== 'telegram')
     throw new Error(`Hermes prompt contract schema drift: ${name}`)
   for (const field of [
@@ -410,6 +411,14 @@ for (const name of [
 }
 const localSkillsRoot = join(homedir(), '.hermes', 'skills')
 if (existsSync(localSkillsRoot)) {
+  const instructionIssues = auditInstructions({
+    repoRoot: root,
+    skillsRoot: localSkillsRoot,
+    packageScripts: JSON.parse(read('package.json')).scripts,
+    documents: instructionDocuments(root, localSkillsRoot, activeSkills),
+  })
+  if (instructionIssues.length)
+    throw new Error(`Hermes instruction audit failed:\n${formatInstructionIssues(instructionIssues, root)}`)
   const siteClientPath = join(
     localSkillsRoot,
     'workflow',
@@ -453,6 +462,9 @@ if (existsSync(localSkillsRoot)) {
     if (!existsSync(file)) throw new Error(`Active Hermes skill is not installed: ${skill.name}`)
     if (disabledSkills.has(skill.name)) throw new Error(`Canonical active Hermes skill is disabled: ${skill.name}`)
     const body = readFileSync(file, 'utf8')
+    const loadedLimit = runtimeBudgets.loaded_skill_bytes[skill.name]
+    if (loadedLimit !== undefined && Buffer.byteLength(body) > loadedLimit)
+      throw new Error(`Hermes loaded skill budget exceeded: ${skill.name} ${Buffer.byteLength(body)}/${loadedLimit}`)
     if (!body.includes(`name: ${skill.name}`)) throw new Error(`Hermes skill name/path drift: ${skill.name}`)
     if (!body.includes('## Evolution handoff')) throw new Error(`Hermes skill lacks evolution handoff: ${skill.name}`)
     for (const forbidden of [
@@ -567,33 +579,6 @@ if (existsSync(localSkillsRoot)) {
   const unownedEnabled = installedSkillNames.filter((name) => !activeNames.has(name) && !disabledSkills.has(name))
   if (unownedEnabled.length) throw new Error(`Unowned Hermes skills remain enabled: ${unownedEnabled.join(', ')}`)
 
-  const profileRoot = join(homedir(), '.hermes', 'profiles', 'compass')
-  const profileSkillsRoot = join(profileRoot, 'skills')
-  if (!existsSync(profileSkillsRoot)) throw new Error('Compass Hermes profile skill tree is missing')
-  if (!existsSync(join(profileRoot, '.no-bundled-skills')))
-    throw new Error('Compass profile must opt out of bundled skill seeding')
-  const profileConfigPath = join(profileRoot, 'config.yaml')
-  const profileConfigText = existsSync(profileConfigPath) ? readFileSync(profileConfigPath, 'utf8') : ''
-  const profileEnvPath = join(profileRoot, '.env')
-  const profileEnvText = existsSync(profileEnvPath) ? readFileSync(profileEnvPath, 'utf8') : ''
-  if (
-    !/^browser:\n(?:[ \t]+.*\n)*?[ \t]+allow_private_urls:\s*false\s*$/m.test(profileConfigText) ||
-    !/^security:\n(?:[ \t]+.*\n)*?[ \t]+allow_private_urls:\s*false\s*$/m.test(profileConfigText)
-  ) {
-    throw new Error('Compass Hermes profile must deny private/internal URLs by default')
-  }
-  if (!/^WEBHOOK_ENABLED=false\s*$/m.test(profileEnvText))
-    throw new Error('Compass Hermes environment overrides the disabled webhook listener')
-  const profileDisabledBlock = profileConfigText.match(/^skills:\n((?:[ \t]+.*\n?)*)/m)?.[1] || ''
-  const profileDisabledSkills = new Set(
-    [...profileDisabledBlock.matchAll(/^\s+-\s+([^#\s]+)\s*$/gm)].map((match) => match[1]),
-  )
-  const profileDisabledInline = profileDisabledBlock.match(/disabled:\s*['"]?(\[[^\n]+\])['"]?/)?.[1]
-  if (profileDisabledInline) {
-    try {
-      for (const name of JSON.parse(profileDisabledInline)) profileDisabledSkills.add(String(name))
-    } catch {}
-  }
   const relevantFiles = (dir) =>
     walkSkillFiles(dir).filter(
       (file) =>
@@ -604,22 +589,11 @@ if (existsSync(localSkillsRoot)) {
     )
   for (const skill of activeSkills) {
     const canonicalDir = join(localSkillsRoot, skill.path)
-    const profileDir = join(profileSkillsRoot, skill.path)
-    if (!existsSync(profileDir)) throw new Error(`Compass profile skill is missing: ${skill.name}`)
-    if (profileDisabledSkills.has(skill.name))
-      throw new Error(`Canonical Compass profile skill is disabled: ${skill.name}`)
     const canonicalFiles = relevantFiles(canonicalDir)
       .map((file) => relative(canonicalDir, file))
       .sort()
-    const profileFiles = relevantFiles(profileDir)
-      .map((file) => relative(profileDir, file))
-      .sort()
-    if (JSON.stringify(profileFiles) !== JSON.stringify(canonicalFiles))
-      throw new Error(`Compass profile file-set drift: ${skill.name}`)
     for (const file of canonicalFiles) {
       const canonical = readFileSync(join(canonicalDir, file))
-      const profile = readFileSync(join(profileDir, file))
-      if (!canonical.equals(profile)) throw new Error(`Compass profile content drift: ${skill.name}/${file}`)
       if (/\.(?:md|py|js|mjs|sh|json|ya?ml)$/.test(file)) {
         const text = canonical.toString('utf8')
         for (const forbidden of [
@@ -647,27 +621,9 @@ if (existsSync(localSkillsRoot)) {
       }
     }
   }
-  const profileInstalledSkillNames = walkSkillFiles(profileSkillsRoot)
-    .filter((file) => file.endsWith('SKILL.md'))
-    .map((file) => readFileSync(file, 'utf8').match(/^name:\s*([^\s]+)\s*$/m)?.[1])
-    .filter(Boolean)
-  const unownedProfileSkills = profileInstalledSkillNames.filter(
-    (name) => !activeNames.has(name) && !profileDisabledSkills.has(name),
-  )
-  if (unownedProfileSkills.length)
-    throw new Error(`Unowned Compass profile skills remain enabled: ${unownedProfileSkills.join(', ')}`)
   const rootMemory = join(homedir(), '.hermes', 'memories', 'MEMORY.md')
-  const profileMemory = join(profileRoot, 'memories', 'MEMORY.md')
-  if (!existsSync(profileMemory) || readFileSync(rootMemory, 'utf8') !== readFileSync(profileMemory, 'utf8'))
-    throw new Error('Compass profile durable memory drift')
   const rootUser = join(homedir(), '.hermes', 'memories', 'USER.md')
-  const profileUser = join(profileRoot, 'memories', 'USER.md')
-  if (!existsSync(profileUser) || readFileSync(rootUser, 'utf8') !== readFileSync(profileUser, 'utf8'))
-    throw new Error('Compass profile user memory drift')
   const rootSoul = join(homedir(), '.hermes', 'SOUL.md')
-  const profileSoul = join(profileRoot, 'SOUL.md')
-  if (!existsSync(profileSoul) || readFileSync(rootSoul, 'utf8') !== readFileSync(profileSoul, 'utf8'))
-    throw new Error('Compass profile SOUL drift')
   if (readFileSync(rootSoul, 'utf8') !== read('docs/learning-compass-hermes-soul.md'))
     throw new Error('Checked-in Hermes SOUL source drift')
 
@@ -693,10 +649,7 @@ if (existsSync(localSkillsRoot)) {
     if (!entries.length || !entries.at(-1)) throw new Error(`${label} tail entry is missing`)
   }
 
-  for (const [label, text] of [
-    ['default', configText],
-    ['compass', profileConfigText],
-  ]) {
+  for (const [label, text] of [['default', configText]]) {
     for (const requiredConfig of [
       /default:\s*gpt-5\.6-sol/,
       /provider:\s*openai-codex/,

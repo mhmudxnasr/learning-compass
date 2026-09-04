@@ -20,10 +20,13 @@ This file records user-visible behavior, architecture, dependency, and operating
 - Allowed an explicitly user-directed Riyadh early release only as an exact ordered prefix of the hash-bound authoritative 294-recording manifest. Included pairs still require signed v6 validation, a clean aggregate anti-template audit, atomic activation, canonical readback, and rollback lineage; omitted lessons keep their current companions and the prefix never counts as full completion.
 - Replaced the shared Lite Visual presentation shell for the first 84 rebuilt Riyadh companions with source-signature- and semantic-group-scoped layouts, eliminating the forbidden kicker/accent treatment and all aggregate template-similarity flags.
 - Allowed guarded Lite Visual corpora to resolve canonical source ownership from direct Thread, Level, or Lesson placement. Migration `0074_lite_visual_corpus_scope_lineage.sql` applies the same fail-closed placement rule to activation and rollback, so lesson-scoped course material no longer needs a duplicate Thread-level attachment.
+
+- Shortened the Hermes operations, recommendation, and Lite Visual entry points with task-specific references and loaded-size budgets. The contract gate now validates npm commands, local instruction paths, stale migration claims, and forced response templates. User-facing replies may use natural prose while retaining exact verification evidence in operation receipts.
 - Updated the GitHub Verify workflow to the official Node 24-based checkout and setup-node v7 actions.
 
 ### Removed
 
+- Retired the separate Compass Hermes profile and command alias. Native Hermes retains the Learning Compass skills; verification targets the default profile and rejects instructions that recreate or select the retired profile.
 - Removed an empty, unconfigured `whatsapp-insights-site` gitlink that caused checkout cleanup warnings.
 
 ## 2026-09-01

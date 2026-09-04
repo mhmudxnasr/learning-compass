@@ -8,6 +8,8 @@ The default-profile `compass-native` plugin provides a local native tool surface
 
 ## Architecture decision
 
+Run Learning Compass through native Hermes's `default` profile, using the skills in `~/.hermes/skills`. The separate Compass profile and alias are retired. Keep unrelated native capabilities and do not recreate a domain-specific profile or duplicate skill/memory tree. `npm run verify:hermes` checks the native installation and explicitly selects `default` for its prompt benchmark.
+
 The owned-system path is:
 
 ```text
@@ -42,11 +44,13 @@ Large replacement runs bind one exact manifest and ordered target set through `P
 4. Discover one filtered capability only when the route or schema is uncertain or before a mutation.
 5. Resolve the exact target by stable ID, canonical URL, then exact title. Stop on material ambiguity.
 6. Reuse successful capability, briefing, and target receipts across router/specialist handoffs. For a write, read before mutation, use a caller-owned stable idempotency key, satisfy any exact precondition/confirmation, then perform one canonical reread.
-7. Return the decision or result first, followed by the compact receipt: `intent -> target -> before -> mutation/job -> after -> evidence -> blocker`.
+7. Explain the verified decision or result naturally, including material limitations or blockers. Preserve `intent -> target -> before -> mutation/job -> after -> evidence -> blocker` in the existing operation receipt or specialist handoff; internal IDs are shown when requested or useful for inspection. Read-only answers do not create audit writes, and natural wording never weakens verification.
 
 Simple manager reads have a one-logical-read budget. The only extra transport attempt is the client's single bounded timeout/5xx retry; they must not chain capability, briefing, context, and target reads without a demonstrated need. The runtime exports `turn-sha256-<64hex>` only to fresh foreground local commands. The client uses it for an owner-only, bounded, redacted cross-process GET cache and retry budget; reusable/background PTYs receive none. This value is coordination metadata, never authentication or exactly-once proof.
 
 ## Prompt and context ownership
+
+The operations, recommendation, and Lite Visual skills load a compact entry point plus only the references required for the chosen task. Their loaded-entry budgets live in `docs/hermes-contract.json`. `npm run verify:hermes` audits active skill Markdown and references for real npm scripts and local paths, rejects frozen migration-state claims in procedures, and keeps the structured specialist receipt separate from the user-facing reply. This is a bounded static check, not a semantic proof of arbitrary instructions or current production state.
 
 | Context                                          | Owner                                 | Loading rule                                                     |
 | ------------------------------------------------ | ------------------------------------- | ---------------------------------------------------------------- |
@@ -139,14 +143,30 @@ Environment files override YAML. Keep `WEBHOOK_ENABLED=false` in both the defaul
 
 ## Benchmarks
 
+### Skill loading — 2026-09-04
+
+Matched before/after `hermes prompt-size --platform telegram --json` measurements used `gpt-5.6-sol` in both profiles. The command reported `/home/mahmud` as its context directory for both measurements; these rows must not be compared with earlier project-context CLI rows.
+
+| Skill entry                | Before (bytes) | After (bytes) |
+| -------------------------- | -------------: | ------------: |
+| recommendations-worker-ops |         43,248 |         4,324 |
+| taste-rec                  |         24,618 |         5,181 |
+| lite-visual                |         19,403 |         5,178 |
+| Total                      |         87,269 |        14,683 |
+
+Entry text is 83.2% smaller. Conditional references still count when loaded: operations plus its repository/release reference is 14,547 bytes; ordinary recommendations plus their procedure is 11,286 bytes; Lite Visual plus coverage and authoring guidance is 14,259 bytes. Full companion production also needs extraction and publication references. Enqueue-only requests load neither authoring nor publication detail.
+
+Before the separate profile was retired, fixed prompt payloads were unchanged at 39,796 bytes for default Telegram and 39,946 bytes for Compass. Names, descriptions, model, and tool surface were preserved, and both prompt-budget checks passed. This measures instruction bytes, not latency or real-model success; no model sampling, live mutation, or deployment was part of this benchmark. Ongoing checks target native Hermes only.
+
+The updated deterministic manager harness in the `codex/hermes-reply-evals-20260904` worktree passes 43 tests, including evidence-only IDs, approved grounded paraphrases, stale-action rejection, missing evidence, and invented identifiers. Its production checkout remains unchanged until that worktree is integrated. Historical traces retain their original grading contract.
+
 Prompt benchmark:
 
 ```bash
-hermes prompt-size
-hermes prompt-size --platform telegram
-hermes prompt-size --platform cli
-hermes prompt-size --platform telegram --json
-hermes -p compass prompt-size --platform telegram --json
+hermes -p default prompt-size
+hermes -p default prompt-size --platform telegram
+hermes -p default prompt-size --platform cli
+hermes -p default prompt-size --platform telegram --json
 ```
 
 Record system bytes, skill-index bytes, memory/profile/project bytes, tool-schema bytes by toolset, tool count, and total fixed bytes. Use the same profile, platform, project directory, and configuration before and after. Do not switch models during the comparison.
@@ -200,7 +220,7 @@ The original 2026-08-26 full release slate passed only 4/21; its saved artifact 
 | Zero feedback-triggered recommendation chains                                                       | Deterministic feedback tests and event audit                                                                                                 |
 | Zero generated recall cards                                                                         | Route/domain tests and card-origin audit                                                                                                     |
 | Zero credential exposure                                                                            | Diff scan, redaction tests, bounded logs, absence of Learning Compass token/session plumbing, and dedicated Telegram/provider boundary tests |
-| Zero unowned active skills or profile mirror drift                                                  | `npm run verify:hermes`                                                                                                                      |
+| Owned skills enabled, within budget, and free of broken operational instructions                    | `npm run verify:hermes`                                                                                                                      |
 | Daily D1 estimates remain below the configured circuit-breaker budgets                              | `/health/free-tier-budget` and response headers                                                                                              |
 
 Worker-owned/local evidence includes request IDs, `Server-Timing`, response-time and estimated D1 headers, agent receipts, exact job status/retry/dead-letter counts, Queue/consolidation blockers, mutation verification state, and `/agent/system` component health. Do not add external telemetry without explicit opt-in.
@@ -212,7 +232,7 @@ Before a Worker release:
 1. Identify the exact release delta and inspect every dirty file. The user-authorized full-tree release still must be internally consistent and preserve unrelated state.
 2. Run the single deterministic `npm run verify:release` gate; it owns the unit, type, build, E2E, migration, agent/Hermes, prompt-budget, parity, secret-scan, and diff checks documented by the repository. Preserve exact failures instead of bypassing them.
 3. Before a corpus mutation, require exact ordered target/manifest identity, current signed pair receipts, a signed aggregate integrity binding (or historical v6 audit), job/run and current-pair lineage, and mandatory R2 verification. Do not require the removed per-source quality reviews for a direct integrity-only corpus. Never relabel a historical audit. Application-only deployment remains separate and performs no corpus mutation.
-4. Inspect the remote D1 migration ledger. Migrations through `0076_retire_unrebuilt_riyadh_companions.sql` are applied; require exact repository parity and never replay applied migrations.
+4. Inspect the remote D1 migration ledger and compare it with the current repository inventory. Derive the exact ordered pending set from that evidence. Dated deployment records belong in `CURRENT_STATE.md`; never infer pending migrations from a static procedure.
 5. Capture the current production Worker version. Create a complete checksummed D1-plus-R2 backup, verify object parity, restore it into a disposable environment, run integrity/readiness checks there, and record a D1 Time Travel bookmark immediately before migration.
 6. For application deployment, retain signing-key and binding checks, healthy production readiness/budget, clean jobs/data quality, deterministic manager/release checks, and focused regressions. Corpus identity/integrity prerequisites apply when mutating a corpus; they do not restore the removed editorial or layout audits.
 7. Verify the public API contract before release: representative unauthenticated reads return 200; malformed unauthenticated writes reach normal 400/422 domain validation; `POST /auth/session` and a fake route return 404; no response emits `WWW-Authenticate` or the retired Learning Compass auth cookie. Telegram/provider boundaries remain independently authenticated. Never configure `ALLOW_UNAUTHENTICATED_LOCAL_WRITES` remotely.

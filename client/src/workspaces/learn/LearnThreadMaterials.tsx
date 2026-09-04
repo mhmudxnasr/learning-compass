@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { uploadArtifact } from '../../app/upload'
+import { objectHref } from '../../app/router'
 import { Icon } from '../../components/Icon'
 import { OfflinePackControl } from '../../components/OfflinePackControl'
-import { artifactHref, cardHref, lessonHref, lessonReadiness, noteHref, statusLabel } from './helpers'
+import { cardHref, lessonHref, lessonReadiness, noteHref, statusLabel } from './helpers'
 import { domId, materialExcerpt, threadMaterialTotals, threadTabHref } from './threadViewModel'
 import type { NoteRecord, PathArtifact, PathResponse, PathStage, RecallCard, RecallDraft } from './types'
 import { levelOfflinePackResources, threadOfflinePackResources } from './threadOfflinePacks'
@@ -286,7 +287,7 @@ function ThreadMaterialsJourney({ path, onChanged }: { path: PathResponse; onCha
       title: file.filename,
       detail: file.media_type || 'Stored file',
       status: 'stored',
-      href: artifactHref(file.id),
+      href: objectHref('library', 'artifact', file.id),
       owner,
     })),
     ...owner.cards.map((card) => ({
@@ -523,8 +524,6 @@ function ThreadMaterialsJourney({ path, onChanged }: { path: PathResponse; onCha
                               <a
                                 class="vertical-material-item"
                                 href={item.href}
-                                target={item.kind === 'file' ? '_blank' : undefined}
-                                rel={item.kind === 'file' ? 'noreferrer' : undefined}
                                 key={item.id}
                               >
                                 {content}
@@ -736,9 +735,7 @@ export function ScopedMaterials({
           {files.map((file) => (
             <a
               class="learning-material-row"
-              href={artifactHref(file.id)}
-              target="_blank"
-              rel="noreferrer"
+              href={objectHref('library', 'artifact', file.id)}
               key={file.id}
             >
               <Icon name="file" size={14} />

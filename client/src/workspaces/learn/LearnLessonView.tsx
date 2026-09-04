@@ -291,9 +291,9 @@ function SourceCard({ source }: { source: PathSource }) {
             </a>
           )}
         </div>
-        <strong class="course-source-title" dir="auto">
+        <a class="course-source-title item-title-link" href={`#/library/source/${encodeURIComponent(source.recommendation_id)}`} dir="auto">
           {cleanTitle(source.video_title) || 'Untitled source'}
-        </strong>
+        </a>
         {source.expected_contribution && (
           <p class="course-source-rationale" dir="auto">
             {source.expected_contribution}
