@@ -1,5 +1,9 @@
 # Learning Compass — Project Context
 
+## Native Hermes tools
+
+The default-profile `compass-native` plugin wraps the first-party site client, canonical source extractor, PDF evidence extraction, and NotebookLM CLI. Exa is an optional discovery tool; existing default search remains unchanged. This supersedes older statements that Compass has no local model-tool schema. Worker endpoints, mutation guards, canonical storage, and specialist ownership are unchanged. No MCP service or separate Compass profile is added. Details and verification are in `integrations/hermes-compass/README.md`.
+
 ## Purpose
 
 Learning Compass is Mahmood’s private, single-user learning operating system. It turns scattered sources into a disciplined loop:

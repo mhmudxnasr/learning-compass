@@ -3,6 +3,7 @@
   "name": "learning-compass-hermes",
   "router": "learning-compass-operating-system",
   "self_evolution_owner": "learning-compass-self-evolution",
+  "native_adapter": {"plugin": "compass-native", "profile": "default", "toolset": "compass_native", "source": "integrations/hermes-compass", "transport": "first-party site_request.py", "mcp_servers": false, "core_changes": false, "provider": "NotebookLM CLI", "discovery": "optional Exa; Tavily default preserved"},
   "agent_control": {
     "contract_version": "2026-08-26",
     "protocol": "learning-compass-agent-http/2",

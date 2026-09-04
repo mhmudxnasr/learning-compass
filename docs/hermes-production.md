@@ -2,6 +2,10 @@
 
 Hermes is Mahmood's personal operating manager for Learning Compass. It converts rough intent into the smallest verified outcome and treats live Worker state as authoritative. This runbook defines the production path, ownership boundaries, recovery behavior, measurements, and release gate.
 
+## Native adapter installation
+
+The default-profile `compass-native` plugin provides a local native tool surface over the same first-party clients. It adds no MCP process, Worker route, or independent state store. Existing CLI sessions keep their cached schema; new sessions discover the tools. See `../integrations/hermes-compass/README.md` for installation, verification, limits, and rollback. This supersedes older no-local-tool-schema wording below while preserving the Worker transport and guard.
+
 ## Architecture decision
 
 The owned-system path is:

@@ -1,0 +1,13 @@
+name: compass-native
+version: "1.0.0"
+description: First-party Compass API, source acquisition, PDF evidence, NotebookLM CLI, and opt-in Exa discovery.
+provides_hooks:
+  - pre_tool_call
+provides_tools:
+  - compass_read
+  - compass_capabilities
+  - compass_mutate
+  - compass_extract
+  - compass_pdf_evidence
+  - compass_notebooklm
+  - compass_exa_search
