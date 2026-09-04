@@ -2183,26 +2183,24 @@ body {
 }
 
 .recall-review-card {
-  width: min(100%, 920px);
-  min-height: 360px;
-  margin: 26px auto 0;
-  padding: clamp(24px, 4vw, 46px);
+  width: min(100%, 880px);
+  min-height: 410px;
   border-color: color-mix(in srgb, var(--studio-cypress) 20%, var(--studio-seam));
-  background: color-mix(in srgb, var(--studio-surface) 88%, var(--studio-canvas));
+  background: var(--studio-surface);
   box-shadow: var(--continuum-shadow);
 }
 
 .recall-review-card h2 {
-  max-width: 28ch;
-  margin: auto;
-  font-size: clamp(calc(24px * var(--font-scale)), 3.5vw, calc(38px * var(--font-scale)));
+  max-width: 27ch;
+  margin: 0;
+  font-size: clamp(calc(27px * var(--font-scale)), 3.7vw, calc(40px * var(--font-scale)));
   line-height: 1.55;
 }
 
-.recall-review-card > .button.primary {
-  width: min(100%, 520px);
-  min-height: 46px;
-  margin-inline: auto;
+.recall-review-action .button.primary {
+  width: auto;
+  min-width: min(100%, 250px);
+  min-height: 50px;
 }
 
 .learn-object-detail,
@@ -2654,7 +2652,7 @@ body {
   .recall-review-card {
     min-height: 300px;
     margin-top: 18px;
-    padding: 22px 16px;
+    padding: 0;
     box-shadow: none;
   }
 

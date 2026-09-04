@@ -237,6 +237,7 @@ function DueReview({
   const [revealed, setRevealed] = useState(false)
   const [working, setWorking] = useState(false)
   const active = cards.find((card) => card.id === activeId) || cards[0]
+  const activePosition = active ? cards.findIndex((card) => card.id === active.id) + 1 : 0
 
   const review = async (grade: number) => {
     if (!active || !revealed) return
@@ -262,16 +263,29 @@ function DueReview({
   if (!active) return <Empty title="Nothing is due" body="Approved questions will return when FSRS schedules them." />
 
   return (
-    <article class="recall-review-card">
+    <article class="recall-review-card" data-state={revealed ? 'answer' : 'question'}>
+      <div class="recall-review-progress" aria-label={`Review ${activePosition} of ${cards.length}`}>
+        <span>
+          <Icon name="recall" size={16} />
+          Due review
+        </span>
+        <span>
+          <strong>{activePosition}</strong> / {cards.length}
+        </span>
+      </div>
       <header>
         <SourceLine item={active} />
-        <span class="folio-measure">
-          {active.repetitions || 0} reviews · due {formatDate(active.due_at)}
-        </span>
+        <div class="recall-card-schedule">
+          <span>{active.repetitions || 0} reviews</span>
+          <span>Due {formatDate(active.due_at)}</span>
+        </div>
       </header>
-      <h2 lang="ar" dir="rtl">
-        {active.question}
-      </h2>
+      <div class="recall-prompt">
+        <span>Question</span>
+        <h2 lang="ar" dir="rtl">
+          {active.question}
+        </h2>
+      </div>
       {revealed ? (
         <div class="recall-answer">
           <span>Answer</span>
@@ -281,9 +295,13 @@ function DueReview({
           {active.note_id && <a href={noteHref(active.note_id)}>Open source note →</a>}
         </div>
       ) : (
-        <button class="button primary" type="button" onClick={() => setRevealed(true)}>
-          Reveal answer
-        </button>
+        <div class="recall-review-action">
+          <button class="button primary" type="button" onClick={() => setRevealed(true)}>
+            <span>Reveal answer</span>
+            <Icon name="chevron" size={16} />
+          </button>
+          <small>Pause and retrieve before revealing.</small>
+        </div>
       )}
       {revealed && (
         <div class="recall-grades">
