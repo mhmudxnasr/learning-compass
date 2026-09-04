@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-05 (scoped material notebooks, local)
+
+Notes, Files, and Recall now use accessible tabs and full-width editors across Thread, Level, and Lesson notebooks. The lesson section removes its repeated title, ownership badge, and nested border. Draft input survives tab switches, errors remain beside the form, successful saves update the list and count, and queued offline notes/cards clear the submitted form while explaining that sync is pending. Repeated submissions are guarded; file failures preserve the chosen upload; Arabic validation exposes the server's readable explanation. The shared editor resets when its exact owner changes, and saving material never advances a lesson.
+
+Verification: quality checks, all 542 unit tests, TypeScript, and the production build pass. The checked-in scoped-material browser suite also passes independently against a fresh local Worker/D1, covering note/file/card persistence, ownership, double submission, failed uploads, validation, tab and reload behavior, offline sync, desktop/tablet/320px and 390px mobile layouts, dark theme, and 200% text. Rendered screenshots were inspected. The full route suite is not green: two runs reached the final fresh-Android Home navigation and timed out waiting for network idle; another stopped at an 18px Preferences custom-theme overflow under enlarged mobile text. Those broader failures were not bypassed or treated as passes. The implementation is on `fix/lesson-materials-panel` in its dedicated worktree. No dependencies were installed, and no deployment, production mutation, API/schema change, or Hermes contract update was performed.
+
 ## Current truth — 2026-09-05 (all branch histories merged)
 
 At Mahmood's request, all ten previously unmerged local branches now have explicit merge commits in the combined `main` history. Existing cherry-picked and adapted implementations remain current; conflicts from older snapshots, competing profile layouts, retired pages/MCP tooling, outdated release receipts, and duplicate tests were resolved against the verified release. The full branch histories remain reachable, and branch names/worktrees were retained.

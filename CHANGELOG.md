@@ -10,6 +10,7 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ### Changed
 
+- Replaced the cramped Thread, Level, and Lesson material columns with accessible Notes, Files, and Recall tabs, full-width editors, clear ownership, and readable previews. Draft input survives tab changes; save failures retain it, successful saves report their result, and queued offline writes clear the submitted form to prevent accidental duplicates.
 - Merged all ten outstanding branch histories, retaining the verified current implementations and clarifying the architecture's existing database budget margins.
 - Made Library → Books display the existing Hardcover mirror as read-only reading history without importing it, deduplicating unambiguous matches while keeping mirror-only titles external and mutation-free.
 - Made the Daily resurfacing card open the exact source dossier from its title or card surface while preserving its branch, companion, and review controls.

@@ -1918,6 +1918,9 @@
 .course-level-materials.is-lesson-tools .learning-scope-workspace {
   padding: 16px 18px;
   margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 details.lesson-learning-contract,

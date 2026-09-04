@@ -22,6 +22,8 @@ Do not remove these as "unused" without checking the installed Hermes extraction
 
 ## Version holds
 
+The 2026-09-05 scoped-material notebook fix also retains the lockfile and adds no packages. Its audit reports zero vulnerabilities; the same updates below, plus Playwright 1.63, remain deferred to a dedicated toolchain update.
+
 The 2026-09-05 Threads redesign uses the existing lockfile and adds no dependencies. `npm audit` reports zero vulnerabilities. Newer releases of the Cloudflare types, Node types, ESLint, globals, Hono, ts-fsrs, TypeScript, and Wrangler are available; their upgrades remain a separate dependency change so this UI release does not alter the Worker, scheduler, or compiler baseline.
 
 TypeScript is held on the current 6.x line because the installed `typescript-eslint` release declares support through TypeScript 6.x, not 7.x. Upgrade TypeScript 7 only after the lint toolchain declares compatible peer support and the complete typecheck, unit, build, and E2E gates pass. This is a compatibility hold, not an invitation to ignore other updates.

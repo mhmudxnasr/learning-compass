@@ -5,6 +5,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { verifyThreadDesk } from './thread-desk.mjs'
+import { verifyScopedMaterials } from './scoped-materials.mjs'
 
 const { chromium } = createRequire(import.meta.url)('playwright')
 
@@ -2130,14 +2131,15 @@ try {
   if (await page.locator('.course-level-materials').evaluate((node) => node.hasAttribute('open')))
     throw new Error('Level materials should use progressive disclosure')
   await page.locator('.course-level-materials > summary').click()
-  if (
-    !(await page.getByRole('link', { name: 'Stage-level checkpoint' }).count()) ||
-    !(await page.getByRole('link', { name: 'hub-level.txt' }).count()) ||
-    !(await page.getByRole('link', { name: 'إيه اللي يسبق النظرية؟' }).count())
-  )
-    throw new Error(
-      `Level route did not render its owned materials: ${await page.locator('.folio-thread').innerText()}`,
-    )
+  const levelNotebook = page.locator('.course-level-materials .learning-scope-workspace')
+  for (const [label, title] of [
+    ['Notes', 'Stage-level checkpoint'],
+    ['Files', 'hub-level.txt'],
+    ['Recall', 'إيه اللي يسبق النظرية؟'],
+  ]) {
+    await levelNotebook.getByRole('tab', { name: new RegExp(`^${label}`) }).click()
+    await levelNotebook.getByRole('link', { name: new RegExp(title) }).waitFor({ state: 'visible' })
+  }
   if (!page.url().includes(`#/learn/t/${hubThread.id}/v/${hubStage.id}`))
     throw new Error('typed Level route did not preserve Thread and Level identity')
   const materialHeaders = { 'content-type': 'application/json', 'x-real-ip': 'e2e-learning-materials' }
@@ -2432,6 +2434,14 @@ try {
     if (!(await page.getByText(ownedMaterial, { exact: true }).count()))
       throw new Error(`Lesson workspace omitted ${ownedMaterial}`)
   const moreMaterials = page.locator('.lesson-more-sources')
+  await verifyScopedMaterials({
+    page,
+    baseUrl,
+    requestJson: requestMaterialJson,
+    threadId: materialThread.id,
+    lessonId: materialNextLesson.id,
+    returnLessonId: materialLesson.id,
+  })
   if ((await moreMaterials.count()) !== 1 || (await moreMaterials.getAttribute('open')) !== null)
     throw new Error('Lesson did not keep secondary material behind one closed disclosure')
   await moreMaterials.locator('summary').click()
