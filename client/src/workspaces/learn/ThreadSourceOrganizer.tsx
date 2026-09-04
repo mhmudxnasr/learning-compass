@@ -65,10 +65,15 @@ function placementCollectionEndpoint(threadId: string, scope: OrganizerScope, sc
 }
 
 export function ThreadSourceOrganizer({ path, onChanged }: { path: PathResponse; onChanged: () => void }) {
+  const requestedLessonId = new URLSearchParams(location.hash.split('?')[1]).get('lesson')
+  const requestedTarget =
+    requestedLessonId && path.stages.some((stage) => stage.lessons.some((lesson) => lesson.id === requestedLessonId))
+      ? `lesson:${requestedLessonId}`
+      : ''
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<MaterialSourceSearchItem[]>([])
   const [selectedSourceId, setSelectedSourceId] = useState('')
-  const [target, setTarget] = useState('')
+  const [target, setTarget] = useState(requestedTarget)
   const [role, setRole] = useState<(typeof lessonSourceRoles)[number]>('primary')
   const [contribution, setContribution] = useState('')
   const [position, setPosition] = useState('')
@@ -119,12 +124,12 @@ export function ThreadSourceOrganizer({ path, onChanged }: { path: PathResponse;
   useEffect(() => {
     setQuery('')
     setSelectedSourceId('')
-    setTarget('')
+    setTarget(requestedTarget)
     void searchLibrary('')
     return () => {
       searchSequence.current += 1
     }
-  }, [path.thread.id, searchLibrary])
+  }, [path.thread.id, searchLibrary, requestedTarget])
 
   const submitSearch = (event: Event) => {
     event.preventDefault()

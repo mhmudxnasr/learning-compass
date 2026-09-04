@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { verifyThreadDesk } from './thread-desk.mjs'
 
 const { chromium } = createRequire(import.meta.url)('playwright')
 
@@ -2011,8 +2012,9 @@ try {
     throw new Error('Level material leaked a Thread-owned record')
   await page.goto(`${baseUrl}/#/learn?mode=paths`, { waitUntil: 'networkidle' })
   await page.locator('.folio-paths').waitFor({ state: 'visible' })
+  await verifyThreadDesk({ page, baseUrl, requestJson })
   await page.getByRole('button', { name: 'All', exact: true }).click()
-  if (!(await page.getByRole('link', { name: 'Review Thread: Systems Thinking' }).count()))
+  if (!(await page.getByRole('link', { name: 'Revisit Thread: Systems Thinking' }).count()))
     throw new Error('Learn Paths did not render an explicit Thread review affordance')
   await page.goto(`${baseUrl}/#/learn/thread/${hubThread.id}`, { waitUntil: 'networkidle' })
   await page.locator('.thread-command-center').waitFor({ state: 'visible' })

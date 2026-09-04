@@ -22,6 +22,8 @@ import {
 } from './threadViewModel'
 import { PathResponse, PathStage } from './types'
 import { ThreadAuthoring } from './ThreadAuthoring'
+import { ThreadStudyOverview } from './ThreadStudyOverview'
+import { LessonNavigator } from './LessonNavigator'
 
 export function LearnThreadView({
   threadId,
@@ -39,6 +41,13 @@ export function LearnThreadView({
   const path = useData<PathResponse>(`/learning/core/threads/${encodeURIComponent(threadId)}/path`)
   const [selectedStageId, setSelectedStageId] = useState<string | null>(routeLevelId || null)
   const [lessonId, setLessonId] = useState<string | null>(routeLessonId || null)
+  const [focusMode, setFocusMode] = useState(() => {
+    try {
+      return localStorage.getItem('compass-lesson-focus') === 'true'
+    } catch {
+      return false
+    }
+  })
 
   useEffect(() => setSelectedStageId(routeLevelId || null), [routeLevelId])
   useEffect(() => setLessonId(routeLessonId || null), [routeLessonId])
@@ -72,10 +81,39 @@ export function LearnThreadView({
   }
 
   return (
-    <section class="learn-workspace folio-learn folio-thread course-thread">
+    <section
+      class={`learn-workspace folio-learn folio-thread course-thread ${activeLesson ? `lesson-study-workspace ${focusMode ? 'is-focused' : ''}` : ''}`}
+    >
+      {activeLesson && (
+        <>
+          <div class="lesson-workspace-tools">
+            <button
+              class="button secondary"
+              aria-pressed={focusMode}
+              onClick={() => {
+                setFocusMode(!focusMode)
+                try {
+                  localStorage.setItem('compass-lesson-focus', String(!focusMode))
+                } catch {
+                  /* Focus remains available without persistence. */
+                }
+              }}
+            >
+              <Icon name={focusMode ? 'menu' : 'book'} size={16} />
+              {focusMode ? 'Show curriculum' : 'Focus on lesson'}
+            </button>
+            <a class="button secondary" href={threadTabHref(threadId, 'materials')}>
+              Resources
+              <Icon name="file" size={15} />
+            </a>
+          </div>
+          {!focusMode && <LessonNavigator key={threadId} path={path.data} lessonId={activeLesson.id} />}
+        </>
+      )}
       <main class="course-main">
         {activeLesson ? (
           <LessonView
+            key={activeLesson.id}
             lesson={activeLesson}
             stage={activeStage!}
             threadId={threadId}
@@ -151,9 +189,7 @@ function ThreadCommandCenter({
   const nextHref = !hasLessons
     ? threadTabHref(thread.id, 'curriculum')
     : next
-      ? nextReadiness === 'needs_material'
-        ? threadTabHref(thread.id, 'curriculum', next.stage.id)
-        : lessonHref(thread.id, next.lesson.id)
+      ? lessonHref(thread.id, next.lesson.id)
       : threadTabHref(thread.id, 'curriculum')
   const nextLabel = !hasLessons
     ? 'Author first lesson'
@@ -185,7 +221,7 @@ function ThreadCommandCenter({
   }
 
   return (
-    <section class="learn-workspace folio-learn thread-command-center vertical-thread">
+    <section class="learn-workspace folio-learn thread-command-center vertical-thread thread-study-center">
       <header class="vertical-thread-spine">
         <div class="vertical-thread-topline">
           <nav class="course-stage-context" aria-label="Breadcrumb">
@@ -312,7 +348,11 @@ function ThreadCommandCenter({
         )}
       </header>
 
-      {activeTab === 'overview' && <ThreadOverview path={path} currentStage={currentStage} />}
+      {activeTab === 'overview' && (
+        <ThreadStudyOverview key={thread.id} path={path} onChanged={onChanged}>
+          <ThreadOverview path={path} currentStage={currentStage} />
+        </ThreadStudyOverview>
+      )}
 
       {activeTab === 'curriculum' && <ThreadCurriculum path={path} focusLevelId={focusLevelId} onChanged={onChanged} />}
 
@@ -404,7 +444,9 @@ function ThreadCurriculum({
     path.stages[0]
   const [expandedStageId, setExpandedStageId] = useState(defaultStage?.id || '')
   const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<'all' | 'in_progress' | 'needs_material' | 'completed'>('all')
+  const [filter, setFilter] = useState<'all' | 'in_progress' | 'needs_material' | 'completed'>(() =>
+    new URLSearchParams(location.hash.split('?')[1]).get('filter') === 'needs_material' ? 'needs_material' : 'all',
+  )
   const [visibleResultCount, setVisibleResultCount] = useState(24)
 
   useEffect(() => {
@@ -649,7 +691,13 @@ function ThreadCurriculum({
         </ol>
       )}
 
-      <ThreadAuthoring threadId={path.thread.id} stageCount={path.stages.length} onChanged={onChanged} />
+      <ThreadAuthoring
+        key={expandedStageId}
+        threadId={path.thread.id}
+        stage={path.stages.find((stage) => stage.id === expandedStageId)}
+        stageCount={path.stages.length}
+        onChanged={onChanged}
+      />
     </section>
   )
 }

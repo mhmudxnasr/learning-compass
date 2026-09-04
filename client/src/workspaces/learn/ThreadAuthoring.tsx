@@ -18,6 +18,8 @@ export function ThreadAuthoring({
   const [stageObjective, setStageObjective] = useState('')
   const [lessonTitle, setLessonTitle] = useState('')
   const [lessonObjective, setLessonObjective] = useState('')
+  const [lessonContent, setLessonContent] = useState('')
+  const [minutes, setMinutes] = useState('')
   const [working, setWorking] = useState('')
   const [message, setMessage] = useState('')
 
@@ -60,11 +62,15 @@ export function ThreadAuthoring({
             title: lessonTitle.trim(),
             objective: lessonObjective.trim(),
             position: stage.lessons.length,
+            content: lessonContent.trim() || null,
+            estimated_minutes: minutes ? Number(minutes) : null,
           }),
         },
       )
       setLessonTitle('')
       setLessonObjective('')
+      setLessonContent('')
+      setMinutes('')
       setMessage('Lesson added to level.')
       onChanged()
     } catch (error: unknown) {
@@ -75,11 +81,14 @@ export function ThreadAuthoring({
   }
 
   return (
-    <details class="folio-authoring thread-authoring-container">
+    <details
+      class="folio-authoring thread-authoring-container"
+      open={stageCount === 0 || stage?.lessons.length === 0 || undefined}
+    >
       <summary>
         <span class="thread-authoring-summary-content">
           <Icon name="spark" size={15} />
-          <strong>Curriculum Authoring: Add Level or Lesson</strong>
+          <strong>{stageCount === 0 ? 'Start with your first Level' : 'Add a Level or lesson'}</strong>
         </span>
         <span class="thread-authoring-summary-hint">Expand to structure path</span>
       </summary>
@@ -120,7 +129,7 @@ export function ThreadAuthoring({
           <form onSubmit={addLesson} class={`thread-authoring-card ${!stage ? 'folio-form-disabled' : ''}`}>
             <div class="thread-authoring-card-head">
               <p class="folio-object-kicker">Sequential Lesson</p>
-              <h4>{stage ? `Add Lesson to ${stage.title}` : 'Select an active Level first'}</h4>
+              <h4>{stage ? `Add Lesson to ${stage.title}` : 'Create a Level first'}</h4>
               <p>Sequential units that build towards level mastery.</p>
             </div>
             <label>
@@ -143,11 +152,30 @@ export function ThreadAuthoring({
                 rows={2}
               />
             </label>
-            <button
-              class="button secondary"
-              type="submit"
-              disabled={!stage || working === 'lesson' || !lessonTitle.trim()}
-            >
+            <label>
+              <span>Estimated study time (minutes, optional)</span>
+              <input
+                type="number"
+                min={1}
+                max={600}
+                value={minutes}
+                disabled={!stage}
+                onInput={(event) => setMinutes(event.currentTarget.value)}
+              />
+            </label>
+            <label>
+              <span>Lesson text (optional)</span>
+              <textarea
+                dir="auto"
+                rows={5}
+                maxLength={12000}
+                value={lessonContent}
+                disabled={!stage}
+                onInput={(event) => setLessonContent(event.currentTarget.value)}
+                placeholder="Add your study text here, or attach a source from Resources after saving."
+              />
+            </label>
+            <button class="button secondary" type="submit" disabled={!stage || !!working || !lessonTitle.trim()}>
               {working === 'lesson' ? 'Adding Lesson…' : 'Add Lesson to Level'}
             </button>
           </form>

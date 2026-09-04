@@ -1,12 +1,14 @@
 import { Hono } from 'hono'
 import { Bindings, normalizeUrlForDedup, safeError, safeErrorMessage } from '../lib'
 import {
+  buildLearningEventStatement,
   completedLearningStatus,
   deriveLevelStatus,
   deriveThreadStatus,
   recordLearningEvent,
   shouldAutoStartNextLesson,
 } from '../services/learning-core'
+import { loadThreadStudyIndex } from '../services/thread-study-index'
 import { selectLearningSourceRenditions } from '../services/learning-material-renditions'
 import { loadNotebookLearningStates, summarizeNotebookLearningState } from '../services/notebooklm-learning'
 import { loadThreadLearningMaterials } from '../services/learning-scope'
@@ -424,6 +426,7 @@ app.get('/threads', async (c) => {
 
 app.get('/hub', async (c) => {
   const data = await cached('learning.hub', 15000, async () => {
+    const studyIndex = await loadThreadStudyIndex(c.env.DB)
     const rows = await c.env.DB.prepare(
       `SELECT t.*,
       (SELECT COUNT(*) FROM learning_path_stages s WHERE s.thread_id=t.id) stage_count,
@@ -444,10 +447,16 @@ app.get('/hub', async (c) => {
         lesson_count: Number(row.lesson_count || 0),
         completed_lesson_count: Number(row.completed_lesson_count || 0),
         needs_material_count: Number(row.needs_material_count || 0),
+        next_lesson: null,
+        last_studied_at: null,
+        future_material_count: 0,
+        remaining_minutes: 0,
+        estimated_lesson_count: 0,
+        ...studyIndex.get(row.id),
       })),
     }
   })
-  c.header('Cache-Control', 'private, max-age=15, stale-while-revalidate=30')
+  c.header('Cache-Control', 'private, no-cache')
   return c.json(data)
 })
 
@@ -819,6 +828,17 @@ app.patch('/threads/:id/lessons/:lessonId', async (c) => {
       c.env.DB.prepare(
         `UPDATE learning_path_items SET status=CASE WHEN ?='completed' THEN 'satisfied' WHEN ? IN ('not_started','in_progress') AND status='satisfied' THEN 'open' ELSE status END,updated_at=datetime('now') WHERE id=?`,
       ).bind(status, status, lesson.legacy_item_id),
+    )
+  if (status !== lesson.status)
+    statements.push(
+      buildLearningEventStatement(c.env.DB, {
+        eventType: 'lesson_status_changed',
+        actorType: 'user',
+        explicit: true,
+        idempotencyKey: `lesson-status:${lesson.id}:${crypto.randomUUID()}`,
+        threadId: c.req.param('id'),
+        payload: { lesson_id: lesson.id, from: lesson.status, to: status },
+      }),
     )
   await c.env.DB.batch(statements)
   await syncPathStatuses(c.env.DB, c.req.param('id'), status === 'completed')
@@ -2002,6 +2022,8 @@ app.patch('/threads/:id', async (c) => {
   if (!current) return c.json({ error: 'thread not found' }, 404)
   const type = body.thread_type === undefined ? current.thread_type : clean(body.thread_type, 20)
   if (!threadTypes.has(type)) return c.json({ error: 'invalid thread_type' }, 400)
+  if (body.priority !== undefined && (!Number.isInteger(body.priority) || body.priority < 0 || body.priority > 5))
+    return c.json({ error: 'priority must be an integer from 0 to 5' }, 400)
   await c.env.DB.prepare(
     `UPDATE learning_threads SET title=?,thread_type=?,guiding_question=?,why_now=?,definition_of_done=?,final_synthesis=?,priority=?,updated_at=datetime('now') WHERE id=?`,
   )

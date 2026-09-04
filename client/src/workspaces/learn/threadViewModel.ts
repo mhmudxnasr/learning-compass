@@ -31,12 +31,9 @@ export function completedLessonCount(stage: PathStage) {
 export function threadNextLesson(path: PathResponse) {
   const lessons = path.stages.flatMap((stage) => stage.lessons.map((lesson) => ({ stage, lesson })))
   return (
-    lessons.find(({ lesson }) => lesson.status === 'in_progress') ||
+    lessons.find(({ stage, lesson }) => lesson.status === 'in_progress' && stage.status !== 'locked') ||
     lessons.find(
-      ({ stage, lesson }) =>
-        ['available', 'in_progress'].includes(stage.status) &&
-        lesson.status !== 'completed' &&
-        lessonReadiness(lesson) !== 'needs_material',
+      ({ stage, lesson }) => ['available', 'in_progress'].includes(stage.status) && lesson.status !== 'completed',
     ) ||
     lessons.find(({ lesson }) => lesson.status !== 'completed')
   )

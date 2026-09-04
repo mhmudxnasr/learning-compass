@@ -8,6 +8,10 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 - Made Library → Books display the existing Hardcover mirror as read-only reading history without importing it, deduplicating unambiguous matches while keeping mirror-only titles external and mutation-free.
 - Made the Daily resurfacing card open the exact source dossier from its title or card surface while preserving its branch, companion, and review controls.
+
+- Rebuilt Threads as a learning desk with direct next-lesson links, Planning, priority and pause controls, remembered search, readiness filters, and material-gap navigation. New Threads open a usable first-Level setup flow. Thread overviews now include editable outcomes, scoped notes, and an optional saved reflection; lessons have a searchable course navigator, persistent focus mode, and readable authored text.
+- Thread summaries exclude completed lessons from material gaps and expose the exact next lesson, duration coverage, and study dates backed by explicit lesson-status events. Existing curriculum progression and passive source access remain intact.
+
 - Updated the GitHub Verify workflow to the official Node 24-based checkout and setup-node v7 actions.
 
 ### Removed
