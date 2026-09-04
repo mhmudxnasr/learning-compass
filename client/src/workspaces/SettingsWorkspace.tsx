@@ -985,24 +985,31 @@ OUTPUT CONTRACT — obey exactly: output ONLY 11 uppercase HEX codes, one code p
 
   return <div class="settings-page preferences-page">
     <header class="settings-intro preferences-hero">
-      <div><span class="settings-active-label">Settings / Preferences</span><h1>Preferences</h1><p>Shape how Learning Compass looks, reads, and supports your learning. Every change applies across the whole studio.</p></div>
-      <output class="preferences-save-state" aria-live="polite" data-working={Boolean(status)}>{status || 'Saved automatically'}</output>
+      <div class="preferences-hero-copy"><span class="settings-active-label">Personal settings</span><h1>Preferences</h1><p>Make the studio feel right, then decide what it may prepare for you. Changes are immediate and apply everywhere.</p></div>
+      <div class="preferences-hero-actions">
+        <output class="preferences-save-state" aria-live="polite" data-working={Boolean(status)}>{status || 'All changes saved'}</output>
+        <button type="button" class="preferences-reset" onClick={() => applyVisualPreset(VISUAL_PRESETS[0])}>Reset appearance</button>
+      </div>
     </header>
 
     <section class="settings-active-system" aria-label="Active visual system">
       <span class="preferences-active-swatch" aria-hidden="true">{activeSwatches.map((color, index) => <i key={`${color}-${index}`} style={{ background: color }} />)}</span>
-      <div class="preferences-active-copy"><span class="settings-active-label">Active workspace</span><strong>{activePreset?.name || 'Custom tuning'}</strong><small>{activeThemeName} · {activeFontPreset?.name || (font === 'custom' ? 'Custom font stacks' : font)} · {effectiveBaseSize}px · {density}</small></div>
-      <button type="button" class="preferences-reset" onClick={() => applyVisualPreset(VISUAL_PRESETS[0])}>Restore focused study</button>
+      <div class="preferences-active-copy"><span class="settings-active-label">Current appearance</span><strong>{activePreset?.name || 'Custom tuning'}</strong><small>{activeThemeName} · {activeFontPreset?.name || (font === 'custom' ? 'Custom font stacks' : font)} · {effectiveBaseSize}px type · {density} spacing</small></div>
+      <span class="preferences-active-scope"><strong>Global</strong><small>Home through Settings</small></span>
     </section>
 
-    <details class="settings-jump-disclosure">
-      <summary>Jump to a preference</summary>
-      <nav class="settings-jump-nav" aria-label="Preference sections"><a href="#visual-presets-heading" onClick={(event) => jumpToPreference(event, 'visual-presets-heading')}>Workspace</a><a href="#interface-tokens" onClick={(event) => jumpToPreference(event, 'interface-tokens')}>Comfort</a><a href="#theme-section" onClick={(event) => jumpToPreference(event, 'theme-section')}>Theme</a><a href="#font-section" onClick={(event) => jumpToPreference(event, 'font-section')}>Reading</a><a href="#learning-preferences" onClick={(event) => jumpToPreference(event, 'learning-preferences')}>Learning</a><a href="#atlas-preferences" onClick={(event) => jumpToPreference(event, 'atlas-preferences')}>Map</a></nav>
-    </details>
-
     <div class="preferences-layout">
-      <aside class="preferences-preview-rail" aria-label="Current appearance preview"><ThemeContextPreview /><div class="preferences-scope-note"><strong>One system, everywhere</strong><p>Your appearance choices apply to Home, Library, Learn, Map, Settings, dialogs, and object views.</p></div></aside>
+      <aside class="preferences-index" aria-label="Preference sections">
+        <div class="preferences-index-heading"><span>On this page</span><small>7 sections</small></div>
+        <nav class="settings-jump-nav"><a href="#visual-presets-heading" onClick={(event) => jumpToPreference(event, 'visual-presets-heading')}><span>01</span>Workspace</a><a href="#interface-tokens" onClick={(event) => jumpToPreference(event, 'interface-tokens')}><span>02</span>Comfort</a><a href="#theme-section" onClick={(event) => jumpToPreference(event, 'theme-section')}><span>03</span>Theme</a><a href="#font-section" onClick={(event) => jumpToPreference(event, 'font-section')}><span>04</span>Reading</a><a href="#learning-preferences" onClick={(event) => jumpToPreference(event, 'learning-preferences')}><span>06</span>Learning</a><a href="#atlas-preferences" onClick={(event) => jumpToPreference(event, 'atlas-preferences')}><span>07</span>Map</a></nav>
+        <div class="preferences-index-note"><strong>One system, everywhere</strong><p>Appearance choices update every workspace, object view, and dialog.</p></div>
+      </aside>
       <div class="preferences-main">
+
+    <section class="preferences-preview-stage" aria-label="Current appearance preview">
+      <div class="preferences-preview-intro"><span class="preference-section-number">Live system preview</span><h2>See the whole studio, not a color chip</h2><p>Type, spacing, corners, surfaces, and actions update together while you tune the system.</p><div class="preferences-preview-legend"><span><i class="is-action" />Action</span><span><i class="is-surface" />Surface</span><span><i class="is-signal" />Signal</span></div></div>
+      <div class="preferences-preview-rail"><ThemeContextPreview /></div>
+    </section>
 
     <section class="visual-presets-section" aria-labelledby="visual-presets-title" id="visual-presets-heading">
       <div class="section-head">

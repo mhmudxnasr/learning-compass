@@ -1,5 +1,9 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-08-30 (Preferences settings studio, local)
+
+Settings → Preferences is rebuilt around decisions instead of repeated component demonstrations. A persistent desktop section index replaces the collapsed jump control, the active visual system reads as one global receipt, and one in-flow studio preview shows the combined theme, type, density, corner, surface, and action result before any controls. Workspace styles, comfort, expert appearance disclosures, learning behavior, and Map tuning now share one hierarchy and visual grammar; compact layouts convert the index to a horizontal strip and keep every control in a single readable column. No preference contract or persistence behavior changed.
+
 ## Current truth — 2026-08-28 (structural shell redesign, local)
 
 The five-root client now has three explicit architectural planes: a 108px navigation-only desktop rail, a 64px workspace command bar, and the working field. Search and capture no longer compete with root navigation. Root context and grouped workspace modes live in the command bar, so Books/Triage/Archive/Files and the other mode sets no longer render as detached secondary headers on desktop. Ordinary workspaces retain a centered 1280px field while Atlas remains intentionally edge-to-edge.

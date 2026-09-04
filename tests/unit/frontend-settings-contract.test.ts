@@ -68,14 +68,16 @@ test('theme choices expose semantic previews, grouped modes, and visible selecti
   assert.match(settingsSource, /Navigation & signals/)
 })
 
-test('collapsed Preferences reads preview before controls while desktop CSS restores the rail', () => {
+test('Preferences keeps one indexed decision canvas with an in-flow preview before controls', () => {
   const layoutStart = settingsSource.indexOf('<div class="preferences-layout">')
-  const previewIndex = settingsSource.indexOf('<aside class="preferences-preview-rail"', layoutStart)
+  const indexStart = settingsSource.indexOf('<aside class="preferences-index"', layoutStart)
   const mainIndex = settingsSource.indexOf('<div class="preferences-main">', layoutStart)
-  assert.ok(layoutStart >= 0 && previewIndex > layoutStart && mainIndex > previewIndex)
-  assert.match(studioCss, /\.preferences-main \{[\s\S]*grid-column: 1;[\s\S]*grid-row: 1;/)
-  assert.match(studioCss, /\.preferences-preview-rail \{[\s\S]*grid-column: 2;[\s\S]*grid-row: 1;/)
-  assert.match(studioCss, /@media \(max-width: 1240px\)[\s\S]*\.preferences-main \{[\s\S]*grid-row: 2;/)
+  const previewIndex = settingsSource.indexOf('<section class="preferences-preview-stage"', mainIndex)
+  const presetIndex = settingsSource.indexOf('<section class="visual-presets-section"', previewIndex)
+  assert.ok(layoutStart >= 0 && indexStart > layoutStart && mainIndex > indexStart && previewIndex > mainIndex && presetIndex > previewIndex)
+  assert.match(studioCss, /\.preferences-page \.preferences-layout \{[\s\S]*grid-template-columns: 210px minmax\(0, 1fr\);/)
+  assert.match(studioCss, /\.preferences-index \{[\s\S]*position: sticky;/)
+  assert.match(studioCss, /@media \(max-width: 880px\)[\s\S]*\.preferences-index \.settings-jump-nav \{[\s\S]*display: flex;/)
 })
 
 test('custom theme workshop audits rendered tokens and keeps transfer tools progressive', () => {

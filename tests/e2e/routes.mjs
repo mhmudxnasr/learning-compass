@@ -612,14 +612,13 @@ for (const route of modeRoutes) {
   if (!page.url().endsWith('#/library') || await page.locator('.books-filter-nav, nav[aria-label="Books views"]').count()) throw new Error(`legacy Library Books query did not recover to the one Books workspace (${page.url()})`)
 
   await page.goto(`${baseUrl}/#/settings?focus=preferences`, { waitUntil: 'networkidle' })
-  await page.locator('.settings-jump-disclosure > summary').click()
   for (const section of ['visual-presets-heading', 'interface-tokens', 'theme-section', 'font-section', 'learning-preferences', 'atlas-preferences']) {
-    await page.locator(`.settings-jump-nav a[href="#${section}"]`).click()
+    await page.locator(`.preferences-index .settings-jump-nav a[href="#${section}"]`).click()
     await page.waitForTimeout(80)
     const jumpState = await page.evaluate((id) => {
       const canvas = document.querySelector('.workspace-canvas')
       const target = document.getElementById(id)
-      const jumpNav = document.querySelector('.settings-jump-nav')
+      const jumpNav = document.querySelector('.preferences-index')
       return { hash: location.hash, heading: document.querySelector('h1')?.textContent, scrollTop: canvas?.scrollTop || 0, targetTop: target?.getBoundingClientRect().top || 0, navBottom: jumpNav?.getBoundingClientRect().bottom || 0 }
     }, section)
     if (jumpState.hash !== '#/settings?focus=preferences' || jumpState.heading !== 'Preferences') throw new Error(`preference jump escaped settings route for ${section}: ${JSON.stringify(jumpState)}`)
@@ -637,6 +636,7 @@ for (const route of modeRoutes) {
   }
   if (await page.locator('.theme-preview-frame').getByRole('button').count()) throw new Error('appearance preview must not expose fake actions')
   if (await page.locator('.preferences-preview-rail').count() !== 1) throw new Error('Preferences must keep one contextual appearance preview')
+  if (await page.locator('.preferences-index .settings-jump-nav a').count() !== 6) throw new Error('Preferences must expose a persistent, scannable section index')
   const saveRadio = async (group, option) => {
     const radio = page.getByRole('group', { name: new RegExp(`^${group}`) }).getByRole('radio', { name: new RegExp(`^${option}`) })
     await Promise.all([
@@ -647,7 +647,7 @@ for (const route of modeRoutes) {
   const renderedPreferences = () => page.evaluate(() => {
     const root = document.documentElement
     const canvas = document.querySelector('.workspace-canvas')
-    const row = document.querySelector('.setting-row')
+    const row = document.querySelector('.preference-choice-options label')
     const intro = document.querySelector('.settings-intro p')
     const sampleButton = document.querySelector('.visual-preset-card')
     return {
@@ -702,11 +702,11 @@ for (const route of modeRoutes) {
   await page.locator('#theme-section > summary').click()
   if (await page.locator('.theme-preset-group').count() !== 3 || !(await page.getByRole('heading', { name: 'Day palettes' }).isVisible()) || !(await page.getByRole('heading', { name: 'Night palettes' }).isVisible())) throw new Error('Themes did not group day, night, and custom systems')
   if (await page.locator('.theme-semantic-preview').count() !== 21) throw new Error('theme choices did not render semantic studio previews')
-  const themeReadingOrder = await page.locator('.preferences-layout').evaluate((layout) => {
-    const children = [...layout.children]
-    return { preview: children.findIndex((node) => node.classList.contains('preferences-preview-rail')), main: children.findIndex((node) => node.classList.contains('preferences-main')) }
+  const themeReadingOrder = await page.locator('.preferences-main').evaluate((main) => {
+    const children = [...main.children]
+    return { preview: children.findIndex((node) => node.classList.contains('preferences-preview-stage')), presets: children.findIndex((node) => node.classList.contains('visual-presets-section')) }
   })
-  if (themeReadingOrder.preview < 0 || themeReadingOrder.main <= themeReadingOrder.preview) throw new Error(`appearance preview is not before controls in reading order: ${JSON.stringify(themeReadingOrder)}`)
+  if (themeReadingOrder.preview < 0 || themeReadingOrder.presets <= themeReadingOrder.preview) throw new Error(`appearance preview is not before controls in reading order: ${JSON.stringify(themeReadingOrder)}`)
   const customTheme = page.locator('.theme-custom-card')
   await Promise.all([
     page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok()),
