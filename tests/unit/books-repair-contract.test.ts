@@ -7,6 +7,7 @@ import { readStudioCss } from './support/read-studio-css.ts'
 const recommendations = readFileSync(new URL('../../src/api/recommendations.ts', import.meta.url), 'utf8')
 const capture = readFileSync(new URL('../../src/api/capture.ts', import.meta.url), 'utf8')
 const booksView = readFileSync(new URL('../../client/src/workspaces/library/BooksView.tsx', import.meta.url), 'utf8')
+const bookModel = readFileSync(new URL('../../client/src/workspaces/library/bookModel.ts', import.meta.url), 'utf8')
 const libraryViews = readFileSync(
   new URL('../../client/src/workspaces/library/LibraryViews.tsx', import.meta.url),
   'utf8',
@@ -70,11 +71,21 @@ test('pinning is atomic, leaves reading and Queue states intact, and clears tomb
 test('Books read fan-out is concurrent without synthetic round balance work', () => {
   assert.match(
     recommendations,
-    /const \[artifacts, jobs, canonMembershipRows, threadRows, chapterResult\] = await Promise\.all/,
+    /const \[artifacts, jobs, canonMembershipRows, threadRows, chapterResult, hardcover\] = await Promise\.all/,
   )
+  assert.match(recommendations, /loadHardcoverLibrary\(c\.env\.DB, Boolean\(c\.env\.HARDCOVER_API_TOKEN\)\)/)
+  assert.match(recommendations, /hardcover,\s*\}\)/)
   assert.doesNotMatch(recommendations, /needsBalance \? buildLearningBalance/)
   assert.doesNotMatch(recommendations, /artifactsByBook\.set\([^\n]+\.\.\./)
   assert.doesNotMatch(recommendations, /chaptersByBook\.set\([^\n]+\.\.\./)
+})
+
+test('My Books composes the read-only Hardcover mirror without exposing internal mutations for mirror-only rows', () => {
+  assert.match(booksView, /mergeBooksWithHardcover/)
+  assert.match(bookModel, /hardcover_only: true/)
+  assert.match(bookModel, /read_only: true/)
+  assert.match(booksView, /Open Hardcover/)
+  assert.match(booksView, /hardcoverOnly && hardcoverUrl/)
 })
 
 test('neutral dequeue is conditional and cannot rewrite exclusion truth', () => {

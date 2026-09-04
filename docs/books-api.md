@@ -12,7 +12,9 @@ Requires `title`, `author`, and `branch_id`; `isbn`, `url`, and `why_this` are o
 
 `GET /recommendations/books`
 
-Returns `{ "books": [...] }`. Each book may include:
+Returns `{ "books": [...], "hardcover": { "state": {...}, "counts": {...}, "books": [...] } }`. `books[]` remains the canonical editable, branch-verified Learning Compass ledger. `hardcover.books[]` is the existing read-only D1 mirror: it is composed into My Books in the client without calling `/hardcover/import`, assigning branches, creating recommendations, or entering Queue. A unique normalized title/primary-author match, or an explicit `recommendation_id`, displays one row with Hardcover's reading status. Unmatched mirror titles remain read-only and open their Hardcover page directly.
+
+Each canonical book may include:
 
 - `reading_state`: personal `saved|reading|finished` state, independent from Queue commitment
 - `is_primary`: the one explicitly pinned reading-desk book; no other Reading book is promoted automatically when the pin is absent or cleared
@@ -23,7 +25,7 @@ Returns `{ "books": [...] }`. Each book may include:
 - `canon_memberships[]`: zero or more `{ entry_id, domain_id, domain_slug, domain_title, domain_boundary, role }` placements linked through `canon_entries.recommendation_id`
 - `progress` and `next_chapter`: derived from the same normalized, numerically ordered chapter array
 
-Books reads are side-effect free. They exclude deleted/non-book records and omit only the legacy synthetic whole-book placeholder (`chapter_key=book`, position `0`); they never create chapter rows. `GET /capture/:id/record` uses the same canonical state/chapter/progress/next-chapter projection as the list. Its `item.canon_memberships[]` and top-level `canon_memberships[]` use the same membership shape, alongside sessions, Threads, annotations, learning Units, disposition and feedback, notes, artifacts, recall drafts/cards, and outcome.
+Books reads are side-effect free. They exclude deleted/non-book canonical records and omit only the legacy synthetic whole-book placeholder (`chapter_key=book`, position `0`); they never create chapter rows or import Hardcover rows. `GET /capture/:id/record` uses the same canonical state/chapter/progress/next-chapter projection as the list for editable Learning Compass books. Read-only mirror-only books do not have Learning Compass dossiers, chapter controls, branch assignments, or reading-state mutations. Its `item.canon_memberships[]` and top-level `canon_memberships[]` use the same membership shape, alongside sessions, Threads, annotations, learning Units, disposition and feedback, notes, artifacts, recall drafts/cards, and outcome.
 
 ## Register chapter metadata
 
@@ -72,6 +74,7 @@ Request `{ "completed": true|false }`. This changes chapter completion metadata 
 ## Hermes invariants
 
 - Read and mutate book chapters through the Books routes.
+- Treat `hardcover.books[]` as a read-only display mirror. Never convert display composition into an import, branch guess, internal mutation, Queue item, or Learning Compass dossier.
 - Require and verify a non-pruned branch for every manual book intake; preserve its branch context everywhere the book renders.
 - Keep passive My books and dossier links separate from Queue-owned tracked Start/Resume actions.
 - Render a captured Canon selection once as a personal book identity with Canon domain/role metadata; Canon field summaries remain navigation context, not duplicate book cards.

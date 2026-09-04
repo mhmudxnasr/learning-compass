@@ -7,8 +7,8 @@ import { SourceHealthControl } from '../../components/SourceHealthControl'
 import { offlineDataResource, offlinePairResources, type OfflinePackResource } from '../../offlinePacks'
 import { LearnCanonView } from '../learn/LearnCanonView'
 import type { LibraryRecord, LibraryViewHandlers } from './types'
-import { bookChapters, bookNextChapter, bookProgress, bookReadingState } from './bookModel'
-import { artifactLink, formatStatus, objectHref, parseMetadata, sourceCreator, sourceTitle } from './types'
+import { bookChapters, bookNextChapter, bookProgress, bookReadingState, mergeBooksWithHardcover } from './bookModel'
+import { artifactLink, formatStatus, objectHref, parseMetadata, sourceCreator, sourceLink, sourceTitle } from './types'
 
 // Theme-aware folio spine colors; these follow custom and dark theme tokens.
 const BOOK_ACCENTS = ['var(--studio-cypress)', 'var(--studio-map)', 'var(--studio-due)', 'var(--studio-secondary)']
@@ -207,10 +207,12 @@ type BookBranchGroup = {
 }
 
 function bookBranchKey(book: LibraryRecord) {
+  if (book.hardcover_only) return 'hardcover-mirror'
   return String(book.branch?.id || book.branch?.label || 'unassigned')
 }
 
 function bookBranchLabel(book: LibraryRecord) {
+  if (book.hardcover_only) return 'Hardcover library'
   return String(book.branch?.label || 'Unassigned branch')
 }
 
@@ -231,6 +233,8 @@ function bookSearchText(book: LibraryRecord) {
     sourceCreator(book),
     book.why_this,
     book.branch?.label,
+    book.hardcover ? 'Hardcover' : '',
+    book.hardcover?.state,
     parseMetadata(book.source_metadata_json).isbn,
     ...canon,
     ...threads,
@@ -294,6 +298,16 @@ function BookBranchPill({ book, className = '' }: { book: LibraryRecord; classNa
   )
 }
 
+function BookGroupPill({ book }: { book: LibraryRecord }) {
+  if (!book.hardcover_only) return <BookBranchPill book={book} className="books-library-group-branch-pill" />
+  return (
+    <span class="book-branch-pill book-hardcover-pill books-library-group-branch-pill">
+      <Icon name="book" size={12} />
+      <span>Hardcover library</span>
+    </span>
+  )
+}
+
 export function ReadingFormatLinks({
   book,
   chapter,
@@ -341,7 +355,14 @@ export function BookKnowledgeContext({ book }: { book: LibraryRecord }) {
 }
 
 export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
-  const books = useMemo(() => (Array.isArray(data.books) ? data.books : []), [data.books])
+  const books = useMemo(
+    () =>
+      mergeBooksWithHardcover(
+        Array.isArray(data.books) ? data.books : [],
+        Array.isArray(data.hardcover?.books) ? data.hardcover.books : [],
+      ),
+    [data.books, data.hardcover?.books],
+  )
   const primaryBook = useMemo(() => books.find((book: LibraryRecord) => Boolean(book.is_primary)) || null, [books])
   const [showAddForm, setShowAddForm] = useState(false)
   const branchDeck = useData<{ existing?: LibraryRecord[] }>(showAddForm ? '/brain/branch-deck' : undefined)
@@ -432,6 +453,7 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
       ),
     [books],
   )
+  const hardcoverCount = Number(data.hardcover?.counts?.total || data.hardcover?.books?.length || 0)
   const branchFacets = useMemo(() => {
     const facets = new Map<string, { key: string; label: string; count: number; current: boolean }>()
     for (const book of books) {
@@ -728,6 +750,7 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
                 <strong>My books</strong>
                 <small>
                   {bookCounts.reading} reading · {bookCounts.saved} saved · {bookCounts.finished} finished
+                  {hardcoverCount ? ` · ${hardcoverCount} from Hardcover` : ''}
                 </small>
               </span>
               {!showAddForm && Boolean(books.length) && addBookButton}
@@ -975,7 +998,7 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
                   key={group.key}
                 >
                   <header class="books-library-branch-heading">
-                    <BookBranchPill book={group.representative} className="books-library-group-branch-pill" />
+                    <BookGroupPill book={group.representative} />
                     <small>
                       {group.books.length} {group.books.length === 1 ? 'title' : 'titles'} shown
                     </small>
@@ -994,6 +1017,10 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
                           </header>
                           {group.states[state].map((book) => {
                             const isPrimary = String(book.id) === String(primaryBook?.id || '')
+                            const hardcoverOnly = Boolean(book.hardcover_only)
+                            const hardcoverUrl = hardcoverOnly ? sourceLink(book) : null
+                            const hardcoverActionUrl = sourceLink(book.hardcover || {})
+                            const hardcoverOwnsClosedState = Boolean(book.hardcover) && state !== 'reading'
                             const titleId = `books-library-title-${String(book.id).replace(/[^a-zA-Z0-9_-]/g, '-')}`
                             return (
                               <article
@@ -1004,21 +1031,50 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
                               >
                                 <div class="books-library-row-copy">
                                   <h3 id={titleId}>
-                                    <a href={objectHref('book', String(book.id))}>{sourceTitle(book)}</a>
+                                    {hardcoverUrl ? (
+                                      <a href={hardcoverUrl} target="_blank" rel="noreferrer">
+                                        {sourceTitle(book)}
+                                      </a>
+                                    ) : (
+                                      <a href={objectHref('book', String(book.id))}>{sourceTitle(book)}</a>
+                                    )}
                                   </h3>
                                   <div class="books-library-row-meta">
                                     <p>
                                       {sourceCreator(book)} · {formatStatus(state)}
                                     </p>
+                                    {book.hardcover && <span class="books-library-origin">Hardcover</span>}
                                     <BookBranchPill book={book} className="books-library-branch-pill" />
                                   </div>
                                 </div>
                                 <div class="books-library-row-action">
-                                  {isPrimary ? (
+                                  {hardcoverOnly && hardcoverUrl ? (
+                                    <a
+                                      class="books-library-primary-action books-library-external-action"
+                                      href={hardcoverUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      aria-label={`Open ${sourceTitle(book)} on Hardcover`}
+                                    >
+                                      <Icon name="external" size={14} />
+                                      <span>Open Hardcover</span>
+                                    </a>
+                                  ) : isPrimary ? (
                                     <span class="reading-fold-current-mark">
                                       <Icon name="pin" size={13} />
                                       Current
                                     </span>
+                                  ) : hardcoverOwnsClosedState && hardcoverActionUrl ? (
+                                    <a
+                                      class="books-library-primary-action books-library-external-action"
+                                      href={hardcoverActionUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      aria-label={`Open ${sourceTitle(book)} on Hardcover`}
+                                    >
+                                      <Icon name="external" size={14} />
+                                      <span>Open Hardcover</span>
+                                    </a>
                                   ) : (
                                     <button
                                       class="books-library-primary-action"

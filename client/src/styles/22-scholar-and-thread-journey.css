@@ -564,6 +564,7 @@
   border-radius: var(--studio-radius-panel);
   background: var(--studio-canvas);
   box-sizing: border-box;
+  position: relative;
 }
 
 .folio-resurfacing-card {
@@ -583,6 +584,31 @@
   font-weight: var(--font-heading-weight);
   line-height: 1.25;
   text-wrap: balance;
+}
+.folio-resurfacing-record-link {
+  color: inherit;
+  text-decoration: none;
+}
+.folio-resurfacing-record-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--studio-radius-panel);
+}
+.folio-resurfacing-record-link:hover {
+  color: var(--studio-cypress);
+}
+.folio-resurfacing-record-link:focus-visible {
+  outline: none;
+}
+.folio-resurfacing-record-link:focus-visible::after {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: 4px;
+}
+.folio-resurfacing-star,
+.folio-resurfacing-card :is(.folio-badge, .folio-quick-link, .folio-button) {
+  position: relative;
+  z-index: 1;
 }
 .folio-resurfacing-copy p {
   margin: 0;

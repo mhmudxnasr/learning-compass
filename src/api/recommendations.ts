@@ -22,6 +22,7 @@ import { scheduleResurfacing } from '../services/resurfacing'
 import { enrichRecommendationRows } from '../services/recommendation-enrichment'
 import { personalStateFromBookState } from '../services/personal-library'
 import { chunkForD1 } from '../services/d1-query.ts'
+import { loadHardcoverLibrary } from '../services/hardcover'
 import { checkAndRecordSourceHealth, loadSourceHealth } from '../services/source-health.ts'
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -182,7 +183,7 @@ app.get('/books', async (c) => {
   const books = rows.results || []
   const ids = books.map((book: any) => book.id)
   const placeholders = ids.map(() => '?').join(',')
-  const [artifacts, jobs, canonMembershipRows, threadRows, chapterResult] = await Promise.all([
+  const [artifacts, jobs, canonMembershipRows, threadRows, chapterResult, hardcover] = await Promise.all([
     ids.length
       ? c.env.DB.prepare(
           `SELECT id,filename,media_type,size_bytes,metadata_json,created_at FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${placeholders}) AND COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged' ORDER BY created_at DESC,id DESC`,
@@ -224,6 +225,7 @@ app.get('/books', async (c) => {
           .bind(...ids)
           .all<any>()
       : Promise.resolve({ results: [] }),
+    loadHardcoverLibrary(c.env.DB, Boolean(c.env.HARDCOVER_API_TOKEN)),
   ])
   const canonMemberships = new Map<string, any[]>()
   for (const membership of canonMembershipRows.results || []) {
@@ -341,6 +343,7 @@ app.get('/books', async (c) => {
         threads: threadsByBook.get(String(book.id)) || [],
       }
     }),
+    hardcover,
   })
 })
 
