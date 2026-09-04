@@ -1,0 +1,15 @@
+{
+  "platform": "cli",
+  "system_prompt": {
+    "chars": 19922,
+    "bytes": 20400
+  },
+  "tools": {
+    "count": 18,
+    "json_bytes": 32436
+  },
+  "skills_index": {
+    "chars": 3179,
+    "bytes": 3181
+  }
+}

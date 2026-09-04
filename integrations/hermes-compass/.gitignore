@@ -1,0 +1,7 @@
+__pycache__/
+*smoke.json
+live-smoke.json
+guard-dry-run.json
+skill-backups/
+verification.json
+operation/
