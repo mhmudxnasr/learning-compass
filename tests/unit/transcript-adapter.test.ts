@@ -10,7 +10,15 @@ const mediaTranscription = readFileSync(
   '/home/mahmud/.hermes/skills/media/media-transcription-systems/SKILL.md',
   'utf8',
 )
-const liteVisual = readFileSync('/home/mahmud/.hermes/skills/lite-visual/SKILL.md', 'utf8')
+const liteVisual = [
+  'SKILL.md',
+  'references/source-extraction.md',
+  'references/coverage-contract.md',
+  'references/reading-companion-design.md',
+  'references/publication-and-recovery.md',
+]
+  .map((file) => readFileSync(`/home/mahmud/.hermes/skills/lite-visual/${file}`, 'utf8'))
+  .join('\n')
 const selfEvolution = readFileSync(
   '/home/mahmud/.hermes/skills/workflow/learning-compass-self-evolution/SKILL.md',
   'utf8',
@@ -18,7 +26,7 @@ const selfEvolution = readFileSync(
 const notebookLm = readFileSync('/home/mahmud/.hermes/skills/notebooklm/SKILL.md', 'utf8')
 const validator = readFileSync('/home/mahmud/.hermes/skills/lite-visual/scripts/validate_artifact.py', 'utf8')
 const uploader = readFileSync('/home/mahmud/.hermes/skills/lite-visual/scripts/upload_pair.py', 'utf8')
-const liteVisualQuality = readFileSync('/home/mahmud/.hermes/skills/lite-visual/SKILL.md', 'utf8')
+const liteVisualQuality = liteVisual
 
 test('YouTube transcript adapter is Arabic-first with English fallback', () => {
   assert.match(adapter, /VERSION = "lite-visual-transcript\/3"/)
@@ -129,8 +137,8 @@ test('Visual Lite is source-designed code only with no image or template branch'
   assert.match(liteVisual, /apply the required Intent and Frontend Design reasoning directly/i)
   assert.match(liteVisual, /source-specific CSS/)
   assert.match(liteVisual, /minimal inline SVG/)
-  assert.match(liteVisual, /Do not invoke Visual Mind, AGY, Antigravity, ImageGen/)
-  assert.match(liteVisual, /Do not create or request raster images/)
+  assert.match(liteVisual, /No raster\/generated images, image agents, Visual Mind, preset themes\/palettes\/layouts/)
+  assert.match(liteVisual, /Forbidden inside the companion:[\s\S]*raster assets/)
   assert.doesNotMatch(liteVisual, /call AGY automatically|generated-image/)
 })
 
@@ -154,9 +162,9 @@ test('NotebookLM learning defaults to focused retrieval and truthful provider re
 })
 
 test('Lite Visual keeps the repaired companion quality baseline for future files', () => {
-  assert.match(liteVisualQuality, /complete Arabic reading companion/)
-  assert.match(liteVisualQuality, /only canonical reading body/)
-  assert.match(liteVisualQuality, /replace consuming the source/)
+  assert.match(liteVisualQuality, /complete source-faithful Arabic reading companion/)
+  assert.match(liteVisualQuality, /one canonical semantic HTML article/)
+  assert.match(liteVisualQuality, /replace the original/)
   assert.match(liteVisualQuality, /mechanism, examples, evidence, qualifications, disagreements, and conclusion/)
   assert.match(liteVisualQuality, /gapless source coverage/)
   assert.match(liteVisualQuality, /source-specific CSS/)
