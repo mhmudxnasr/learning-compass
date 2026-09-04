@@ -3566,7 +3566,10 @@ try {
     extraHTTPHeaders: { 'x-real-ip': 'e2e-android-browser' },
   })
   androidPage.setDefaultNavigationTimeout(20_000)
-  await androidPage.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
+  // The install/offline flow needs a mounted Home screen and ready service worker,
+  // independently of background network activity in this fresh browser context.
+  await androidPage.goto(`${baseUrl}/#/home`, { waitUntil: 'domcontentloaded' })
+  await androidPage.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout: 15000 })
   await androidPage.evaluate(() => {
     const event = new Event('beforeinstallprompt')
     Object.assign(event, {

@@ -380,6 +380,7 @@ a.branch-ledger-title:hover {
   grid-column: 1;
   grid-row: 1;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   min-width: 0;
 }
@@ -2265,7 +2266,7 @@ a.branch-ledger-title:hover {
     border-left: 0;
   }
   .preferences-page .preferences-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .preferences-index {
     position: static;
