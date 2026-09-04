@@ -34,7 +34,7 @@ export const LITE_VISUAL_WORKFLOW_CONTRACT = 'lite-visual-linear/v4'
 export const LITE_VISUAL_RECEIPT_SCHEMA = 'lite-visual-validation/v6'
 export const LITE_VISUAL_ATTESTATION_KEY_ID = 'lite-visual-v6-2026-08-28-r2'
 export const LITE_VISUAL_AUDIT_PROVENANCE = {
-  audit_script_sha256: '0cda1edf25fe0fa283546f33e17b127ff8e8141a33acbd28e263a61075bbdb59',
+  audit_script_sha256: 'ef2e6ab0a8c352b757202196c2fe2a22dd01385e0fa6eb7d1f8f9b05024552ca',
   series_sha256: '8d86f4b68626457b77b4d2a3c898a2e9436040793f924b6d0d61d40b026ba60a',
   receipt_attestation_sha256: '812ef128a101cf94e5837779725ac5f01a273c89cfe2155a25d74caa708afb00',
   python_implementation: 'CPython',

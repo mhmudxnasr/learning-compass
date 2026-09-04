@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-04 (Riyadh 84-recording early-release candidate)
+
+Mahmood explicitly requested immediate publication of the 84 rebuilt Riyadh companions instead of waiting for all 294. The candidate is an exact ordered prefix of the authoritative 294-recording manifest (`1de52aac5305c071c027650b8494971d7ccbd83a1bfe497b8fbcb067eeae6be4`) and remains bound to the full manifest hash. All 84 included HTML/PDF pairs pass signed `lite-visual-validation/v6`; the aggregate audit passes 84/84 with zero failures and zero anti-template similarity flags after replacing the shared visual shell with source-signature- and semantic-group-scoped layouts. This prefix is an early patch only: the other 210 lessons retain their current companions and the full goal remains 294/294.
+
+A fresh full production recovery snapshot `backup_20260904T190454Z` restored 109,752,120 D1 bytes and checksum-verified all 1,740 R2 objects totaling 278,644,623 bytes. SQLite integrity is `ok` with zero foreign-key violations. At this checkpoint no replacement job, corpus registration, staging upload, activation, or lesson-progression mutation has occurred.
+
 ## Current truth — 2026-09-02 (automatic Level and lesson continuation, deployed)
 
 Direct lesson completion now owns the complete continuation transition. Completing an available lesson activates its Level without a separate Start Level action; every completion starts the next unfinished lesson, and a Level's final completion activates the next Level plus its first lesson. Home and typed Lesson views expose the same Complete action for ready lessons and reload from canonical state, so the dashboard advances automatically. The compatibility Level-start route remains available for old clients, but the current interface no longer requires or presents it. The PWA shell cache advances to `learning-compass-shell-v53`.
