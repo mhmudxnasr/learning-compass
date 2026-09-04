@@ -5,7 +5,18 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['backups/**', 'client/public/**', 'dist/**', 'node_modules/**', 'test-results/**', '.wrangler/**'],
+    ignores: [
+      'backups/**',
+      'client/public/**',
+      'dist/**',
+      'node_modules/**',
+      'test-results/**',
+      '.wrangler/**',
+      '.tmp/**',
+      'tmp/**',
+      '.codex-tmp/**',
+      'whatsapp-insights-site/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
