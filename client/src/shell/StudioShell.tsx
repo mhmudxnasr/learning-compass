@@ -124,9 +124,17 @@ export function StudioShell({
           <div class="workspace-location">
             <span>{activeRoot?.label}</span>
             <Icon name="chevron" size={13} />
-            <strong>{activeFocus?.label || activeMode?.label}</strong>
+            <strong>
+              {route.root === 'library' && route.objectId
+                ? route.objectType === 'book'
+                  ? 'Book'
+                  : route.objectType === 'artifact'
+                    ? 'File'
+                    : 'Item'
+                : activeFocus?.label || activeMode?.label}
+            </strong>
           </div>
-          {modes[route.root].length > 1 && (
+          {!(route.root === 'library' && route.objectId) && modes[route.root].length > 1 && (
             <nav class="workspace-chrome-modes" aria-label={`${activeRoot?.label} modes`}>
               {modes[route.root].map((item) => (
                 <a

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks'
 import { ApiError, api } from '../api'
 import { ErrorState, Loading } from '../components/States'
 import { useData } from '../app/useData'
-import { useRoute } from '../app/router'
+import { itemHref, useRoute } from '../app/router'
 import { routeHref as canonicalRouteHref } from '../app/router'
 import { processArtifact, startLearningSession, triageCapture } from './library/actions'
 import {
@@ -16,10 +16,8 @@ import {
 } from './library/LibraryViews'
 import {
   asView,
-  artifactSelection,
-  bookSelection,
   listFrom,
-  sourceSelection,
+  objectHref,
   viewHref,
   type LibraryObjectType,
   type LibraryRecord,
@@ -32,7 +30,7 @@ function endpointFor(view: string, objectType?: string, objectId?: string) {
   if (objectType && objectId) {
     const id = encodeURIComponent(objectId)
     if (objectType === 'source' || objectType === 'book') return `/capture/${id}/record`
-    if (objectType === 'artifact') return '/artifacts'
+    if (objectType === 'artifact') return `/artifacts/${id}/record`
   }
   switch (asView(view)) {
     case 'feeds':
@@ -57,17 +55,10 @@ function actionMessage(error: unknown) {
   return error instanceof Error ? error.message : 'The action could not be completed.'
 }
 
-function selectionFor(type: LibraryObjectType, item: LibraryRecord): LibrarySelection {
-  if (type === 'artifact') return artifactSelection(item)
-  if (type === 'book') return bookSelection(item)
-  return sourceSelection(item)
-}
-
 function objectItem(type: LibraryObjectType, data: LibraryRecord, objectId: string) {
   if (type === 'source' || type === 'book')
     return data.item || listFrom<LibraryRecord>(data, 'books').find((item) => String(item.id) === objectId) || null
-  if (type === 'artifact')
-    return listFrom<LibraryRecord>(data, 'artifacts').find((item) => String(item.id) === objectId) || null
+  if (type === 'artifact') return data.artifact || null
   return null
 }
 
@@ -198,6 +189,15 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
   const baseEndpoint = endpointFor(view, objectType, activeRoute.objectId)
   const endpoint = view === 'queue' && !objectType && queueQuery.size ? `${baseEndpoint}?${queueQuery}` : baseEndpoint
   const { data, error, loading, reload } = useData<LibraryRecord>(endpoint)
+  useEffect(() => {
+    if (objectType !== 'source' || data?.item?.content_type !== 'book' || String(data.item.id) !== activeRoute.objectId)
+      return
+    const query = new URLSearchParams(activeRoute.query)
+    query.delete('mode')
+    query.delete('focus')
+    const href = itemHref(data.item)
+    location.replace(`${href}${query.size ? `?${query}` : ''}`)
+  }, [objectType, activeRoute.objectId, data?.item?.id, data?.item?.content_type])
   const [working, setWorking] = useState('')
   const [blockedId, setBlockedId] = useState('')
   const [notice, setNotice] = useState('')
@@ -208,24 +208,6 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     onSelect?.(selection)
     if (location.hash !== selection.route) location.hash = selection.route.slice(1)
   }
-
-  useEffect(() => {
-    if (!activeRoute.objectId || !objectType || !data) return
-    const item = objectItem(objectType, data, activeRoute.objectId)
-    if (item) {
-      const selection = selectionFor(objectType, item)
-      if (objectType === 'source') {
-        const linkedThread = Array.isArray(data.threads) ? data.threads[0] : null
-        selection.data = {
-          ...selection.data,
-          branch: data.item?.branch || selection.data.branch,
-          thread_id: linkedThread?.id || selection.data.thread_id,
-          thread_title: linkedThread?.title || selection.data.thread_title,
-        }
-      }
-      onSelect?.(selection)
-    }
-  }, [activeRoute.objectId, objectType, data, onSelect])
 
   const go = (href: string) => {
     onNavigate?.(href)
@@ -537,9 +519,10 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
   if (error) return <ErrorState message={error} retry={reload} />
   const loaded = data || {}
 
-  const modeSwitcher = embedded ? null : (
-    <LibraryModeSwitcher activeView={view} objectType={objectType} onNavigate={onNavigate} />
-  )
+  const modeSwitcher =
+    embedded || objectType ? null : (
+      <LibraryModeSwitcher activeView={view} objectType={objectType} onNavigate={onNavigate} />
+    )
 
   if (activeRoute.objectId && objectType) {
     const item = objectItem(objectType, loaded, activeRoute.objectId)

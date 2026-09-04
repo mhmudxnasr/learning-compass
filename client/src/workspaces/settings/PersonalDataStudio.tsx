@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { api, formatDate, labelize } from '../../api'
 import { useData } from '../../app/useData'
+import { itemHref } from '../../app/router'
 import { Empty, ErrorState, Loading } from '../../components/States'
 import { PersonalAssistant } from './PersonalAssistant'
 
@@ -560,7 +561,9 @@ export function PersonalDataStudio({ onCapture }: { onCapture?: () => void }) {
               >
                 <div class="personal-data-row-main" role="cell" aria-label="Record">
                   <span class="personal-type-label">{labelize(item.item_type)}</span>
-                  <strong>{item.title}</strong>
+                  <a class="item-title-link" href={itemHref(item)}>
+                    <strong>{item.title}</strong>
+                  </a>
                   <small>
                     {[item.creator, item.release_year, item.branch?.label].filter(Boolean).join(' · ') ||
                       'No creator or year recorded'}

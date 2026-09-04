@@ -1,5 +1,6 @@
 import { objectHref, routeHref, useRoute, Route } from '../app/router'
 import { useData } from '../app/useData'
+import { ItemParentLinks } from '../components/ItemSections'
 import { api } from '../api'
 import { Empty, ErrorState, Loading } from '../components/States'
 import { useEffect, useState } from 'preact/hooks'
@@ -746,6 +747,9 @@ function AnchoredCardForm({
 function LearnUnitView({ unitId }: { unitId: string }) {
   const data = useData<{
     unit: {
+      recommendation_id?: string
+      note_id?: string
+      thread_id?: string
       statement: string
       unit_type?: string
       user_synthesis?: string | null
@@ -788,6 +792,11 @@ function LearnUnitView({ unitId }: { unitId: string }) {
         </span>
       )}
       <h1>{data.data.unit.statement}</h1>
+      <ItemParentLinks
+        sourceId={data.data.unit.recommendation_id}
+        noteId={data.data.unit.note_id}
+        threadId={data.data.unit.thread_id}
+      />
       {data.data.unit.user_synthesis && <p>{data.data.unit.user_synthesis}</p>}
       <small>Confidence: {Math.round(Number(data.data.unit.confidence || 0) * 100)}%</small>
       {data.data.relations?.length ? (
@@ -816,6 +825,8 @@ function LearnUnitView({ unitId }: { unitId: string }) {
 function LearnCardView({ cardId }: { cardId: string }) {
   const data = useData<{
     card: {
+      recommendation_id?: string
+      thread_id?: string
       question: string
       answer: string
       topic?: string
@@ -869,11 +880,7 @@ function LearnCardView({ cardId }: { cardId: string }) {
           <dd>{card.due_at || 'Not scheduled'}</dd>
         </div>
       </dl>
-      {card.note_id && (
-        <a class="button secondary" href={`#/learn/note/${encodeURIComponent(card.note_id)}`}>
-          Open source note
-        </a>
-      )}
+      <ItemParentLinks sourceId={card.recommendation_id} noteId={card.note_id} threadId={card.thread_id} />
     </article>
   )
 }

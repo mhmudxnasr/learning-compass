@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useData } from '../app/useData'
 import { Icon } from '../components/Icon'
+import { itemHref } from '../app/router'
 
 const groupMeta: Record<string, { label: string; href: (item: any) => string }> = {
-  recs: { label: 'Sources', href: (item) => `#/library/source/${encodeURIComponent(item.id)}` },
+  recs: { label: 'Sources', href: (item) => itemHref(item) },
   annotations: {
     label: 'Source anchors',
     href: (item) =>

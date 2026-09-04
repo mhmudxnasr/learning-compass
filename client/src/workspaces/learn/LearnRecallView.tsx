@@ -198,7 +198,14 @@ function SourceLine({ item }: { item: RecallCard | RecallDraft }) {
     <div class="recall-source-line">
       {item.branch && <span class="recall-branch-badge">{item.branch}</span>}
       {item.card_type && <span>{item.card_type}</span>}
-      {item.source_title && <span>{item.source_title}</span>}
+      {item.source_title &&
+        (item.recommendation_id ? (
+          <a class="item-title-link" href={libraryObjectHref('source', item.recommendation_id)}>
+            {item.source_title}
+          </a>
+        ) : (
+          <span>{item.source_title}</span>
+        ))}
       {item.source_anchor && <span class="recall-anchor">{item.source_anchor}</span>}
     </div>
   )
@@ -1021,9 +1028,9 @@ function CardRow({
     <article class="recall-library-row">
       <div>
         <SourceLine item={card} />
-        <strong lang="ar" dir="rtl">
-          {card.question}
-        </strong>
+        <a class="item-title-link" href={cardHref(card.id)} lang="ar" dir="rtl">
+          <strong>{card.question}</strong>
+        </a>
         <small>
           {status === 'active' ? `Due ${formatDate(card.due_at)}` : status} · {card.repetitions || 0} reviews ·{' '}
           {card.lapses || 0} lapses

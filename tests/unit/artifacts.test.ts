@@ -1177,3 +1177,49 @@ for (const integrityOnly of [false, true]) test(`one guarded activation publishe
   assert.equal(((await rollbackRetry.json()) as any).reused, true)
   sqlite.close()
 })
+test('exact file records include older book and Thread files without fetching their content', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  try {
+    sqlite.exec(`CREATE TABLE artifacts(id TEXT PRIMARY KEY,filename TEXT,media_type TEXT,size_bytes INTEGER,metadata_json TEXT,created_at TEXT,thread_id TEXT,stage_id TEXT);
+      CREATE TABLE recommendations(id TEXT PRIMARY KEY,status TEXT,deleted_at TEXT);
+      CREATE TABLE html_files(id TEXT PRIMARY KEY,filename TEXT,content TEXT,created_at TEXT);
+      INSERT INTO recommendations VALUES ('owner','active',NULL);`)
+    const insert = sqlite.prepare('INSERT INTO artifacts VALUES (?,?,?,?,?,?,?,?)')
+    insert.run('old-book-file','chapter.pdf','application/pdf',25,JSON.stringify({ recommendation_id: 'owner', scope: 'book' }),'2020-01-01',null,null)
+    insert.run('thread-file','exercise.md','text/markdown',12,'{}','2020-01-01','thread-1',null)
+    for (let i = 0; i < 205; i++) insert.run(`new-${i}`,'new.pdf','application/pdf',25,'{}','2026-09-05',null,null)
+    sqlite.exec("INSERT INTO html_files VALUES ('legacy','old.html','<p>Legacy content</p>','2020-01-01')")
+    const env = { DB: new SqliteD1(sqlite), ARTIFACTS: { get() { throw new Error('Metadata must not download R2 content') } } }
+    for (const id of ['old-book-file', 'thread-file', 'legacy']) {
+      const response = await artifactsApp.request(`https://compass.test/${id}/record`, {}, env)
+      assert.equal(response.status, 200)
+      const { artifact } = await response.json()
+      assert.equal(artifact.id, id)
+      assert.equal('content' in artifact, false)
+      assert.equal('owner_deleted_at' in artifact, false)
+      if (id === 'old-book-file') assert.equal(artifact.metadata.scope, 'book')
+      if (id === 'thread-file') assert.equal(artifact.thread_id, 'thread-1')
+      if (id === 'legacy') assert.equal(artifact.legacy, true)
+    }
+    const missing = await artifactsApp.request('https://compass.test/missing/record', {}, env)
+    assert.equal(missing.status, 404)
+  } finally { sqlite.close() }
+})
+
+test('exact file metadata hides staged, orphaned, and deleted-source files', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  try {
+    sqlite.exec(`CREATE TABLE artifacts(id TEXT PRIMARY KEY,filename TEXT,media_type TEXT,size_bytes INTEGER,metadata_json TEXT,created_at TEXT,thread_id TEXT,stage_id TEXT);
+      CREATE TABLE recommendations(id TEXT PRIMARY KEY,status TEXT,deleted_at TEXT);
+      INSERT INTO recommendations VALUES ('deleted-owner','deleted','2026-09-01');`)
+    const insert = sqlite.prepare('INSERT INTO artifacts VALUES (?,?,?,?,?,?,?,?)')
+    for (const [id, metadata] of [
+      ['staged', { publication_state: 'staged' }], ['orphan', { recommendation_id: 'missing-owner' }], ['deleted', { recommendation_id: 'deleted-owner' }],
+    ] as const) {
+      insert.run(id,'hidden.pdf','application/pdf',25,JSON.stringify(metadata),'2026-09-05',null,null)
+      const response = await artifactsApp.request(`https://compass.test/${id}/record`, {}, { DB: new SqliteD1(sqlite) })
+      assert.equal(response.status, 404, id)
+      assert.deepEqual(await response.json(), { error: 'not found' })
+    }
+  } finally { sqlite.close() }
+})

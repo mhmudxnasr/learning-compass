@@ -180,6 +180,7 @@
     "POST /feedback/record": {"owner": "learning-compass-operating-system", "permission": "explicit_feedback"},
     "GET /learning/core/hub": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_hub_read"},
     "GET /notes/hub": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_hub_read"},
+    "GET /artifacts/:id/record": {"owner": "learning-compass-site-operator", "permission": "read_exact_file_metadata"},
     "GET /artifacts/hub": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_hub_read"},
     "GET /learning/core/threads/:id/path": {"owner": "learning-compass-site-operator", "permission": "explicit_learning_hub_read"},
     "GET /learning/core/threads/:id/material-sources": {"owner": "learning-compass-site-operator", "permission": "library_first_material_search"},

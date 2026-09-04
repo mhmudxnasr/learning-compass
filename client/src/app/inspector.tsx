@@ -112,7 +112,9 @@ export function Inspector({ selection, onClose }: { selection: InspectorSelectio
         <p class="desk-desc inspector-route-copy">
           This selection stays addressable while you move through its owning workspace.
         </p>
-        <code class="inspector-route">{selection.route}</code>
+        <a class="folio-button" href={selection.route}>
+          Open full item page
+        </a>
       </section>
     </div>
   )

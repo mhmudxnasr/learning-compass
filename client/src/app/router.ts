@@ -44,6 +44,24 @@ export type Route = {
   notFound?: boolean
 }
 
+/** Every appearance of a saved source opens the same owning item page. */
+export function itemHref(
+  item: {
+    id?: string | number
+    recommendation_id?: string | number
+    book_id?: string | number
+    content_type?: string | null
+    item_type?: string | null
+    is_book_chapter?: boolean
+  },
+  section?: string,
+) {
+  const isBook = item.content_type === 'book' || item.item_type === 'book' || item.is_book_chapter
+  const id = String((isBook && item.book_id) || item.recommendation_id || item.id || '')
+  const href = objectHref('library', isBook ? 'book' : 'source', id)
+  return section ? `${href}${href.includes('?') ? '&' : '?'}tab=${encodeURIComponent(section)}` : href
+}
+
 export const roots: RootDefinition[] = [
   { key: 'home', label: 'Home', defaultMode: 'today', defaultView: 'today' },
   { key: 'library', label: 'Library', defaultMode: 'books', defaultView: 'books' },
@@ -525,7 +543,10 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
                   forceLegacyMode,
                 )
         : canonicalRoot(root, state.mode, state.focus, forceLegacyFocus, forceLegacyMode)
-  const rawComparable = rawPath + (queryString ? `?${queryString}` : '')
+  // Item sections and other local query state do not make a route a legacy URL.
+  const routingQuery = new URLSearchParams()
+  for (const key of ['mode', 'focus']) if (originalQuery.has(key)) routingQuery.set(key, originalQuery.get(key)!)
+  const rawComparable = rawPath + (routingQuery.size ? `?${routingQuery}` : '')
   const changed = canonical !== rawComparable
   const recovered = Boolean(
     exactAlias ||

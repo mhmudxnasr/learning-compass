@@ -3,7 +3,7 @@ import { api, formatDate, labelize } from '../api'
 import { useData } from '../app/useData'
 import { ErrorState, Empty, Loading } from '../components/States'
 import { Icon, type IconName } from '../components/Icon'
-import { objectHref as canonicalObjectHref, routeHref } from '../app/router'
+import { itemHref, routeHref } from '../app/router'
 import { sourceCreator, sourceFormat, sourceLink, sourceTitle, type LibraryRecord } from './library/types'
 import { lessonHref, lessonReadiness } from './learn/helpers'
 import {
@@ -245,21 +245,6 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
     : null
   const readyLessons = threads.filter((thread) => thread.current_stage?.lessons?.[0]).length
 
-  const openSource = () => {
-    if (!activeSource) return
-    const isBook = activeSource.content_type === 'book' || activeSource.is_book_chapter
-    const selection: HomeSelection = {
-      type: 'source',
-      id: String(activeSource.id),
-      title: sourceTitle(activeSource),
-      data: activeSource,
-      route: isBook
-        ? canonicalObjectHref('library', 'book', String(activeSource.book_id || activeSource.id), 'books')
-        : canonicalObjectHref('library', 'source', String(activeSource.id)),
-    }
-    onInspect?.(selection)
-  }
-
   const finishLesson = async (threadId: string, lesson: ThreadLesson) => {
     if (lessonCompletion) return
     if (lessonRefreshTimer.current !== null) window.clearTimeout(lessonRefreshTimer.current)
@@ -333,7 +318,7 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
                   <h3>
                     <a
                       class="folio-resurfacing-record-link"
-                      href={canonicalObjectHref('library', 'source', resurfacingItem.recommendation_id)}
+                      href={itemHref(resurfacingItem)}
                       aria-label={`Open source record: ${resurfacingItem.title}`}
                     >
                       {resurfacingItem.title}
@@ -579,7 +564,15 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
               <div class="folio-section-heading">
                 <div>
                   <p class="folio-kicker">Current source</p>
-                  <h2 id="home-focus-title">{activeSource ? sourceTitle(activeSource) : 'No active source'}</h2>
+                  <h2 id="home-focus-title">
+                    {activeSource ? (
+                      <a class="item-title-link" href={itemHref(activeSource)}>
+                        {sourceTitle(activeSource)}
+                      </a>
+                    ) : (
+                      'No active source'
+                    )}
+                  </h2>
                 </div>
                 {activeSource && (
                   <span class="folio-status-mark">
@@ -616,9 +609,9 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
                     </div>
                   )}
                   <div class="folio-home-actions-bar">
-                    <button type="button" class="folio-button" onClick={openSource}>
-                      Inspect
-                    </button>
+                    <a class="folio-button" href={itemHref(activeSource)}>
+                      Open item
+                    </a>
                     <a class="folio-button folio-button-primary" href={routeHref('library', 'triage', 'queue')}>
                       Open Queue to start
                     </a>
@@ -626,8 +619,8 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
                   <p class="folio-action-note">
                     Opening from Home is passive. Queue owns the tracked Start/Resume action.
                   </p>
-                  <a class="continuum-all-files" href={routeHref('library', 'assets', 'files')}>
-                    All files
+                  <a class="continuum-all-files" href={itemHref(activeSource, 'files')}>
+                    Item files
                   </a>
                 </>
               ) : (
@@ -672,18 +665,21 @@ export function HomeWorkspace({ onCapture, onInspect, onNavigate }: HomeWorkspac
                 {items.map((item: LibraryRecord, index: number) => {
                   const isSelected = activeSource && String(activeSource.id) === String(item.id)
                   return (
-                    <button
-                      type="button"
-                      key={item.id}
-                      role="listitem"
-                      class={`folio-home-queue-item${isSelected ? ' is-active' : ''}`}
-                      onClick={() => setSelectedSourceId(String(item.id))}
-                      title="Set as current source"
-                    >
+                    <div key={item.id} role="listitem" class={`folio-home-queue-item${isSelected ? ' is-active' : ''}`}>
                       <span class="continuum-queue-index">{String(index + 1).padStart(2, '0')}</span>
-                      <span class="folio-home-queue-item-title">{sourceTitle(item)}</span>
-                      {isSelected && <span class="continuum-queue-active">Active</span>}
-                    </button>
+                      <a class="folio-home-queue-item-title item-title-link" href={itemHref(item)}>
+                        {sourceTitle(item)}
+                      </a>
+                      <button
+                        type="button"
+                        class="item-focus-button"
+                        onClick={() => setSelectedSourceId(String(item.id))}
+                        aria-label={`Focus ${sourceTitle(item)}`}
+                        aria-pressed={Boolean(isSelected)}
+                      >
+                        {isSelected ? 'Active' : 'Focus'}
+                      </button>
+                    </div>
                   )
                 })}
               </div>

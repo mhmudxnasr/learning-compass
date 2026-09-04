@@ -869,6 +869,7 @@ app.get('/:id/record', async (c) => {
     disposition,
     feedbackRows,
     canonMembershipRows,
+    personalItem,
   ] = await Promise.all([
     c.env.DB.prepare(
       `SELECT id,status,intent,reflection,thread_id,target_kind,target_artifact_id,started_at,returned_at,completed_at,duration_seconds FROM learning_sessions WHERE recommendation_id=? ORDER BY started_at DESC`,
@@ -970,6 +971,7 @@ app.get('/:id/record', async (c) => {
     )
       .bind(recommendationId)
       .all<any>(),
+    loadPersonalLibraryItem(c.env.DB, recommendationId),
   ])
   const noteSections = new Map<string, any[]>()
   for (const section of sections.results || [])
@@ -1151,6 +1153,7 @@ app.get('/:id/record', async (c) => {
       canon_memberships: canonMembershipRows.results || [],
       visual: visualObj,
     },
+    personal_item: personalItem,
     sessions: sessions.results || [],
     threads: threads.results || [],
     annotations: annotationRows,

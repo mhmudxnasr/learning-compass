@@ -609,6 +609,12 @@ try {
     personalMovie.item?.rating !== 8.5
   )
     throw new Error(`personal movie did not persist its typed fields: ${JSON.stringify(personalMovie)}`)
+  const personalMovieRecord = await requestJson(`/capture/${personalMovie.item.id}/record`)
+  if (
+    personalMovieRecord.personal_item?.personal_note !== 'Keep the causal model visible.' ||
+    personalMovieRecord.personal_item?.state !== 'in_progress'
+  )
+    throw new Error('item record lost the independent personal-media details')
   const duplicatePersonalMovie = await fetch(`${baseUrl}/capture/personal`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -1304,48 +1310,56 @@ try {
     !(await bookOverview.getByRole('link', { name: /Readable fixture branch/ }).count())
   )
     throw new Error('book overview lost its Thread or verified branch context')
-  if (
-    !(await bookOverview.getByRole('heading', { level: 2, name: '1. Orientation' }).count()) ||
-    (await bookOverview.locator('.book-overview-chapters').getAttribute('open')) !== null
-  )
-    throw new Error('book overview did not lead with one next chapter and a closed chapter ledger')
-  for (const heading of [
-    'Overview',
-    'Chapters & companions',
-    'Notes & source anchors',
-    'Recall',
-    'Connections',
-    'Reading history',
-    'Files',
-  ])
-    if (!(await bookOverview.getByRole('heading', { name: heading, exact: true }).count()))
-      throw new Error(`book hub omitted ${heading}`)
+  if (!(await bookOverview.getByRole('heading', { level: 2, name: '1. Orientation' }).isVisible()))
+    throw new Error('book overview did not lead with one next chapter')
+  const bookSections = bookOverview.getByRole('navigation', { name: 'Book hub sections' })
+  for (const [label, heading] of [
+    ['Chapters', 'Chapters & companions'],
+    ['Notes & passages', 'Notes & source anchors'],
+    ['Recall', 'Recall'],
+    ['Connections', 'Connections'],
+    ['History', 'Reading history'],
+    ['Files', 'Files'],
+    ['Overview', 'Overview'],
+  ]) {
+    await bookSections.getByRole('link', { name: new RegExp('^' + label) }).click()
+    await bookOverview
+      .getByRole('heading', { name: heading, exact: true })
+      .waitFor({ state: 'visible', timeout: 10000 })
+      .catch(async (error) => {
+        await page.screenshot({ path: '/tmp/learning-compass-item-pages-failure.png' })
+        console.error(
+          'Item section failure',
+          await page.evaluate(() => ({
+            hash: location.hash,
+            active: [...document.querySelectorAll('.item-sections a')].map((a) => ({
+              text: a.textContent,
+              href: a.getAttribute('href'),
+              current: a.getAttribute('aria-current'),
+            })),
+            panels: [...document.querySelectorAll('.book-dossier-main, .book-dossier-section')].map((el) => ({
+              id: el.id,
+              hidden: el.hidden,
+              display: getComputedStyle(el).display,
+            })),
+          })),
+        )
+        throw error
+      })
+  }
+  if (await bookOverview.getByText('A durable note attached to the book dossier.', { exact: true }).count())
+    throw new Error('book hub duplicated the formatted note reader')
+  await bookSections.getByRole('link', { name: /^Notes & passages/ }).click()
   const bookNotes = bookOverview.locator('details.book-dossier-notes')
-  if (
-    (await bookNotes.getAttribute('open')) !== null ||
-    (await bookOverview.getByText('A durable note attached to the book dossier.', { exact: true }).count())
-  )
-    throw new Error('book hub rendered raw note content instead of a closed note ledger')
-  const bookAnchors = bookOverview.locator('details.book-dossier-anchors')
-  const bookFeedback = bookOverview.locator('details.book-dossier-reflection')
-  if ((await bookAnchors.getAttribute('open')) !== null || (await bookFeedback.getAttribute('open')) !== null)
-    throw new Error('book hub did not keep source anchors and feedback closed by default')
-  await bookAnchors.locator(':scope > summary').click()
   await bookOverview
     .getByText('An exact anchored passage for the book dossier.', { exact: true })
-    .waitFor({ state: 'visible', timeout: 5000 })
-    .catch(() => {
-      throw new Error('book hub did not reveal source anchors')
-    })
-  await bookFeedback.locator(':scope > summary').click()
-  if (
-    !(await bookFeedback.getByRole('heading', { name: 'Feedback & outcome', exact: true }).isVisible()) ||
-    !(await bookFeedback.getByRole('button', { name: 'Save feedback' }).isVisible())
-  )
-    throw new Error('book hub did not reveal feedback controls')
-  await bookNotes.locator('summary').click()
+    .waitFor({ state: 'visible' })
+  await bookSections.getByRole('link', { name: /^Reflection/ }).click()
+  const bookFeedback = bookOverview.locator('details.book-dossier-reflection')
+  await bookFeedback.getByRole('button', { name: 'Save feedback' }).waitFor({ state: 'visible' })
+  await bookSections.getByRole('link', { name: /^Notes & passages/ }).click()
   const bookNoteLink = bookNotes.getByRole('link', { name: /E2E book note/ })
-  if (!(await bookNoteLink.isVisible())) throw new Error('book hub did not reveal its linked note')
+  await bookNoteLink.waitFor({ state: 'visible' })
   await bookNoteLink.click()
   await page.locator('.scholar-note-workspace').waitFor({ state: 'visible' })
   if (
@@ -1987,6 +2001,18 @@ try {
   const globalArtifacts = await requestJson('/artifacts')
   if (globalArtifacts.artifacts.some((file) => file.id === hubUploadBody.id))
     throw new Error('global files list leaked a hub-owned file')
+  for (const [id, title] of [
+    [hubUploadBody.id, 'hub-path.txt'],
+    [hubStageUploadBody.id, 'hub-stage.txt'],
+    [chapterArtifact.id, 'artifact-only-chapter.html'],
+  ]) {
+    const exact = await requestJson(`/artifacts/${encodeURIComponent(id)}/record`)
+    if (exact.artifact.id !== id) throw new Error('exact scoped file record returned the wrong identity')
+    await page.goto(`${baseUrl}/#/library/artifact/${encodeURIComponent(id)}`, { waitUntil: 'networkidle' })
+    await page.getByRole('heading', { name: exact.artifact.filename, exact: true }).waitFor({ state: 'visible' })
+    await page.getByRole('heading', { name: 'Artifact access', exact: true }).waitFor({ state: 'visible' })
+    if (await page.locator('.object-inspector').count()) throw new Error('file page rendered a second inspector')
+  }
   const hubPathLoaded = await requestJson(`/learning/core/threads/${hubThread.id}/path`)
   if (
     !hubPathLoaded.notes.some((note) => note.id === hubNote.id) ||
@@ -2724,11 +2750,12 @@ try {
   if (balance.branches?.[0]?.id) {
     const branchId = encodeURIComponent(String(balance.branches[0].id))
     await page.goto(`${baseUrl}/#/map/branch/${branchId}`, { waitUntil: 'networkidle' })
+    const inspectorItemLink = page.getByRole('link', { name: 'Open full item page', exact: true })
     if (
       (await page.locator('.object-inspector').count()) !== 1 ||
-      !(await page.locator('.inspector-route').innerText()).includes(`/map/branch/${balance.branches[0].id}`)
+      !(await inspectorItemLink.getAttribute('href')).includes(`/map/branch/${branchId}`)
     )
-      throw new Error('typed map branch route did not open its inspector plumbing')
+      throw new Error('typed map branch inspector did not link to its owning item route')
   }
   const resurfacingNavigationSource = await requestJson('/capture', {
     method: 'POST',
@@ -2894,6 +2921,40 @@ try {
     throw new Error('typed source route did not preserve the captured source identity')
   if (await page.locator('.object-inspector').count())
     throw new Error('typed source route rendered a redundant side inspector beside its full-page record')
+  const itemSections = page.getByRole('navigation', { name: 'Item sections', exact: true })
+  for (const [label, heading] of [
+    ['Files', 'Files & reading companions'],
+    ['Notes & passages', 'Notes'],
+    ['Recall', 'Recall cards'],
+    ['Connections', 'Connected knowledge'],
+    ['History', 'Learning history'],
+    ['Reflection', 'Feedback & outcome'],
+  ]) {
+    await itemSections.getByRole('link', { name: new RegExp('^' + label) }).click()
+    await page.getByRole('heading', { name: heading, exact: true }).waitFor({ state: 'visible' })
+    if (await page.locator('.route-recovered').count())
+      throw new Error('an ordinary item section was mislabeled as a restored legacy route')
+  }
+  const itemReflection = page.locator('.source-feedback-panel').getByRole('textbox', { name: /Your reflection/ })
+  await itemReflection.fill('A local draft retained while browsing item sections.')
+  await itemSections.getByRole('link', { name: /^Files/ }).click()
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.getByRole('heading', { name: 'Files & reading companions', exact: true }).waitFor({ state: 'visible' })
+  if (!page.url().includes('tab=files')) throw new Error('item section was lost on reload')
+  await itemSections.getByRole('link', { name: /^Reflection/ }).click()
+  await itemReflection.fill('A local draft retained while browsing item sections.')
+  await itemSections.getByRole('link', { name: /^Notes & passages/ }).click()
+  await page.goBack()
+  await itemReflection.waitFor({ state: 'visible' })
+  if ((await itemReflection.inputValue()) !== 'A local draft retained while browsing item sections.')
+    throw new Error('switching item sections discarded an unsaved reflection')
+  const passiveRecord = await requestJson(`/capture/${captured.id}/record`)
+  if (
+    passiveRecord.sessions.length !== preRecord.sessions.length ||
+    passiveRecord.notes.length !== preRecord.notes.length
+  )
+    throw new Error('browsing item pages created learning work')
+  await itemSections.getByRole('link', { name: /^Overview/ }).click()
   const started = await requestJson('/sessions/start', {
     method: 'POST',
     body: JSON.stringify({ recommendation_id: captured.id, thread_id: thread.id, target_kind: 'original' }),
@@ -2925,6 +2986,35 @@ try {
     )
   )
     throw new Error('source record did not return the exact reflection')
+  await page.goto(`${baseUrl}/#/library/source/${encodeURIComponent(captured.id)}?tab=notes`, {
+    waitUntil: 'networkidle',
+  })
+  // The session was completed through the API above; refresh the mounted item's snapshot.
+  await page.reload({ waitUntil: 'networkidle' })
+  const attachedNote = sourceRecord.notes.find((note) => note.kind === 'reflection')
+  await page.locator(`a[href^="#/learn/note/${attachedNote.id}"]`).first().click()
+  await page.locator('.scholar-note-workspace').waitFor({ state: 'visible' })
+  await page
+    .getByRole('navigation', { name: 'Related material' })
+    .getByRole('link', { name: 'Source files', exact: true })
+    .click()
+  await page.getByRole('heading', { name: 'Files & reading companions', exact: true }).waitFor({ state: 'visible' })
+  if (!page.url().includes(captured.id)) throw new Error('note-to-files navigation lost the source identity')
+  await page.screenshot({ path: '/tmp/learning-compass-item-page-desktop.png', fullPage: true, animations: 'disabled' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page
+    .getByRole('navigation', { name: 'Item sections' })
+    .getByRole('link', { name: /^Notes & passages/ })
+    .click()
+  await page.getByRole('heading', { name: 'Notes', exact: true }).waitFor({ state: 'visible' })
+  const itemMobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+  if (itemMobileOverflow > 2) throw new Error(`item page overflows mobile by ${itemMobileOverflow}px`)
+  const itemTabHeights = await page
+    .locator('.item-sections a')
+    .evaluateAll((links) => links.map((link) => link.getBoundingClientRect().height))
+  if (itemTabHeights.some((height) => height < 44)) throw new Error('item sections lost their mobile touch targets')
+  await page.screenshot({ path: '/tmp/learning-compass-item-page-mobile.png', fullPage: true, animations: 'disabled' })
+  await page.setViewportSize({ width: 1440, height: 1000 })
   const initialJobs = (await requestJson('/agent/jobs?status=pending')).jobs.filter(
     (job) => job.payload.recommendation_id === captured.id,
   )
@@ -3221,7 +3311,7 @@ try {
     throw new Error('stopped feedback accepted without an explicit reason')
   browserIp = 'e2e-browser-mobile'
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto(`${baseUrl}/#/library/source/${encodeURIComponent(atomicFeedback.source.id)}`, {
+  await page.goto(`${baseUrl}/#/library/source/${encodeURIComponent(atomicFeedback.source.id)}?tab=feedback`, {
     waitUntil: 'networkidle',
   })
   await page.locator('.source-feedback-panel').waitFor({ state: 'visible', timeout: 15000 })
@@ -3231,7 +3321,9 @@ try {
     throw new Error('feedback ledger is missing reflection or expectation/result fields')
   const feedbackMobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   if (feedbackMobileOverflow > 2) throw new Error(`feedback ledger mobile overflow ${feedbackMobileOverflow}px`)
-  await page.goto(`${baseUrl}/#/library/source/${encodeURIComponent(progress.id)}`, { waitUntil: 'networkidle' })
+  await page.goto(`${baseUrl}/#/library/source/${encodeURIComponent(progress.id)}?tab=feedback`, {
+    waitUntil: 'networkidle',
+  })
   const progressFeedbackPanel = page.locator('.source-feedback-panel')
   await progressFeedbackPanel.waitFor({ state: 'visible', timeout: 15000 })
   await progressFeedbackPanel.locator('input[type="radio"][value="in_progress"]').check()
