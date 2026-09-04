@@ -22,7 +22,7 @@ app.get('/recommendations', async (c) => {
         // Rating distribution
         DB.prepare(`SELECT user_rating, COUNT(*) c FROM recommendations WHERE status='consumed' AND consumed_date>=? AND user_rating NOT IN ('unset','') GROUP BY user_rating`).bind(since).all<{ user_rating: string; c: number }>(),
         // Lane balance
-        DB.prepare(`SELECT p.strategy, COUNT(*) c FROM compass_picks p JOIN recommendations r ON r.id=p.recommendation_id WHERE r.status='consumed' AND r.consumed_date>=? GROUP BY p.strategy`).bind(since).all<{ strategy: string; c: number }>(),
+        DB.prepare(`SELECT p.strategy, COUNT(*) c FROM compass_picks p JOIN recommendations r ON r.id=p.recommendation_id WHERE p.workflow_scope='general' AND r.status='consumed' AND r.consumed_date>=? GROUP BY p.strategy`).bind(since).all<{ strategy: string; c: number }>(),
         // Format diversity (Shannon entropy)
         DB.prepare(`SELECT content_type, COUNT(*) c FROM recommendations WHERE status='consumed' AND consumed_date>=? AND content_type IS NOT NULL GROUP BY content_type`).bind(since).all<{ content_type: string; c: number }>(),
         // Average time to consume
@@ -30,7 +30,7 @@ app.get('/recommendations', async (c) => {
         // Resurfacing recall rate
         DB.prepare(`SELECT COUNT(CASE WHEN resolved_at IS NOT NULL THEN 1 END) resolved, COUNT(*) total FROM resurfacing WHERE due_at>=? AND due_at<=date('now')`).bind(since).first<{ resolved: number; total: number }>(),
         // Exploration picks
-        DB.prepare(`SELECT COUNT(CASE WHEN p.strategy IN ('bridge','challenge') THEN 1 END) exploration, COUNT(*) total FROM compass_picks p JOIN recommendations r ON r.id=p.recommendation_id WHERE r.status='consumed' AND r.consumed_date>=?`).bind(since).first<{ exploration: number; total: number }>(),
+        DB.prepare(`SELECT COUNT(CASE WHEN p.strategy IN ('bridge','challenge') THEN 1 END) exploration, COUNT(*) total FROM compass_picks p JOIN recommendations r ON r.id=p.recommendation_id WHERE p.workflow_scope='general' AND r.status='consumed' AND r.consumed_date>=?`).bind(since).first<{ exploration: number; total: number }>(),
       ])
 
       const consumedCount = consumed?.c || 0

@@ -20,7 +20,7 @@
     "web_search",
     "write_file"
   ],
-  "tool_schema_sha256": "d7f3d55ea7ca95731ea2e02010286df8eec20eb168b8926ce86722f8a11ca799",
+  "tool_schema_sha256": "408ebc007b3c215d2eb96297b7363f3fbfd66386a88690fadec55d4fd9a868f3",
   "require_memory_readable": true,
   "require_memory_within_limits": true,
   "require_memory_tail_loaded": true,

@@ -1,11 +1,35 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { createCapture } from '../../src/services/capture.ts'
 
 const captureService = readFileSync(new URL('../../src/services/capture.ts', import.meta.url), 'utf8')
 const captureApi = readFileSync(new URL('../../src/api/capture.ts', import.meta.url), 'utf8')
 const agentCapabilities = readFileSync(new URL('../../src/services/agent-capabilities.ts', import.meta.url), 'utf8')
 const captureDialog = readFileSync(new URL('../../client/src/shell/CaptureDialog.tsx', import.meta.url), 'utf8')
+
+class HistoricalCaptureDatabase {
+  batches: Array<Array<{ sql: string; args: unknown[] }>> = []
+  history = { id: 'canonical-source', status: 'active', branch_id: 'branch-a' }
+  statements: Array<{ sql: string; args: unknown[] }> = []
+
+  prepare(sql: string) {
+    const statement = {
+      sql,
+      args: [] as unknown[],
+      bind: (...args: unknown[]) => { statement.args = args; return statement },
+      first: async () => sql.includes('FROM source_url_replacements history') ? this.history : null,
+      run: async () => ({ meta: { changes: 1 } }),
+    }
+    this.statements.push(statement)
+    return statement
+  }
+
+  async batch(statements: Array<{ sql: string; args: unknown[] }>) {
+    this.batches.push(statements)
+    return []
+  }
+}
 
 test('capture defaults to a captured source record rather than bypassing Queue', () => {
   assert.match(captureService, /input\.initialLearningState \|\| 'captured'/)
@@ -39,6 +63,31 @@ test('Captured sources can be branch-mapped but Queue rejects unmapped sources',
   assert.match(captureApi, /c\.req\.header\('x-agent-name'\)/)
   assert.match(captureDialog, /id="capture-branch-input"/)
   assert.match(captureDialog, /branch_id: branchId/)
+})
+
+test('capturing a former canonical URL resolves replacement lineage and preserves branch conflict review', async () => {
+  const sameBranch = new HistoricalCaptureDatabase()
+  const reused = await createCapture(sameBranch as any, {
+    source: 'https://old.example/article/?utm_source=android',
+    branch: { id: 'branch-a', confidence: 'high', source: 'user_share' },
+  })
+  assert.equal(reused.id, 'canonical-source')
+  assert.equal(reused.duplicate, true)
+  assert.equal(reused.branch_id, 'branch-a')
+  const historyLookup = sameBranch.statements.find((statement) => statement.sql.includes('FROM source_url_replacements history'))
+  assert.equal(historyLookup?.args[1], 'https://old.example/article')
+  assert.equal(sameBranch.batches.length, 1)
+
+  const conflictingBranch = new HistoricalCaptureDatabase()
+  const conflict = await createCapture(conflictingBranch as any, {
+    source: 'https://old.example/article',
+    branch: { id: 'branch-b', confidence: 'high', source: 'user_share' },
+  })
+  assert.deepEqual(conflict, {
+    id: 'canonical-source', duplicate: true, status: 'active',
+    dedup: conflict.dedup, branchConflict: 'branch-a',
+  })
+  assert.equal(conflictingBranch.batches.length, 0)
 })
 
 test('Lite Visual revisions require the exact ready pair and immutable job lineage', () => {

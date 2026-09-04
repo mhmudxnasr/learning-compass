@@ -315,8 +315,9 @@ try {
   browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 page.setDefaultNavigationTimeout(20_000)
+let browserIp = 'e2e-browser-desktop'
 await page.route(`${baseUrl}/**`, (route) => {
-  route.continue({ headers: { ...route.request().headers(), 'x-real-ip': 'e2e-browser' } })
+  route.continue({ headers: { ...route.request().headers(), 'cf-connecting-ip': browserIp, 'x-real-ip': browserIp } })
 })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
@@ -358,6 +359,9 @@ for (const route of modeRoutes) {
   }
   if (await page.locator('.context-pane, .context-scrim, .navigation-sheet').count()) throw new Error(`${route.href}: rendered a redundant context/menu surface`)
   await page.locator(route.expected).waitFor({ state: 'attached', timeout: 15000 })
+  if (route.root === 'library' && route.mode === 'triage' && route.focus === 'queue' && !(await page.locator('.folio-queue-view-ledger').count())) {
+    throw new Error(`${route.href}: Queue did not open in its calm Ledger view by default`)
+  }
   const routeState = await page.evaluate(() => {
     const hash = location.hash.replace(/^#/, '')
     const [path, query = ''] = hash.split('?')
@@ -561,7 +565,7 @@ for (const route of modeRoutes) {
     return { ratio: (lighter + 0.05) / (darker + 0.05), foreground, background }
   })
   if (primaryActionContrast.ratio < 4.5) throw new Error(`Books primary action loses contrast in a custom dark theme: ${JSON.stringify(primaryActionContrast)}`)
-  await requestJson('/settings/appearance', { method: 'PUT', body: JSON.stringify({ theme: 'botanical', density: 'balanced', radius: 'soft', font_size: 'medium', reduced_motion: false, custom_palette: contrastPalette }) })
+  await requestJson('/settings/appearance', { method: 'PUT', body: JSON.stringify({ theme: 'continuum', density: 'balanced', radius: 'soft', font_size: 'medium', reduced_motion: false, custom_palette: contrastPalette }) })
   await page.goto(`${baseUrl}/#/learn/canon/behavioral-psychology`, { waitUntil: 'networkidle' })
   await page.locator('.canon-domain-detail').waitFor({ state: 'visible' })
   if (!page.url().includes('#/learn/canon/behavioral-psychology')) throw new Error('Canon domain did not preserve its canonical typed route')
@@ -611,6 +615,7 @@ for (const route of modeRoutes) {
   await page.waitForURL((url) => url.hash === '#/library')
   if (!page.url().endsWith('#/library') || await page.locator('.books-filter-nav, nav[aria-label="Books views"]').count()) throw new Error(`legacy Library Books query did not recover to the one Books workspace (${page.url()})`)
 
+  browserIp = 'e2e-browser-preferences'
   await page.goto(`${baseUrl}/#/settings?focus=preferences`, { waitUntil: 'networkidle' })
   await page.locator('.settings-jump-disclosure > summary').click()
   for (const section of ['visual-presets-heading', 'interface-tokens', 'theme-section', 'font-section', 'learning-preferences', 'atlas-preferences']) {
@@ -665,6 +670,10 @@ for (const route of modeRoutes) {
       actionInk: getComputedStyle(root).getPropertyValue('--studio-action-ink').trim(),
     }
   })
+  if (await page.locator('.visual-preset-card').count() !== 8 || await page.locator('.visual-preset-preview').count() !== 8) throw new Error('complete workspace presets did not expose all eight art-directed semantic previews')
+  const presetDirections = await page.locator('.visual-preset-reference').allTextContents()
+  const expectedPresetDirections = ['Inspired by Attio', 'Inspired by Raycast', 'Inspired by Superhuman', 'Inspired by Readwise Reader', 'Inspired by Notion', 'Inspired by Craft', 'Inspired by Arc', 'Inspired by Are.na']
+  if (presetDirections.length !== expectedPresetDirections.length || expectedPresetDirections.some((direction) => !presetDirections.includes(direction))) throw new Error(`workspace presets lost their distinct premium references: ${presetDirections.join(', ')}`)
   await saveRadio('Density', 'Compact')
   const compactPreference = await renderedPreferences()
   await saveRadio('Density', 'Comfortable')
@@ -688,20 +697,29 @@ for (const route of modeRoutes) {
   const reducedPreference = await renderedPreferences()
   if (reducedPreference.reducedMotion !== 'true' || reducedPreference.transitionDuration > 0.001) throw new Error(`reduced motion is metadata-only: ${JSON.stringify(reducedPreference)}`)
   await page.locator('#theme-section > summary').click()
-  const midnightTheme = page.locator('.theme-preset-card').filter({ hasText: 'Midnight Observatory' })
+  const continuumTheme = page.locator('.theme-preset-card').filter({ hasText: 'Attio Coral' })
   await Promise.all([
     page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok()),
-    midnightTheme.click(),
+    continuumTheme.click(),
   ])
-  const midnightPreference = await renderedPreferences()
-  if (midnightPreference.theme !== 'midnight' || midnightPreference.colorMode !== 'dark' || !midnightPreference.cypress || !midnightPreference.actionInk) throw new Error(`theme does not replace the global visual system: ${JSON.stringify(midnightPreference)}`)
+  const continuumPreference = await renderedPreferences()
+  if (continuumPreference.theme !== 'continuum' || continuumPreference.colorMode !== 'light' || !continuumPreference.cypress || !continuumPreference.actionInk) throw new Error(`theme does not replace the global visual system: ${JSON.stringify(continuumPreference)}`)
   await page.reload({ waitUntil: 'networkidle' })
-  await page.waitForFunction(() => document.documentElement.dataset.theme === 'midnight' && document.documentElement.dataset.fontSize === 'large')
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'continuum' && document.documentElement.dataset.fontSize === 'large').catch(async () => {
+    const state = await page.evaluate(() => ({
+      dataset: { ...document.documentElement.dataset },
+      localTheme: localStorage.getItem('taste-map-theme'),
+      localDisplay: localStorage.getItem('taste-map-display-preferences'),
+      heading: document.querySelector('h1')?.textContent || '',
+      alert: document.querySelector('[role="alert"]')?.textContent || '',
+    }))
+    throw new Error(`display preferences did not rehydrate after reload: ${JSON.stringify(state)}`)
+  })
   const persistedPreference = await renderedPreferences()
   if (persistedPreference.reducedMotion !== 'true' || persistedPreference.radius !== 'round' || persistedPreference.density !== 'comfortable') throw new Error(`display preferences did not survive reload: ${JSON.stringify(persistedPreference)}`)
   await page.locator('#theme-section > summary').click()
   if (await page.locator('.theme-preset-group').count() !== 3 || !(await page.getByRole('heading', { name: 'Day palettes' }).isVisible()) || !(await page.getByRole('heading', { name: 'Night palettes' }).isVisible())) throw new Error('Themes did not group day, night, and custom systems')
-  if (await page.locator('.theme-semantic-preview').count() !== 21) throw new Error('theme choices did not render semantic studio previews')
+  if (await page.locator('.theme-preset-card .theme-semantic-preview, .theme-custom-card .theme-semantic-preview').count() !== 9) throw new Error('theme choices did not render semantic studio previews')
   const themeReadingOrder = await page.locator('.preferences-layout').evaluate((layout) => {
     const children = [...layout.children]
     return { preview: children.findIndex((node) => node.classList.contains('preferences-preview-rail')), main: children.findIndex((node) => node.classList.contains('preferences-main')) }
@@ -741,11 +759,19 @@ for (const route of modeRoutes) {
   })
   for (const [control, size] of Object.entries(mobileThemeTargets)) if (!size || size.width < 44 || size.height < 44) throw new Error(`mobile ${control} target is below 44px at normal text size: ${JSON.stringify(size)}`)
   await page.evaluate(() => document.documentElement.style.setProperty('--font-scale', '2'))
-  const mobileThemeOverflow = await page.evaluate(() => {
+  const mobileThemeLayout = await page.evaluate(() => {
     const pageNode = document.querySelector('.preferences-page')
-    return pageNode ? pageNode.scrollWidth - pageNode.clientWidth : 0
+    if (!pageNode) return { overflow: 0, offenders: [] }
+    const pageBounds = pageNode.getBoundingClientRect()
+    const offenders = [...pageNode.querySelectorAll('*')].flatMap((node) => {
+      if (!(node instanceof HTMLElement) || node.offsetParent === null) return []
+      const bounds = node.getBoundingClientRect()
+      if (bounds.right <= pageBounds.right + 2 && node.scrollWidth <= node.clientWidth + 2) return []
+      return [{ target: `${node.tagName.toLowerCase()}.${[...node.classList].join('.')}`, right: Math.round(bounds.right - pageBounds.right), ownOverflow: node.scrollWidth - node.clientWidth, text: node.textContent?.trim().replace(/\s+/g, ' ').slice(0, 80) || '' }]
+    }).slice(0, 12)
+    return { overflow: pageNode.scrollWidth - pageNode.clientWidth, offenders }
   })
-  if (mobileThemeOverflow > 2) throw new Error(`custom theme workshop overflows at mobile enlarged text: ${mobileThemeOverflow}px`)
+  if (mobileThemeLayout.overflow > 2) throw new Error(`custom theme workshop overflows at mobile enlarged text: ${JSON.stringify(mobileThemeLayout)}`)
   await page.evaluate(() => document.documentElement.style.removeProperty('--font-scale'))
   await page.setViewportSize({ width: 1440, height: 900 })
   const restoredBrandSave = page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok())
@@ -753,7 +779,7 @@ for (const route of modeRoutes) {
   await restoredBrandSave
   await Promise.all([
     page.waitForResponse((response) => response.url().endsWith('/settings/appearance') && response.request().method() === 'PUT' && response.ok()),
-    page.locator('.theme-preset-card').filter({ hasText: 'Botanical Folio' }).click(),
+    page.locator('.theme-preset-card').filter({ hasText: 'Attio Coral' }).click(),
   ])
   await saveRadio('Density', 'Balanced')
   await saveRadio('Corners', 'Soft')
@@ -874,6 +900,7 @@ const hubLesson = await requestJson(`/learning/core/threads/${hubThread.id}/stag
 const hubItem = await requestJson(`/learning/core/threads/${hubThread.id}/stages/${hubStage.id}/items`, { method: 'POST', body: JSON.stringify({ title: 'Explain the map from memory', item_type: 'recall_prompt', evidence_type: 'free_recall', position: 0 }) })
 const hubSourcePush = await requestJson('/recommendations/push', { method: 'POST', body: JSON.stringify([{ id: 'hub_source_e2e', video_title: 'Hub visible source', video_url: 'https://example.com/hub-visible-source', creator: 'E2E', content_type: 'article', status: 'active' }]) })
 const hubSourceId = hubSourcePush.items?.[0]?.id || 'hub_source_e2e'
+await requestJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/hub-visible-source', title: 'Hub visible source', branch_id: 'fixture-branch-id' }) })
 await requestJson(`/learning/core/threads/${hubThread.id}/stages/${hubStage.id}/sources`, { method: 'POST', body: JSON.stringify({ recommendation_id: hubSourceId, role: 'foundation', expected_contribution: 'Visible source link for the Hub stage.', position: 0 }) })
 const hubRead = await requestJson('/learning/core/hub')
 if (!hubRead.paths.some((path) => path.id === hubThread.id && path.stage_count === 1)) throw new Error('Learning Hub read model omitted the authored stage')
@@ -959,7 +986,7 @@ const requestMaterialJson = (path, options = {}) => requestJson(path, { ...optio
 const materialThread = await requestMaterialJson('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Material launcher fixture', thread_type: 'understand', guiding_question: 'Which material should I open first?', definition_of_done: 'Open the recommended lesson material.', activate: true }) })
 const materialStage = await requestMaterialJson(`/learning/core/threads/${materialThread.id}/stages`, { method: 'POST', body: JSON.stringify({ title: 'Level 1 — Study', objective: 'Use the right rendition for the task.', position: 0 }) })
 const materialLesson = await requestMaterialJson(`/learning/core/threads/${materialThread.id}/stages/${materialStage.id}/lessons`, { method: 'POST', body: JSON.stringify({ title: 'Choose the right material', objective: 'Start with the guided companion and keep alternatives close.', position: 0, estimated_minutes: 18 }) })
-await requestMaterialJson(`/learning/core/threads/${materialThread.id}/stages/${materialStage.id}/lessons`, { method: 'POST', body: JSON.stringify({ title: 'Compare source formats', objective: 'Choose a format based on the learning task.', position: 1, estimated_minutes: 12 }) })
+const materialNextLesson = await requestMaterialJson(`/learning/core/threads/${materialThread.id}/stages/${materialStage.id}/lessons`, { method: 'POST', body: JSON.stringify({ title: 'Compare source formats', objective: 'Choose a format based on the learning task.', content: 'Compare the available formats against the task.', position: 1, estimated_minutes: 12 }) })
 await requestMaterialJson(`/learning/core/threads/${materialThread.id}/stages/${materialStage.id}/lessons`, { method: 'POST', body: JSON.stringify({ title: 'Record the useful distinction', objective: 'Retain the decision rule for future sources.', position: 2, estimated_minutes: 10 }) })
 const materialLessonNote = await requestMaterialJson('/notes', { method: 'POST', body: JSON.stringify({ title: 'Lesson-owned observation', lesson_id: materialLesson.id, sections: [{ section_key: 'body', label: 'Notes', content: 'This belongs only to the lesson.', direction: 'auto' }] }) })
 const materialLessonCard = await requestMaterialJson('/learning/srs/create', { method: 'POST', body: JSON.stringify({ lesson_id: materialLesson.id, question: 'أي نطاق يملك البطاقة دي؟', answer: 'الدرس المحدد نفسه.' }) })
@@ -977,6 +1004,8 @@ await requestMaterialJson('/recommendations/push', { method: 'POST', body: JSON.
   { id: 'material_launcher_source', video_title: 'Source with learning companions', video_url: 'https://example.com/material-launcher-original', creator: 'E2E', content_type: 'article', status: 'active' },
   { id: 'material_launcher_case', video_title: 'Secondary lesson case study', video_url: 'https://example.com/material-launcher-case', creator: 'E2E', content_type: 'article', status: 'active' },
 ]) })
+await requestMaterialJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/material-launcher-original', title: 'Source with learning companions', branch_id: 'fixture-branch-id' }) })
+await requestMaterialJson('/capture', { method: 'POST', body: JSON.stringify({ source: 'https://example.com/material-launcher-case', title: 'Secondary lesson case study', branch_id: 'fixture-branch-id' }) })
 await requestMaterialJson('/recommendations/action', { method: 'POST', body: JSON.stringify({ id: 'material_launcher_source', status: 'active', notebook_url: 'https://notebooklm.google.com/notebook/material-launcher' }) })
 await requestMaterialJson('/notebooklm/learning/receipts', { method: 'POST', body: JSON.stringify({ kind: 'source', recommendation_id: 'material_launcher_source', notebook_id: 'material-launcher', notebook_url: 'https://notebooklm.google.com/notebook/material-launcher', status: 'pending' }) })
 await requestMaterialJson('/notebooklm/learning/receipts', { method: 'POST', body: JSON.stringify({ kind: 'source', recommendation_id: 'material_launcher_source', notebook_id: 'material-launcher', notebook_url: 'https://notebooklm.google.com/notebook/material-launcher', status: 'indexed', provider_source_id: 'provider-material-source' }) })
@@ -1029,6 +1058,9 @@ await page.goto(`${baseUrl}/#/learn/t/${materialThread.id}/l/${materialLesson.id
 if (!(await page.locator('.lesson-source-start .course-material-icon-action.is-primary').isVisible()) || await page.locator('.lesson-source-start .course-material-icon-action').count() !== 4) throw new Error('Lesson launcher lost its compact format actions on mobile')
 if (await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth) > 2) throw new Error('Lesson material launcher introduced mobile horizontal overflow')
 await page.setViewportSize({ width: 1440, height: 900 })
+await page.getByRole('button', { name: 'Mark lesson complete' }).click()
+await page.waitForURL((url) => url.hash === `#/learn/t/${materialThread.id}/l/${materialNextLesson.id}`)
+await page.getByRole('heading', { level: 1, name: 'Compare source formats' }).waitFor({ state: 'visible' })
 for (const artifact of [materialHtml, materialPdf, materialLessonFile]) {
   const cleanup = await fetch(`${baseUrl}/artifacts/${artifact.id}`, { method: 'DELETE', headers: { 'x-real-ip': 'e2e-learning-materials' } })
   if (!cleanup.ok) throw new Error(`material launcher fixture cleanup failed for ${artifact.id}`)
@@ -1082,6 +1114,12 @@ if (profileBody.includes('Priority topics configured.')) throw new Error('profil
 if (profileBody.includes('{"malformed":')) throw new Error('profile page exposed raw JSON in its normal view')
 if (await page.locator('.profile-tag-list').count() < 1) throw new Error('profile page did not render visual topic tags')
 if (await page.locator('.profile-settings-page .profile-record').count() < 1) throw new Error('profile records did not render')
+const homeCompletionThread = await requestJson('/learning/core/threads', { method: 'POST', body: JSON.stringify({ title: 'Home completion fixture', thread_type: 'practice', guiding_question: 'Can Home close one lesson without losing context?', definition_of_done: 'Complete both lessons directly.', activate: true }) })
+const homeCompletionStage = await requestJson(`/learning/core/threads/${homeCompletionThread.id}/stages`, { method: 'POST', body: JSON.stringify({ title: 'Level 1 — Home flow', objective: 'Keep completion inside the current desk.', position: 0 }) })
+const homeCompletionLesson = await requestJson(`/learning/core/threads/${homeCompletionThread.id}/stages/${homeCompletionStage.id}/lessons`, { method: 'POST', body: JSON.stringify({ title: 'Finish this lesson from Home', content: 'A complete lesson body makes direct completion available.', position: 0 }) })
+const homeCompletionNextLesson = await requestJson(`/learning/core/threads/${homeCompletionThread.id}/stages/${homeCompletionStage.id}/lessons`, { method: 'POST', body: JSON.stringify({ title: 'Continue from Home', content: 'The next lesson should replace the completed turn without navigation.', position: 1 }) })
+await requestJson(`/learning/core/threads/${homeCompletionThread.id}/stages/${homeCompletionStage.id}/start`, { method: 'POST' })
+await requestJson(`/learning/core/threads/${homeCompletionThread.id}/lessons/${homeCompletionLesson.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'in_progress' }) })
 const [settings, manifest, artifacts, feeds, manualArchive, proposals, cards, momentum, balance] = await Promise.all([
   fetch(`${baseUrl}/settings`).then((response) => response.json()),
   fetch(`${baseUrl}/manifest.json`).then((response) => response.json()),
@@ -1162,6 +1200,17 @@ if (await page.locator('.folio-home-focus').count() !== 1) throw new Error('Home
 const homeThreadTurns = page.locator('.folio-home-thread-list .folio-home-thread-lesson')
 await homeThreadTurns.first().waitFor({ state: 'visible', timeout: 15000 })
 if (await homeThreadTurns.count() !== momentum.active_threads.length) throw new Error(`Home must show exactly one current turn from every Thread (${await homeThreadTurns.count()}/${momentum.active_threads.length})`)
+const homeCompletionTurn = homeThreadTurns.filter({ hasText: 'Home completion fixture' })
+const homeFinishButton = homeCompletionTurn.getByRole('button', { name: 'Finish lesson: Finish this lesson from Home' })
+await homeFinishButton.waitFor({ state: 'visible' })
+const homeFinishResponse = page.waitForResponse((response) => response.url().endsWith(`/learning/core/threads/${homeCompletionThread.id}/lessons/${homeCompletionLesson.id}`) && response.request().method() === 'PATCH')
+await homeFinishButton.click()
+if (!(await homeFinishResponse).ok()) throw new Error('Home lesson completion mutation failed')
+await homeCompletionTurn.getByRole('button', { name: 'Finished: Finish this lesson from Home' }).waitFor({ state: 'visible' })
+await homeCompletionTurn.getByText('Continue from Home', { exact: true }).waitFor({ state: 'visible', timeout: 15000 })
+if (!page.url().includes('#/home')) throw new Error('Home lesson completion navigated away from Home')
+const homeCompletionPath = await requestJson(`/learning/core/threads/${homeCompletionThread.id}/path`)
+if (homeCompletionPath.stages[0].lessons.find((lesson) => lesson.id === homeCompletionLesson.id)?.status !== 'completed' || homeCompletionPath.stages[0].lessons.find((lesson) => lesson.id === homeCompletionNextLesson.id)?.status !== 'not_started') throw new Error('Home lesson completion did not preserve direct ordered progression')
 
 await page.goto(`${baseUrl}/#/library?mode=assets&focus=files`, { waitUntil: 'networkidle' })
 if (artifacts.artifacts.length === 0) {
@@ -1271,6 +1320,7 @@ const atomicStructuredFeedback = JSON.parse(atomicRecord.item.source_metadata_js
 if (atomicStructuredFeedback?.score !== 8 || atomicStructuredFeedback?.effort !== 'deep' || atomicStructuredFeedback?.length_minutes !== 45 || atomicStructuredFeedback?.expected !== 'A useful mechanism.' || !atomicStructuredFeedback?.reason_tags?.includes('revisit')) throw new Error('structured feedback was not preserved on the source record')
 const stoppedWithoutReason = await fetch(`${baseUrl}/feedback/record`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-real-ip': 'e2e-feedback-validation' }, body: JSON.stringify({ recommendation_id: atomicFeedback.source.id, feedback: 'I stopped here.', completion_state: 'stopped' }) })
 if (stoppedWithoutReason.status !== 400 || (await stoppedWithoutReason.json()).error !== 'stopped_reason_required') throw new Error('stopped feedback accepted without an explicit reason')
+browserIp = 'e2e-browser-mobile'
 await page.setViewportSize({ width: 390, height: 844 })
 await page.goto(`${baseUrl}/#/library/source/${encodeURIComponent(atomicFeedback.source.id)}`, { waitUntil: 'networkidle' })
 await page.locator('.source-feedback-panel').waitFor({ state: 'visible', timeout: 15000 })

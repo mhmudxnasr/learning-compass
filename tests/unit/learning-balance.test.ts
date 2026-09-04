@@ -71,3 +71,31 @@ test('learning balance projects lifetime frontier evidence, exact lessons, lates
   assert.equal(branch.frontier_state, 'developing')
   assert.equal(balance.branches.some((node) => node.id === 'pruned' || node.id === 'pruned-leaf'), false)
 })
+
+test('learning balance keeps paused and retired cards visible in totals but excludes them from due risk', async () => {
+  const today = new Date().toISOString().slice(0, 10)
+  const rows = (sql: string) => {
+    if (sql.includes('FROM tree_nodes')) return [
+      { id: 'root', type: 'root', label: 'Root', parent_id: null, status: 'active' },
+      { id: 'cat', type: 'category', label: 'Domain', parent_id: 'root', status: 'active' },
+      { id: 'branch', type: 'branch', label: 'Branch', parent_id: 'cat', status: 'active' },
+    ]
+    if (sql.includes('FROM recommendations r LEFT JOIN recommendation_meta')) return [
+      { id: 'source', status: 'consumed', consumed_date: today, branch_id: 'branch', dedup_key: '' },
+    ]
+    if (sql.includes('FROM srs_cards')) return [
+      { id: 'active-card', recommendation_id: 'source', due_at: today, repair_status: 'active' },
+      { id: 'paused-card', recommendation_id: 'source', due_at: today, repair_status: 'paused' },
+      { id: 'retired-card', recommendation_id: 'source', due_at: today, repair_status: 'retired' },
+    ]
+    return []
+  }
+  const DB = { prepare(sql: string) { return { all: async () => ({ results: rows(sql) }) } } }
+
+  const balance = await buildLearningBalance(DB as any, 30)
+  const branch = balance.branches.find((node) => node.id === 'branch')!
+
+  assert.equal(branch.srs_total, 3)
+  assert.equal(branch.srs_due, 1)
+  assert.ok(branch.reasons.includes('1 recall card is due'))
+})

@@ -2,27 +2,25 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { loadReleaseContractHealth } from '../../src/services/release-readiness.ts'
+import { loadReleaseContractHealth, REQUIRED_RELEASE_COLUMNS, REQUIRED_RELEASE_SCHEMA } from '../../src/services/release-readiness.ts'
 
-const releaseSchema = [
-  'lite_visual_corpora',
-  'lite_visual_corpus_targets',
-  'lite_visual_pairs',
-  'lite_visual_active_corpora',
-  'idx_lite_visual_pairs_corpus_state',
-  'idx_lite_visual_pairs_recommendation_state',
-  'trg_lite_visual_staged_pair_guard',
-  'trg_lite_visual_corpus_activation_guard',
-  'trg_lite_visual_corpus_rollback_guard',
-]
+const releaseSchema = [...REQUIRED_RELEASE_SCHEMA]
+const releaseColumns = Object.entries(REQUIRED_RELEASE_COLUMNS).flatMap(([table, names]) =>
+  names.map((name) => ({ table_name: table, name })))
 
-const environment = (present = releaseSchema, overrides: Record<string, unknown> = {}) => ({
+const environment = (
+  present = releaseSchema,
+  overrides: Record<string, unknown> = {},
+  presentColumns = releaseColumns,
+) => ({
   DB: {
-    prepare: () => ({
-      bind: (...expected: string[]) => ({
-        all: async () => ({ results: present.filter((name) => expected.includes(name)).map((name) => ({ name })) }),
-      }),
-    }),
+    prepare: (sql: string) => sql.includes('pragma_table_info')
+      ? { all: async () => ({ results: presentColumns }) }
+      : {
+          bind: (...expected: string[]) => ({
+            all: async () => ({ results: present.filter((name) => expected.includes(name)).map((name) => ({ name })) }),
+          }),
+        },
   },
   ARTIFACTS: {},
   ASSETS: {},
@@ -32,18 +30,21 @@ const environment = (present = releaseSchema, overrides: Record<string, unknown>
   ...overrides,
 }) as any
 
-test('release readiness requires migration 0068 schema, production bindings, and signing key', async () => {
+test('release readiness requires migrations 0068–0073 schema, production bindings, and signing key', async () => {
   const healthy = await loadReleaseContractHealth(environment())
   assert.equal(healthy.ok, true)
   assert.deepEqual(healthy.schema.missing, [])
+  assert.deepEqual(healthy.schema.missing_columns, [])
   assert.equal(healthy.signing_secret_configured, true)
 
-  const missing = await loadReleaseContractHealth(environment(releaseSchema.slice(1), {
-    AI: undefined,
-    LITE_VISUAL_RECEIPT_SIGNING_KEY: 'too-short',
-  }))
+  const missing = await loadReleaseContractHealth(environment(
+    releaseSchema.slice(1),
+    { AI: undefined, LITE_VISUAL_RECEIPT_SIGNING_KEY: 'too-short' },
+    releaseColumns.filter(({ table_name, name }) => `${table_name}.${name}` !== 'source_annotations.revision_of_annotation_id'),
+  ))
   assert.equal(missing.ok, false)
   assert.deepEqual(missing.schema.missing, ['lite_visual_corpora'])
+  assert.deepEqual(missing.schema.missing_columns, ['source_annotations.revision_of_annotation_id'])
   assert.equal(missing.bindings.ai, false)
   assert.equal(missing.signing_secret_configured, false)
 })

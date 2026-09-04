@@ -103,6 +103,7 @@ app.post('/:id/complete', async (c) => {
   const { DB } = c.env
   try {
     const body = await c.req.json<any>()
+    let completionResult = body
     const worker = workerFrom(c, body)
     if (!worker) return c.json({ error: 'worker identity required' }, 400)
     const job = await DB.prepare(`SELECT * FROM agent_jobs WHERE id=? AND status='running' AND lease_owner=? AND (lease_expires_at IS NULL OR lease_expires_at>=datetime('now'))`).bind(c.req.param('id'), worker).first<any>()
@@ -121,6 +122,70 @@ app.post('/:id/complete', async (c) => {
     }
     if (job.job_type === 'process_feedback' && (body.note || body.srs_drafts?.length)) {
       return c.json({ error: 'Taste Mapper may propose changes but cannot create source notes or recall drafts' }, 400)
+    }
+    if (job.job_type === 'compass_lesson_material') {
+      const outcome = String(body.outcome || '').trim()
+      const allowedKeys = outcome === 'ready'
+        ? new Set(['worker', 'outcome', 'pick_id', 'recommendation_id', 'title', 'creator', 'source_url', 'expected_contribution', 'branch_id'])
+        : new Set(['worker', 'outcome', 'reason'])
+      const unsupported = Object.keys(body).filter((key) => !allowedKeys.has(key))
+      if (unsupported.length) return c.json({
+        error: 'lesson_material_output_forbidden',
+        message: 'Find material may only return one reviewable Compass pick or an abstention. It cannot attach, queue, start, or advance anything.',
+        unsupported,
+      }, 400)
+      if (!['ready', 'abstained'].includes(outcome)) return c.json({ error: 'lesson_material_outcome_invalid', allowed_outcomes: ['ready', 'abstained'] }, 400)
+      if (outcome === 'abstained') {
+        const reason = String(body.reason || '').trim().slice(0, 2000)
+        if (!reason) return c.json({ error: 'lesson_material_abstention_requires_reason' }, 400)
+        completionResult = { outcome: 'abstained', reason }
+      } else {
+        const pickId = String(body.pick_id || '').trim().slice(0, 120)
+        const recommendationId = String(body.recommendation_id || '').trim().slice(0, 120)
+        const title = String(body.title || '').trim().slice(0, 500)
+        const sourceUrl = String(body.source_url || '').trim().slice(0, 2000)
+        const expectedContribution = String(body.expected_contribution || '').trim().slice(0, 1000)
+        const branchId = String(body.branch_id || '').trim().slice(0, 120)
+        if (!pickId || !recommendationId || !title || !sourceUrl || !expectedContribution || !branchId) return c.json({
+          error: 'lesson_material_ready_incomplete',
+          required: ['pick_id', 'recommendation_id', 'title', 'source_url', 'expected_contribution', 'branch_id'],
+        }, 400)
+        const pick = await DB.prepare(`SELECT p.id,p.status,p.thread_id,p.recommendation_id,c.title,c.creator,c.canonical_url,c.branch_id,c.evidence_json,
+            b.super_category,d.id domain_id
+          FROM compass_picks p
+          JOIN compass_candidates c ON c.pick_id=p.id AND c.is_winner=1
+          JOIN recommendation_meta m ON m.recommendation_id=p.recommendation_id AND m.branch_id=c.branch_id
+          JOIN tree_nodes b ON b.id=c.branch_id AND b.type IN ('branch','leaf') AND lower(COALESCE(b.status,''))!='pruned'
+          JOIN tree_nodes d ON d.id=b.super_category AND d.type='category' AND lower(COALESCE(d.status,''))!='pruned'
+          WHERE p.id=? AND p.workflow_scope='lesson_material' AND p.workflow_request_id=?
+            AND p.status='ready' AND p.recommendation_id IS NOT NULL`).bind(pickId, job.id).first<any>()
+        let evidence: any = {}
+        try { evidence = JSON.parse(pick?.evidence_json || '{}') } catch {}
+        const targetLessonId = String(evidence?.candidate_context?.target_lesson_id || '')
+        if (!pick || pick.thread_id !== payload.thread_id || targetLessonId !== payload.lesson_id) return c.json({
+          error: 'lesson_material_pick_scope_mismatch',
+          message: 'The ready Compass pick must belong to this exact material request, Thread, and target lesson.',
+        }, 409)
+        const canonicalContribution = String(evidence?.candidate_context?.expected_contribution || evidence?.candidate_context?.expected_learning || '').trim().slice(0, 1000)
+        if (recommendationId !== String(pick.recommendation_id || '').trim()
+          || title !== String(pick.title || '').trim() || sourceUrl !== String(pick.canonical_url || '').trim()
+          || branchId !== String(pick.branch_id || '').trim() || !canonicalContribution || expectedContribution !== canonicalContribution) {
+          return c.json({
+            error: 'lesson_material_pick_receipt_mismatch',
+            message: 'The completion receipt must match the verified winner exactly.',
+          }, 409)
+        }
+        completionResult = {
+          outcome: 'ready',
+          pick_id: pick.id,
+          recommendation_id: pick.recommendation_id,
+          title: pick.title,
+          creator: pick.creator || null,
+          source_url: pick.canonical_url,
+          expected_contribution: canonicalContribution,
+          branch_id: pick.branch_id,
+        }
+      }
     }
     if (job.job_type === 'visualise_source') {
       const stagedPair = job.workflow_run_id
@@ -142,6 +207,27 @@ app.post('/:id/complete', async (c) => {
       }
       if (job.workflow_step !== 'verify_record') return c.json({ error: 'Lite Visual must reach verify_record before completion', workflow_step: job.workflow_step }, 409)
       if (!String(body.pair_id || '').startsWith('lv-') || !body.html_artifact_id || !body.pdf_artifact_id || body.validation_status !== 'passed') return c.json({ error: 'Lite Visual completion requires one verified atomic HTML/PDF pair' }, 400)
+    }
+    if (job.job_type === 'compass_lesson_material') {
+      const outcome = String(completionResult.outcome || '')
+      const pickId = String(completionResult.pick_id || '')
+      const completion = await DB.batch([
+        DB.prepare(`UPDATE compass_picks SET status='resolved',resolved_at=COALESCE(resolved_at,datetime('now')),updated_at=datetime('now')
+          WHERE workflow_scope='lesson_material' AND workflow_request_id=? AND status IN ('ready','abstained')
+            AND (?='abstained' OR id=?)
+            AND EXISTS (SELECT 1 FROM agent_jobs j WHERE j.id=? AND j.status='running' AND j.lease_owner=?
+              AND (j.lease_expires_at IS NULL OR j.lease_expires_at>=datetime('now')))`)
+          .bind(job.id, outcome, pickId, job.id, worker),
+        DB.prepare(`UPDATE agent_jobs
+          SET status='completed',result_json=?,error=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now')
+          WHERE id=? AND status='running' AND lease_owner=? AND (lease_expires_at IS NULL OR lease_expires_at>=datetime('now'))
+            AND (?='abstained' OR EXISTS (SELECT 1 FROM compass_picks p
+              WHERE p.id=? AND p.workflow_scope='lesson_material' AND p.workflow_request_id=agent_jobs.id AND p.status='resolved'))`)
+          .bind(JSON.stringify(completionResult), job.id, worker, outcome, pickId),
+      ])
+      if (!completion[1]?.meta.changes) return c.json({ error: 'job unavailable at completion' }, 409)
+      await DB.prepare('DELETE FROM agent_job_retries WHERE job_id=?').bind(job.id).run()
+      return c.json({ ok: true, job_id: job.id, result: completionResult })
     }
     const statements: D1PreparedStatement[] = []
     const conversationId = payload.conversation_id || `feedback-job:${job.id}`
@@ -252,7 +338,7 @@ app.post('/:id/complete', async (c) => {
         proposal.target_version == null ? null : Number(proposal.target_version),
       ))
     }
-    statements.push(DB.prepare(`UPDATE agent_jobs SET status='completed',result_json=?,error=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=?`).bind(JSON.stringify(body), job.id))
+    statements.push(DB.prepare(`UPDATE agent_jobs SET status='completed',result_json=?,error=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=?`).bind(JSON.stringify(completionResult), job.id))
     await DB.batch(statements)
     if (job.job_type === 'extract_notes') await advanceConsolidationForExtraction(DB, job.id, body)
     const automation = await DB.prepare(`SELECT value_json FROM user_settings WHERE setting_key='profile_automation'`).first<any>().catch(() => null)

@@ -12,7 +12,7 @@ test('every exposed artifact projection and broad search excludes staged rows', 
   const agent = readFileSync(new URL('../../src/api/agent.ts', import.meta.url), 'utf8')
 
   assert.equal(recommendations.split(visibilityPredicate).length - 1, 2)
-  assert.equal(dashboard.split(visibilityPredicate).length - 1, 1)
+  assert.equal(dashboard.split(visibilityPredicate).length - 1, 2)
   assert.equal(search.split(visibilityPredicate).length - 1, 2)
   assert.equal(agent.split(visibilityPredicate).length - 1, 1)
   assert.equal(search.split(`WHERE ${visibilityPredicate} AND (filename LIKE ? OR metadata_json LIKE ?)`).length - 1, 2)

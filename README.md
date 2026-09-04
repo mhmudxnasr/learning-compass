@@ -16,7 +16,7 @@ capture → curate → consume externally → reflect → extract notes
 3. **Consume:** opening an item starts or resumes a learning session, then hands off to the original source.
 4. **Return:** the user records a five-part reflection and may complete and rate the session in the same action.
 5. **Process:** structured notes are stored in D1. Large source files and generated reading companions live in R2.
-6. **Review:** explicit `retain`/`apply` may create a separate source-shaped note and anchored Learning Units. Automated flash-card generation is disabled; every new recall card requires an explicit learner-authored Arabic question and answer.
+6. **Review:** explicit `retain`/`apply` may create a separate source-shaped note and anchored Learning Units. Automated flash-card generation is disabled; every new recall card requires an explicit learner-authored Arabic question and answer. Repeatedly lapsed or paused cards remain repairable through wording-preserving, semantic-reset, pause/retire/restore, and explicit schedule-reset actions without deleting review history.
 7. **Learn from history:** ratings, notes, review events, and map coverage inform future resurfacing and taste analysis.
 
 Feedback never requests another recommendation automatically. Finishing one item should close the loop, not create an endless feed.
@@ -48,6 +48,7 @@ The browser uses hash routes, so the Worker serves one application shell. The Wo
 | Captures, typed personal library, queue, sessions, notes, ratings, cards, settings, and map | D1 |
 | PDFs, HTML, transcripts, and generated companions | R2 |
 | Pending offline mutations | IndexedDB until synchronized |
+| Explicit offline-pack manifests and cached verified companion pairs | Browser Cache Storage, versioned per source/book/Thread/Level pack |
 | UI preferences and resumable client state | Local storage |
 | Extracted-note archive copies | Obsidian |
 | KOReader/Hardcover books and reading-journal mirror | Hardcover externally; mirrored in D1 until branch-gated import |
@@ -65,6 +66,8 @@ Settings → Data & recovery starts with the Personal Data Studio: real counts a
 | Personal-media state beside canonical source identity | Watch/read history can inform direct preferences without pretending that every item is a queued lesson or a second disconnected database. |
 | Consumption at the original source | The system tracks learning without becoming a worse reader for every media format. |
 | Learner-authored Arabic recall cards | Flash cards are never generated automatically; the learner creates each question and answer explicitly. |
+| Exact source anchors before derived learning objects | A saved quote and locator are durable evidence; notes, Units, and recall cards still require separate explicit learner actions. |
+| Advisory source health | A failed automated check warns and preserves history; it never silently rewrites the Original URL. |
 | Leased, idempotent background jobs | A crash or retry must not duplicate notes, cards, artifacts, or taste signals. |
 | One canonical database | Notes, ratings, map state, and automation cannot safely disagree about which copy is current. |
 
@@ -101,7 +104,7 @@ Read [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for the durable product model, [CU
 
 - Node.js 22
 - npm
-- A Chromium browser installed through Playwright for E2E
+- A Chromium browser installed through Playwright for E2E and Hermes Lite Visual PDF rendering
 - A Cloudflare account only when applying remote migrations or deploying
 
 ### Install
@@ -138,9 +141,9 @@ Open `http://127.0.0.1:8787`.
 
 ### Install on Android
 
-Open the production site in Chrome on Android and choose **Install app**, either from the in-product install card or Chrome's menu. The installed app launches in its own window, accepts shared links through Android's share sheet, exposes Capture/Queue/Recall launcher shortcuts, keeps the application shell available offline, respects display cutouts and system safe areas, and continues queued writes after connectivity returns.
+Open the production site in Chrome on Android and choose **Install app**, either from the in-product install card or Chrome's menu. The installed app launches in its own window, accepts shared links through Android's share sheet, exposes Capture/Queue/Recall launcher shortcuts, keeps the application shell available offline, respects display cutouts and system safe areas, and continues queued writes after connectivity returns. When Android sends a URL with prose, Learning Compass asks whether the prose is merely a description for whole-source Capture or an exact selected passage; that choice and the unfinished share survive closing the app. Exact selected passages are capped at 10,000 characters end to end and are rejected with a visible explanation rather than silently shortened.
 
-HTML reading companions are cached automatically after their first successful online open. Reopening the same companion works offline without an extra control; unopened companions and PDFs still require a connection.
+HTML reading companions are still cached opportunistically after a successful online open. For deliberate offline study, use **Keep offline** on a Queue/source, book chapter, whole book, current Thread, or current Level. Each versioned pack downloads only a complete ready, validation-passed HTML+PDF pair with matching pair identity plus a compact revisioned snapshot of the owning source, book, or Thread path. The service worker checks the pair ID, artifact role, publication state, and validation state returned by the Worker during the actual download, then reports the measured size and whether the pack is ready, incomplete/evicted, superseded, storage-full, or failed. Refresh replaces an old pack only after the new one is complete; a stale or failed download preserves the prior ready pack. Remove deletes that pack. Original source and NotebookLM links remain online-only.
 
 The web app is the canonical Android experience. A Play Store package should use a Trusted Web Activity over this same PWA plus verified Digital Asset Links; do not fork the product into a separate WebView client.
 
@@ -297,23 +300,30 @@ Add offline mutation recovery, large-data tests, bilingual direction handling, r
 - Returning with reflection creates one linked structured reflection.
 - Every reflection produces confirmation-gated Taste Mapper proposals.
 - Explicit retain/apply consolidation creates one source-proportional synthesis and anchored Learning Units but never flash cards. New recall cards require an explicit learner-authored Arabic question and answer.
+- A source anchor stores the exact passage, surrounding context, typed locator, checksum, source, branch, and optional Thread. Saving or editing it never creates a note, Learning Unit, or recall card; each derivation is a separate explicit action with validated provenance. A checksum-changing evidence edit creates a new active revision and archives the prior row, so existing derivations retain their exact historical anchor.
+- Recall repair is revisioned and non-destructive: wording changes preserve FSRS state, semantic changes reset scheduling, pause/retire/restore remain reversible, and review history is retained. Manual split creates one learner-authored card at a time without mutating the original.
+- Offline packs include only same-pair, ready, validation-passed HTML+PDF companions and same-origin canonical metadata. Original sources and NotebookLM are never copied into the pack.
+- Source health is advisory. Scheduled checks are bounded to Queue, the active lesson, and the Current Book; restricted/unknown responses are not dead-link verdicts, and replacing an Original URL requires a separately verified candidate plus an explicit replacement action with preserved lineage.
+- Thread Resources searches existing branch-owned Library sources before web research and edits exact Level/Lesson role, contribution, and order. **Find material** is explicit-only and may return one reviewable exact-lesson Compass pick or abstain; it never attaches, queues, starts, or advances anything.
 - Feedback processing does not request a new recommendation.
 - Completed sources can be explicitly attached to existing knowledge-map nodes; ambiguous matches stay unresolved instead of creating speculative branches.
 - An abstained Compass Pick with a verified or restricted reachable source can be explicitly added to the Queue anyway; the override bypasses only the automatic threshold, and the five-item Queue cap still applies.
-- One Lite Visual source creates one atomic Arabic HTML/PDF reading-companion pair and counts as one taste signal. `extract_source.py` routes articles, YouTube/audio, PDF/OCR, EPUB, documents, and text into one hash-bound `source.txt`; valid cache hits return in milliseconds, while first network/transcription runs report their real elapsed time. YouTube always uses a complete manual or generated caption track when available; audio transcription runs only after caption inventory positively confirms that the exact video has no tracks. HTML is the complete canonical body; PDF is its exact print rendition. Every artifact is designed fresh after Intent and Frontend Design reasoning and uses only semantic HTML, source-specific CSS, native structures/equations, and rare justified inline SVG. The v6 path requires a contiguous semantic inventory of no more than 120 source words per reviewed scope, exactly one matching claim and non-appendix authored anchor per scope, plus one visible complete-source edition proving every normalized accepted source word remains readable in screen and print output. Templates, preset themes/palettes/layouts, mind maps, raster/generated images, image agents, scripts, widgets, unstructured transcript duplication used as depth padding, and decorative media are forbidden.
+- One Lite Visual source creates one atomic Arabic HTML/PDF pair and counts as one taste signal. Acquire the complete source with `extract_source.py` and preserve its hash-bound receipt, caption-first routing, and cache. Teach directly in source-specific semantic HTML and print that exact file. The default `lite-visual-integrity/v1` receipt records identity and file integrity only, with quality checks not run. No required 120-word paperwork, editorial review forms, forced source appendix, or exhaustive artifact audit. Templates, raster assets, image agents, scripts, and widgets remain outside the code-only reading format.
 
 ```bash
 python3 /home/mahmud/.hermes/skills/lite-visual/scripts/extract_source.py '<URL-or-file>' \
   --output /abs/work/source.txt \
   --manifest /abs/work/source-extraction.json
 ```
-- Lite Visual v6 receipts are HMAC-attested over a cross-runtime-safe integer/string domain. Replacement corpora persist chapter-aware ordered targets and immutable workflow runs, stage as invisible R2-verified pairs with lease-free `awaiting_activation` jobs, and become visible only through one all-target D1 activation transaction. Activation re-verifies R2, current source identity, and every current-pair precondition; abort safely discards hidden staging; guarded rollback rechecks and restores the immediately prior visible set. A stale or interrupted lifecycle request cannot mutate the winning state.
+- Lite Visual integrity receipts and historical v6 validation receipts are HMAC-attested. Replacement corpora retain ordered targets, immutable workflow runs, R2-verified staged pairs, lease-free awaiting jobs, and guarded all-target activation. Their identity/hash audit must truthfully describe its scope. Abort and rollback preserve exact lineage and prior visibility.
 - D1 remains canonical; R2 stores large artifacts; Obsidian remains an archive export.
 - Every registered destination resolves to a purposeful view.
 
 ## Deployment
 
-Run `npm run verify:release` and the full [release checklist](docs/release-checklist.md), then deploy only from this repository. Application-only deployments require a fresh complete D1-plus-R2 backup with verified restore, healthy readiness, exact migration parity, and no corpus mutation. Corpus registration, staging, upload, activation, and rollback remain separately prohibited until every immutable target has accepted semantic-completeness evidence, the aggregate corpus audit passes, and independent review accepts it. Migration `0068` is already applied and must never be replayed.
+Hermes Lite Visual runs locally from its native skill. Read its Arabic teaching/design guides, write the complete canonical article, and run `scripts/run_workflow.py finish` to render and seal local HTML/PDF. Mandatory editorial passes, fine-scope review forms, forced source duplication, and exhaustive artifact quality checks are removed. The new signed `lite-visual-integrity/v1` receipt explicitly says quality checks were not run. `publish` requires the updated Worker `/artifacts/pair-contract`, then retains atomic publication and exact readback. Historical v6 pairs remain compatible. No source is regenerated by installing this update.
+
+Run `npm run verify:release` and the full [release checklist](docs/release-checklist.md), then deploy only from this repository. Application-only deployments require a fresh complete D1-plus-R2 backup with verified restore, healthy readiness, exact migration parity, and no corpus mutation. Corpus registration, staging, upload, activation, and rollback remain separately prohibited until every immutable target has accepted semantic-completeness evidence, the aggregate corpus audit passes, and independent review accepts it. Migrations through `0073` are applied in production and at exact repository parity; never replay them.
 
 ```bash
 npx wrangler deploy --config wrangler.toml
@@ -321,6 +331,6 @@ npx wrangler deploy --config wrangler.toml
 
 Code deployment and data changes are separate operations. D1 or R2 data-only writes do not require a Worker deployment.
 
-Current deployed Worker version: `5ad589b7-d710-447e-b388-e3318b846847`. The deployed PWA shell cache is `learning-compass-shell-v45`.
+Current deployed Worker version: `c7ff444f-fdfa-464c-ad05-a3c9be966575`. Rollback version: `24ecdbe8-c519-46d0-8489-b937c834149a`. The deployed PWA shell cache is `learning-compass-shell-v52`. Pre-migration recovery snapshot `backup_20260831T062702Z` and D1 Time Travel bookmark `000008f4-00000053-000050d8-73a1e9e3e09a2dccab4d5d6c9b05771b` are the release recovery points.
 
 The production Worker, R2 bucket, cache names, protocol name, cron name, and Hermes paths retain legacy identifiers for compatibility even though the product and repository are named Learning Compass.

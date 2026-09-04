@@ -105,3 +105,18 @@ test('v4 companions stay hidden until the complete validated pair is ready', () 
   assert.equal(ready.get('rec-1')?.html?.id, 'ready-html')
   assert.equal(ready.get('rec-1')?.pdf?.id, 'ready-pdf')
 })
+
+test('superseded companion revisions never displace the current visible pair', () => {
+  const versioned = (id: string, role: 'html' | 'pdf', pairId: string, publicationState: 'ready' | 'superseded', createdAt: string) => ({
+    ...row(id, role, pairId, createdAt),
+    metadata_json: JSON.stringify({ recommendation_id: 'rec-1', pair_id: pairId, role, publication_state: publicationState, validation_status: 'passed' }),
+  })
+  const selected = selectLearningSourceRenditions([
+    versioned('restored-html', 'html', 'pair-restored', 'ready', '2026-08-01T00:00:00Z'),
+    versioned('restored-pdf', 'pdf', 'pair-restored', 'ready', '2026-08-01T00:00:01Z'),
+    versioned('newer-superseded-html', 'html', 'pair-rejected', 'superseded', '2026-08-03T00:00:00Z'),
+    versioned('newer-superseded-pdf', 'pdf', 'pair-rejected', 'superseded', '2026-08-03T00:00:01Z'),
+  ])
+  assert.equal(selected.get('rec-1')?.html?.id, 'restored-html')
+  assert.equal(selected.get('rec-1')?.pdf?.id, 'restored-pdf')
+})

@@ -11,7 +11,7 @@ export async function enrichRecommendationRows(DB: D1Database, input: any[], exc
     const artifactScope = excludeBookArtifacts ? "AND COALESCE(json_extract(metadata_json,'$.scope'),'')!='book'" : ''
     const [notes, recall, artifacts] = await Promise.all([
       DB.prepare(`SELECT recommendation_id,id,title FROM notes WHERE recommendation_id IN (${placeholders}) ORDER BY updated_at DESC`).bind(...chunk).all<any>(),
-      DB.prepare(`SELECT recommendation_id,COUNT(*) recall_count,SUM(CASE WHEN due_at IS NOT NULL AND due_at<=date('now') THEN 1 ELSE 0 END) due_count FROM srs_cards WHERE recommendation_id IN (${placeholders}) GROUP BY recommendation_id`).bind(...chunk).all<any>(),
+      DB.prepare(`SELECT recommendation_id,COUNT(*) recall_count,SUM(CASE WHEN repair_status='active' AND due_at IS NOT NULL AND due_at<=date('now') THEN 1 ELSE 0 END) due_count FROM srs_cards WHERE recommendation_id IN (${placeholders}) GROUP BY recommendation_id`).bind(...chunk).all<any>(),
       DB.prepare(`SELECT json_extract(metadata_json,'$.recommendation_id') recommendation_id,id,media_type,filename FROM artifacts WHERE json_extract(metadata_json,'$.recommendation_id') IN (${placeholders}) AND COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged' ${artifactScope} ORDER BY created_at DESC`).bind(...chunk).all<any>(),
     ])
 

@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { api, formatDate } from '../../api'
 import { useData } from '../../app/useData'
 import { Icon } from '../../components/Icon'
+import { OfflinePackControl } from '../../components/OfflinePackControl'
+import { SourceHealthControl } from '../../components/SourceHealthControl'
+import { offlineDataResource, offlinePairResources, type OfflinePackResource } from '../../offlinePacks'
 import { LearnCanonView } from '../learn/LearnCanonView'
 import type { LibraryRecord, LibraryViewHandlers } from './types'
 import { bookChapters, bookNextChapter, bookProgress, bookReadingState } from './bookModel'
@@ -49,6 +52,129 @@ function formatBranchPill(branch?: LibraryRecord | null) {
 }
 
 export const computeBookProgress = bookProgress
+
+function bookOfflineArtifactSnapshot(artifact?: LibraryRecord | null) {
+  if (!artifact?.id) return null
+  const metadata = parseMetadata(artifact.metadata || artifact.metadata_json)
+  return {
+    id: artifact.id,
+    filename: artifact.filename,
+    media_type: artifact.media_type,
+    size_bytes: artifact.size_bytes,
+    created_at: artifact.created_at,
+    metadata: {
+      pair_id: metadata.pair_id,
+      role: metadata.role,
+      publication_state: metadata.publication_state,
+      validation_status: metadata.validation_status,
+      revision: metadata.revision,
+      receipt_sha256: metadata.receipt_sha256,
+      validation_receipt_sha256: metadata.validation_receipt_sha256,
+      chapter_key: metadata.chapter_key,
+      chapter_number: metadata.chapter_number,
+      source_title: metadata.source_title,
+    },
+  }
+}
+
+function bookOfflineSnapshot(book: LibraryRecord) {
+  const chapters = bookChapters(book).map((chapter) => {
+    const verifiedPair = offlinePairResources(chapter.html, chapter.pdf, `${book.id}:${chapter.key}`)
+    return {
+      key: chapter.key,
+      title: chapter.title,
+      number: chapter.number,
+      position: chapter.position,
+      completed: chapter.completed,
+      completed_at: chapter.completed_at,
+      html: verifiedPair.length === 2 ? bookOfflineArtifactSnapshot(chapter.html) : null,
+      pdf: verifiedPair.length === 2 ? bookOfflineArtifactSnapshot(chapter.pdf) : null,
+    }
+  })
+  const progress = computeBookProgress(book)
+  const nextChapter = bookNextChapter({ ...book, book_chapters: chapters, visual: { chapters } })
+  const item = {
+    id: book.id,
+    video_title: book.video_title,
+    title: book.title,
+    creator: book.creator,
+    author: book.author,
+    content_type: book.content_type,
+    video_url: book.video_url,
+    url: book.url,
+    notebook_url: book.notebook_url,
+    status: book.status,
+    learning_state: book.learning_state,
+    queue_state: book.queue_state,
+    reading_state: bookReadingState(book),
+    created_at: book.created_at,
+    updated_at: book.updated_at,
+    why_this: book.why_this,
+    isbn: book.isbn || parseMetadata(book.source_metadata_json).isbn,
+    branch: book.branch,
+    branch_id: book.branch_id,
+    branch_label: book.branch_label,
+    branch_status: book.branch_status,
+    super_category: book.super_category,
+    domain: book.domain,
+    is_primary: book.is_primary,
+    progress,
+    next_chapter: nextChapter,
+    visual: { chapters, progress, next_chapter: nextChapter },
+    canon_memberships: (Array.isArray(book.canon_memberships) ? book.canon_memberships : []).map((membership: LibraryRecord) => ({
+      entry_id: membership.entry_id,
+      domain_id: membership.domain_id,
+      domain_slug: membership.domain_slug,
+      domain_title: membership.domain_title,
+      domain_boundary: membership.domain_boundary,
+      role: membership.role,
+    })),
+    threads: (Array.isArray(book.threads) ? book.threads : []).map((thread: LibraryRecord) => ({
+      id: thread.id,
+      title: thread.title,
+      role: thread.role,
+      status: thread.status,
+      expected_contribution: thread.expected_contribution,
+    })),
+  }
+  const artifacts = chapters.flatMap((chapter) => [chapter.html, chapter.pdf]).filter(Boolean)
+  return {
+    offline_snapshot: true,
+    item,
+    sessions: [],
+    threads: item.threads,
+    annotations: [],
+    learning_units: [],
+    disposition: null,
+    feedback: [],
+    consolidation: null,
+    notes: [],
+    artifacts,
+    companion: nextChapter?.html || nextChapter?.pdf || null,
+    companions: { html: nextChapter?.html || null, pdf: nextChapter?.pdf || null },
+    visual: item.visual,
+    book_chapters: chapters,
+    progress,
+    next_chapter: nextChapter,
+    canon_memberships: item.canon_memberships,
+    srs: { drafts: [], cards: [], recall_summary: book.recall || { count: 0, due: 0 } },
+    outcome: null,
+    memory_influences: [],
+    proposals: [],
+    jobs: [],
+  }
+}
+
+function chapterOfflineResources(book: LibraryRecord, chapter: LibraryRecord | null): OfflinePackResource[] {
+  if (!chapter) return []
+  const pair = offlinePairResources(chapter.html, chapter.pdf, `${book.id}:${chapter.key}`)
+  return pair.length ? [...pair, offlineDataResource(`/capture/${encodeURIComponent(String(book.id))}/record`, String(book.id), bookOfflineSnapshot(book))] : []
+}
+
+function bookOfflineResources(book: LibraryRecord): OfflinePackResource[] {
+  const pairs = bookChapters(book).flatMap((chapter) => offlinePairResources(chapter.html, chapter.pdf, `${book.id}:${chapter.key}`))
+  return pairs.length ? [...pairs, offlineDataResource(`/capture/${encodeURIComponent(String(book.id))}/record`, String(book.id), bookOfflineSnapshot(book))] : []
+}
 
 const BOOK_PAGE_SIZE = 8
 
@@ -136,7 +262,7 @@ export function ReadingFormatLinks({ book, chapter, className = '' }: { book: Li
   const formats = [
     chapter.html?.id ? { label: 'HTML', href: artifactLink(chapter.html), kind: 'html' } : null,
     chapter.pdf?.id ? { label: 'PDF', href: artifactLink(chapter.pdf), kind: 'pdf' } : null,
-    notebookUrl ? { label: 'NotebookLM', href: notebookUrl, kind: 'notebooklm' } : null,
+    notebookUrl ? { label: 'NotebookLM · online only', href: notebookUrl, kind: 'notebooklm' } : null,
   ].filter(Boolean) as Array<{ label: string; href: string; kind: string }>
 
   if (!formats.length) return <p class="reading-fold-no-format">No reading format is attached to this chapter yet.</p>
@@ -224,6 +350,7 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
 
   const progress = primaryBook ? computeBookProgress(primaryBook) : null
   const nextChapter = primaryBook ? bookNextChapter(primaryBook) : null
+  const nextOfflineResources = primaryBook ? chapterOfflineResources(primaryBook, nextChapter) : []
   const readingComplete = Boolean(progress && progress.total > 0 && progress.finished >= progress.total)
   const bookCounts = useMemo(() => books.reduce((counts, book) => {
     counts[bookReadingState(book)] += 1
@@ -358,6 +485,13 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
         </div>
         <div class="reading-fold-head-side">
           <a class="reading-fold-overview-link" href={objectHref('book', String(primaryBook.id))}>Open book overview</a>
+          <OfflinePackControl
+            compact
+            packId={`book:${primaryBook.id}`}
+            title={sourceTitle(primaryBook)}
+            scope="book"
+            resources={bookOfflineResources(primaryBook)}
+          />
         </div>
       </div>
 
@@ -372,6 +506,12 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
       </div>}
 
       <BookKnowledgeContext book={primaryBook}/>
+      {String(primaryBook.video_url || '').trim() && <SourceHealthControl
+        sourceId={String(primaryBook.id)}
+        sourceUrl={String(primaryBook.video_url)}
+        companionHref={nextOfflineResources.length ? nextChapter?.html?.id ? artifactLink(nextChapter.html) : nextChapter?.pdf?.id ? artifactLink(nextChapter.pdf) : null : null}
+        onReplaced={() => handlers.onReload?.()}
+      />}
 
       {nextChapter ? <section class={`reading-fold-next ${readingComplete ? 'is-reading-complete' : ''}`} aria-labelledby="next-chapter-title">
         <div class="reading-fold-next-info">
@@ -380,6 +520,13 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
         </div>
         <div class="reading-fold-next-actions">
           <ReadingFormatLinks book={primaryBook} chapter={nextChapter}/>
+          <OfflinePackControl
+            compact
+            packId={`book-chapter:${primaryBook.id}:${nextChapter.key}`}
+            title={`${sourceTitle(primaryBook)} — ${nextChapter.title}`}
+            scope="book-chapter"
+            resources={nextOfflineResources}
+          />
           <button
             type="button"
             class={`reading-fold-done ${nextChapter.completed ? 'is-completed' : ''}`}

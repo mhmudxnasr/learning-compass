@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { Bindings, Recommendation, VALID_STATUS, VALID_RATINGS, isValidUrl, isNonEmptyStr, safeError, safeErrorMessage, normalizeRating, deriveDedupKey, normalizeUrlForDedup } from '../lib'
+import { Bindings, Recommendation, VALID_STATUS, VALID_RATINGS, isValidUrl, isNonEmptyStr, safeError, safeErrorMessage, normalizeRating, deriveDedupKey, normalizeSourceUrlIdentity, normalizeUrlForDedup } from '../lib'
 import { activateWaitingRun } from './discovery'
 import { normalizeQualityAssurance } from '../artifact-metadata'
 import { classifyRecommendationFeedback } from '../intelligence-v2'
@@ -9,6 +9,7 @@ import { scheduleResurfacing } from '../services/resurfacing'
 import { enrichRecommendationRows } from '../services/recommendation-enrichment'
 import { personalStateFromBookState } from '../services/personal-library'
 import { chunkForD1 } from '../services/d1-query.ts'
+import { checkAndRecordSourceHealth, loadSourceHealth } from '../services/source-health.ts'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -421,14 +422,25 @@ app.post('/books', async (c) => {
   try {
     const branch = await c.env.DB.prepare(`SELECT id,label,status FROM tree_nodes WHERE id=? AND type='branch' AND status!='pruned'`).bind(branchId).first<{ id: string; label: string; status: string }>()
     if (!branch) return c.json({ error: 'valid non-pruned branch_id required' }, 400)
-    const existing = await c.env.DB.prepare('SELECT id FROM recommendations WHERE dedup_key=?').bind(dedupKey).first<{ id: string }>()
+    const existing = await c.env.DB.prepare('SELECT id,video_url FROM recommendations WHERE dedup_key=?').bind(dedupKey).first<{ id: string; video_url: string }>()
+    const normalizedUrl = normalizeUrlForDedup(url)
+    if (existing && body.url?.trim() && normalizeUrlForDedup(existing.video_url) !== normalizedUrl) {
+      return c.json({
+        error: 'source_url_replacement_required',
+        message: 'This ISBN already belongs to a canonical book. Verify and replace its URL through /recommendations/:id/source-url instead of rewriting it during book upsert.',
+        recommendation_id: existing.id,
+        current_source_url: existing.video_url,
+        replacement_endpoint: `/recommendations/${existing.id}/source-url`,
+      }, 409)
+    }
     const recommendationId = existing?.id || id
+    const canonicalUrl = existing?.video_url || normalizedUrl
     await c.env.DB.batch([
       c.env.DB.prepare(`INSERT INTO recommendations
         (id,video_title,creator,content_type,video_url,why_this,branch,verified,status,user_rating,dedup_key,updated_at)
         VALUES (?,?,?,?,?,?,?,datetime('now'),'active','unset',?,datetime('now'))
-        ON CONFLICT(dedup_key) DO UPDATE SET video_title=excluded.video_title,creator=excluded.creator,video_url=excluded.video_url,why_this=excluded.why_this,branch=excluded.branch,updated_at=datetime('now')`)
-        .bind(recommendationId, title, author, 'book', url, body.why_this?.trim() || null, branch.label, dedupKey),
+        ON CONFLICT(dedup_key) DO UPDATE SET video_title=excluded.video_title,creator=excluded.creator,why_this=excluded.why_this,branch=excluded.branch,updated_at=datetime('now')`)
+        .bind(recommendationId, title, author, 'book', canonicalUrl, body.why_this?.trim() || null, branch.label, dedupKey),
       c.env.DB.prepare(`INSERT INTO recommendation_meta
         (recommendation_id,learning_state,branch_id,source_metadata_json,updated_at) VALUES (?,'captured',?,?,datetime('now'))
         ON CONFLICT(recommendation_id) DO UPDATE SET branch_id=excluded.branch_id,source_metadata_json=json_patch(COALESCE(recommendation_meta.source_metadata_json,'{}'),excluded.source_metadata_json),updated_at=datetime('now')`)
@@ -462,6 +474,7 @@ app.post('/push', async (c) => {
   const today = new Date().toISOString().split('T')[0]
   const stmts: D1PreparedStatement[] = []
   const dedupKeys: string[] = []
+  const pendingCanonicalUrls = new Map<string, { id: string; source_url: string }>()
 
   try {
     for (const item of items) {
@@ -476,6 +489,28 @@ app.post('/push', async (c) => {
       const cleanUrl = normalizeUrlForDedup(item.video_url)
       const dedupItem = { ...item, video_url: cleanUrl }
       const dedupKey = deriveDedupKey(dedupItem)
+      const pending = pendingCanonicalUrls.get(dedupKey)
+      if (pending && normalizeSourceUrlIdentity(pending.source_url) !== normalizeSourceUrlIdentity(cleanUrl)) {
+        return c.json({
+          error: 'source_url_replacement_required',
+          message: 'This import batch contains one canonical recommendation identity with different source URLs.',
+          recommendation_id: pending.id,
+          current_source_url: pending.source_url,
+          replacement_endpoint: `/recommendations/${pending.id}/source-url`,
+        }, 409)
+      }
+      const existing = await DB.prepare(`SELECT id,video_url FROM recommendations WHERE dedup_key=? LIMIT 1`)
+        .bind(dedupKey).first<{ id: string; video_url: string }>()
+      if (existing && normalizeSourceUrlIdentity(existing.video_url) !== normalizeSourceUrlIdentity(cleanUrl)) {
+        return c.json({
+          error: 'source_url_replacement_required',
+          message: 'This canonical recommendation already has a different source URL. Verify and replace it through the guarded source URL endpoint.',
+          recommendation_id: existing.id,
+          current_source_url: existing.video_url,
+          replacement_endpoint: `/recommendations/${existing.id}/source-url`,
+        }, 409)
+      }
+      pendingCanonicalUrls.set(dedupKey, { id: existing?.id || id, source_url: existing?.video_url || cleanUrl })
 
       stmts.push(
         DB.prepare(
@@ -487,7 +522,6 @@ app.post('/push', async (c) => {
             video_title = excluded.video_title,
             creator = excluded.creator,
             content_type = excluded.content_type,
-            video_url = excluded.video_url,
             why_this = excluded.why_this,
             context_brief = excluded.context_brief,
             verified = excluded.verified,
@@ -679,32 +713,146 @@ app.post('/action', async (c) => {
   return c.json({ ok: true, count: ids.length })
 })
 
+const loadSourceHealthTarget = (DB: D1Database, id: string) => DB.prepare(
+  `SELECT id,video_title,content_type,video_url,dedup_key,status,deleted_at,updated_at
+   FROM recommendations WHERE id=?`
+).bind(id).first<any>()
+
+app.get('/:id/source-health', async (c) => {
+  const id = c.req.param('id')
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '20'), 1), 20)
+  try {
+    const target = await loadSourceHealthTarget(c.env.DB, id)
+    if (!target || target.status === 'deleted' || target.deleted_at) return c.json({ error: 'recommendation_not_found' }, 404)
+    const ledger = await loadSourceHealth(c.env.DB, id, target.video_url, limit)
+    return c.json({
+      source: { id: target.id, title: target.video_title, source_url: target.video_url, status: target.status },
+      ...ledger,
+    })
+  } catch (err) {
+    return c.json(safeError('Source health read failed')(err), 500)
+  }
+})
+
+app.post('/:id/source-health/check', async (c) => {
+  const id = c.req.param('id')
+  const body: { expected_source_url?: string } = await c.req.json<{ expected_source_url?: string }>().catch(() => ({}))
+  try {
+    const target = await loadSourceHealthTarget(c.env.DB, id)
+    if (!target || target.status === 'deleted' || target.deleted_at) return c.json({ error: 'recommendation_not_found' }, 404)
+    if (body.expected_source_url && normalizeUrlForDedup(body.expected_source_url) !== normalizeUrlForDedup(target.video_url)) {
+      return c.json({ error: 'source_url_precondition_failed', source_url: target.video_url }, 409)
+    }
+    const health = await checkAndRecordSourceHealth(c.env.DB, id, target.video_url, 'current')
+    return c.json({ ok: true, id, source_url: target.video_url, health })
+  } catch (err) {
+    return c.json(safeError('Source health check failed')(err), 500)
+  }
+})
+
+app.post('/:id/source-url/verify', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json<{ source_url?: string; expected_source_url?: string }>().catch(() => null)
+  if (!body || !isValidUrl(body.source_url) || !isNonEmptyStr(body.expected_source_url, 2048)) return c.json({ error: 'valid source_url and expected_source_url required' }, 400)
+  try {
+    const target = await loadSourceHealthTarget(c.env.DB, id)
+    if (!target || target.status === 'deleted' || target.deleted_at) return c.json({ error: 'recommendation_not_found' }, 404)
+    if (normalizeUrlForDedup(body.expected_source_url) !== normalizeUrlForDedup(target.video_url)) {
+      return c.json({ error: 'source_url_precondition_failed', source_url: target.video_url }, 409)
+    }
+    const sourceUrl = normalizeUrlForDedup(body.source_url)
+    const verification = await checkAndRecordSourceHealth(c.env.DB, id, sourceUrl, 'replacement')
+    return c.json({
+      ok: true,
+      id,
+      current_source_url: target.video_url,
+      source_url: sourceUrl,
+      accepted_for_replacement: verification.status === 'verified',
+      verification,
+    })
+  } catch (err) {
+    return c.json(safeError('Source URL verification failed')(err), 500)
+  }
+})
+
 app.patch('/:id/source-url', async (c) => {
   const id = c.req.param('id')
-  const body = await c.req.json<{ source_url?: string }>().catch(() => null)
-  if (!body || !isValidUrl(body.source_url)) return c.json({ error: 'valid source_url required' }, 400)
+  const body = await c.req.json<{ source_url?: string; expected_source_url?: string }>().catch(() => null)
+  if (!body || !isValidUrl(body.source_url) || !isNonEmptyStr(body.expected_source_url, 2048)) return c.json({ error: 'valid source_url and expected_source_url required' }, 400)
 
   const sourceUrl = normalizeUrlForDedup(body.source_url)
-  const target = await c.env.DB.prepare(`SELECT id,video_title,content_type,video_url,dedup_key,status,deleted_at FROM recommendations WHERE id=?`).bind(id).first<any>()
-  if (!target || target.status === 'deleted' || target.deleted_at) return c.json({ error: 'recommendation_not_found' }, 404)
-  if (target.video_url === sourceUrl) return c.json({ ok: true, reused: true, id, previous_url: target.video_url, source_url: sourceUrl, dedup_key: target.dedup_key })
+  try {
+    const target = await loadSourceHealthTarget(c.env.DB, id)
+    if (!target || target.status === 'deleted' || target.deleted_at) return c.json({ error: 'recommendation_not_found' }, 404)
+    if (normalizeUrlForDedup(body.expected_source_url) !== normalizeUrlForDedup(target.video_url)) {
+      return c.json({ error: 'source_url_precondition_failed', source_url: target.video_url }, 409)
+    }
+    if (target.video_url === sourceUrl) return c.json({ ok: true, reused: true, id, previous_url: target.video_url, source_url: sourceUrl, dedup_key: target.dedup_key })
 
-  const dedupKey = deriveDedupKey({ video_url: sourceUrl, video_title: target.video_title, content_type: target.content_type })
-  const collision = await c.env.DB.prepare(`SELECT id FROM recommendations WHERE dedup_key=? AND id!=? AND deleted_at IS NULL`).bind(dedupKey, id).first<{ id: string }>()
-  if (collision) return c.json({ error: 'source_url_conflict', recommendation_id: collision.id }, 409)
+    const dedupKey = deriveDedupKey({ video_url: sourceUrl, video_title: target.video_title, content_type: target.content_type })
+    const collision = await c.env.DB.prepare(`SELECT id FROM recommendations WHERE dedup_key=? AND id!=? AND deleted_at IS NULL`).bind(dedupKey, id).first<{ id: string }>()
+    if (collision) return c.json({ error: 'source_url_conflict', recommendation_id: collision.id }, 409)
 
-  const changedAt = new Date().toISOString()
-  await c.env.DB.batch([
-    c.env.DB.prepare(`UPDATE recommendations SET video_url=?,dedup_key=?,updated_at=datetime('now') WHERE id=?`).bind(sourceUrl, dedupKey, id),
-    c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,source_metadata_json,updated_at) VALUES (?,?,datetime('now'))
-      ON CONFLICT(recommendation_id) DO UPDATE SET source_metadata_json=json_set(
-        COALESCE(recommendation_meta.source_metadata_json,'{}'),
-        '$.preferred_source_url',?,
-        '$.archive_source_url',COALESCE(json_extract(recommendation_meta.source_metadata_json,'$.archive_source_url'),?),
-        '$.source_url_updated_at',?
-      ),updated_at=datetime('now')`).bind(id, JSON.stringify({ preferred_source_url: sourceUrl, archive_source_url: target.video_url, source_url_updated_at: changedAt }), sourceUrl, target.video_url, changedAt),
-  ])
-  return c.json({ ok: true, reused: false, id, previous_url: target.video_url, source_url: sourceUrl, dedup_key: dedupKey })
+    // A replacement check is persisted even when it fails, but only a directly
+    // reachable candidate may become canonical. Restricted/unknown responses
+    // stay reviewable and never get mislabeled as dead or silently installed.
+    const verification = await checkAndRecordSourceHealth(c.env.DB, id, sourceUrl, 'replacement')
+    if (verification.status !== 'verified') {
+      return c.json({ error: 'source_url_not_verified', id, source_url: sourceUrl, verification }, 409)
+    }
+
+    // Re-read after the network boundary, then bind the exact old identity into
+    // the guarded update. The following lineage insert deliberately violates a
+    // NOT NULL constraint if that update did not stamp this exact change, which
+    // makes D1 roll the whole batch back instead of leaving partial lineage.
+    const current = await loadSourceHealthTarget(c.env.DB, id)
+    if (!current || current.video_url !== target.video_url || current.dedup_key !== target.dedup_key) {
+      return c.json({ error: 'source_url_precondition_failed', source_url: current?.video_url || null }, 409)
+    }
+
+    const changedAt = new Date().toISOString()
+    const replacementId = `source_replacement_${crypto.randomUUID()}`
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE recommendations SET video_url=?,dedup_key=?,updated_at=?
+        WHERE id=? AND video_url=? AND dedup_key=?`).bind(sourceUrl, dedupKey, changedAt, id, target.video_url, target.dedup_key),
+      c.env.DB.prepare(`INSERT INTO source_url_replacements
+        (id,recommendation_id,previous_url,source_url,previous_dedup_key,source_dedup_key,
+         verification_attempt_id,verification_status,verification_http_status,verification_final_url,replaced_at)
+        VALUES (?,(SELECT CASE WHEN video_url=? AND dedup_key=? AND updated_at=? THEN id ELSE NULL END FROM recommendations WHERE id=?),?,?,?,?,?,'verified',?,?,?)`).bind(
+        replacementId, sourceUrl, dedupKey, changedAt, id,
+        target.video_url, sourceUrl, target.dedup_key, dedupKey,
+        verification.attempt_id, verification.http_status ?? null, verification.final_url ?? null, changedAt,
+      ),
+      c.env.DB.prepare(`INSERT INTO recommendation_meta (recommendation_id,source_metadata_json,updated_at) VALUES (?,?,datetime('now'))
+        ON CONFLICT(recommendation_id) DO UPDATE SET source_metadata_json=json_set(
+          COALESCE(recommendation_meta.source_metadata_json,'{}'),
+          '$.preferred_source_url',?,
+          '$.archive_source_url',COALESCE(json_extract(recommendation_meta.source_metadata_json,'$.archive_source_url'),?),
+          '$.source_url_updated_at',?
+        ),updated_at=datetime('now')`).bind(id, JSON.stringify({ preferred_source_url: sourceUrl, archive_source_url: target.video_url, source_url_updated_at: changedAt }), sourceUrl, target.video_url, changedAt),
+      c.env.DB.prepare(`INSERT INTO source_health
+        (recommendation_id,checked_url,status,last_checked_at,http_status,final_url,error_code,updated_at)
+        VALUES (?,?,?, ?,?,?,?,datetime('now'))
+        ON CONFLICT(recommendation_id) DO UPDATE SET
+          checked_url=excluded.checked_url,status=excluded.status,last_checked_at=excluded.last_checked_at,
+          http_status=excluded.http_status,final_url=excluded.final_url,error_code=excluded.error_code,updated_at=datetime('now')`).bind(
+        id, verification.checked_url, verification.status, verification.checked_at,
+        verification.http_status ?? null, verification.final_url ?? null, verification.error_code ?? null,
+      ),
+    ])
+    return c.json({
+      ok: true,
+      reused: false,
+      id,
+      previous_url: target.video_url,
+      source_url: sourceUrl,
+      dedup_key: dedupKey,
+      verification,
+      replacement_id: replacementId,
+    })
+  } catch (err) {
+    return c.json(safeError('Source URL replacement failed')(err), 500)
+  }
 })
 
 app.patch('/content-types', async (c) => {

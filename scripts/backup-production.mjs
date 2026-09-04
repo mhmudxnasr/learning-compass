@@ -18,6 +18,7 @@ mkdirSync(snapshotDir, { recursive: true })
 mkdirSync(objectDir, { recursive: true })
 
 const hash = (buffer) => createHash('sha256').update(buffer).digest('hex')
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 const sqlPath = join(snapshotDir, 'database.sql')
 execFileSync('/usr/bin/node', ['scripts/export-recovery.mjs', '--remote', '--output', sqlPath], { cwd: process.cwd(), stdio: 'inherit' })
 const d1ManifestPath = `${sqlPath}.manifest.json`
@@ -43,7 +44,19 @@ const downloadArtifact = async (artifact, index) => {
   const temporary = `${objectPath}.partial-${process.pid}-${index}`
   rmSync(temporary, { force: true })
   try {
-    await execFileAsync('npx', ['wrangler', 'r2', 'object', 'get', `taste-map-artifacts/${key}`, '--remote', '--config', 'wrangler.toml', '--file', temporary], { maxBuffer: 2 * 1024 * 1024 })
+    let lastError
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      rmSync(temporary, { force: true })
+      try {
+        await execFileAsync('npx', ['wrangler', 'r2', 'object', 'get', `taste-map-artifacts/${key}`, '--remote', '--config', 'wrangler.toml', '--file', temporary], { maxBuffer: 2 * 1024 * 1024 })
+        lastError = undefined
+        break
+      } catch (error) {
+        lastError = error
+        if (attempt < 4) await wait(500 * (2 ** (attempt - 1)))
+      }
+    }
+    if (lastError) throw lastError
     if (expectedSize > 0 && statSync(temporary).size !== expectedSize) {
       throw new Error(`Downloaded R2 object size does not match D1: ${key}`)
     }

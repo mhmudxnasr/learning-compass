@@ -1,9 +1,16 @@
 import { Hono } from 'hono'
-import { inspectArtifactContent, liteVisualTargetSha256, LITE_VISUAL_AUDIT_PROVENANCE, LITE_VISUAL_RECEIPT_SCHEMA, LITE_VISUAL_WORKFLOW_CONTRACT, mergeArtifactMultipartMetadata, normalizeQualityAssurance, sha256Hex, validLiteVisualAttestation, validateLiteVisualPair, type LiteVisualValidationReceipt } from '../artifact-metadata'
+import { inspectArtifactContent, liteVisualTargetSha256, LITE_VISUAL_AUDIT_PROVENANCE, LITE_VISUAL_WORKFLOW_CONTRACT, mergeArtifactMultipartMetadata, normalizeQualityAssurance, sha256Hex, validLiteVisualAttestation, validateLiteVisualPair, type LiteVisualValidationReceipt } from '../artifact-metadata'
 import { Bindings, escapeHtml, safeError, safeErrorMessage } from '../lib'
 import { resolveLearningScope } from '../services/learning-scope'
 
 const app = new Hono<{ Bindings: Bindings }>()
+app.get('/pair-contract', (c) => c.json({
+  workflow_contract: 'lite-visual-linear/v4',
+  receipt_schemas: ['lite-visual-integrity/v1', 'lite-visual-validation/v6'],
+  corpus_receipt_schemas: ['lite-visual-corpus-integrity/v1', 'lite-visual-corpus-audit/v1'],
+  default_verification_scope: 'integrity-only',
+  default_quality_checks: 'not_run',
+}))
 const artifactCsp = "sandbox; default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'none'"
 const inertAttachmentCsp = "sandbox; default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'none'; style-src 'none'; script-src 'none'"
 const activeXmlArtifact = (row: { media_type?: unknown; filename?: unknown }) => /(?:svg\+xml|application\/(?:xml|xhtml\+xml)|text\/xml)/i.test(String(row.media_type || '')) || /\.(?:svg|xml|xhtml|xsl)$/i.test(String(row.filename || ''))
@@ -86,14 +93,24 @@ async function readyPairMap(DB: D1Database, targets: Record<string, any>[]) {
   return complete
 }
 
-function artifactHeaders(row: { media_type?: unknown; filename?: unknown }) {
+function artifactHeaders(row: { id?: unknown; size_bytes?: unknown; media_type?: unknown; filename?: unknown; metadata_json?: string | null }) {
   const filename = row.filename
+  const metadata = parseMetadata(row.metadata_json)
   const headers: Record<string, string> = {
     'content-disposition': disposition('attachment', filename),
     'content-security-policy': inertAttachmentCsp,
     'cross-origin-resource-policy': 'same-origin',
     'referrer-policy': 'no-referrer',
     'x-content-type-options': 'nosniff',
+  }
+  if (metadata.pair_id) {
+    if (row.id) headers['x-learning-compass-artifact-id'] = String(row.id).replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 240)
+    const exactSize = Number(row.size_bytes)
+    if (Number.isSafeInteger(exactSize) && exactSize > 0) headers['x-learning-compass-size-bytes'] = String(exactSize)
+    headers['x-learning-compass-pair-id'] = String(metadata.pair_id).replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 240)
+    headers['x-learning-compass-pair-role'] = String(metadata.role || '').toLowerCase().slice(0, 20)
+    headers['x-learning-compass-publication-state'] = String(metadata.publication_state || '').toLowerCase().slice(0, 30)
+    headers['x-learning-compass-validation-status'] = String(metadata.validation_status || '').toLowerCase().slice(0, 30)
   }
   if (activeXmlArtifact(row)) {
     headers['content-type'] = 'application/octet-stream'
@@ -215,8 +232,14 @@ app.post('/corpora', async (c) => {
     return c.json({ error: 'invalid_lite_visual_corpus_contract' }, 400)
   }
   if (receiptSigningKey.length < 32) return c.json({ error: 'lite_visual_receipt_verification_unavailable' }, 503)
+  const integrityAudit = auditReceipt.schema_version === 'lite-visual-corpus-integrity/v1'
+  const auditChecks = auditReceipt.checks && typeof auditReceipt.checks === 'object' && !Array.isArray(auditReceipt.checks) ? auditReceipt.checks as Record<string, unknown> : {}
+  const auditScopeValid = integrityAudit
+    ? auditReceipt.verification_scope === 'integrity-only' && auditReceipt.quality_checks === 'not_run'
+      && Object.keys(auditChecks).length === 3 && ['ordered_targets', 'local_receipt_bindings', 'file_hashes'].every((key) => auditChecks[key] === true)
+    : auditReceipt.schema_version === 'lite-visual-corpus-audit/v1' && Object.entries(LITE_VISUAL_AUDIT_PROVENANCE).every(([key, expected]) => auditReceipt[key] === expected)
   if (!(await validLiteVisualAttestation(auditReceipt, receiptSigningKey))
-    || auditReceipt.schema_version !== 'lite-visual-corpus-audit/v1'
+    || !auditScopeValid
     || auditReceipt.status !== 'passed'
     || auditReceipt.thread_id !== threadId
     || auditReceipt.manifest_sha256 !== manifestSha256
@@ -224,8 +247,7 @@ app.post('/corpora', async (c) => {
     || auditReceipt.corpus_sha256 !== auditCorpusSha256
     || Number(auditReceipt.expected) !== expectedPairs
     || Number(auditReceipt.audited) !== expectedPairs
-    || Number(auditReceipt.failed) !== 0
-    || Object.entries(LITE_VISUAL_AUDIT_PROVENANCE).some(([key, expected]) => auditReceipt[key] !== expected)) return c.json({ error: 'lite_visual_corpus_audit_invalid' }, 422)
+    || Number(auditReceipt.failed) !== 0) return c.json({ error: 'lite_visual_corpus_audit_invalid' }, 422)
 
   const targets: Record<string, any>[] = []
   for (const [position, raw] of rawTargets.entries()) {
@@ -645,7 +667,9 @@ app.post('/pairs', async (c) => {
       asset_policy: 'code-only',
       publication_state: publicationState,
       validation_status: 'passed',
-      validation_receipt_schema: LITE_VISUAL_RECEIPT_SCHEMA,
+      validation_receipt_schema: receipt.schema_version,
+      verification_scope: receipt.schema_version === 'lite-visual-integrity/v1' ? 'integrity-only' : 'full-validation',
+      quality_checks: receipt.schema_version === 'lite-visual-integrity/v1' ? 'not_run' : 'passed',
       validation_receipt_sha256: receiptSha256,
       validation_receipt: receipt,
       source: 'lite_visual_atomic_pair',
@@ -775,7 +799,7 @@ app.post('/:id/process', async (c) => {
 })
 
 app.get('/:id/view', async (c) => {
-  const row = await c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.r2_key,a.metadata_json,r.id owner_id,r.status owner_status,r.deleted_at owner_deleted_at FROM artifacts a LEFT JOIN recommendations r ON r.id=json_extract(a.metadata_json,'$.recommendation_id') WHERE a.id=?`).bind(c.req.param('id')).first<any>()
+  const row = await c.env.DB.prepare(`SELECT a.id,a.filename,a.media_type,a.r2_key,a.size_bytes,a.metadata_json,r.id owner_id,r.status owner_status,r.deleted_at owner_deleted_at FROM artifacts a LEFT JOIN recommendations r ON r.id=json_extract(a.metadata_json,'$.recommendation_id') WHERE a.id=?`).bind(c.req.param('id')).first<any>()
   if (!row) return c.json({ error: 'not found' }, 404)
   if (hiddenArtifact(row)) return c.json({ error: 'not found' }, 404)
   if (!textArtifact(row)) return c.redirect(`/artifacts/${row.id}`)
@@ -783,7 +807,7 @@ app.get('/:id/view', async (c) => {
   const object = await c.env.ARTIFACTS.get(row.r2_key)
   if (!object) return c.json({ error: 'artifact missing' }, 404)
   const markdown = await object.text()
-  return new Response(markdownToHtml(markdown, row.filename), { headers: { ...artifactHeaders({ media_type: 'text/html', filename: row.filename }), 'content-security-policy': artifactCsp } })
+  return new Response(markdownToHtml(markdown, row.filename), { headers: { ...artifactHeaders({ id: row.id, size_bytes: row.size_bytes, media_type: 'text/html', filename: row.filename, metadata_json: row.metadata_json }), 'content-security-policy': artifactCsp } })
 })
 
 app.get('/:id', async (c) => {
