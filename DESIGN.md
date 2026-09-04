@@ -202,6 +202,12 @@ Motion uses paint, opacity, and transform only. Route entry is a short 260ms fad
 
 ## Working rules
 
+### Reading companions
+
+Lite Visual companions teach through fluent Egyptian-Arabic prose, faithful quotations, and source-specific semantic structure. Definitions, examples, equations, and comparisons belong where they resolve the reader's difficulty. Long companions use compact contents links and stable anchors; tagged A4 PDFs retain heading bookmarks.
+
+The canonical article contains the authored explanation. A duplicate source appendix is no longer mandatory. Preserve quotation punctuation, notation, and register. Comfortable Arabic typography, meaningful contrast, natural reflow, and sensible print styling guide authoring directly; the default has no separate editorial passes or exhaustive geometry/quality audit.
+
 ### Do
 
 - **Do** maintain strict WCAG AA contrast (≥4.5:1 text, ≥3:1 large text) across all themes.

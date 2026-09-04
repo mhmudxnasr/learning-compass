@@ -1,41 +1,23 @@
 import { Hono } from 'hono'
-import {
-  inspectArtifactContent,
-  liteVisualTargetSha256,
-  LITE_VISUAL_AUDIT_PROVENANCE,
-  LITE_VISUAL_RECEIPT_SCHEMA,
-  LITE_VISUAL_WORKFLOW_CONTRACT,
-  mergeArtifactMultipartMetadata,
-  normalizeQualityAssurance,
-  sha256Hex,
-  validLiteVisualAttestation,
-  validateLiteVisualPair,
-  type LiteVisualValidationReceipt,
-} from '../artifact-metadata'
+import { inspectArtifactContent, liteVisualTargetSha256, LITE_VISUAL_AUDIT_PROVENANCE, LITE_VISUAL_WORKFLOW_CONTRACT, mergeArtifactMultipartMetadata, normalizeQualityAssurance, sha256Hex, validLiteVisualAttestation, validateLiteVisualPair, type LiteVisualValidationReceipt } from '../artifact-metadata'
 import { Bindings, escapeHtml, safeError, safeErrorMessage } from '../lib'
 import { resolveLearningScope } from '../services/learning-scope'
 
 const app = new Hono<{ Bindings: Bindings }>()
-const artifactCsp =
-  "sandbox; default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'none'"
-const inertAttachmentCsp =
-  "sandbox; default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'none'; style-src 'none'; script-src 'none'"
-const activeXmlArtifact = (row: { media_type?: unknown; filename?: unknown }) =>
-  /(?:svg\+xml|application\/(?:xml|xhtml\+xml)|text\/xml)/i.test(String(row.media_type || '')) ||
-  /\.(?:svg|xml|xhtml|xsl)$/i.test(String(row.filename || ''))
-const htmlArtifact = (row: { media_type?: unknown; filename?: unknown }) =>
-  /html/i.test(String(row.media_type || '')) || /\.html?$/i.test(String(row.filename || ''))
-const textArtifact = (row: { media_type?: unknown; filename?: unknown }) =>
-  !activeXmlArtifact(row) &&
-  (/markdown|text\/plain/i.test(String(row.media_type || '')) || /\.md$/i.test(String(row.filename || '')))
-const inlineBinaryArtifact = (row: { media_type?: unknown }) =>
-  /^(?:application\/pdf|video\/(?:mp4|webm|quicktime)|audio\/(?:mpeg|mp4|webm|ogg|opus|wav))(?:;|$)/i.test(
-    String(row.media_type || ''),
-  )
-const originalFilename = (value: unknown) =>
-  Array.from(String(value || 'artifact'))
-    .slice(0, 180)
-    .join('') || 'artifact'
+app.get('/pair-contract', (c) => c.json({
+  workflow_contract: 'lite-visual-linear/v4',
+  receipt_schemas: ['lite-visual-integrity/v1', 'lite-visual-validation/v6'],
+  corpus_receipt_schemas: ['lite-visual-corpus-integrity/v1', 'lite-visual-corpus-audit/v1'],
+  default_verification_scope: 'integrity-only',
+  default_quality_checks: 'not_run',
+}))
+const artifactCsp = "sandbox; default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'none'"
+const inertAttachmentCsp = "sandbox; default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'none'; style-src 'none'; script-src 'none'"
+const activeXmlArtifact = (row: { media_type?: unknown; filename?: unknown }) => /(?:svg\+xml|application\/(?:xml|xhtml\+xml)|text\/xml)/i.test(String(row.media_type || '')) || /\.(?:svg|xml|xhtml|xsl)$/i.test(String(row.filename || ''))
+const htmlArtifact = (row: { media_type?: unknown; filename?: unknown }) => /html/i.test(String(row.media_type || '')) || /\.html?$/i.test(String(row.filename || ''))
+const textArtifact = (row: { media_type?: unknown; filename?: unknown }) => !activeXmlArtifact(row) && (/markdown|text\/plain/i.test(String(row.media_type || '')) || /\.md$/i.test(String(row.filename || '')))
+const inlineBinaryArtifact = (row: { media_type?: unknown }) => /^(?:application\/pdf|video\/(?:mp4|webm|quicktime)|audio\/(?:mpeg|mp4|webm|ogg|opus|wav))(?:;|$)/i.test(String(row.media_type || ''))
+const originalFilename = (value: unknown) => Array.from(String(value || 'artifact')).slice(0, 180).join('') || 'artifact'
 const safeFilename = (value: unknown) => originalFilename(value).replace(/[^\x20-\x7e]|["\\]/g, '_') || 'artifact'
 const encodedFilename = (value: unknown) =>
   encodeURIComponent(originalFilename(value)).replace(
@@ -457,20 +439,22 @@ app.post('/corpora', async (c) => {
     return c.json({ error: 'invalid_lite_visual_corpus_contract' }, 400)
   }
   if (receiptSigningKey.length < 32) return c.json({ error: 'lite_visual_receipt_verification_unavailable' }, 503)
-  if (
-    !(await validLiteVisualAttestation(auditReceipt, receiptSigningKey)) ||
-    auditReceipt.schema_version !== 'lite-visual-corpus-audit/v1' ||
-    auditReceipt.status !== 'passed' ||
-    auditReceipt.thread_id !== threadId ||
-    auditReceipt.manifest_sha256 !== manifestSha256 ||
-    auditReceipt.target_set_sha256 !== targetSetSha256 ||
-    auditReceipt.corpus_sha256 !== auditCorpusSha256 ||
-    Number(auditReceipt.expected) !== expectedPairs ||
-    Number(auditReceipt.audited) !== expectedPairs ||
-    Number(auditReceipt.failed) !== 0 ||
-    Object.entries(LITE_VISUAL_AUDIT_PROVENANCE).some(([key, expected]) => auditReceipt[key] !== expected)
-  )
-    return c.json({ error: 'lite_visual_corpus_audit_invalid' }, 422)
+  const integrityAudit = auditReceipt.schema_version === 'lite-visual-corpus-integrity/v1'
+  const auditChecks = auditReceipt.checks && typeof auditReceipt.checks === 'object' && !Array.isArray(auditReceipt.checks) ? auditReceipt.checks as Record<string, unknown> : {}
+  const auditScopeValid = integrityAudit
+    ? auditReceipt.verification_scope === 'integrity-only' && auditReceipt.quality_checks === 'not_run'
+      && Object.keys(auditChecks).length === 3 && ['ordered_targets', 'local_receipt_bindings', 'file_hashes'].every((key) => auditChecks[key] === true)
+    : auditReceipt.schema_version === 'lite-visual-corpus-audit/v1' && Object.entries(LITE_VISUAL_AUDIT_PROVENANCE).every(([key, expected]) => auditReceipt[key] === expected)
+  if (!(await validLiteVisualAttestation(auditReceipt, receiptSigningKey))
+    || !auditScopeValid
+    || auditReceipt.status !== 'passed'
+    || auditReceipt.thread_id !== threadId
+    || auditReceipt.manifest_sha256 !== manifestSha256
+    || auditReceipt.target_set_sha256 !== targetSetSha256
+    || auditReceipt.corpus_sha256 !== auditCorpusSha256
+    || Number(auditReceipt.expected) !== expectedPairs
+    || Number(auditReceipt.audited) !== expectedPairs
+    || Number(auditReceipt.failed) !== 0) return c.json({ error: 'lite_visual_corpus_audit_invalid' }, 422)
 
   const targets: Record<string, any>[] = []
   for (const [position, raw] of rawTargets.entries()) {
@@ -1295,7 +1279,9 @@ app.post('/pairs', async (c) => {
       asset_policy: 'code-only',
       publication_state: publicationState,
       validation_status: 'passed',
-      validation_receipt_schema: LITE_VISUAL_RECEIPT_SCHEMA,
+      validation_receipt_schema: receipt.schema_version,
+      verification_scope: receipt.schema_version === 'lite-visual-integrity/v1' ? 'integrity-only' : 'full-validation',
+      quality_checks: receipt.schema_version === 'lite-visual-integrity/v1' ? 'not_run' : 'passed',
       validation_receipt_sha256: receiptSha256,
       validation_receipt: receipt,
       source: 'lite_visual_atomic_pair',

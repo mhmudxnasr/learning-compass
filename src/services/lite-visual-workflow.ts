@@ -55,26 +55,23 @@ export function validateLiteVisualCheckpointEvidence(step: string, evidence: Rec
     if (!String(evidence.manifest_path || '').startsWith('/')) failures.push('manifest_path must be absolute')
   }
   if (step === 'author_html') {
-    for (const field of ['source_sha256', 'source_scope_sha256'])
-      if (!SHA256_RE.test(String(evidence[field] || ''))) failures.push(`${field} must be a full lowercase SHA-256`)
-    for (const field of ['word_count', 'span_count'])
-      if (!Number.isInteger(Number(evidence[field])) || Number(evidence[field]) < 1)
-        failures.push(`${field} must be a positive integer`)
+    for (const field of ['source_sha256', 'source_scope_sha256']) if (!SHA256_RE.test(String(evidence[field] || ''))) failures.push(`${field} must be a full lowercase SHA-256`)
+    for (const field of ['word_count', 'span_count']) {
+      const minimum = field === 'span_count' && evidence.authoring_mode === 'direct' ? 0 : 1
+      if (!Number.isInteger(Number(evidence[field])) || Number(evidence[field]) < minimum) failures.push(`${field} must be an integer of at least ${minimum}`)
+    }
   }
   if (step === 'render_pdf') {
-    for (const field of ['html_sha256', 'coverage_ledger_sha256'])
-      if (!SHA256_RE.test(String(evidence[field] || ''))) failures.push(`${field} must be a full lowercase SHA-256`)
-    if (!Number.isInteger(evidence.claim_count) || Number(evidence.claim_count) < 1)
-      failures.push('claim_count must be a positive integer')
-    if (evidence.canonical_selector !== 'article[data-canonical-content=true]')
-      failures.push('canonical_selector must identify the v4 article')
+    for (const field of ['html_sha256', 'coverage_ledger_sha256']) if (!SHA256_RE.test(String(evidence[field] || ''))) failures.push(`${field} must be a full lowercase SHA-256`)
+    const minimumClaims = evidence.authoring_mode === 'direct' ? 0 : 1
+    if (!Number.isInteger(evidence.claim_count) || Number(evidence.claim_count) < minimumClaims) failures.push(`claim_count must be an integer of at least ${minimumClaims}`)
+    if (evidence.canonical_selector !== 'article[data-canonical-content=true]') failures.push('canonical_selector must identify the v4 article')
   }
   if (step === 'validate_pair')
     for (const field of ['html_sha256', 'pdf_sha256'])
       if (!SHA256_RE.test(String(evidence[field] || ''))) failures.push(`${field} must be a full lowercase SHA-256`)
   if (step === 'publish_pair') {
-    if (evidence.validation_schema !== 'lite-visual-validation/v6')
-      failures.push('validation_schema must be lite-visual-validation/v6')
+    if (!['lite-visual-validation/v6', 'lite-visual-integrity/v1'].includes(String(evidence.validation_schema))) failures.push('validation_schema must be lite-visual-validation/v6 or lite-visual-integrity/v1')
     if (evidence.validation_status !== 'passed') failures.push('validation_status must be passed')
     if (!SHA256_RE.test(String(evidence.receipt_sha256 || '')))
       failures.push('receipt_sha256 must be a full lowercase SHA-256')
