@@ -77,8 +77,8 @@ app.get('/briefing', async (c) => {
       (SELECT COUNT(*) FROM learning_path_stages s WHERE s.thread_id=t.id) stage_count,
       (SELECT COUNT(*) FROM thread_lessons l WHERE l.thread_id=t.id) lesson_count,
       (SELECT COUNT(*) FROM thread_lessons l WHERE l.thread_id=t.id AND l.status='completed') completed_lesson_count
-      FROM learning_threads t WHERE t.status IN ('active','paused','draft') AND t.superseded_at IS NULL
-      ORDER BY CASE t.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,t.priority DESC,t.updated_at DESC`,
+      FROM learning_threads t WHERE t.status='active' AND t.superseded_at IS NULL
+      ORDER BY t.priority DESC,t.updated_at DESC`,
     ).all<any>()
     const activeThreads = activeThreadsResult.results || []
     const threadIds = activeThreads.map((thread: any) => thread.id)
@@ -118,9 +118,12 @@ app.get('/briefing', async (c) => {
       })
       if (visibleLessonIds.length) {
         const lessonSources = await DB.prepare(
-          `SELECT ls.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url
+          `SELECT ls.*,r.video_title,r.creator,r.content_type,r.video_url,r.notebook_url,
+            b.id branch_id,b.label branch_label,b.status branch_status,b.super_category branch_domain_id
           FROM thread_lesson_sources ls
           JOIN recommendations r ON r.id=ls.recommendation_id
+          LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
+          LEFT JOIN tree_nodes b ON b.id=COALESCE(m.branch_id,r.branch) AND b.type IN ('branch','leaf') AND b.status!='pruned'
           WHERE ls.lesson_id IN (${visibleLessonIds.map(() => '?').join(',')})
           ORDER BY ls.lesson_id,ls.position`,
         )

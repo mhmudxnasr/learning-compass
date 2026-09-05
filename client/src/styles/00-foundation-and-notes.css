@@ -23,6 +23,7 @@
   --studio-surface-hover: #fff7f3;
   --studio-active-surface: #f8d8d0;
   --studio-cypress: #e55a42;
+  --studio-cypress-text: color-mix(in srgb, var(--studio-cypress) 70%, var(--studio-ink));
   --studio-accent: var(--studio-cypress);
   --studio-lichen: #f8d8d0;
   --studio-highlight: var(--studio-lichen);
@@ -30,6 +31,9 @@
   --studio-due: #8a5b12;
   --studio-danger: #a8373f;
   --studio-map: #24757a;
+  --studio-due-text: var(--studio-due);
+  --studio-danger-text: var(--studio-danger);
+  --studio-map-text: var(--studio-map);
   --studio-action-ink: #000000;
   --studio-map-ink: #ffffff;
   --studio-danger-ink: #ffffff;
@@ -99,7 +103,7 @@
 }
 .recall-view-switcher button {
   flex: 1 1 auto;
-  min-height: 40px;
+  min-height: 44px;
 }
 
 .recall-repair-section {
@@ -171,7 +175,7 @@
   padding: 4px 8px;
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 28%, var(--studio-seam));
   border-radius: 999px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(10px * var(--font-scale));
   font-weight: 700;
 }
@@ -213,7 +217,7 @@
   font-size: calc(12px * var(--font-scale));
 }
 .recall-repair-links a {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .recall-repair-editor,
@@ -289,7 +293,7 @@
   flex-wrap: wrap;
 }
 .recall-repair-actions .danger {
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 @media (max-width: 640px) {
@@ -454,9 +458,6 @@
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
-.thread-index-ledger-head {
-  align-items: end;
-}
 .thread-index-ledger-head h2 {
   margin: 0;
   color: var(--studio-ink);
@@ -507,7 +508,7 @@
 }
 .thread-filter-tab-btn.is-active {
   background: var(--studio-canvas);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--studio-ink) 10%, transparent);
   font-weight: var(--font-heading-weight);
 }
@@ -644,7 +645,6 @@
 .folio-path-title {
   margin: 0;
   color: var(--studio-ink);
-  font-family: var(--font-display);
   font-size: calc(17px * var(--font-scale));
   font-weight: var(--font-heading-weight);
   line-height: 1.3;
@@ -652,7 +652,7 @@
   overflow-wrap: anywhere;
 }
 .folio-path-card > a:hover .folio-path-title {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .folio-path-question {
   display: -webkit-box;
@@ -725,7 +725,7 @@
   justify-content: flex-end;
   gap: 7px;
   min-width: 126px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(12px * var(--font-scale));
   font-weight: var(--font-heading-weight);
   white-space: nowrap;
@@ -2204,7 +2204,7 @@
   align-items: center;
   gap: 13px;
   margin-bottom: 22px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-family: var(--font-mono);
   font-size: calc(10px * var(--font-scale));
   font-weight: var(--font-heading-weight);
@@ -2260,7 +2260,7 @@
 }
 
 .folio-reading-meta a {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: var(--font-medium-weight);
   text-decoration: none;
 }
@@ -2291,7 +2291,7 @@
   flex: 0 0 38px;
   padding-top: 7px;
   border-inline-end: 1px solid color-mix(in srgb, var(--studio-cypress) 25%, var(--studio-seam));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-family: var(--font-mono);
   font-size: calc(10px * var(--font-scale));
   letter-spacing: 0.05em;
@@ -2307,7 +2307,7 @@
 
 .folio-reading-section-label {
   margin: 0 0 24px !important;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-family: var(--font-mono) !important;
   font-size: calc(10px * var(--font-scale)) !important;
   font-weight: var(--font-heading-weight);
@@ -2370,7 +2370,7 @@
 }
 
 .folio-reading-copy li::marker {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-family: var(--font-mono);
   font-size: 0.72em;
   font-weight: var(--font-bold-weight);
@@ -2392,7 +2392,7 @@
 
 .folio-reading-copy a {
   display: inline;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: var(--font-medium-weight);
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
@@ -2923,12 +2923,8 @@
   *,
   *::before,
   *::after {
-    scroll-behavior: auto !important;
     animation-delay: 0s !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
     transition-delay: 0s !important;
-    transition-duration: 0.01ms !important;
   }
   :is(button, a, .button):hover {
     transform: none !important;
@@ -2936,9 +2932,7 @@
 }
 
 body {
-  font-size: calc(var(--font-base-size) * var(--font-preference-scale) * var(--font-viewport-scale));
   font-weight: var(--font-body-weight);
-  line-height: var(--font-line-height);
   letter-spacing: var(--font-letter-spacing);
 }
 
@@ -3059,7 +3053,6 @@ body {
   min-width: 280px;
   min-height: 100dvh;
   margin: 0;
-  background: var(--studio-shell);
   color: var(--studio-ink);
   font-size: calc(var(--font-base-size) * var(--font-preference-scale) * var(--font-viewport-scale));
   line-height: var(--font-line-height);
@@ -3097,7 +3090,7 @@ textarea:disabled {
 }
 
 a {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
@@ -3245,7 +3238,7 @@ button:disabled,
   padding: 0 12px;
   border-color: var(--studio-seam);
   background: var(--studio-canvas);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .button.secondary:hover:not(:disabled),
@@ -3259,7 +3252,7 @@ button:disabled,
 
 .danger-action,
 .desk-btn-prune {
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 .icon-button {
@@ -3278,7 +3271,7 @@ button:disabled,
 .icon-button:hover:not(:disabled) {
   border-color: var(--studio-seam);
   background: var(--studio-lichen);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .inline-action,
@@ -3286,7 +3279,7 @@ button:disabled,
 .desk-text-action {
   min-height: var(--studio-density-inline-height);
   padding: 4px 8px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(12px * var(--font-scale));
 }
 

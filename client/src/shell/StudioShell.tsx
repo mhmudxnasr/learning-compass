@@ -117,7 +117,14 @@ export function StudioShell({
 
   return (
     <div class={`studio-shell ${inspector ? 'has-inspector' : ''}`} data-root={route.root} data-mode={route.mode}>
-      <a class="skip-link" href="#workspace-canvas">
+      <a
+        class="skip-link"
+        href="#workspace-canvas"
+        onClick={(event) => {
+          event.preventDefault()
+          document.getElementById('workspace-canvas')?.focus()
+        }}
+      >
         Skip to workspace
       </a>
 
@@ -193,6 +200,7 @@ export function StudioShell({
               type="button"
               class="workspace-search-command"
               onClick={onSearch}
+              aria-label="Search everything"
               aria-keyshortcuts="Control+K Meta+K"
               title="Search (Ctrl/Command K)"
             >
@@ -218,7 +226,13 @@ export function StudioShell({
             <BrandMark size={23} />
             <strong>Compass</strong>
           </button>
-          <button type="button" class="button secondary" onClick={onSearch} aria-keyshortcuts="Control+K Meta+K">
+          <button
+            type="button"
+            class="button secondary"
+            onClick={onSearch}
+            aria-label="Search everything"
+            aria-keyshortcuts="Control+K Meta+K"
+          >
             <Icon name="search" size={16} /> Search
           </button>
           <button type="button" class="button primary" onClick={onCapture}>

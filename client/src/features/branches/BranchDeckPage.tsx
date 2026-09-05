@@ -653,7 +653,7 @@ export function BranchDeckPage({
           </div>
         </section>
 
-        <main class="folio-branch-detail-panel branch-dossier-main">
+        <section class="folio-branch-detail-panel branch-dossier-main" aria-label="Branch details">
           {!selected ? (
             <div class="folio-branch-empty-inspector">
               <h3>Select a branch</h3>
@@ -894,7 +894,7 @@ export function BranchDeckPage({
               </section>
             </article>
           )}
-        </main>
+        </section>
 
         <aside class="branch-dossier-rail" aria-label="Branch signals and decision">
           {!selected ? (

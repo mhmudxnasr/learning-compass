@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { Bindings, normalizeRating, safeError } from '../lib'
+import { withRecallBranches } from '../services/recall-branches'
 import { defaultSettings, loadSettings, normalizeSettings, type TasteMapSettings } from '../services/settings'
 import { createCapture } from '../services/capture'
 import { activateWaitingRun } from './discovery'
@@ -1288,7 +1289,7 @@ app.get('/srs/drafts', async (c) => {
     LIMIT 200
   `)
   const rows = await (threadId || stageId ? statement.bind(threadId || stageId) : statement).all()
-  return c.json({ drafts: rows.results || [] })
+  return c.json({ drafts: await withRecallBranches(c.env.DB, rows.results || []) })
 })
 app.get('/learning/srs/cards', async (c) => {
   const threadId = String(c.req.query('thread_id') || '').trim()
@@ -1319,7 +1320,7 @@ app.get('/learning/srs/cards', async (c) => {
     LIMIT 500
   `)
   const rows = await (threadId || stageId ? statement.bind(threadId || stageId) : statement).all()
-  return c.json({ cards: rows.results || [] })
+  return c.json({ cards: await withRecallBranches(c.env.DB, rows.results || []) })
 })
 app.delete('/learning/srs/cards/:id', async (c) => {
   const result = await c.env.DB.prepare(`DELETE FROM srs_cards WHERE id=?`).bind(c.req.param('id')).run()

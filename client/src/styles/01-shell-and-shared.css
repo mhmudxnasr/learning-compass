@@ -41,11 +41,8 @@
 }
 
 .rail-top {
-  display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 8px;
-  width: 100%;
   margin-bottom: 4px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--studio-rail-border, rgba(255, 255, 255, 0.08));
@@ -173,15 +170,15 @@
   border-color: var(--studio-due);
   border-left-color: var(--studio-due);
   background: var(--studio-shell);
-  color: var(--studio-due);
+  color: var(--studio-due-text);
 }
 
 .route-notice > .icon {
   flex: 0 0 auto;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .route-notice.route-warning > .icon {
-  color: var(--studio-due);
+  color: var(--studio-due-text);
 }
 .route-notice > span {
   display: grid;
@@ -231,7 +228,6 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--studio-density-canvas-y) var(--studio-density-canvas-x) var(--studio-density-canvas-bottom);
   outline: none;
 }
 
@@ -423,7 +419,6 @@
   overflow-y: auto;
   overflow-x: hidden;
   border-inline-start: 1px solid var(--studio-seam);
-  background: var(--studio-inspector);
 }
 
 .desk-inspector,
@@ -440,11 +435,6 @@
 }
 
 /* Shared page grammar ---------------------------------------------------- */
-
-.workspace-canvas > * {
-  width: 100%;
-  margin-inline: 0;
-}
 
 .module-head,
 .section-head,
@@ -740,7 +730,7 @@ p {
 .state-hypothesis,
 .delivery-queued {
   border-color: var(--studio-due);
-  color: var(--studio-due);
+  color: var(--studio-due-text);
 }
 
 .state-pruned,
@@ -750,7 +740,7 @@ p {
 .danger-action,
 .delivery-failed {
   border-color: var(--studio-danger);
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 .state-map,
@@ -758,7 +748,7 @@ p {
 .role-foundation,
 .role-counterevidence {
   border-color: var(--studio-map);
-  color: var(--studio-map);
+  color: var(--studio-map-text);
 }
 
 .bar,
@@ -881,13 +871,13 @@ meter::-webkit-meter-even-less-good-value {
 .error-state,
 .state-error,
 .desk-error {
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 .error-state button {
   padding: 0 12px;
   border-color: var(--studio-danger);
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 /* Dialogs and overlays --------------------------------------------------- */
@@ -977,13 +967,13 @@ dialog::backdrop {
   gap: 6px;
   min-width: 0;
   padding: 12px 14px;
-  border-inline-start: 3px solid var(--studio-cypress);
+  border: 1px solid var(--studio-seam);
   background: var(--studio-control-surface);
 }
 
 .share-intake-review-source a {
   overflow-wrap: anywhere;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(12px * var(--font-scale));
 }
 
@@ -1653,7 +1643,7 @@ dialog::backdrop {
 }
 
 .search-hint.error {
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 .command-results > button {

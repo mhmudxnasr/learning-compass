@@ -112,13 +112,13 @@
 .folio-branch-metric-tab.tab-priority.is-active {
   background: color-mix(in srgb, var(--studio-map) 14%, var(--studio-canvas));
   border-color: var(--studio-map);
-  color: var(--studio-map);
+  color: var(--studio-map-text);
 }
 
 .folio-branch-metric-tab.tab-pruned.is-active {
   background: color-mix(in srgb, var(--studio-danger) 10%, var(--studio-canvas));
   border-color: var(--studio-danger);
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 .metric-count {
@@ -339,7 +339,6 @@
 
 .folio-branch-item.is-selected {
   background: var(--studio-lichen);
-  box-shadow: none;
 }
 
 .branch-item-top {
@@ -358,7 +357,7 @@
 }
 
 .branch-item-category.cat-tech {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .branch-item-category.cat-faith {
@@ -382,7 +381,7 @@
 
 .branch-item-status.status-priority {
   background: color-mix(in srgb, var(--studio-map) 15%, transparent);
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   border: 1px solid color-mix(in srgb, var(--studio-map) 35%, transparent);
 }
 
@@ -393,7 +392,7 @@
 
 .branch-item-status.status-waiting {
   background: color-mix(in srgb, var(--studio-cypress) 12%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: var(--font-bold-weight);
 }
 
@@ -404,7 +403,7 @@
 
 .branch-item-status.status-pruned {
   background: color-mix(in srgb, var(--studio-danger) 12%, transparent);
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 .branch-item-title {
@@ -444,11 +443,11 @@
 
 .branch-frontier-inline.frontier-deeper-study-ready {
   border-color: color-mix(in srgb, var(--studio-cypress) 45%, var(--studio-seam));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .branch-item-attention {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: var(--font-medium-weight);
 }
 
@@ -476,7 +475,7 @@
 
 .folio-branch-empty-inspector .empty-icon {
   font-size: calc(32px * var(--font-scale));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .folio-branch-empty-inspector h3 {
@@ -533,7 +532,7 @@
 }
 
 .branch-tag-category.cat-tech {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   border-color: color-mix(in srgb, var(--studio-cypress) 30%, var(--studio-seam));
 }
 
@@ -550,7 +549,7 @@
   border-radius: 4px;
   background: color-mix(in srgb, var(--studio-map) 14%, transparent);
   border: 1px solid var(--studio-map);
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   font-weight: var(--font-bold-weight);
 }
 
@@ -569,12 +568,12 @@
 
 .branch-tag-status.status-pruned {
   background: color-mix(in srgb, var(--studio-danger) 15%, transparent);
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 .branch-tag-status.status-waiting {
   background: color-mix(in srgb, var(--studio-cypress) 15%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .branch-tag-status.status-held {
@@ -584,7 +583,7 @@
 
 .branch-tag-status.status-priority {
   background: color-mix(in srgb, var(--studio-map) 15%, transparent);
-  color: var(--studio-map);
+  color: var(--studio-map-text);
 }
 
 .branch-card-id {
@@ -732,7 +731,7 @@
 .branch-leaf-pill.is-overlap {
   background: color-mix(in srgb, var(--studio-map) 10%, var(--studio-canvas));
   border-color: var(--studio-map);
-  color: var(--studio-map);
+  color: var(--studio-map-text);
 }
 
 .branch-contrast-box {
@@ -822,7 +821,7 @@
 .decision-btn.btn-prune {
   border: 1px solid color-mix(in srgb, var(--studio-danger) 35%, var(--studio-seam));
   background: color-mix(in srgb, var(--studio-danger) 8%, var(--studio-canvas));
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 .decision-btn.btn-prune:hover {
@@ -840,13 +839,13 @@
 .decision-btn.btn-hold:hover {
   background: var(--studio-canvas);
   border-color: var(--studio-focus);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .decision-btn.btn-priority {
   border: 1px solid color-mix(in srgb, var(--studio-map) 35%, var(--studio-seam));
   background: color-mix(in srgb, var(--studio-map) 8%, var(--studio-canvas));
-  color: var(--studio-map);
+  color: var(--studio-map-text);
 }
 
 .decision-btn.btn-priority:hover {
@@ -1005,7 +1004,7 @@
 }
 
 .branch-archive-button {
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 .branch-editor-dialog {

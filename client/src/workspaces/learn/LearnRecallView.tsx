@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { useData } from '../../app/useData'
+import { objectHref } from '../../app/router'
 import { Empty, ErrorState, Loading } from '../../components/States'
 import { Icon } from '../../components/Icon'
 import { objectHref as libraryObjectHref } from '../library/types'
@@ -37,20 +38,20 @@ export function LearnRecallView() {
   const branches = useMemo(
     () =>
       [
-        ...new Set(
-          [...dueCards, ...repairCards, ...pendingDrafts, ...approvedCards]
-            .map((item) => item.branch)
-            .filter(Boolean) as string[],
-        ),
-      ].sort(),
+        ...new Map(
+          [...dueCards, ...repairCards, ...pendingDrafts, ...approvedCards].flatMap((item) =>
+            item.branch_context ? [[item.branch_context.id, item.branch_context.label] as const] : [],
+          ),
+        ).entries(),
+      ].sort((a, b) => a[1].localeCompare(b[1])),
     [dueCards, repairCards, pendingDrafts, approvedCards],
   )
   const matches = (item: RecallCard | RecallDraft) => {
-    if (branch !== 'all' && (item.branch || 'General') !== branch) return false
+    if (branch !== 'all' && (item.branch_context?.id || 'unassigned') !== branch) return false
     const needle = query.trim().toLowerCase()
     return (
       !needle ||
-      `${item.question} ${item.answer} ${item.topic || ''} ${item.source_title || ''} ${item.branch || ''} ${item.source_anchor || ''}`
+      `${item.question} ${item.answer} ${item.topic || ''} ${item.source_title || ''} ${item.branch_context?.label || ''} ${item.source_anchor || ''}`
         .toLowerCase()
         .includes(needle)
     )
@@ -115,9 +116,10 @@ export function LearnRecallView() {
             <span>Branch</span>
             <select value={branch} onChange={(event) => setBranch((event.target as HTMLSelectElement).value)}>
               <option value="all">All branches</option>
-              {branches.map((item) => (
-                <option key={item} value={item}>
-                  {item}
+              <option value="unassigned">Unassigned branch</option>
+              {branches.map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
                 </option>
               ))}
             </select>
@@ -126,6 +128,7 @@ export function LearnRecallView() {
             <Icon name="search" size={14} />
             <input
               type="search"
+              aria-label="Search question, source, or anchor"
               value={query}
               onInput={(event) => setQuery((event.target as HTMLInputElement).value)}
               placeholder="Search question, source, or anchor"
@@ -196,7 +199,13 @@ export function LearnRecallView() {
 function SourceLine({ item }: { item: RecallCard | RecallDraft }) {
   return (
     <div class="recall-source-line">
-      {item.branch && <span class="recall-branch-badge">{item.branch}</span>}
+      {item.branch_context ? (
+        <a class="recall-branch-badge" href={objectHref('map', 'branch', item.branch_context.id)}>
+          {item.branch_context.label}
+        </a>
+      ) : (
+        <span class="recall-branch-badge">Unassigned branch</span>
+      )}
       {item.card_type && <span>{item.card_type}</span>}
       {item.source_title &&
         (item.recommendation_id ? (
@@ -315,19 +324,22 @@ function DueReview({
           <span>How did retrieval feel?</span>
           <div>
             {[
-              [0, 'Again'],
-              [2, 'Hard'],
-              [4, 'Good'],
-              [5, 'Easy'],
-            ].map(([grade, label]) => (
+              [0, 'Again', 'Could not recall'],
+              [2, 'Hard', 'Recalled with effort'],
+              [4, 'Good', 'Recalled correctly'],
+              [5, 'Easy', 'Recalled immediately'],
+            ].map(([grade, label, meaning]) => (
               <button
                 class="button secondary"
                 type="button"
                 key={grade}
+                aria-label={String(label)}
+                aria-describedby={`recall-grade-${grade}`}
                 onClick={() => review(Number(grade))}
                 disabled={working}
               >
-                {label}
+                <strong>{label}</strong>
+                <small id={`recall-grade-${grade}`}>{meaning}</small>
               </button>
             ))}
           </div>

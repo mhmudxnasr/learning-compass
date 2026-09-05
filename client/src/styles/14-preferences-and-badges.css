@@ -71,7 +71,7 @@
 
 .folio-badge-note {
   background: color-mix(in srgb, var(--studio-cypress) 9%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   border-color: color-mix(in srgb, var(--studio-cypress) 28%, transparent);
 }
 
@@ -83,7 +83,7 @@
 
 .folio-badge-recall {
   background: color-mix(in srgb, var(--studio-due) 10%, var(--studio-canvas));
-  color: var(--studio-due);
+  color: var(--studio-due-text);
   border-color: color-mix(in srgb, var(--studio-due) 30%, transparent);
 }
 
@@ -108,7 +108,7 @@
   font-family: var(--font-mono, monospace);
   font-size: calc(13px * var(--font-scale));
   font-weight: var(--font-bold-weight);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .folio-recall-list {
@@ -213,7 +213,7 @@ a.branch-ledger-title:hover {
 }
 
 .branch-ledger-title.is-pending strong {
-  color: var(--studio-due);
+  color: var(--studio-due-text);
 }
 
 .branch-ledger-sub {
@@ -421,7 +421,6 @@ a.branch-ledger-title:hover {
 
 .preferences-main .visual-presets-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
 }
 
 .preferences-main .visual-preset-card {
@@ -442,7 +441,6 @@ a.branch-ledger-title:hover {
 .preferences-main .visual-preset-card.active {
   border-color: var(--studio-focus);
   background: color-mix(in srgb, var(--studio-lichen) 46%, var(--studio-canvas));
-  box-shadow: inset 0 0 0 1px var(--studio-focus);
 }
 
 .preferences-main .visual-preset-card.active::after {
@@ -563,7 +561,7 @@ a.branch-ledger-title:hover {
 .preference-choice-options label.active {
   border-color: var(--studio-focus);
   background: var(--studio-lichen);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   box-shadow: inset 0 0 0 1px var(--studio-focus);
 }
 
@@ -659,7 +657,7 @@ a.branch-ledger-title:hover {
   border: 1px solid var(--studio-seam);
   border-radius: var(--studio-radius-control);
   background: var(--studio-canvas);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(18px * var(--font-scale));
   font-weight: var(--font-heading-weight);
 }
@@ -929,7 +927,7 @@ a.branch-ledger-title:hover {
   padding: 5px 8px;
   border: 1px solid var(--studio-seam);
   border-radius: 999px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font: var(--font-medium-weight) calc(10px * var(--font-scale)) var(--font-mono);
 }
 
@@ -1192,7 +1190,7 @@ a.branch-ledger-title:hover {
 }
 
 .theme-workshop-advanced > summary em {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(10px * var(--font-scale));
   font-style: normal;
   font-weight: var(--font-medium-weight);
@@ -1359,7 +1357,7 @@ a.branch-ledger-title:hover {
 }
 
 .preferences-preview-rail {
-  grid-column: 2;
+  grid-column: 1;
   grid-row: 1;
   position: sticky;
   top: 54px;
@@ -1565,7 +1563,7 @@ a.branch-ledger-title:hover {
     grid-column: 1;
     grid-row: 1;
     position: static;
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 0.45fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .preferences-main {
@@ -1987,64 +1985,12 @@ a.branch-ledger-title:hover {
 
 .preferences-preview-stage {
   display: grid;
-  grid-template-columns: minmax(240px, 0.65fr) minmax(440px, 1.35fr);
-  min-height: 390px;
-  background: linear-gradient(
-    140deg,
-    var(--studio-ledger) 0 34%,
-    color-mix(in srgb, var(--studio-lichen) 58%, var(--studio-canvas)) 34% 100%
-  );
-}
-.preferences-preview-intro {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 32px;
-}
-.preferences-preview-intro h2 {
-  max-width: 13ch;
-  margin: 7px 0 12px;
-  font-size: calc(30px * var(--font-scale) * var(--font-display-scale));
-  line-height: 1.06;
-  letter-spacing: -0.025em;
-}
-.preferences-preview-intro p {
-  margin: 0;
-  color: var(--studio-secondary);
-  font-size: calc(12px * var(--font-scale));
-  line-height: 1.6;
-}
-.preferences-preview-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 24px;
-  color: var(--studio-muted);
-  font-size: calc(9px * var(--font-scale));
-}
-.preferences-preview-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.preferences-preview-legend i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.preferences-preview-legend .is-action {
-  background: var(--studio-cypress);
-}
-.preferences-preview-legend .is-surface {
-  background: var(--studio-surface);
-  border: 1px solid var(--studio-seam);
-}
-.preferences-preview-legend .is-signal {
-  background: var(--studio-due);
+  grid-template-columns: minmax(0, 1fr);
 }
 .preferences-page .preferences-preview-rail {
   position: static;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   padding: 24px;
 }
@@ -2091,7 +2037,7 @@ a.branch-ledger-title:hover {
 }
 
 .preferences-main .visual-presets-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-top: 22px;
 }
@@ -2223,15 +2169,6 @@ a.branch-ledger-title:hover {
     grid-template-columns: 180px minmax(0, 1fr);
     gap: 20px;
   }
-  .preferences-preview-stage {
-    grid-template-columns: 1fr;
-  }
-  .preferences-preview-intro {
-    padding-bottom: 10px;
-  }
-  .preferences-preview-intro h2 {
-    max-width: 22ch;
-  }
   .preferences-main .visual-presets-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2319,15 +2256,6 @@ a.branch-ledger-title:hover {
   .preferences-main > .visual-presets-section,
   .preferences-main .preference-disclosure-body {
     padding: 19px;
-  }
-  .preferences-preview-stage {
-    min-height: 0;
-  }
-  .preferences-preview-intro {
-    padding: 22px 20px 6px;
-  }
-  .preferences-preview-intro h2 {
-    font-size: calc(25px * var(--font-scale));
   }
   .preferences-page .preferences-preview-rail {
     padding: 16px;

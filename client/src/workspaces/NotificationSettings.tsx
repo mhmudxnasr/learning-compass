@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks'
 import { api, formatDate } from '../api'
 import { useData } from '../app/useData'
+import { notificationErrorMessage } from './notificationErrors'
 
 type NotificationState = {
   browser?: { enabled?: boolean; subscription_id?: string } | null
@@ -19,8 +20,13 @@ const DEVICE_SUBSCRIPTION_KEY = 'learning-compass:push-subscription-id'
 
 function applicationServerKey(value: string) {
   const padded = `${value}${'='.repeat((4 - (value.length % 4)) % 4)}`.replace(/-/g, '+').replace(/_/g, '/')
-  const raw = atob(padded)
-  return Uint8Array.from(raw, (character) => character.charCodeAt(0))
+  try {
+    const raw = atob(padded)
+    if (raw.length !== 65 || raw.charCodeAt(0) !== 4) throw new Error('Invalid P-256 public key')
+    return Uint8Array.from(raw, (character) => character.charCodeAt(0))
+  } catch (cause) {
+    throw new Error('notification_configuration_invalid', { cause })
+  }
 }
 
 export function NotificationSettings() {
@@ -45,7 +51,9 @@ export function NotificationSettings() {
 
   const enable = async () => {
     if (!supported || !vapid.data?.configured || !vapid.data.public_key) {
-      setMessage('Browser push is not available on this device or the Worker is not configured.')
+      setMessage(
+        'Reminders are unavailable here. Use a browser with notification support. If setup is missing, ask Hermes to configure browser notifications.',
+      )
       return
     }
     setWorking(true)
@@ -74,7 +82,7 @@ export function NotificationSettings() {
       setMessage('Browser reminders are enabled on this device.')
       notifications.reload()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Browser reminders could not be enabled.')
+      setMessage(notificationErrorMessage(error))
     } finally {
       setWorking(false)
     }
@@ -97,7 +105,7 @@ export function NotificationSettings() {
       setMessage('Browser reminders are disabled on this device.')
       notifications.reload()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Browser reminders could not be disabled.')
+      setMessage(notificationErrorMessage(error))
     } finally {
       setWorking(false)
     }
@@ -111,14 +119,10 @@ export function NotificationSettings() {
         method: 'POST',
         body: JSON.stringify({ channel: 'browser' }),
       })
-      setMessage(
-        result.status === 'delivered'
-          ? 'Test reminder delivered.'
-          : result.error || `Test reminder status: ${result.status || 'unknown'}.`,
-      )
+      setMessage(result.status === 'delivered' ? 'Test reminder delivered.' : notificationErrorMessage(result.error))
       notifications.reload()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'The test reminder failed.')
+      setMessage(notificationErrorMessage(error))
     } finally {
       setWorking(false)
     }
@@ -137,16 +141,32 @@ export function NotificationSettings() {
           <span>
             {!supported
               ? 'Push is unavailable in this browser.'
-              : !vapid.data?.configured
-                ? 'The Worker needs VAPID configuration.'
-                : enabled
-                  ? 'This browser has an active push subscription.'
-                  : 'Notifications remain off until you enable them.'}
+              : notifications.error || vapid.error
+                ? 'Reminder status could not be loaded. Check your connection and retry.'
+                : notifications.loading || vapid.loading
+                  ? 'Checking this device…'
+                  : !vapid.data?.configured
+                    ? 'Reminder delivery has not been configured yet.'
+                    : enabled
+                      ? 'This browser has an active push subscription.'
+                      : 'Notifications remain off until you enable them.'}
           </span>
         </div>
         <span class={`setting-value ${enabled ? 'is-active' : ''}`}>{enabled ? 'Enabled' : 'Off'}</span>
       </div>
       <div class="notification-setting-actions">
+        {(notifications.error || vapid.error) && (
+          <button
+            type="button"
+            class="button secondary"
+            onClick={() => {
+              notifications.reload()
+              vapid.reload()
+            }}
+          >
+            Retry status
+          </button>
+        )}
         {enabled ? (
           <button type="button" class="button secondary" disabled={working} onClick={disable}>
             Disable
@@ -165,10 +185,21 @@ export function NotificationSettings() {
           Send test
         </button>
       </div>
+      <details class="notification-help">
+        <summary>Reminder troubleshooting</summary>
+        <p>
+          For blocked permission, allow notifications in this browser’s site settings and try again. For an expired
+          subscription, disable reminders here and enable them again.
+        </p>
+        <p>
+          Missing or invalid delivery keys need a server repair. Ask Hermes: “Check browser notification setup and
+          repair the delivery keys.” After setup is repaired, enable reminders and send a test from this device.
+        </p>
+      </details>
       {latest && (
         <small class="notification-last-delivery">
           Last attempt {formatDate(latest.attempted_at)} · {latest.status}
-          {latest.error ? ` · ${latest.error}` : ''}
+          {latest.error ? ` · ${notificationErrorMessage(latest.error)}` : ''}
         </small>
       )}
       {message && (

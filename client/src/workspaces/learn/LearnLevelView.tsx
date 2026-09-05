@@ -1,3 +1,4 @@
+import { levelNumber } from './threadViewModel'
 import { routeHref } from '../../app/router'
 import { Icon } from '../../components/Icon'
 import { lessonHref, lessonReadiness, percent, statusLabel } from './helpers'
@@ -42,10 +43,10 @@ export function StageView({
           <span aria-hidden="true">/</span>
           <a href={threadTabHref(threadId, 'curriculum', stage.id)}>Lessons</a>
           <span aria-hidden="true">/</span>
-          <span>Level {stage.position}</span>
+          <span>Level {levelNumber(stage)}</span>
         </nav>
         <div class="course-stage-heading-line">
-          <p class="folio-object-kicker">Level {stage.position}</p>
+          <p class="folio-object-kicker">Level {levelNumber(stage)}</p>
           <span class={`course-stage-status status-${stage.status}`}>{statusLabel(stage.status)}</span>
         </div>
         <h1>{stage.title.replace(/^Level \d+\s*[—-]\s*/, '')}</h1>

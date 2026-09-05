@@ -73,7 +73,7 @@
 .canon-surprise-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--studio-cypress) 10%, var(--studio-canvas));
   border-color: var(--studio-cypress);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--studio-cypress) 12%, transparent);
 }
@@ -155,7 +155,7 @@
 
 .canon-filter-tab.is-active .canon-tab-count {
   background: color-mix(in srgb, var(--studio-cypress) 18%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .canon-search-wrapper {
@@ -398,7 +398,7 @@
 }
 
 .canon-entry-title a:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .canon-branch-pill {
@@ -409,7 +409,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--studio-map) 8%, var(--studio-canvas));
   border: 1px solid color-mix(in srgb, var(--studio-map) 25%, var(--studio-seam));
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   font: 600 calc(10.5px * var(--font-scale))/1 var(--font-mono);
   width: fit-content;
 }
@@ -429,7 +429,7 @@
 
 .canon-pill.state-complete {
   background: color-mix(in srgb, var(--studio-cypress) 14%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 28%, transparent);
 }
 
@@ -446,7 +446,7 @@
 
 .canon-pill.state-danger {
   background: color-mix(in srgb, var(--studio-danger) 14%, var(--studio-canvas));
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
   border: 1px solid color-mix(in srgb, var(--studio-danger) 28%, transparent);
 }
 
@@ -488,13 +488,13 @@
 
 .canon-shelf-num.role-foundation {
   background: color-mix(in srgb, var(--studio-cypress) 14%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 25%, transparent);
 }
 
 .canon-shelf-num.role-representative {
   background: color-mix(in srgb, var(--studio-map) 14%, var(--studio-canvas));
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   border: 1px solid color-mix(in srgb, var(--studio-map) 25%, transparent);
 }
 
@@ -587,7 +587,7 @@
 .canon-view-btn:hover {
   background: color-mix(in srgb, var(--studio-cypress) 8%, var(--studio-canvas));
   border-color: var(--studio-cypress);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   transform: translateX(2px);
 }
 
@@ -670,7 +670,7 @@
 .canon-rubric-content strong {
   display: block;
   font: 700 calc(11px * var(--font-scale))/1 var(--font-mono);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-bottom: 6px;
@@ -702,7 +702,7 @@
 }
 
 .canon-back-link:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .canon-breadcrumb-sep {
@@ -745,7 +745,7 @@
   border-radius: var(--studio-radius-control);
   background: color-mix(in srgb, var(--studio-cypress) 10%, var(--studio-canvas));
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 25%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: 600;
   font-size: calc(13px * var(--font-scale));
 }
@@ -816,13 +816,13 @@
 
 .canon-book-row.role-foundation .canon-role-num {
   background: color-mix(in srgb, var(--studio-cypress) 14%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 30%, transparent);
 }
 
 .canon-book-row.role-representative .canon-role-num {
   background: color-mix(in srgb, var(--studio-map) 14%, var(--studio-canvas));
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   border: 1px solid color-mix(in srgb, var(--studio-map) 30%, transparent);
 }
 
@@ -968,7 +968,7 @@
 .canon-row-actions .button.secondary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--studio-cypress) 10%, var(--studio-canvas));
   border-color: var(--studio-cypress);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   transform: translateY(-1px);
 }
 
@@ -1004,7 +1004,7 @@
 }
 
 .canon-row-deepdive summary:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .canon-row-deepdive summary svg {
@@ -1135,13 +1135,13 @@
 }
 
 .canon-matrix-pill.role-foundation {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   background: color-mix(in srgb, var(--studio-cypress) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 25%, transparent);
 }
 
 .canon-matrix-pill.role-representative {
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   background: color-mix(in srgb, var(--studio-map) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--studio-map) 25%, transparent);
 }
@@ -1325,7 +1325,7 @@
   color: var(--studio-muted);
 }
 .operational-health .status.healthy {
-  color: var(--studio-map);
+  color: var(--studio-map-text);
 }
 .operational-health .status.warning {
   color: var(--studio-warning, #8a4b16);

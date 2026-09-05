@@ -35,7 +35,7 @@
 .discovery-summary-strip strong {
   font-family: var(--font-mono, monospace);
   font-size: calc(18px * var(--font-scale));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .discovery-summary-strip span {
@@ -84,7 +84,7 @@
   padding: 3px 8px;
   border-radius: 999px;
   background: var(--studio-lichen);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 25%, transparent);
 }
 
@@ -121,7 +121,7 @@
 }
 
 .receipt-grid strong {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   margin-right: 4px;
 }
 
@@ -162,7 +162,7 @@
 
 .suggestion-body a:hover {
   text-decoration: underline;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .suggestion-creator {
@@ -182,7 +182,7 @@
   font-family: var(--font-mono, monospace);
   font-size: calc(20px * var(--font-scale));
   font-weight: var(--font-medium-weight);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .candidate-score small {
@@ -211,7 +211,7 @@
   font-size: calc(11px * var(--font-scale));
   font-family: var(--font-mono, monospace);
   text-transform: uppercase;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   display: block;
   margin-bottom: 4px;
 }
@@ -506,7 +506,7 @@
 
 .hermes-activity-health .is-warning strong,
 .hermes-receipt.is-blocked .hermes-receipt-status {
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 .hermes-receipt-list {
@@ -544,7 +544,7 @@
   font-size: calc(11px * var(--font-scale));
 }
 .hermes-receipt-status {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(11px * var(--font-scale));
   font-weight: 700;
   text-transform: uppercase;
@@ -676,7 +676,7 @@
   padding: 5px 10px;
   border-radius: var(--studio-radius-control);
   background: var(--studio-lichen);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 25%, transparent);
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -803,7 +803,7 @@
 .folio-quick-link:hover {
   background: var(--studio-surface-hover, rgba(0, 0, 0, 0.03));
   border-color: var(--studio-focus);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .folio-quick-link-all {
@@ -1163,8 +1163,7 @@
 }
 
 .folio-home-queue-item.is-active .folio-home-queue-item-title {
-  font-weight: var(--font-heading-weight);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .folio-thread-finish {
@@ -1178,7 +1177,7 @@
   font-size: calc(11px * var(--font-scale));
   font-family: var(--font-mono, monospace);
   text-transform: uppercase;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   display: block;
   margin-bottom: 2px;
 }
@@ -1199,7 +1198,7 @@
 .folio-thread-evidence strong {
   font-family: var(--font-mono, monospace);
   font-size: calc(16px * var(--font-scale));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .folio-home-capture-signal {

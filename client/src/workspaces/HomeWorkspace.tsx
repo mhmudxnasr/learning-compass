@@ -6,6 +6,8 @@ import { Icon, type IconName } from '../components/Icon'
 import { itemHref, routeHref } from '../app/router'
 import { sourceCreator, sourceFormat, sourceLink, sourceTitle, type LibraryRecord } from './library/types'
 import { lessonHref, lessonReadiness } from './learn/helpers'
+import { levelNumber } from './learn/threadViewModel'
+import { directionForText } from './learn/noteReader'
 import {
   buildSourceMaterialLauncher,
   type SourceMaterialKind,
@@ -117,6 +119,9 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
   const [resurfacingBusy, setResurfacingBusy] = useState('')
   const [lessonCompletion, setLessonCompletion] = useState<LessonCompletionState | null>(null)
   const [lessonCompletionError, setLessonCompletionError] = useState<{ lessonId: string; message: string } | null>(null)
+  const [completedLesson, setCompletedLesson] = useState<{ threadId: string; lesson: ThreadLesson } | null>(null)
+  const [undoBusy, setUndoBusy] = useState(false)
+  const [undoError, setUndoError] = useState('')
   const lessonRefreshTimer = useRef<number | null>(null)
 
   useEffect(() => {
@@ -188,7 +193,8 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
         ? briefing.active_threads
         : briefing.active_thread
           ? [briefing.active_thread]
-          : []) as HomeThread[],
+          : []
+      ).filter((thread: HomeThread) => thread.status === 'active') as HomeThread[],
     [briefing.active_threads, briefing.active_thread],
   )
 
@@ -243,10 +249,18 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
         artifacts: { ...(htmlFile ? { html: htmlFile } : {}), ...(pdfFile ? { pdf: pdfFile } : {}) },
       }
     : null
-  const readyLessons = threads.filter((thread) => thread.current_stage?.lessons?.[0]).length
+  const readyLessons = threads.filter((thread) => {
+    const stage = thread.current_stage
+    const lesson = stage?.lessons?.[0]
+    return (
+      lesson &&
+      ['available', 'in_progress'].includes(stage?.status || '') &&
+      lessonReadiness(lesson) !== 'needs_material'
+    )
+  }).length
 
   const finishLesson = async (threadId: string, lesson: ThreadLesson) => {
-    if (lessonCompletion) return
+    if (lessonCompletion || undoBusy) return
     if (lessonRefreshTimer.current !== null) window.clearTimeout(lessonRefreshTimer.current)
     setLessonCompletionError(null)
     setLessonCompletion({ lessonId: lesson.id, phase: 'saving' })
@@ -256,6 +270,8 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
         body: JSON.stringify({ status: 'completed' }),
       })
       setLessonCompletion({ lessonId: lesson.id, phase: 'finished' })
+      setCompletedLesson({ threadId, lesson })
+      setUndoError('')
       lessonRefreshTimer.current = window.setTimeout(() => {
         lessonRefreshTimer.current = null
         reload()
@@ -266,6 +282,32 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
         lessonId: lesson.id,
         message: reason instanceof Error ? reason.message : 'Lesson completion failed.',
       })
+    }
+  }
+
+  const undoCompletion = async () => {
+    if (!completedLesson || undoBusy) return
+    if (lessonRefreshTimer.current !== null) {
+      window.clearTimeout(lessonRefreshTimer.current)
+      lessonRefreshTimer.current = null
+    }
+    setUndoBusy(true)
+    setUndoError('')
+    try {
+      await api(
+        `/learning/core/threads/${encodeURIComponent(completedLesson.threadId)}/lessons/${encodeURIComponent(completedLesson.lesson.id)}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'in_progress' }),
+        },
+      )
+      setCompletedLesson(null)
+      setLessonCompletion(null)
+      reload()
+    } catch {
+      setUndoError('The lesson could not be reopened. Try again.')
+    } finally {
+      setUndoBusy(false)
     }
   }
 
@@ -284,8 +326,294 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
         </div>
       </header>
 
+      {completedLesson && (
+        <div class="folio-action-status" role="status">
+          <span>Completed: {completedLesson.lesson.title}</span>{' '}
+          <button class="folio-button" type="button" disabled={undoBusy} onClick={undoCompletion}>
+            {undoBusy ? 'Reopening…' : 'Undo completion'}
+          </button>
+          {undoError && <p role="alert">{undoError}</p>}
+        </div>
+      )}
+
       <div class="folio-home-spread continuum-home-spread">
-        <main class="folio-home-main continuum-home-main">
+        <div class="folio-home-main continuum-home-main">
+          <section class="folio-home-threads continuum-turns" aria-labelledby="home-threads-title">
+            <div class="folio-section-heading folio-home-threads-heading">
+              <div>
+                <h2 id="home-threads-title">{threads.length ? 'What comes next' : 'No current Threads'}</h2>
+              </div>
+              <a
+                class="folio-heading-link"
+                href={routeHref('learn', 'paths')}
+                title="Browse Threads"
+                aria-label="Browse Threads"
+              >
+                <Icon name="learn" size={19} />
+              </a>
+            </div>
+            {threads.length ? (
+              <div class="folio-home-thread-list" role="list">
+                {threads.map((thread, index) => {
+                  const stage = thread.current_stage
+                  const lesson = stage?.lessons?.[0]
+                  const primarySource =
+                    lesson?.sources?.find((source) => source.role === 'primary') || lesson?.sources?.[0]
+                  const sourceCue = lesson
+                    ? [
+                        primarySource?.content_type ? labelize(primarySource.content_type) : null,
+                        primarySource?.creator || null,
+                        lesson.estimated_minutes ? `~${lesson.estimated_minutes} min` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')
+                    : ''
+                  const location =
+                    lesson && stage
+                      ? `Level ${levelNumber(stage)} · Lesson ${String(lesson.position + 1).padStart(2, '0')}`
+                      : stage?.title || 'Learning path'
+                  const title =
+                    lesson?.title || (stage?.status === 'completed' ? 'Level completed' : 'Open learning path')
+                  const status =
+                    lesson?.status === 'in_progress'
+                      ? 'In progress'
+                      : stage?.status === 'completed'
+                        ? 'Completed'
+                        : !lesson || lessonReadiness(lesson) === 'needs_material'
+                          ? 'Needs material'
+                          : stage?.status === 'locked'
+                            ? 'Locked'
+                            : 'Ready'
+                  const href = lesson
+                    ? lessonHref(String(thread.id), lesson.id)
+                    : `#/learn/thread/${encodeURIComponent(String(thread.id))}`
+                  const completionPhase =
+                    lesson && lessonCompletion?.lessonId === lesson.id ? lessonCompletion.phase : null
+                  const completionError =
+                    lesson && lessonCompletionError?.lessonId === lesson.id ? lessonCompletionError.message : ''
+                  const canFinish = Boolean(
+                    lesson &&
+                    ['available', 'in_progress'].includes(String(stage?.status || '')) &&
+                    lessonReadiness(lesson) !== 'needs_material',
+                  )
+                  return (
+                    <article
+                      key={`${thread.id}:${lesson?.id || 'path'}`}
+                      class={`folio-home-thread-lesson continuum-turn${lesson?.status === 'in_progress' ? ' is-active' : ''}${completionPhase === 'saving' ? ' is-finishing' : ''}${completionPhase === 'finished' ? ' is-finished' : ''}`}
+                      role="listitem"
+                      aria-busy={completionPhase === 'saving' || undefined}
+                    >
+                      <span class="continuum-turn-number" aria-hidden="true">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <a class="continuum-turn-open" href={href} title={`Open ${thread.title}: ${title}`}>
+                        <span class="folio-home-thread-copy">
+                          <span class="folio-object-kicker" dir="auto">
+                            {thread.title}
+                          </span>
+                          <strong class="folio-home-thread-lesson-title" dir={directionForText(title)}>
+                            {title}
+                          </strong>
+                          <small>
+                            {location}
+                            {sourceCue ? ` · ${sourceCue}` : ''}
+                          </small>
+                        </span>
+                        <span class="folio-home-thread-action">
+                          <span class={`folio-status-mark${lesson?.status === 'in_progress' ? ' is-in-progress' : ''}`}>
+                            {status}
+                          </span>
+                          <Icon name="chevron" size={15} />
+                        </span>
+                      </a>
+                      {(primarySource || canFinish || completionError) && (
+                        <div class="continuum-turn-tools">
+                          <MaterialDock source={primarySource} label={`Materials for ${title}`} />
+                          {primarySource?.branch_id && primarySource.branch_label && (
+                            <a
+                              class="folio-badge folio-badge-branch"
+                              href={`#/map/branch/${encodeURIComponent(primarySource.branch_id)}`}
+                            >
+                              {primarySource.branch_label}
+                            </a>
+                          )}
+                          {canFinish && (
+                            <button
+                              type="button"
+                              class={`continuum-finish-lesson${completionPhase ? ` is-${completionPhase}` : ''}`}
+                              onClick={() => finishLesson(String(thread.id), lesson!)}
+                              disabled={Boolean(lessonCompletion) || undoBusy}
+                              aria-label={`${completionPhase === 'finished' ? 'Finished' : completionPhase === 'saving' ? 'Finishing lesson' : 'Finish lesson'}: ${title}`}
+                              title="Mark this lesson complete and advance the Thread"
+                            >
+                              <span class="continuum-finish-mark" aria-hidden="true">
+                                <Icon name="check" size={13} />
+                              </span>
+                              <span>
+                                {completionPhase === 'finished'
+                                  ? 'Completed'
+                                  : completionPhase === 'saving'
+                                    ? 'Saving…'
+                                    : 'Finish lesson'}
+                              </span>
+                            </button>
+                          )}
+                          {completionError && (
+                            <p class="continuum-turn-error" role="alert">
+                              {completionError}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </article>
+                  )
+                })}
+              </div>
+            ) : (
+              <p class="folio-record-note">Create a Thread to plan a sequence of lessons.</p>
+            )}
+          </section>
+        </div>
+        <aside class="folio-home-side continuum-home-side" aria-label="Active Queue context">
+          <section class="folio-home-focus continuum-current" aria-labelledby="home-focus-title">
+            <div class="folio-home-focus-copy">
+              <div class="folio-section-heading">
+                <div>
+                  <p class="folio-kicker">Current source</p>
+                  <h2 id="home-focus-title">
+                    {activeSource ? (
+                      <a class="item-title-link" href={itemHref(activeSource)}>
+                        {sourceTitle(activeSource)}
+                      </a>
+                    ) : (
+                      'No active source'
+                    )}
+                  </h2>
+                </div>
+                {activeSource && (
+                  <span class="folio-status-mark">
+                    {activeSource.learning_state === 'in_progress' ? 'In progress' : 'Queued'}
+                  </span>
+                )}
+              </div>
+              {activeSource ? (
+                <>
+                  {activeSource.branch_id && (
+                    <a class="folio-branch-pill" href={`#/map/branch/${encodeURIComponent(activeSource.branch_id)}`}>
+                      {activeSource.branch_label || 'Branch unavailable'}
+                    </a>
+                  )}
+                  <p class="folio-record-meta">
+                    {sourceCreator(activeSource)} · {sourceFormat(activeSource)}
+                    {activeSource.estimated_minutes ? ` · ~${activeSource.estimated_minutes} min` : ''}
+                  </p>
+                  <p class="folio-home-rationale">
+                    {activeSource.context_brief ||
+                      activeSource.why_this ||
+                      'The most immediate useful commitment on your shelf.'}
+                  </p>
+                  <MaterialDock source={activeMaterialSource} label="Current source materials" />
+                  {otherFiles.length > 0 && (
+                    <div class="continuum-extra-files" aria-label="Other source files">
+                      {otherFiles.map((file: LibraryRecord) => (
+                        <a
+                          href={`/artifacts/${file.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          key={file.id}
+                          title={file.filename || sourceFileLabel(file)}
+                        >
+                          <Icon name="file" size={14} />
+                          <span>{sourceFileLabel(file)}</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  <div class="folio-home-actions-bar">
+                    <a class="folio-button" href={itemHref(activeSource)}>
+                      Open item
+                    </a>
+                    <a class="folio-button folio-button-primary" href={routeHref('library', 'triage', 'queue')}>
+                      Open Queue to start
+                    </a>
+                  </div>
+                  <p class="folio-action-note">Open Queue to start or resume a tracked session.</p>
+                  <a class="continuum-all-files" href={itemHref(activeSource, 'files')}>
+                    Item files
+                  </a>
+                </>
+              ) : (
+                <Empty
+                  title="The working shelf is clear"
+                  body="Save a source, then commit it to Queue when it earns your attention."
+                  action={
+                    <button
+                      type="button"
+                      class="folio-button folio-button-primary"
+                      onClick={() =>
+                        onCapture ? onCapture() : navigate(routeHref('library', 'catalog', 'all'), onNavigate)
+                      }
+                    >
+                      Save a source
+                    </button>
+                  }
+                />
+              )}
+            </div>
+          </section>
+
+          {items.length > 0 && (
+            <section class="folio-home-queue continuum-queue" aria-labelledby="home-queue-title">
+              <div class="folio-section-heading">
+                <div>
+                  <p class="folio-kicker">Queue</p>
+                  <h2 id="home-queue-title">
+                    {items.length} {items.length === 1 ? 'item' : 'items'}
+                  </h2>
+                </div>
+                <a
+                  class="folio-heading-link"
+                  href={routeHref('library', 'triage', 'queue')}
+                  title="Open Queue"
+                  aria-label="Open Queue"
+                >
+                  <Icon name="queue" size={19} />
+                </a>
+              </div>
+              <div class="folio-home-queue-list" role="list">
+                {items.map((item: LibraryRecord, index: number) => {
+                  const isSelected = activeSource && String(activeSource.id) === String(item.id)
+                  return (
+                    <div key={item.id} role="listitem" class={`folio-home-queue-item${isSelected ? ' is-active' : ''}`}>
+                      <span class="continuum-queue-index">{String(index + 1).padStart(2, '0')}</span>
+                      <a class="folio-home-queue-item-title item-title-link" href={itemHref(item)}>
+                        {sourceTitle(item)}
+                      </a>
+                      {item.branch_id && (
+                        <a
+                          class="folio-branch-pill continuum-queue-branch"
+                          href={`#/map/branch/${encodeURIComponent(item.branch_id)}`}
+                        >
+                          {item.branch_label || 'Branch unavailable'}
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        class="item-focus-button"
+                        onClick={() => setSelectedSourceId(String(item.id))}
+                        aria-label={`Focus ${sourceTitle(item)}`}
+                        aria-pressed={Boolean(isSelected)}
+                      >
+                        {isSelected ? 'Active' : 'Focus'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+        </aside>
+        <div class="continuum-home-secondary">
           {resurfacingItem && (
             <section class="folio-home-resurfacing" aria-labelledby="home-resurfacing-title">
               <div class="folio-section-heading">
@@ -391,130 +719,6 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
             </section>
           )}
 
-          <section class="folio-home-threads continuum-turns" aria-labelledby="home-threads-title">
-            <div class="folio-section-heading folio-home-threads-heading">
-              <div>
-                <h2 id="home-threads-title">{threads.length ? 'What comes next' : 'No current Threads'}</h2>
-              </div>
-              <a
-                class="folio-heading-link"
-                href={routeHref('learn', 'paths')}
-                title="Browse Threads"
-                aria-label="Browse Threads"
-              >
-                <Icon name="learn" size={19} />
-              </a>
-            </div>
-            {threads.length ? (
-              <div class="folio-home-thread-list" role="list">
-                {threads.map((thread, index) => {
-                  const stage = thread.current_stage
-                  const lesson = stage?.lessons?.[0]
-                  const primarySource =
-                    lesson?.sources?.find((source) => source.role === 'primary') || lesson?.sources?.[0]
-                  const sourceCue = lesson
-                    ? [
-                        primarySource?.content_type ? labelize(primarySource.content_type) : null,
-                        primarySource?.creator || null,
-                        lesson.estimated_minutes ? `~${lesson.estimated_minutes} min` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')
-                    : ''
-                  const location =
-                    lesson && stage
-                      ? `Level ${stage.position} · Lesson ${String(lesson.position + 1).padStart(2, '0')}`
-                      : stage?.title || 'Learning path'
-                  const title =
-                    lesson?.title || (stage?.status === 'completed' ? 'Level completed' : 'Open learning path')
-                  const status =
-                    lesson?.status === 'in_progress'
-                      ? 'In progress'
-                      : stage?.status === 'completed'
-                        ? 'Completed'
-                        : 'Ready'
-                  const href = lesson
-                    ? lessonHref(String(thread.id), lesson.id)
-                    : `#/learn/thread/${encodeURIComponent(String(thread.id))}`
-                  const completionPhase =
-                    lesson && lessonCompletion?.lessonId === lesson.id ? lessonCompletion.phase : null
-                  const completionError =
-                    lesson && lessonCompletionError?.lessonId === lesson.id ? lessonCompletionError.message : ''
-                  const canFinish = Boolean(
-                    lesson &&
-                    ['available', 'in_progress'].includes(String(stage?.status || '')) &&
-                    lessonReadiness(lesson) !== 'needs_material',
-                  )
-                  return (
-                    <article
-                      key={`${thread.id}:${lesson?.id || 'path'}`}
-                      class={`folio-home-thread-lesson continuum-turn${lesson?.status === 'in_progress' ? ' is-active' : ''}${completionPhase === 'saving' ? ' is-finishing' : ''}${completionPhase === 'finished' ? ' is-finished' : ''}`}
-                      role="listitem"
-                      aria-busy={completionPhase === 'saving' || undefined}
-                    >
-                      <span class="continuum-turn-number" aria-hidden="true">
-                        {String(index + 1).padStart(2, '0')}
-                      </span>
-                      <a class="continuum-turn-open" href={href} title={`Open ${thread.title}: ${title}`}>
-                        <span class="folio-home-thread-copy">
-                          <span class="folio-object-kicker" dir="auto">
-                            {thread.title}
-                          </span>
-                          <strong class="folio-home-thread-lesson-title" dir="auto">
-                            {title}
-                          </strong>
-                          <small>
-                            {location}
-                            {sourceCue ? ` · ${sourceCue}` : ''}
-                          </small>
-                        </span>
-                        <span class="folio-home-thread-action">
-                          <span class={`folio-status-mark${lesson?.status === 'in_progress' ? ' is-in-progress' : ''}`}>
-                            {status}
-                          </span>
-                          <Icon name="chevron" size={15} />
-                        </span>
-                      </a>
-                      {(primarySource || canFinish || completionError) && (
-                        <div class="continuum-turn-tools">
-                          <MaterialDock source={primarySource} label={`Materials for ${title}`} />
-                          {canFinish && (
-                            <button
-                              type="button"
-                              class={`continuum-finish-lesson${completionPhase ? ` is-${completionPhase}` : ''}`}
-                              onClick={() => finishLesson(String(thread.id), lesson!)}
-                              disabled={Boolean(lessonCompletion)}
-                              aria-label={`${completionPhase === 'finished' ? 'Finished' : completionPhase === 'saving' ? 'Finishing lesson' : 'Finish lesson'}: ${title}`}
-                              title="Mark this lesson complete and advance the Thread"
-                            >
-                              <span class="continuum-finish-mark" aria-hidden="true">
-                                <Icon name="check" size={13} />
-                              </span>
-                              <span>
-                                {completionPhase === 'finished'
-                                  ? 'Completed'
-                                  : completionPhase === 'saving'
-                                    ? 'Saving…'
-                                    : 'Complete'}
-                              </span>
-                            </button>
-                          )}
-                          {completionError && (
-                            <p class="continuum-turn-error" role="alert">
-                              {completionError}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </article>
-                  )
-                })}
-              </div>
-            ) : (
-              <p class="folio-record-note">Create a Thread before Queue can become a learning commitment.</p>
-            )}
-          </section>
-
           <section class="folio-home-feeds continuum-quiet-section" aria-labelledby="home-feeds-title">
             <div class="folio-section-heading">
               <div>
@@ -553,149 +757,7 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
               <p>No feed subscriptions yet. Add a publication to keep incoming reading in one deliberate stream.</p>
             )}
           </section>
-        </main>
-
-        <aside class="folio-home-side continuum-home-side" aria-label="Active Queue context">
-          <section class="folio-home-focus continuum-current" aria-labelledby="home-focus-title">
-            <div class="folio-home-focus-copy">
-              <div class="folio-section-heading">
-                <div>
-                  <p class="folio-kicker">Current source</p>
-                  <h2 id="home-focus-title">
-                    {activeSource ? (
-                      <a class="item-title-link" href={itemHref(activeSource)}>
-                        {sourceTitle(activeSource)}
-                      </a>
-                    ) : (
-                      'No active source'
-                    )}
-                  </h2>
-                </div>
-                {activeSource && (
-                  <span class="folio-status-mark">
-                    {activeSource.learning_state === 'in_progress' ? 'In progress' : 'Queued'}
-                  </span>
-                )}
-              </div>
-              {activeSource ? (
-                <>
-                  {activeSource.branch_id && (
-                    <a class="folio-branch-pill" href={`#/map/branch/${encodeURIComponent(activeSource.branch_id)}`}>
-                      {activeSource.branch_label || 'Branch unavailable'}
-                    </a>
-                  )}
-                  <p class="folio-record-meta">
-                    {sourceCreator(activeSource)} · {sourceFormat(activeSource)}
-                    {activeSource.estimated_minutes ? ` · ~${activeSource.estimated_minutes} min` : ''}
-                  </p>
-                  <p class="folio-home-rationale">
-                    {activeSource.context_brief ||
-                      activeSource.why_this ||
-                      'The most immediate useful commitment on your shelf.'}
-                  </p>
-                  <MaterialDock source={activeMaterialSource} label="Current source materials" />
-                  {otherFiles.length > 0 && (
-                    <div class="continuum-extra-files" aria-label="Other source files">
-                      {otherFiles.map((file: LibraryRecord) => (
-                        <a
-                          href={`/artifacts/${file.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          key={file.id}
-                          title={file.filename || sourceFileLabel(file)}
-                        >
-                          <Icon name="file" size={14} />
-                          <span>{sourceFileLabel(file)}</span>
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                  <div class="folio-home-actions-bar">
-                    <a class="folio-button" href={itemHref(activeSource)}>
-                      Open item
-                    </a>
-                    <a class="folio-button folio-button-primary" href={routeHref('library', 'triage', 'queue')}>
-                      Open Queue to start
-                    </a>
-                  </div>
-                  <p class="folio-action-note">Open Queue to start or resume a tracked session.</p>
-                  <a class="continuum-all-files" href={itemHref(activeSource, 'files')}>
-                    Item files
-                  </a>
-                </>
-              ) : (
-                <Empty
-                  title="The working shelf is clear"
-                  body="Save a source, then commit it to Queue when it earns your attention."
-                  action={
-                    <button
-                      type="button"
-                      class="folio-button folio-button-primary"
-                      onClick={() =>
-                        onCapture ? onCapture() : navigate(routeHref('library', 'catalog', 'all'), onNavigate)
-                      }
-                    >
-                      Save a source
-                    </button>
-                  }
-                />
-              )}
-            </div>
-          </section>
-
-          <section class="folio-home-queue continuum-queue" aria-labelledby="home-queue-title">
-            <div class="folio-section-heading">
-              <div>
-                <p class="folio-kicker">Queue</p>
-                <h2 id="home-queue-title">
-                  {items.length ? `${items.length} ${items.length === 1 ? 'item' : 'items'}` : 'Queue is empty'}
-                </h2>
-              </div>
-              <a
-                class="folio-heading-link"
-                href={routeHref('library', 'triage', 'queue')}
-                title="Open Queue"
-                aria-label="Open Queue"
-              >
-                <Icon name="queue" size={19} />
-              </a>
-            </div>
-            {items.length ? (
-              <div class="folio-home-queue-list" role="list">
-                {items.map((item: LibraryRecord, index: number) => {
-                  const isSelected = activeSource && String(activeSource.id) === String(item.id)
-                  return (
-                    <div key={item.id} role="listitem" class={`folio-home-queue-item${isSelected ? ' is-active' : ''}`}>
-                      <span class="continuum-queue-index">{String(index + 1).padStart(2, '0')}</span>
-                      <a class="folio-home-queue-item-title item-title-link" href={itemHref(item)}>
-                        {sourceTitle(item)}
-                      </a>
-                      {item.branch_id && (
-                        <a
-                          class="folio-branch-pill continuum-queue-branch"
-                          href={`#/map/branch/${encodeURIComponent(item.branch_id)}`}
-                        >
-                          {item.branch_label || 'Branch unavailable'}
-                        </a>
-                      )}
-                      <button
-                        type="button"
-                        class="item-focus-button"
-                        onClick={() => setSelectedSourceId(String(item.id))}
-                        aria-label={`Focus ${sourceTitle(item)}`}
-                        aria-pressed={Boolean(isSelected)}
-                      >
-                        {isSelected ? 'Active' : 'Focus'}
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <p class="folio-record-note">Add a source only when it has earned your attention.</p>
-            )}
-          </section>
-        </aside>
+        </div>
       </div>
     </div>
   )

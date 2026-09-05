@@ -9,6 +9,7 @@ import { verifyScopedMaterials } from './scoped-materials.mjs'
 import { verifyFeedTriage } from './feeds.mjs'
 import { verifyReadingRefinements } from './reading-refinements.mjs'
 import { verifyThemeToggle } from './theme-toggle.mjs'
+import { verifyFrontendQuality } from './frontend-quality.mjs'
 
 const { chromium } = createRequire(import.meta.url)('playwright')
 
@@ -864,6 +865,12 @@ suite: try {
     break suite
   }
 
+  if (process.env.E2E_FOCUS === 'quality') {
+    await verifyFrontendQuality({ page, baseUrl, requestJson })
+    console.log('E2E passed: frontend quality, mobile actions, semantics, honest states, and recovery')
+    break suite
+  }
+
   if (process.env.E2E_FOCUS === 'feeds') {
     await verifyFeedTriage({ page, baseUrl, requestJson, wrangler, persistDir })
     console.log(
@@ -1114,7 +1121,9 @@ suite: try {
   if (!(await readingFold.getByText('No reading format is attached to this chapter yet.', { exact: true }).count()))
     throw new Error('Reading Fold did not report the missing chapter format truthfully')
 
-  const chapterDisclosure = readingFold.locator('.reading-fold-chapter-disclosure')
+  const chapterDisclosure = readingFold
+    .locator('.reading-fold-chapter-disclosure')
+    .filter({ has: page.getByText('All chapters', { exact: true }) })
   const disclosureChevron = chapterDisclosure.locator('.disclosure-chevron')
   if ((await chapterDisclosure.getAttribute('open')) !== null || (await disclosureChevron.count()) !== 1)
     throw new Error('chapter ledger did not begin as an accessible disclosure with an explicit chevron')
@@ -1450,14 +1459,25 @@ suite: try {
         scrollTop: canvas?.scrollTop || 0,
         targetTop: target?.getBoundingClientRect().top || 0,
         navBottom: jumpNav?.getBoundingClientRect().bottom || 0,
+        navOverlaps: Boolean(
+          target &&
+          jumpNav &&
+          target.getBoundingClientRect().left < jumpNav.getBoundingClientRect().right &&
+          target.getBoundingClientRect().right > jumpNav.getBoundingClientRect().left,
+        ),
       }
     }, section)
     if (jumpState.hash !== '#/settings?focus=preferences' || jumpState.heading !== 'Preferences')
       throw new Error(`preference jump escaped settings route for ${section}: ${JSON.stringify(jumpState)}`)
-    if (section !== 'visual-presets-heading' && jumpState.targetTop < jumpState.navBottom - 12)
+    if (section !== 'visual-presets-heading' && jumpState.navOverlaps && jumpState.targetTop < jumpState.navBottom - 12)
       throw new Error(
         `preference jump hid ${section} behind the sticky section navigator: ${JSON.stringify(jumpState)}`,
       )
+    const disclosure = page.locator(`details#${section}`)
+    if (await disclosure.count()) {
+      if ((await disclosure.getAttribute('open')) === null) throw new Error(`preference jump did not open ${section}`)
+      await disclosure.locator(':scope > summary').click()
+    }
   }
   const duplicateSettingIds = await page.evaluate(() => {
     const ids = [...document.querySelectorAll('[id]')].map((element) => element.id)
@@ -1475,7 +1495,7 @@ suite: try {
     throw new Error('appearance preview must not expose fake actions')
   if ((await page.locator('.preferences-preview-rail').count()) !== 1)
     throw new Error('Preferences must keep one contextual appearance preview')
-  if ((await page.locator('.preferences-index .settings-jump-nav a').count()) !== 6)
+  if ((await page.locator('.preferences-index .settings-jump-nav a').count()) !== 7)
     throw new Error('Preferences must expose a persistent, scannable section index')
   const saveRadio = async (group, option) => {
     const radio = page
@@ -1511,6 +1531,9 @@ suite: try {
         actionInk: getComputedStyle(root).getPropertyValue('--studio-action-ink').trim(),
       }
     })
+  if ((await page.locator('.visual-preset-card').count()) !== 3)
+    throw new Error('Preferences must begin with three workspace styles')
+  await page.getByRole('button', { name: 'Browse all 8 styles', exact: true }).click()
   if (
     (await page.locator('.visual-preset-card').count()) !== 8 ||
     (await page.locator('.visual-preset-preview').count()) !== 8
@@ -1652,7 +1675,7 @@ suite: try {
   await page.locator('.custom-palette-panel').waitFor({ state: 'visible' })
   if (!(await customTheme.getByText('Selected', { exact: true }).isVisible()))
     throw new Error('custom theme did not expose a visible selected state')
-  if ((await page.locator('.theme-contrast-grid > span').count()) !== 10)
+  if ((await page.locator('.theme-contrast-grid > span').count()) !== 16)
     throw new Error('custom theme did not audit the rendered semantic foreground pairs')
   const advancedWorkshop = page.locator('.theme-workshop-advanced')
   if ((await advancedWorkshop.getAttribute('open')) !== null)
@@ -2083,6 +2106,7 @@ suite: try {
   await page.goto(`${baseUrl}/#/learn?mode=paths`, { waitUntil: 'networkidle' })
   await page.locator('.folio-paths').waitFor({ state: 'visible' })
   await verifyThreadDesk({ page, baseUrl, requestJson })
+  await verifyFrontendQuality({ page, baseUrl, requestJson })
   await verifyFeedTriage({ page, baseUrl, requestJson, wrangler, persistDir })
   await page.goto(`${baseUrl}/#/learn?mode=paths`, { waitUntil: 'networkidle' })
   await page.locator('.folio-paths').waitFor({ state: 'visible' })
@@ -2460,7 +2484,7 @@ suite: try {
   if (
     (await page
       .locator('.course-stage-context')
-      .getByRole('link', { name: 'Level 0', exact: true })
+      .getByRole('link', { name: 'Level 1', exact: true })
       .getAttribute('href')) !== `#/learn/thread/${materialThread.id}?tab=curriculum&level=${materialStage.id}`
   )
     throw new Error('Lesson breadcrumb did not return to its exact Level inside the Thread Lessons tab')
@@ -2806,12 +2830,9 @@ suite: try {
   if (balance.branches?.[0]?.id) {
     const branchId = encodeURIComponent(String(balance.branches[0].id))
     await page.goto(`${baseUrl}/#/map/branch/${branchId}`, { waitUntil: 'networkidle' })
-    const inspectorItemLink = page.getByRole('link', { name: 'Open full item page', exact: true })
-    if (
-      (await page.locator('.object-inspector').count()) !== 1 ||
-      !(await inspectorItemLink.getAttribute('href')).includes(`/map/branch/${branchId}`)
-    )
-      throw new Error('typed map branch inspector did not link to its owning item route')
+    await page.locator('.folio-branch-review').waitFor({ state: 'visible' })
+    if (await page.locator('.object-inspector').count())
+      throw new Error('Branch review must not render a duplicate infrastructure inspector')
   }
   const resurfacingNavigationSource = await requestJson('/capture', {
     method: 'POST',
@@ -2932,7 +2953,7 @@ suite: try {
     await page.locator('.folio-files-view').waitFor({ state: 'visible', timeout: 15000 })
     if (!(await page.locator('.folio-files-view').innerText()).includes('Generated companions'))
       throw new Error('Files view is missing its library header')
-    if ((await page.locator('.folio-file-record').count()) < 1)
+    if ((await page.locator('.folio-file-card').count()) < 1)
       throw new Error('Files view did not render the artifact groups')
   }
 
@@ -3448,9 +3469,17 @@ suite: try {
   if (await page.locator('.root-rail').isVisible()) throw new Error('desktop root rail remains visible on mobile')
   if (
     !(await page.locator('.mobile-utilities').isVisible()) ||
-    (await page.locator('.mobile-utilities button').count()) !== 2
+    (await page
+      .locator('.mobile-utilities')
+      .getByRole('button', { name: 'Search everything', exact: true })
+      .count()) !== 1 ||
+    (await page.locator('.mobile-utilities').getByRole('button', { name: 'Capture', exact: true }).count()) !== 1 ||
+    (await page
+      .locator('.mobile-utilities')
+      .getByRole('button', { name: /^Compass: switch to/ })
+      .count()) !== 1
   )
-    throw new Error('mobile shell is missing compact Search and Capture tools')
+    throw new Error('mobile shell is missing its theme, Search, or Capture control')
   if (await page.locator('.folio-home-header > .folio-button').isVisible())
     throw new Error('mobile Home repeats the global Capture action')
   if (await page.locator('.context-pane, .context-scrim, .navigation-sheet').count())
@@ -3575,7 +3604,8 @@ suite: try {
     const dock = document.querySelector('.mobile-dock')
     return {
       overflow: document.documentElement.scrollWidth - window.innerWidth,
-      undersized: targets.filter((target) => target.width < 44 || target.height < 44),
+      // Large document coordinates can report a 44px target as 43.9998px.
+      undersized: targets.filter((target) => target.width + 0.01 < 44 || target.height + 0.01 < 44),
       bottomPadding: view ? parseFloat(getComputedStyle(view).paddingBottom) : 0,
       dockHeight: dock?.getBoundingClientRect().height || 0,
     }

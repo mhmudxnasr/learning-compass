@@ -2,15 +2,7 @@ import { Icon } from '../components/Icon'
 import type { HomeSelection } from '../workspaces/HomeWorkspace'
 import type { LibrarySelection } from '../workspaces/library/types'
 
-export type MapSelection = {
-  type: 'node' | 'branch'
-  id: string
-  title: string
-  data: Record<string, unknown>
-  route: string
-}
-
-export type InspectorSelection = HomeSelection | LibrarySelection | MapSelection
+export type InspectorSelection = HomeSelection | LibrarySelection
 
 function valueLabel(value: unknown) {
   if (value == null || value === '') return 'Not recorded'
@@ -19,8 +11,6 @@ function valueLabel(value: unknown) {
 }
 
 function selectionType(selection: InspectorSelection) {
-  if (selection.type === 'node') return 'Map node'
-  if (selection.type === 'branch') return 'Map branch'
   if (selection.type === 'artifact') return 'Artifact'
   if (selection.type === 'book') return 'Book'
   if (selection.type === 'thread') return 'Learning Thread'
@@ -112,7 +102,7 @@ export function Inspector({ selection, onClose }: { selection: InspectorSelectio
         <p class="desk-desc inspector-route-copy">
           This selection stays addressable while you move through its owning workspace.
         </p>
-        <a class="folio-button" href={selection.route}>
+        <a class="folio-button" href={selection.route.startsWith('#') ? selection.route : `#${selection.route}`}>
           Open full item page
         </a>
       </section>

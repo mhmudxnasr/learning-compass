@@ -18,7 +18,6 @@ import {
   bookSelection,
   fileKind,
   formatBytes,
-  formatQueueMeta,
   formatReason,
   formatStatus,
   objectHref,
@@ -234,51 +233,56 @@ export function QueueView({ data, handlers }: { data: LibraryRecord; handlers: L
           </span>
         </div>
       </div>
-      <div class="folio-view-toggle" role="group" aria-label="Queue delivery context">
-        <select
-          aria-label="Queue effort"
-          value={effort}
-          onChange={(event) => changeDelivery({ effort: (event.currentTarget as HTMLSelectElement).value })}
-        >
-          <option value="">Effort: {resolvedContext.effort || 'default'}</option>
-          <option value="light">Light</option>
-          <option value="moderate">Moderate</option>
-          <option value="deep">Deep</option>
-        </select>
-        <select
-          aria-label="Queue depth"
-          value={depthTier}
-          onChange={(event) => changeDelivery({ depth_tier: (event.currentTarget as HTMLSelectElement).value })}
-        >
-          <option value="">Depth: {data.delivery_context?.effective_depth_tier || 'adaptive'}</option>
-          <option value="adaptive">Adaptive</option>
-          <option value="introductory">Introductory</option>
-          <option value="intermediate">Intermediate</option>
-          <option value="advanced">Advanced</option>
-        </select>
-        <label>
-          <input
-            type="checkbox"
-            checked={matchesOnly}
-            onChange={(event) => changeDelivery({ matches_only: (event.currentTarget as HTMLInputElement).checked })}
-          />{' '}
-          Show matches only
-        </label>
-        <select
-          aria-label="Queue source health"
-          value={healthFilter}
-          onChange={(event) => setHealthFilter((event.currentTarget as HTMLSelectElement).value as typeof healthFilter)}
-        >
-          <option value="all">Health: all</option>
-          <option value="attention">Needs attention</option>
-          <option value="unavailable">Unavailable</option>
-          <option value="restricted">Restricted</option>
-          <option value="unknown">Unknown</option>
-          <option value="invalid">Invalid URL</option>
-          <option value="verified">Verified</option>
-          <option value="unchecked">Not checked</option>
-        </select>
-      </div>
+      <details class="queue-filters">
+        <summary>Filter Queue</summary>
+        <div class="folio-view-toggle" role="group" aria-label="Queue delivery context">
+          <select
+            aria-label="Queue effort"
+            value={effort}
+            onChange={(event) => changeDelivery({ effort: (event.currentTarget as HTMLSelectElement).value })}
+          >
+            <option value="">Effort: {resolvedContext.effort || 'default'}</option>
+            <option value="light">Light</option>
+            <option value="moderate">Moderate</option>
+            <option value="deep">Deep</option>
+          </select>
+          <select
+            aria-label="Queue depth"
+            value={depthTier}
+            onChange={(event) => changeDelivery({ depth_tier: (event.currentTarget as HTMLSelectElement).value })}
+          >
+            <option value="">Depth: {data.delivery_context?.effective_depth_tier || 'adaptive'}</option>
+            <option value="adaptive">Adaptive</option>
+            <option value="introductory">Introductory</option>
+            <option value="intermediate">Intermediate</option>
+            <option value="advanced">Advanced</option>
+          </select>
+          <label>
+            <input
+              type="checkbox"
+              checked={matchesOnly}
+              onChange={(event) => changeDelivery({ matches_only: (event.currentTarget as HTMLInputElement).checked })}
+            />{' '}
+            Show matches only
+          </label>
+          <select
+            aria-label="Queue source health"
+            value={healthFilter}
+            onChange={(event) =>
+              setHealthFilter((event.currentTarget as HTMLSelectElement).value as typeof healthFilter)
+            }
+          >
+            <option value="all">Health: all</option>
+            <option value="attention">Needs attention</option>
+            <option value="unavailable">Unavailable</option>
+            <option value="restricted">Restricted</option>
+            <option value="unknown">Unknown</option>
+            <option value="invalid">Invalid URL</option>
+            <option value="verified">Verified</option>
+            <option value="unchecked">Not checked</option>
+          </select>
+        </div>
+      </details>
       {items.length > cap && (
         <div class="folio-overflow-notice" role="status">
           <strong>Override is active.</strong> {items.length - cap} extra{' '}
@@ -310,7 +314,8 @@ export function QueueView({ data, handlers }: { data: LibraryRecord; handlers: L
                 </span>
                 <div class="folio-record-main">
                   <RecordMeta>
-                    {formatQueueMeta(item)} · {item.learning_state === 'in_progress' ? 'In progress' : 'Queued'}
+                    {item.estimated_minutes ? `~${item.estimated_minutes} min · ` : ''}
+                    {item.learning_state === 'in_progress' ? 'In progress' : 'Queued'}
                   </RecordMeta>
                   <RowTitle item={item} type={isBook ? 'book' : 'source'} onInspect={handlers.onInspect} />
                   <p class="folio-record-reason">{formatReason(item)}</p>
@@ -342,9 +347,7 @@ export function QueueView({ data, handlers }: { data: LibraryRecord; handlers: L
                         >
                           Note taken: {item.note.title}
                         </a>
-                      ) : (
-                        <span class="folio-badge folio-badge-muted">No note yet</span>
-                      )}
+                      ) : null}
                       {item.recall &&
                         (item.recall.count > 0 ? (
                           <a
@@ -355,9 +358,7 @@ export function QueueView({ data, handlers }: { data: LibraryRecord; handlers: L
                             {item.recall.count} approved {item.recall.count === 1 ? 'card' : 'cards'}
                             {item.recall.due > 0 ? ` · ${item.recall.due} due today` : ''}
                           </a>
-                        ) : (
-                          <span class="folio-badge folio-badge-muted">No approved recall</span>
-                        ))}
+                        ) : null)}
                       {item.companions?.html && (
                         <a
                           class="folio-badge folio-badge-html"
@@ -386,40 +387,6 @@ export function QueueView({ data, handlers }: { data: LibraryRecord; handlers: L
                   )}
                   {item.branch_preflight?.status === 'unmapped' && (
                     <p class="folio-record-note">Branch match is not verified yet.</p>
-                  )}
-                  {item.compass && (
-                    <p class="folio-record-note">
-                      Compass fit {Math.round(Number(item.compass.score || 0) * 100)}% · confidence{' '}
-                      {Math.round(Number(item.compass.confidence || 0) * 100)}%
-                    </p>
-                  )}
-                  {item.delivery_match && (
-                    <p class="folio-record-note">
-                      Delivery {item.delivery_match.matches ? 'matches' : 'differs'} · advisory only
-                    </p>
-                  )}
-                  {!isBook && (
-                    <div class="folio-source-durability-actions">
-                      <SourceHealthControl
-                        compact
-                        sourceId={String(item.id)}
-                        sourceUrl={sourceLink(item)}
-                        companionHref={
-                          offlineResources.length
-                            ? item.companions?.html?.id
-                              ? `/artifacts/${encodeURIComponent(String(item.companions.html.id))}`
-                              : `/artifacts/${encodeURIComponent(String(item.companions.pdf.id))}`
-                            : null
-                        }
-                      />
-                      <OfflinePackControl
-                        compact
-                        packId={`queue-source:${item.id}`}
-                        title={sourceTitle(item)}
-                        scope="queue-source"
-                        resources={offlineResources}
-                      />
-                    </div>
                   )}
                   <div class="folio-row-actions">
                     {href && (
@@ -462,7 +429,7 @@ export function QueueView({ data, handlers }: { data: LibraryRecord; handlers: L
                       class="folio-button"
                       href={objectHref(isBook ? 'book' : 'source', String(item.book_id || item.id))}
                     >
-                      {isBook ? 'Book desk' : 'Record'}
+                      {isBook ? 'Book desk' : 'Open item'}
                     </a>
                     {!isBook && (
                       <button
@@ -476,11 +443,51 @@ export function QueueView({ data, handlers }: { data: LibraryRecord; handlers: L
                       </button>
                     )}
                   </div>
-                  {!isBook && (
-                    <small class="folio-action-note">
-                      Exclude is administrative and does not count as a bad-fit signal.
-                    </small>
-                  )}
+                  <details
+                    class="queue-source-details"
+                    open={Boolean(item.source_health?.status && item.source_health.status !== 'verified')}
+                  >
+                    <summary>Source details &amp; offline</summary>
+                    {item.compass && (
+                      <p class="folio-record-note">
+                        Compass fit {Math.round(Number(item.compass.score || 0) * 100)}% · confidence{' '}
+                        {Math.round(Number(item.compass.confidence || 0) * 100)}%
+                      </p>
+                    )}
+                    {item.delivery_match && (
+                      <p class="folio-record-note">
+                        Delivery {item.delivery_match.matches ? 'matches' : 'differs'} · advisory only
+                      </p>
+                    )}
+                    {!isBook && (
+                      <div class="folio-source-durability-actions">
+                        <SourceHealthControl
+                          compact
+                          sourceId={String(item.id)}
+                          sourceUrl={sourceLink(item)}
+                          companionHref={
+                            offlineResources.length
+                              ? item.companions?.html?.id
+                                ? `/artifacts/${encodeURIComponent(String(item.companions.html.id))}`
+                                : `/artifacts/${encodeURIComponent(String(item.companions.pdf.id))}`
+                              : null
+                          }
+                        />
+                        <OfflinePackControl
+                          compact
+                          packId={`queue-source:${item.id}`}
+                          title={sourceTitle(item)}
+                          scope="queue-source"
+                          resources={offlineResources}
+                        />
+                      </div>
+                    )}
+                    {!isBook && (
+                      <small class="folio-action-note">
+                        Exclude is administrative and does not count as a bad-fit signal.
+                      </small>
+                    )}
+                  </details>
                 </div>
               </article>
             )
@@ -514,21 +521,32 @@ function artifactGroups(items: LibraryRecord[]) {
     const key = metadata.pair_id || item.id
     groups.set(String(key), [...(groups.get(String(key)) || []), item])
   }
-  return [...groups.values()].sort((a, b) =>
+  const byOwner = new Map<string, LibraryRecord[][]>()
+  for (const group of [...groups.values()].sort((a, b) =>
     String(b[0]?.created_at || '').localeCompare(String(a[0]?.created_at || '')),
+  )) {
+    const metadata = group[0].metadata || {}
+    const owner =
+      metadata.chapter_key && metadata.recommendation_id ? metadata.recommendation_id : metadata.pair_id || group[0].id
+    byOwner.set(owner, [...(byOwner.get(owner) || []), group])
+  }
+  return [...byOwner.values()].flatMap((pairs) =>
+    pairs.sort((a, b) => Number(a[0].metadata?.chapter_number ?? 0) - Number(b[0].metadata?.chapter_number ?? 0)),
   )
 }
 
 export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: LibraryViewHandlers }) {
   const [query, setQuery] = useState('')
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null)
+  const [showEarlier, setShowEarlier] = useState(false)
   const items = useMemo(() => (Array.isArray(data.artifacts) ? data.artifacts : []), [data.artifacts])
   const groups = useMemo(() => artifactGroups(items), [items])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return groups
     return groups.filter((group) => {
+      if (!showEarlier && ['superseded', 'retired'].includes(group[0].metadata?.publication_state)) return false
+      if (!q) return true
       const primary = group[0]
       const metadata = primary.metadata || {}
       const topic =
@@ -538,22 +556,22 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
         metadata.topic ||
         ''
       const text =
-        `${metadata.source_title || ''} ${primary.filename || ''} ${topic} ${group.map((f) => f.filename || '').join(' ')}`.toLowerCase()
+        `${metadata.source_title || ''} ${metadata.chapter_title || ''} ${metadata.chapter_key || ''} ${metadata.chapter_number ?? ''} ${primary.branch?.label || ''} ${primary.filename || ''} ${topic} ${group.map((f) => f.filename || '').join(' ')}`.toLowerCase()
       return text.includes(q)
     })
-  }, [groups, query])
+  }, [groups, query, showEarlier])
 
   return (
     <div class="folio-library-view folio-files-view">
       <div class="folio-view-intro">
         <div>
-          <p class="folio-kicker">R2-backed reading material</p>
+          <p class="folio-kicker">Reading companions and documents</p>
           <h1>Files</h1>
           <p>Generated companions and uploaded documents. Open HTML to read or download PDF for offline annotation.</p>
         </div>
         <span class="folio-count-readout">
           <strong>{filtered.length}</strong>
-          <small>{filtered.length === 1 ? 'document' : 'documents'}</small>
+          <small>{filtered.length === 1 ? 'file set' : 'file sets'}</small>
         </span>
       </div>
 
@@ -566,6 +584,17 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
           placeholder="Filter by title, topic, or filename…"
         />
       </label>
+
+      {groups.some((group) => ['superseded', 'retired'].includes(group[0].metadata?.publication_state)) && (
+        <label class="folio-file-history">
+          <input
+            type="checkbox"
+            checked={showEarlier}
+            onChange={(event) => setShowEarlier(event.currentTarget.checked)}
+          />{' '}
+          Include earlier versions
+        </label>
+      )}
 
       {filtered.length ? (
         <div class="folio-files-ledger" aria-label="Source artifacts">
@@ -595,31 +624,57 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
               primary.topic ||
               metadata.topic ||
               null
-            const title = metadata.source_title || primary.filename || 'Owned reading artifact'
+            const bookTitle = metadata.source_title || primary.filename || 'Reading document'
+            const chapter = metadata.chapter_title || metadata.chapter_key
+            const title = chapter
+              ? `${metadata.chapter_number != null ? `${metadata.chapter_number}. ` : ''}${chapter}`
+              : bookTitle
+            const ownerType = primary.owner_type === 'book' || chapter ? 'book' : 'source'
+            const fullTitle = chapter ? `${bookTitle} — ${title}` : title
             const primaryHref = metadata.recommendation_id
-              ? itemHref({ recommendation_id: metadata.recommendation_id, content_type: metadata.source_type }, 'files')
+              ? objectHref(ownerType, String(metadata.recommendation_id))
               : objectHref('artifact', String(primary.id))
+            const earlier = ['superseded', 'retired'].includes(metadata.publication_state)
+            const immutablePair = group.some(
+              (file) => file.metadata?.generator === 'lite-visual' && file.metadata?.pair_id,
+            )
 
             return (
               <article class="folio-file-card" key={groupKey}>
-                <a class="folio-file-main-link" href={primaryHref} title={`Open ${title}`}>
-                  <span class="folio-file-body">
-                    <span class="folio-file-title" dir="auto">
-                      {title}
-                    </span>
-                    <span class="folio-file-sub">
-                      <span>{formatDate(primary.created_at)}</span>
-                      {topic && (
-                        <>
-                          <span class="folio-file-sep">·</span>
-                          <span class="folio-file-topic">{topic}</span>
-                        </>
+                <div class="folio-file-main-link">
+                  <a
+                    class="folio-file-title-link"
+                    href={primaryHref}
+                    title={`Open ${bookTitle}${chapter ? ` — ${title}` : ''}`}
+                  >
+                    <span class="folio-file-body">
+                      {chapter && (
+                        <span class="folio-file-owner" dir="auto">
+                          {bookTitle}
+                        </span>
                       )}
-                      {group.length > 1 && <span class="folio-file-sep">·</span>}
-                      {group.length > 1 && <span>{group.length} files</span>}
+                      <span class="folio-file-title" dir="auto">
+                        {title}
+                      </span>
+                      <span class="folio-file-sub">
+                        <span>{formatDate(primary.created_at)}</span>
+                        {earlier && (
+                          <span>{metadata.publication_state === 'retired' ? 'Retired' : 'Earlier version'}</span>
+                        )}
+                        {topic && <span class="folio-file-topic">{topic}</span>}
+                        {group.length > 1 && <span>{group.length} files</span>}
+                      </span>
                     </span>
-                  </span>
-                </a>
+                  </a>
+                  {primary.branch?.id && (
+                    <a
+                      class="folio-badge folio-badge-branch"
+                      href={`#/map/branch/${encodeURIComponent(primary.branch.id)}`}
+                    >
+                      {primary.branch.label}
+                    </a>
+                  )}
+                </div>
 
                 <div class="folio-file-actions">
                   {originalUrl && (
@@ -629,8 +684,9 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
                       target="_blank"
                       rel="noreferrer"
                       title="Open original source"
+                      aria-label={`Original: ${fullTitle}`}
                     >
-                      <span class="badge-format">Source</span>
+                      <span class="badge-format">Original</span>
                     </a>
                   )}
 
@@ -641,37 +697,47 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
                       target="_blank"
                       rel="noreferrer"
                       title="Open Google NotebookLM notebook"
+                      aria-label={`NotebookLM: ${fullTitle}`}
                     >
-                      <span class="badge-format">NBLM</span>
+                      <span class="badge-format">NotebookLM</span>
                     </a>
                   )}
 
-                  {htmlFile && (
+                  {htmlFile && metadata.publication_state !== 'retired' && (
                     <a
                       class="folio-file-badge folio-badge-html"
                       href={artifactLink(htmlFile)}
                       target="_blank"
                       rel="noreferrer"
                       title="Open HTML Companion"
+                      aria-label={`HTML: ${fullTitle}`}
                     >
                       <span class="badge-format">HTML</span>
                     </a>
                   )}
 
-                  {pdfFile && (
+                  {pdfFile && metadata.publication_state !== 'retired' && (
                     <a
                       class="folio-file-badge folio-badge-pdf"
                       href={artifactLink(pdfFile)}
                       target="_blank"
                       rel="noreferrer"
                       title="Open / Download PDF Companion"
+                      aria-label={`PDF: ${fullTitle}`}
                     >
                       <span class="badge-format">PDF</span>
                     </a>
                   )}
 
                   <div class="folio-file-admin">
-                    {confirmDeleteKey === groupKey ? (
+                    {immutablePair ? (
+                      <span
+                        class="folio-action-note"
+                        title="Published companions are immutable. Ask Hermes to retire the complete pair."
+                      >
+                        Published pair
+                      </span>
+                    ) : confirmDeleteKey === groupKey ? (
                       <div class="folio-inline-confirm">
                         <span class="folio-confirm-label">Delete?</span>
                         <button
@@ -683,6 +749,7 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
                           }}
                           disabled={handlers.busyId === primary.id}
                           title="Confirm delete"
+                          aria-label={`Confirm delete: ${fullTitle}`}
                         >
                           Yes
                         </button>
@@ -691,6 +758,7 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
                           class="folio-file-admin-btn folio-btn-confirm-no"
                           onClick={() => setConfirmDeleteKey(null)}
                           title="Cancel delete"
+                          aria-label={`Cancel delete: ${fullTitle}`}
                         >
                           No
                         </button>
@@ -702,6 +770,7 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
                         onClick={() => setConfirmDeleteKey(groupKey)}
                         disabled={handlers.busyId === primary.id}
                         title="Remove file group"
+                        aria-label={`Delete files: ${fullTitle}`}
                       >
                         Delete
                       </button>

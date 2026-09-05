@@ -1,3 +1,4 @@
+import { levelNumber } from './threadViewModel'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { Icon } from '../../components/Icon'
@@ -89,13 +90,13 @@ export function ThreadSourceOrganizer({ path, onChanged }: { path: PathResponse;
       value: `level:${stage.id}`,
       scope: 'level' as const,
       id: stage.id,
-      label: `Level ${stage.position} — ${levelTitle(stage)}`,
+      label: `Level ${levelNumber(stage)} — ${levelTitle(stage)}`,
     },
     ...stage.lessons.map((lesson, index) => ({
       value: `lesson:${lesson.id}`,
       scope: 'lesson' as const,
       id: lesson.id,
-      label: `Lesson ${stage.position}.${index + 1} — ${lesson.title}`,
+      label: `Lesson ${levelNumber(stage)}.${index + 1} — ${lesson.title}`,
     })),
   ])
 

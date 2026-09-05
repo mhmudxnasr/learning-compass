@@ -139,12 +139,12 @@
 
 .folio-books-view .pill-badge.badge-reading {
   background: var(--studio-lichen);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .folio-books-view .pill-badge.badge-finished {
   background: color-mix(in srgb, var(--studio-cypress) 15%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .active-dot {
@@ -212,7 +212,7 @@
   border-radius: 999px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   background: color-mix(in srgb, var(--studio-cypress) 8%, var(--studio-canvas));
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 25%, var(--studio-seam));
   text-decoration: none;
@@ -370,7 +370,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .spotlight-cover-mark .cover-initials {
@@ -418,7 +418,7 @@
 }
 
 .spotlight-book-title a:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .spotlight-progress-meter {
@@ -690,7 +690,7 @@
 
 .book-card-shelf-tag.tag-reading {
   background: var(--studio-lichen);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .book-card-shelf-tag.tag-finished {
@@ -720,7 +720,7 @@
 }
 
 .book-card-title a:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .book-card-branch-container {
@@ -784,7 +784,7 @@
   background: transparent;
   border: 0;
   padding: 0;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
@@ -946,7 +946,7 @@
 }
 
 .meta-done {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: 600;
 }
 
@@ -1057,7 +1057,7 @@
 .folio-books-view .ledger-branch-tag {
   font-size: 10px;
   font-weight: 600;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   background: var(--studio-lichen);
   padding: 1px 5px;
   border-radius: 3px;
@@ -1077,7 +1077,7 @@
 }
 
 .folio-books-view .ledger-title-text a:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .folio-books-view .ledger-why-text {
@@ -1085,7 +1085,6 @@
   font-size: 11.5px;
   color: var(--studio-secondary);
   white-space: nowrap;
-  overflow: hidden;
   text-overflow: ellipsis;
   max-width: 480px;
 }
@@ -1104,7 +1103,7 @@
 
 .folio-books-view .ledger-progress-readout strong {
   font-size: 13px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .folio-books-view .ledger-empty-chs {
@@ -1231,7 +1230,7 @@
 .canon-notice-banner.is-error {
   background: color-mix(in srgb, var(--studio-danger) 9%, var(--studio-canvas));
   border-color: color-mix(in srgb, var(--studio-danger) 30%, transparent);
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 @media (max-width: 480px) {
@@ -1305,13 +1304,13 @@
 .books-room-index button:hover,
 .book-dossier-index a:hover {
   background: color-mix(in srgb, var(--studio-cypress) 8%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .books-room-index button.is-active,
 .book-dossier-index a.is-active {
   background: var(--studio-canvas);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   border-color: var(--studio-seam);
   box-shadow: 0 1px 4px color-mix(in srgb, var(--studio-ink) 5%, transparent);
   font-weight: 700;
@@ -1420,7 +1419,7 @@
   border: 1px solid color-mix(in srgb, var(--studio-map) 30%, var(--studio-seam));
   border-radius: 999px;
   background: color-mix(in srgb, var(--studio-map) 8%, var(--studio-ledger));
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   font: var(--font-medium-weight) 0.64rem/1.2 var(--font-mono);
   text-decoration: none;
 }
@@ -1437,7 +1436,7 @@
 .ledger-thread-tag {
   border-color: color-mix(in srgb, var(--studio-cypress) 30%, var(--studio-seam));
   background: color-mix(in srgb, var(--studio-cypress) 8%, var(--studio-ledger));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .book-canon-memberships {
@@ -1609,7 +1608,7 @@
 .book-dossier-progress > b {
   grid-column: 2;
   grid-row: 1;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font: var(--font-heading-weight) 1.25rem var(--font-display);
 }
 
@@ -1766,7 +1765,7 @@
 }
 
 .book-canon-placements article span {
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   font: var(--font-medium-weight) 0.62rem var(--font-mono);
   text-transform: uppercase;
 }
@@ -1779,7 +1778,7 @@
 }
 
 .book-canon-placements article a {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: 0.76rem;
 }
 
@@ -1826,7 +1825,7 @@
   display: none;
 }
 .book-dossier-notes[open] > summary {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .book-dossier-notes[open] > summary .book-overview-chapter-count svg {
   transform: rotate(90deg);
@@ -1857,7 +1856,7 @@
   transition: transform 160ms ease;
 }
 .book-dossier-disclosure[open] > summary {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .book-dossier-disclosure[open] > summary svg {
   transform: rotate(90deg);
@@ -1884,7 +1883,7 @@
   border-bottom: 0;
 }
 .book-dossier-note-link:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .book-dossier-note-link > span:first-child {
   display: grid;

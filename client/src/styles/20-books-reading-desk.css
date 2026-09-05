@@ -34,7 +34,7 @@
   align-items: center;
   gap: 5px;
   font: 700 calc(11px * var(--font-scale))/1 var(--font-mono);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -54,7 +54,7 @@
   transition: color 120ms ease;
 }
 .reading-fold-current-head h1 a:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .reading-fold-author {
   margin: 0 0 10px;
@@ -83,7 +83,7 @@
 }
 .reading-fold-overview-link:hover {
   border-color: var(--studio-cypress);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   background: color-mix(in srgb, var(--studio-cypress) 6%, transparent);
 }
 .reading-fold-context {
@@ -172,7 +172,7 @@
 }
 .reading-fold-next-kicker {
   font: 700 calc(10px * var(--font-scale))/1 var(--font-mono);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -215,16 +215,16 @@
 }
 .reading-format:hover {
   border-color: var(--studio-cypress);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .reading-format-html {
   border-color: color-mix(in srgb, var(--studio-cypress) 30%, var(--studio-seam));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   background: color-mix(in srgb, var(--studio-cypress) 6%, var(--studio-canvas));
 }
 .reading-format-pdf {
   border-color: color-mix(in srgb, var(--studio-map) 30%, var(--studio-seam));
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   background: color-mix(in srgb, var(--studio-map) 6%, var(--studio-canvas));
 }
 .reading-format-notebooklm {
@@ -252,7 +252,7 @@
     filter 120ms ease;
   border: none;
   background: var(--studio-cypress);
-  color: var(--studio-action-ink) !important;
+  color: var(--studio-action-ink);
 }
 .reading-fold-done:hover:not(:disabled) {
   filter: brightness(1.15);
@@ -313,7 +313,7 @@
 .reading-fold-chapter-disclosure > summary:hover,
 .reading-fold-library > summary:hover,
 .reading-fold-canon > summary:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .reading-fold-chapter-disclosure > summary::-webkit-details-marker,
 .reading-fold-library > summary::-webkit-details-marker,
@@ -331,7 +331,7 @@
 .reading-fold-chapter-disclosure > summary:hover .reading-fold-summary-label svg,
 .reading-fold-library > summary:hover .reading-fold-summary-label svg,
 .reading-fold-canon > summary:hover .reading-fold-summary-label svg {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .reading-fold-chapter-disclosure > summary small,
 .reading-fold-library > summary small,
@@ -369,10 +369,10 @@
   transition: color 100ms ease;
 }
 .reading-fold-title-row > a:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .reading-fold-title-row.is-primary > a {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: 700;
 }
 .reading-fold-title-row button {
@@ -393,7 +393,7 @@
 }
 .reading-fold-title-row button:hover {
   border-color: var(--studio-seam);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   background: var(--studio-canvas);
 }
 .reading-fold-current-mark {
@@ -403,7 +403,7 @@
   padding: 2px 8px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--studio-cypress) 12%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font: 700 calc(10.5px * var(--font-scale))/1 var(--font-mono);
   text-transform: uppercase;
 }
@@ -419,7 +419,7 @@
 .reading-fold-add > summary {
   width: fit-content;
   padding-block: 10px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: 650;
   font-size: calc(13px * var(--font-scale));
   cursor: pointer;
@@ -506,7 +506,7 @@
   color: var(--studio-action-ink) !important;
 }
 .reading-fold-form-error {
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
   font-size: calc(12.5px * var(--font-scale));
   margin-top: 10px;
 }
@@ -516,7 +516,7 @@
   margin-bottom: 24px;
 }
 .reading-fold-empty .icon {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .reading-fold-empty h1 {
   margin: 14px 0 6px;
@@ -536,7 +536,7 @@
   border-radius: 6px;
   background: color-mix(in srgb, var(--studio-cypress) 10%, var(--studio-canvas));
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 25%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: 600;
   font-size: calc(13px * var(--font-scale));
 }
@@ -622,7 +622,6 @@
 /* Focused Book overview — status, context, next chapter, then a closed chapter ledger. */
 .book-overview-fold {
   width: min(100%, 1040px);
-  margin-inline: auto;
   padding: clamp(24px, 4vw, 54px) clamp(18px, 4vw, 52px) 96px;
   color: var(--studio-ink);
 }
@@ -635,7 +634,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font: inherit;
   font-weight: 650;
   cursor: pointer;
@@ -657,20 +656,17 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .book-overview-head h1 {
   max-width: 16ch;
   margin: 14px 0 10px;
-  font-family: var(--font-display);
   font-size: clamp(42px, 7vw, 82px);
   font-weight: 650;
   letter-spacing: -0.04em;
   line-height: 0.98;
-  text-wrap: balance;
 }
 .book-overview-head > p {
-  margin: 0;
   color: var(--studio-secondary);
   font-size: clamp(17px, 2vw, 21px);
 }
@@ -713,7 +709,7 @@
   border: 1px solid var(--studio-seam-strong);
   border-radius: var(--control-radius);
   background: transparent;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font: inherit;
   font-weight: 650;
   cursor: pointer;
@@ -757,7 +753,6 @@
 .book-overview-progress > div:last-child {
   height: 3px;
   overflow: hidden;
-  background: var(--studio-seam);
 }
 .book-overview-progress > div:last-child span {
   display: block;
@@ -765,9 +760,7 @@
   background: var(--studio-cypress);
 }
 .book-overview-next {
-  display: grid;
   grid-template-columns: minmax(190px, 1fr) minmax(300px, 1.5fr) auto;
-  align-items: center;
   gap: clamp(18px, 3vw, 36px);
   padding: clamp(22px, 3vw, 32px);
   background: var(--studio-lichen);
@@ -823,7 +816,7 @@
 }
 .book-overview-notice {
   margin-top: 20px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: 600;
 }
 .book-overview-fold :is(button, a, select, summary):focus-visible {
@@ -831,9 +824,6 @@
   outline-offset: 3px;
 }
 @media (max-width: 800px) {
-  .book-overview-next {
-    grid-template-columns: 1fr;
-  }
   .book-overview-next > button {
     width: 100%;
   }
@@ -891,9 +881,6 @@
 .book-overview-progress {
   padding-block: 28px;
 }
-.book-overview-progress > div:last-child {
-  height: 2px;
-}
 .book-overview-chapters {
   margin-top: 0;
 }
@@ -903,8 +890,6 @@
   gap: 18px;
   margin-top: 30px;
   padding: 22px 0;
-  border-block: 1px solid var(--studio-seam);
-  background: transparent;
 }
 .book-overview-next h2 {
   font-size: clamp(20px, 2.4vw, 26px);
@@ -1025,7 +1010,7 @@
   text-decoration: none;
 }
 .canon-minimal-field > a:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .canon-minimal-field > a svg {
   color: var(--studio-muted);
@@ -1034,7 +1019,7 @@
     color 140ms ease;
 }
 .canon-minimal-field > a:hover svg {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   transform: translateX(3px);
 }
 .canon-minimal-field-copy {
@@ -1052,7 +1037,7 @@
   transition: color 120ms ease;
 }
 .canon-minimal-field > a:hover .canon-minimal-field-copy h4 {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .canon-minimal-field-copy span {
   color: var(--studio-muted);
@@ -1061,7 +1046,7 @@
 }
 .canon-minimal-field-count {
   font: 700 calc(11px * var(--font-scale))/1 var(--font-mono);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   background: color-mix(in srgb, var(--studio-cypress) 10%, var(--studio-canvas));
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 22%, transparent);
   padding: 3px 8px;
@@ -1117,7 +1102,7 @@
 .books-section-head .folio-object-kicker,
 .canon-room-kicker {
   margin: 0 0 8px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font: 700 calc(11px * var(--font-scale))/1.3 var(--font-mono);
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -1162,11 +1147,8 @@
 }
 
 .books-room .books-current-desk {
-  position: relative;
   margin: 0 0 clamp(52px, 7vw, 88px);
   padding: clamp(24px, 4vw, 46px);
-  overflow: hidden;
-  border: 1px solid var(--studio-seam-strong);
   border-radius: clamp(12px, 1.5vw, 20px);
   background:
     linear-gradient(145deg, color-mix(in srgb, var(--studio-cypress) 7%, transparent), transparent 42%),
@@ -1175,23 +1157,17 @@
 }
 
 .books-room .reading-fold-current-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   gap: 24px;
 }
 .books-room .reading-fold-current-head h2 {
   max-width: 21ch;
   margin: 9px 0 5px;
-  color: var(--studio-ink);
-  font-family: var(--font-display);
   font-size: clamp(32px, 4.4vw, 54px);
   font-weight: 680;
   letter-spacing: -0.04em;
   line-height: 1.04;
-  text-wrap: balance;
 }
 .books-room .reading-fold-current-head h2 a {
-  color: inherit;
   text-decoration-color: transparent;
   text-decoration-thickness: 1px;
   text-underline-offset: 6px;
@@ -1200,7 +1176,6 @@
     text-decoration-color 140ms ease;
 }
 .books-room .reading-fold-current-head h2 a:hover {
-  color: var(--studio-cypress);
   text-decoration-color: currentColor;
 }
 .books-room .reading-fold-progress {
@@ -1221,7 +1196,7 @@
   background: color-mix(in srgb, var(--studio-map) 6%, var(--studio-canvas));
 }
 .books-room .reading-fold-next.is-reading-complete .reading-fold-next-kicker {
-  color: var(--studio-map);
+  color: var(--studio-map-text);
 }
 .books-room .reading-fold-next-info h3 {
   margin-top: 5px;
@@ -1247,7 +1222,7 @@
     color 120ms ease;
 }
 .reading-fold-chapter-disclosure[open] .disclosure-chevron {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   transform: rotate(-90deg);
 }
 .reading-fold-disclosure-content {
@@ -1270,7 +1245,6 @@
 }
 
 .books-room-workspaces {
-  display: grid;
   gap: clamp(64px, 9vw, 112px);
 }
 .books-library-panel,
@@ -1334,7 +1308,7 @@
 .books-library-more:hover {
   border-color: var(--studio-cypress);
   background: color-mix(in srgb, var(--studio-cypress) 7%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .books-add-trigger:active,
 .books-library-primary-action:active,
@@ -1482,7 +1456,7 @@
 .canon-room-toolbar .canon-family-filter.is-active {
   border-color: color-mix(in srgb, var(--studio-cypress) 28%, var(--studio-seam));
   background: color-mix(in srgb, var(--studio-cypress) 12%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .books-library-results {
   display: flex;
@@ -1499,7 +1473,7 @@
   border: 0;
   border-radius: var(--studio-radius-control);
   background: transparent;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font: inherit;
   font-weight: 700;
   cursor: pointer;
@@ -1579,7 +1553,7 @@
     text-decoration-color 120ms ease;
 }
 .books-library-row-copy h3 a:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   text-decoration-color: currentColor;
 }
 .books-library-row-copy > p {
@@ -1588,10 +1562,10 @@
   font-size: calc(13px * var(--font-scale));
 }
 .books-state-label {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .books-state-label.state-finished {
-  color: var(--studio-map);
+  color: var(--studio-map-text);
 }
 .books-state-label.state-saved {
   color: var(--studio-ochre);
@@ -1636,7 +1610,7 @@
   text-align: center;
 }
 .books-library-empty svg {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .books-library-empty h3 {
   margin: 2px 0 0;
@@ -1795,7 +1769,7 @@
 }
 .canon-field-map-kicker {
   margin: 0 0 5px;
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   font: 750 calc(10px * var(--font-scale))/1 var(--font-mono);
   letter-spacing: 0.075em;
   text-transform: uppercase;
@@ -1816,7 +1790,7 @@
   text-underline-offset: 4px;
 }
 .canon-field-map-head h5 a:hover {
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   text-decoration-color: currentColor;
 }
 .canon-field-map-state {
@@ -1824,7 +1798,7 @@
   padding: 5px 8px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--studio-map) 10%, transparent);
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   font: 700 calc(9.5px * var(--font-scale))/1 var(--font-mono);
   text-transform: uppercase;
   white-space: nowrap;
@@ -1939,7 +1913,7 @@
 }
 .folio-books-view .canon-room-panel a.canon-field-map-open:hover {
   border-color: var(--studio-map);
-  color: var(--studio-map);
+  color: var(--studio-map-text);
 }
 .canon-room-section-coming .canon-field-map-card {
   background: color-mix(in srgb, var(--studio-canvas) 86%, var(--studio-lichen));
@@ -2021,7 +1995,6 @@
     border-radius: 13px;
   }
   .books-room .reading-fold-current-head {
-    grid-template-columns: 1fr;
     gap: 10px;
   }
   .books-room .reading-fold-current-head h2 a,
@@ -2034,11 +2007,7 @@
     white-space: normal;
     overflow-wrap: anywhere;
   }
-  .books-room .reading-fold-head-side {
-    padding: 0;
-  }
   .books-room .reading-fold-overview-link {
-    width: 100%;
     justify-content: space-between;
   }
   .books-room .reading-fold-next {
@@ -2182,7 +2151,6 @@
 }
 
 .books-room .books-current-desk {
-  margin: 0;
   padding: 0 0 8px;
   overflow: visible;
   border: 0;
@@ -2202,7 +2170,7 @@
 }
 .books-room .reading-fold-status {
   gap: 8px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(11.5px * var(--font-scale));
   letter-spacing: 0.08em;
 }
@@ -2213,7 +2181,6 @@
   font-family: var(--font-display);
   font-size: clamp(28px, 4.5vw, 34px);
   font-weight: 500;
-  letter-spacing: -0.025em;
   line-height: 1.22;
   text-wrap: balance;
 }
@@ -2222,7 +2189,7 @@
   text-decoration: none;
 }
 .books-room .reading-fold-current-head h2 a:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .books-room .reading-fold-author {
   margin: 0;
@@ -2237,7 +2204,6 @@
   padding: 0;
   border: 0;
   border-radius: 0;
-  color: var(--studio-cypress);
   font-size: calc(12.5px * var(--font-scale));
   font-weight: 500;
   text-decoration: underline;
@@ -2295,7 +2261,7 @@
 .books-room .reading-fold-context-link:hover {
   border: 0;
   background: transparent;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .books-room .reading-fold-next,
 .books-room .reading-fold-next.is-reading-complete {
@@ -2330,24 +2296,27 @@
   justify-content: flex-end;
 }
 .books-room .reading-format {
-  min-height: 32px;
+  min-height: 44px;
   padding: 0 10px;
   border: 1px solid var(--studio-seam);
   border-radius: 3px;
-  background: transparent;
-  color: var(--studio-ink);
+  background: var(--studio-cypress);
+  color: var(--studio-action-ink);
   font-weight: 500;
 }
 .books-room .reading-format:hover {
   border-color: var(--studio-muted);
   background: transparent;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .books-room .reading-fold-done {
-  min-height: 32px;
+  min-height: 44px;
   padding-inline: 12px;
   border-radius: 3px;
   font-weight: 500;
+  background: var(--studio-control-surface);
+  color: var(--studio-secondary);
+  border: 1px solid var(--studio-seam);
 }
 .books-room .reading-fold-chapter-disclosure {
   margin: 8px 0 0;
@@ -2454,7 +2423,7 @@
   padding-inline: 10px;
   border: 0;
   background: transparent;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(12px * var(--font-scale));
 }
 .books-room .books-add-trigger:hover {
@@ -2545,7 +2514,7 @@
   padding: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(10.5px * var(--font-scale));
 }
 .books-room .books-library-pagination {
@@ -2557,16 +2526,11 @@
   border: 0;
   padding: 0;
   background: transparent;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .reading-fold-canon .canon-atlas-workspace.canon-room-panel {
-  margin: 0;
   padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
 }
 .reading-fold-canon .canon-minimal-content {
   display: grid;
@@ -2619,12 +2583,9 @@
 
 /* Focused book uses the same narrow editorial ledger. */
 .book-overview-fold {
-  width: min(100%, 660px);
   padding: clamp(34px, 6vw, 64px) 20px 96px;
 }
 .book-overview-back {
-  margin-bottom: 30px;
-  color: var(--studio-muted);
   font-weight: 500;
 }
 .book-overview-head {
@@ -2633,10 +2594,8 @@
 .book-overview-head h1 {
   max-width: 21ch;
   margin: 14px 0 6px;
-  color: var(--studio-ink);
   font-size: clamp(28px, 4.5vw, 34px);
   font-weight: 500;
-  line-height: 1.22;
 }
 .book-overview-head > p {
   font-size: calc(14.5px * var(--font-scale));
@@ -2644,7 +2603,6 @@
 .book-overview-context {
   gap: 8px 18px;
   margin-top: 20px;
-  font-size: calc(12.5px * var(--font-scale));
 }
 .book-overview-controls {
   margin-top: 20px;
@@ -2652,21 +2610,10 @@
 .book-overview-progress {
   padding-block: 24px;
 }
-.book-overview-progress > div:last-child {
-  height: 2px;
-}
 .book-overview-next {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 0;
   padding: 18px 0;
-  border-block: 1px solid var(--studio-seam);
-  background: transparent;
 }
 .book-overview-next h2 {
-  font-family: var(--font-body);
   font-size: calc(15px * var(--font-scale));
   font-weight: 500;
 }
@@ -2684,12 +2631,10 @@
   text-decoration: none;
 }
 .book-overview-chapters {
-  margin-top: 8px;
   border-top: 0;
 }
 .book-overview-chapters > summary {
   min-height: 50px;
-  color: var(--studio-muted);
   font-weight: 500;
 }
 
@@ -2706,7 +2651,6 @@
   }
   .books-room .reading-fold-overview-link {
     width: fit-content;
-    min-height: 44px;
   }
   .books-room .reading-fold-next {
     align-items: stretch;
@@ -2736,11 +2680,7 @@
     flex-direction: column;
   }
   .books-room .books-add-trigger {
-    min-height: 44px;
     padding: 0;
-  }
-  .books-room .books-library-toolbar {
-    grid-template-columns: 1fr;
   }
   .books-room .books-library-filters {
     display: grid;
@@ -2865,7 +2805,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font: inherit;
   cursor: pointer;
 }
@@ -2919,7 +2859,7 @@
   text-decoration-color: var(--studio-seam-strong);
 }
 .book-overview-context a:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .book-overview-state-control {
   display: inline-flex;

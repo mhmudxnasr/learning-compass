@@ -1,21 +1,30 @@
 import { Component, type ComponentChildren } from 'preact'
+import { lazy, Suspense } from 'preact/compat'
 import { useEffect, useState } from 'preact/hooks'
 import { api, flushOfflineMutations } from '../api'
 import { CaptureDialog } from '../shell/CaptureDialog'
 import { SearchDialog } from '../shell/SearchDialog'
 import { StudioShell } from '../shell/StudioShell'
 import { HomeWorkspace, type HomeSelection } from '../workspaces/HomeWorkspace'
-import { LearnWorkspace } from '../workspaces/LearnWorkspace'
-import { LibraryWorkspace } from '../workspaces/LibraryWorkspace'
 import { MapWorkspace, type MapObjectType, type MapWorkspaceRoute } from '../workspaces/MapWorkspace'
-import { SettingsWorkspace, type SettingsWorkspaceRoute } from '../workspaces/SettingsWorkspace'
+import type { SettingsWorkspaceRoute } from '../workspaces/SettingsWorkspace'
+import { Loading } from '../components/States'
 import type { LibrarySelection } from '../workspaces/library/types'
 import { AndroidInstallBanner } from './android'
-import { Inspector, type InspectorSelection, type MapSelection } from './inspector'
+import { Inspector, type InspectorSelection } from './inspector'
 import { objectHref, routeHref, useRoute, type Route } from './router'
 import { ShareIntakeReviewDialog, shareIntakeCompletionKind, type ShareIntake } from './ShareIntakeReviewDialog'
 
 type ErrorBoundaryProps = { children: ComponentChildren }
+const LearnWorkspace = lazy(() =>
+  import('../workspaces/LearnWorkspace').then((module) => ({ default: module.LearnWorkspace })),
+)
+const LibraryWorkspace = lazy(() =>
+  import('../workspaces/LibraryWorkspace').then((module) => ({ default: module.LibraryWorkspace })),
+)
+const SettingsWorkspace = lazy(() =>
+  import('../workspaces/SettingsWorkspace').then((module) => ({ default: module.SettingsWorkspace })),
+)
 type ErrorBoundaryState = { error: Error | null }
 
 class AppErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
@@ -32,7 +41,11 @@ class AppErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState>
           <div>
             <span class="folio-kicker">Learning Compass</span>
             <h1>The studio needs a fresh start.</h1>
-            <p>{this.state.error.message || 'An unexpected rendering error interrupted this view.'}</p>
+            <p>
+              {/import|module|fetch|chunk/i.test(this.state.error.message)
+                ? 'This workspace could not load. Reconnect and reload to download it; workspaces already opened on this device remain available offline.'
+                : 'An unexpected error interrupted this view. Reload to return to your saved work.'}
+            </p>
             <button class="button primary" type="button" onClick={() => location.reload()}>
               Reload the studio
             </button>
@@ -54,18 +67,6 @@ function mapRouteHref(route: MapWorkspaceRoute) {
   const focus = route.view === 'atlas' ? undefined : route.view
   if (route.objectId) return objectHref('map', route.objectType || 'branch', route.objectId, mode, focus)
   return routeHref('map', mode, focus)
-}
-
-function mapSelection(route: Route): MapSelection | null {
-  if (route.root !== 'map' || !route.objectId || route.view === 'balance') return null
-  const type: MapObjectType = route.objectType === 'node' ? 'node' : 'branch'
-  return {
-    type,
-    id: route.objectId,
-    title: `${type === 'node' ? 'Map node' : 'Map branch'} ${route.objectId}`,
-    data: { object_type: type, object_id: route.objectId },
-    route: route.canonical,
-  }
 }
 
 function workspace(route: Route, onCapture: () => void, onInspect: (selection: InspectorSelection) => void) {
@@ -243,13 +244,10 @@ export function App() {
     setSelection(null)
   }, [route.root, route.view, route.objectId, route.mode, route.focus])
 
-  const routedMapSelection = mapSelection(route)
-  const activeSelection =
-    route.root === 'map' ? routedMapSelection : route.root === 'library' && route.objectId ? null : selection
+  const activeSelection = route.root === 'map' || (route.root === 'library' && route.objectId) ? null : selection
   const closeSelection = () => {
     setSelection(null)
-    if (routedMapSelection) navigate(routeHref('map', route.mode, route.focus))
-    else if (route.root === 'library' && route.objectId) {
+    if (route.root === 'library' && route.objectId) {
       const from = route.query.get('from')
       const view = from || (route.objectType === 'artifact' ? 'files' : route.objectType === 'book' ? 'books' : 'queue')
       navigate(routeHref('library', view))
@@ -279,7 +277,11 @@ export function App() {
         online={online}
       >
         <AndroidInstallBanner />
-        <div key={workspaceKey}>{workspace(route, () => setCaptureOpen(true), setSelection)}</div>
+        <div key={workspaceKey}>
+          <Suspense fallback={<Loading label={`Loading ${route.root}`} />}>
+            {workspace(route, () => setCaptureOpen(true), setSelection)}
+          </Suspense>
+        </div>
       </StudioShell>
       <CaptureDialog
         open={captureOpen}

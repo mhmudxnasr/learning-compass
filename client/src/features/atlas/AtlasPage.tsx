@@ -242,6 +242,7 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
 
   const selected = selectedId ? model.byId.get(selectedId) : undefined
   const ancestry = useMemo(() => (selectedId ? nodeAncestry(model, selectedId) : []), [model, selectedId])
+  const selectedBranch = [...ancestry].reverse().find((node) => node.type === 'branch' || node.type === 'leaf')
 
   const searchResults = useMemo(() => {
     if (!query.trim()) return []
@@ -661,6 +662,7 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
         'text-border-opacity': leafOpacity * 0.7,
       })
       cy.nodes('[type = "branch"]').style({
+        'min-zoomed-font-size': 11,
         'text-opacity': branchOpacity,
         'text-background-opacity': branchOpacity * 0.92,
         'text-border-opacity': branchOpacity * 0.7,
@@ -1587,6 +1589,7 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
           Explore a domain
           <select
             aria-label="Explore a domain"
+            aria-describedby="atlas-label-guidance"
             value={clusterFilter}
             onChange={(event) => focusDomain(event.currentTarget.value)}
           >
@@ -1598,6 +1601,7 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
             ))}
           </select>
         </label>
+        <span id="atlas-label-guidance">Choose a domain or zoom in to read branches.</span>
         {clusterFilter !== 'all' && (
           <button type="button" class="button secondary" onClick={() => focusDomain('all')}>
             Whole map
@@ -1621,8 +1625,7 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
               title="Open map controls, appearance &amp; physics settings"
             >
               {svgIcon('m21 21-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z')}
-              <span>Controls</span>
-              <span class="atlas-trigger-badge">{filteredVisible.size}</span>
+              <span>Map settings</span>
             </button>
 
             <div class="atlas-quick-depth" role="radiogroup" aria-label="Map depth level">
@@ -1659,7 +1662,7 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
             </div>
           </div>
 
-          {selected && ancestry.length > 1 && (
+          {selected && ancestry.length > 0 && (
             <nav class="atlas-breadcrumbs" aria-label="Selected path">
               {ancestry.map((node, idx) => (
                 <span key={node.id} class="atlas-breadcrumb-item">
@@ -1689,6 +1692,11 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
                   {isolateId ? 'Show whole map' : 'Focus neighborhood'}
                 </button>
               </span>
+              {selectedBranch && (
+                <a class="atlas-breadcrumb-btn" href={`#/map/branch/${encodeURIComponent(selectedBranch.id)}`}>
+                  Open {nodeTitle(selectedBranch)}
+                </a>
+              )}
             </nav>
           )}
 

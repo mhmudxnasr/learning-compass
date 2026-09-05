@@ -14,7 +14,14 @@ export async function verifyScopedMaterials({ page, baseUrl, requestJson, thread
   const tab = (label) => workspace.getByRole('tab', { name: new RegExp(`^${label} \\d+$`) })
   const panel = () => workspace.getByRole('tabpanel')
   const open = async () => {
-    await tools.locator(':scope > summary').click()
+    try {
+      await tools.locator(':scope > summary').click()
+    } catch (cause) {
+      throw new Error(
+        `Lesson tools unavailable at ${page.url()}: ${(await page.locator('body').innerText()).slice(0, 4000)}`,
+        { cause },
+      )
+    }
     await workspace.waitFor({ state: 'visible' })
   }
   const capture = async (name) => {

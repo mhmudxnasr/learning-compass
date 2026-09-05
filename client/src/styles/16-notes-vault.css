@@ -46,7 +46,7 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .notes-count-badge {
@@ -55,7 +55,7 @@
   padding: 2px 8px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--studio-cypress) 10%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
@@ -141,7 +141,7 @@
   border-radius: var(--studio-radius-control);
   background: color-mix(in srgb, var(--studio-cypress) 12%, var(--studio-canvas));
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 30%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-family: var(--font-mono);
   font-size: 12.5px;
   font-weight: 600;
@@ -377,12 +377,12 @@
 
 .note-kind-tag.kind-guide {
   background: color-mix(in srgb, var(--studio-cypress) 12%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .note-kind-tag.kind-reflection {
   background: color-mix(in srgb, var(--studio-map) 12%, transparent);
-  color: var(--studio-map);
+  color: var(--studio-map-text);
 }
 
 .note-kind-tag.kind-note {
@@ -429,7 +429,7 @@
 }
 
 .note-card-delete-btn:hover {
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
   background: color-mix(in srgb, var(--studio-danger) 10%, transparent);
 }
 
@@ -457,7 +457,7 @@
 }
 
 .note-grid-card:hover .note-card-title {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .note-card-excerpt {
@@ -502,7 +502,7 @@
 }
 
 .note-card-open-arrow {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   display: flex;
   align-items: center;
   transition: transform 0.15s ease;

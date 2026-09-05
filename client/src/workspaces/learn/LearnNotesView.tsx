@@ -1,4 +1,3 @@
-import { ComponentChildren } from 'preact'
 import { useMemo, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { useData } from '../../app/useData'
@@ -6,7 +5,8 @@ import { ItemParentLinks } from '../../components/ItemSections'
 import { objectHref, routeHref } from '../../app/router'
 import { Empty, ErrorState, Loading } from '../../components/States'
 import { Icon } from '../../components/Icon'
-import { buildNoteReaderDocument, directionForText, NoteReaderBlock } from './noteReader'
+import { buildNoteReaderDocument, directionForText } from './noteReader'
+import { ReaderBlockComponent } from './StudyText'
 import { Direction, DistillationBlock, NoteDossierResponse, NoteRecord, NotesResponse } from './types'
 import { directionValue, formatDate, lessonHref, noteHref, threadHref } from './helpers'
 import { NoteBranchSelect } from './NoteBranchSelect'
@@ -17,7 +17,7 @@ type NoteGroup = {
   key: string
   primary: NoteRecord
   notes: NoteRecord[]
-  words: number
+  readingMinutes: number
   kinds: Set<string>
 }
 
@@ -28,13 +28,6 @@ export function LearnNotesView({ noteId }: { noteId?: string }) {
   if (notes.loading && !notes.data) return <Loading label="Loading notes" />
   if (notes.error && !notes.data) return <ErrorState message={notes.error} retry={notes.reload} />
   return <NotesIndex notes={notes.data?.notes || []} reload={notes.reload} />
-}
-
-function noteWords(note: NoteRecord) {
-  return (note.sections || []).reduce(
-    (total, section) => total + (section.content.match(/[\p{L}\p{N}]+/gu)?.length || 0),
-    0,
-  )
 }
 
 function groupNotes(notes: NoteRecord[]): NoteGroup[] {
@@ -51,7 +44,7 @@ function groupNotes(notes: NoteRecord[]): NoteGroup[] {
         key,
         primary,
         notes: items,
-        words: items.reduce((total, item) => total + noteWords(item), 0),
+        readingMinutes: buildNoteReaderDocument(primary).readingMinutes,
         kinds: new Set(items.map((item) => item.kind || 'note')),
       }
     })
@@ -174,6 +167,7 @@ function NotesIndex({ notes, reload }: { notes: NoteRecord[]; reload: () => void
           <Icon name="search" size={15} />
           <input
             type="search"
+            aria-label="Search titles and note text"
             value={query}
             onInput={(event) => setQuery((event.target as HTMLInputElement).value)}
             placeholder="Search titles and note text"
@@ -199,7 +193,7 @@ function NotesIndex({ notes, reload }: { notes: NoteRecord[]; reload: () => void
           {visible.map((group) => {
             const note = group.primary
             const reflection = group.notes.find((item) => item.kind === 'reflection')
-            const branch = note.branch_label || 'Branch unavailable'
+            const branch = note.branch_label || 'No branch assigned'
             return (
               <article class="note-ledger-row" role="listitem" key={group.key}>
                 <a href={noteHref(note.id)} class="note-ledger-main">
@@ -224,7 +218,7 @@ function NotesIndex({ notes, reload }: { notes: NoteRecord[]; reload: () => void
                     </small>
                   </span>
                   <span class="note-ledger-measure">
-                    {Math.max(1, Math.ceil(group.words / 180))} min
+                    {group.readingMinutes} min
                     <br />
                     {formatDate(note.updated_at)}
                   </span>
@@ -254,60 +248,6 @@ function NotesIndex({ notes, reload }: { notes: NoteRecord[]; reload: () => void
         />
       )}
     </section>
-  )
-}
-
-function inlineMarkdown(text: string): ComponentChildren[] {
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^\s)]+\)|\*[^*]+\*)/g
-  return text
-    .split(pattern)
-    .filter(Boolean)
-    .map((part, index) => {
-      const link = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/)
-      if (link)
-        return (
-          <a key={index} href={link[2]} target="_blank" rel="noreferrer">
-            {link[1]}
-          </a>
-        )
-      if (part.startsWith('**') && part.endsWith('**')) return <strong key={index}>{part.slice(2, -2)}</strong>
-      if (part.startsWith('*') && part.endsWith('*')) return <em key={index}>{part.slice(1, -1)}</em>
-      if (part.startsWith('`') && part.endsWith('`')) return <code key={index}>{part.slice(1, -1)}</code>
-      return part
-    })
-}
-
-function ReaderBlockComponent({ block }: { block: NoteReaderBlock }) {
-  if (block.kind === 'heading') {
-    const Tag = block.level === 2 ? 'h2' : block.level === 3 ? 'h3' : 'h4'
-    return (
-      <Tag id={block.id} class={`reader-heading level-${block.level}`} dir={block.direction}>
-        {inlineMarkdown(block.text)}
-      </Tag>
-    )
-  }
-  if (block.kind === 'quote')
-    return (
-      <blockquote class="reader-blockquote" dir={block.direction}>
-        {inlineMarkdown(block.text)}
-      </blockquote>
-    )
-  if (block.kind === 'list') {
-    const items = block.items.map((item, index) => <li key={index}>{inlineMarkdown(item)}</li>)
-    return block.ordered ? (
-      <ol class="reader-list" dir={block.direction} start={block.start}>
-        {items}
-      </ol>
-    ) : (
-      <ul class="reader-list" dir={block.direction}>
-        {items}
-      </ul>
-    )
-  }
-  return (
-    <p class="reader-paragraph" dir={block.direction}>
-      {inlineMarkdown(block.text)}
-    </p>
   )
 }
 
@@ -609,9 +549,15 @@ function NoteDetailWorkspace({
       </details>
 
       <div class={`scholar-note-shell${toolsOpen ? ' has-tools' : ''}`}>
-        <main class="scholar-note-document">
+        <article class="scholar-note-document">
           <header class="scholar-note-head">
-            <span class="folio-branch-pill">{note.branch_label || 'Branch unavailable'}</span>
+            {note.branch_label ? (
+              <span class="folio-branch-pill">{note.branch_label}</span>
+            ) : (
+              <button type="button" class="button secondary" onClick={() => setEditing(true)}>
+                Choose a branch
+              </button>
+            )}
             <h1 dir={directionForText(note.title)}>{note.title}</h1>
             <div class="scholar-note-meta">
               <span>{document.readingMinutes} min</span>
@@ -664,19 +610,22 @@ function NoteDetailWorkspace({
               ))}
             </details>
           )}
-        </main>
+        </article>
 
         {toolsOpen && (
           <aside id="note-study-tools" class="scholar-note-tools" aria-label="Study tools">
             <strong class="scholar-tools-title">Study tools</strong>
             <section>
               <span>Knowledge branch</span>
-              <a
-                class="folio-branch-pill"
-                href={objectHref('map', 'branch', note.branch_id || note.branch_label || '')}
-              >
-                {note.branch_label || 'Branch unavailable'}
-              </a>
+              {note.branch_id && note.branch_label ? (
+                <a class="folio-branch-pill" href={objectHref('map', 'branch', note.branch_id)}>
+                  {note.branch_label}
+                </a>
+              ) : (
+                <button type="button" class="button secondary" onClick={() => setEditing(true)}>
+                  Choose a branch
+                </button>
+              )}
             </section>
             <ItemParentLinks sourceId={note.recommendation_id} />
             <section>
@@ -961,7 +910,7 @@ function NoteEditor({
         </div>
       </header>
       {error && <output class="notes-error-banner">{error}</output>}
-      <main>
+      <section aria-label="Note editor">
         <label>
           Title
           <input
@@ -1036,7 +985,7 @@ function NoteEditor({
             />
           </section>
         ))}
-      </main>
+      </section>
     </form>
   )
 }

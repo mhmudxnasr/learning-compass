@@ -607,13 +607,6 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
               <a class="reading-fold-overview-link" href={objectHref('book', String(primaryBook.id))}>
                 Open book overview
               </a>
-              <OfflinePackControl
-                compact
-                packId={`book:${primaryBook.id}`}
-                title={sourceTitle(primaryBook)}
-                scope="book"
-                resources={bookOfflineResources(primaryBook)}
-              />
             </div>
           </div>
 
@@ -659,13 +652,6 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
               </div>
               <div class="reading-fold-next-actions">
                 <ReadingFormatLinks book={primaryBook} chapter={nextChapter} />
-                <OfflinePackControl
-                  compact
-                  packId={`book-chapter:${primaryBook.id}:${nextChapter.key}`}
-                  title={`${sourceTitle(primaryBook)} — ${nextChapter.title}`}
-                  scope="book-chapter"
-                  resources={nextOfflineResources}
-                />
                 <button
                   type="button"
                   class={`reading-fold-done ${nextChapter.completed ? 'is-completed' : ''}`}
@@ -699,6 +685,40 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
               </a>
             </div>
           )}
+
+          <details class="reading-fold-chapter-disclosure books-offline-options">
+            <summary>
+              <span class="reading-fold-summary-label">
+                <Icon name="file" size={15} />
+                <span>Offline reading</span>
+              </span>
+              <Icon name="chevron" size={15} class="disclosure-chevron" />
+            </summary>
+            <div class="reading-fold-disclosure-content">
+              {nextChapter && (
+                <section aria-label="Keep the next chapter offline">
+                  <h3>This chapter</h3>
+                  <OfflinePackControl
+                    compact
+                    packId={`book-chapter:${primaryBook.id}:${nextChapter.key}`}
+                    title={`${sourceTitle(primaryBook)} — ${nextChapter.title}`}
+                    scope="book-chapter"
+                    resources={nextOfflineResources}
+                  />
+                </section>
+              )}
+              <section aria-label="Keep the whole book offline">
+                <h3>Whole book</h3>
+                <OfflinePackControl
+                  compact
+                  packId={`book:${primaryBook.id}`}
+                  title={sourceTitle(primaryBook)}
+                  scope="book"
+                  resources={bookOfflineResources(primaryBook)}
+                />
+              </section>
+            </div>
+          </details>
 
           {String(primaryBook.video_url || '').trim() && (
             <SourceHealthControl

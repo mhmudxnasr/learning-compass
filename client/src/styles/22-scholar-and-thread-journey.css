@@ -613,10 +613,9 @@ input#thread-desk-query {
   background: var(--studio-canvas);
 }
 .lesson-authored-text > div {
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-width: 72ch;
-  margin: 18px auto 0;
+  margin: 0 auto;
   font: 400 calc(17px * var(--font-scale))/1.9 var(--font-reading);
 }
 .lesson-finish-note {
@@ -1035,7 +1034,7 @@ input#thread-desk-query {
   line-height: 1.45;
 }
 .scholar-note-tools a:not(.folio-branch-pill) {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(12px * var(--font-scale));
   font-weight: var(--font-heading-weight);
   text-underline-offset: 3px;
@@ -1115,7 +1114,7 @@ input#thread-desk-query {
   gap: 10px;
 }
 .note-highlight-list article > div span {
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
   font-size: calc(10px * var(--font-scale));
   font-weight: var(--font-heading-weight);
   text-transform: uppercase;
@@ -1128,7 +1127,7 @@ input#thread-desk-query {
   color: var(--studio-muted);
 }
 .note-highlight-list a {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: var(--font-heading-weight);
 }
 .note-synthesis-history {
@@ -1334,7 +1333,7 @@ input#thread-desk-query {
   border-radius: var(--studio-radius-panel);
 }
 .folio-resurfacing-record-link:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .folio-resurfacing-record-link:focus-visible {
   outline: none;
@@ -1651,7 +1650,7 @@ input#thread-desk-query {
   border-bottom-color: var(--studio-cypress);
   background: transparent;
   box-shadow: none;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: var(--font-heading-weight);
 }
 
@@ -1782,7 +1781,7 @@ input#thread-desk-query {
   margin-top: 5px;
   border-color: var(--studio-canvas);
   background: var(--studio-canvas);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .vertical-overview-position {
@@ -1986,7 +1985,7 @@ input#thread-desk-query {
 }
 
 .vertical-journey-copy a:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -2104,7 +2103,7 @@ input#thread-desk-query {
 .vertical-materials-search-field button:hover {
   transform: none;
   background: var(--studio-lichen);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .vertical-curriculum-filters,
@@ -2132,14 +2131,14 @@ input#thread-desk-query {
 .vertical-materials-filters button:hover {
   transform: none;
   border-color: color-mix(in srgb, var(--studio-cypress) 45%, var(--studio-seam));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .vertical-curriculum-filters button.is-active,
 .vertical-materials-filters button.is-active {
   border-color: var(--studio-cypress);
   background: var(--studio-lichen);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .vertical-curriculum-results {
@@ -2183,7 +2182,7 @@ input#thread-desk-query {
 
 .vertical-curriculum-result:hover {
   background: color-mix(in srgb, var(--studio-lichen) 58%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .vertical-curriculum-result > span:nth-child(2) {
@@ -2353,7 +2352,7 @@ input#thread-desk-query {
 
 .vertical-curriculum-lesson:hover {
   background: color-mix(in srgb, var(--studio-lichen) 54%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .vertical-curriculum-lesson-copy {
@@ -2390,7 +2389,7 @@ input#thread-desk-query {
 }
 
 .vertical-curriculum-lesson-action {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(11px * var(--font-scale));
   font-weight: var(--font-heading-weight);
   white-space: nowrap;
@@ -2414,7 +2413,7 @@ input#thread-desk-query {
   padding: 8px 14px;
   border: 1px solid var(--studio-seam);
   background: var(--studio-canvas);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .vertical-journey-more:hover {
@@ -2444,7 +2443,7 @@ input#thread-desk-query {
 .lesson-readiness-pill.state-in_progress {
   border-color: color-mix(in srgb, var(--studio-cypress) 32%, var(--studio-seam));
   background: color-mix(in srgb, var(--studio-lichen) 65%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .lesson-readiness-pill.state-completed {
@@ -2456,7 +2455,7 @@ input#thread-desk-query {
 .lesson-readiness-pill.state-needs_material {
   border-color: color-mix(in srgb, var(--studio-due) 35%, var(--studio-seam));
   background: color-mix(in srgb, var(--studio-due) 8%, var(--studio-canvas));
-  color: var(--studio-due);
+  color: var(--studio-due-text);
 }
 
 .vertical-overview-next .lesson-readiness-pill,
@@ -2485,7 +2484,7 @@ input#thread-desk-query {
 .vertical-thread .folio-status-tag.status-stored {
   border: 1px solid color-mix(in srgb, var(--studio-map) 30%, transparent);
   background: color-mix(in srgb, var(--studio-map) 9%, var(--studio-canvas));
-  color: var(--studio-map);
+  color: var(--studio-map-text);
 }
 
 .vertical-thread-advisory {
@@ -2550,7 +2549,7 @@ input#thread-desk-query {
 
 .vertical-practice-project summary {
   min-height: 36px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   cursor: pointer;
   font-size: calc(11px * var(--font-scale));
   font-weight: var(--font-heading-weight);
@@ -2659,7 +2658,7 @@ input#thread-desk-query {
 }
 .vertical-material-item:not(.is-draft):hover {
   background: color-mix(in srgb, var(--studio-lichen) 54%, transparent);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .vertical-material-item > svg {
   color: var(--studio-muted);

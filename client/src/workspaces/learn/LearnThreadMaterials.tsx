@@ -1,3 +1,4 @@
+import { levelNumber } from './threadViewModel'
 import { useEffect, useState } from 'preact/hooks'
 import { objectHref } from '../../app/router'
 import { Icon } from '../../components/Icon'
@@ -63,9 +64,9 @@ export function LevelList({
             class={`course-level-card status-${stage.status} ${stage.id === activeStage?.id ? 'is-current' : ''}`}
             aria-current={stage.id === activeStage?.id ? 'page' : undefined}
             key={stage.id}
-            aria-label={`${stage.status === 'locked' ? 'Preview locked' : 'Open'} Level ${stage.position}: ${stage.title}`}
+            aria-label={`${stage.status === 'locked' ? 'Preview locked' : 'Open'} Level ${levelNumber(stage)}: ${stage.title}`}
           >
-            <span class="course-level-number">{String(stage.position).padStart(2, '0')}</span>
+            <span class="course-level-number">{String(levelNumber(stage)).padStart(2, '0')}</span>
             <span>
               <strong>{stage.title.replace(/^Level \d+\s*[—-]\s*/, '')}</strong>
               <small>
@@ -179,7 +180,7 @@ export function ThreadMaterialLedger({
                   <strong>{lesson.title}</strong>
                 </a>
                 <span>
-                  Level {stage.position} · {lesson.notes?.length || 0} notes · {lesson.files?.length || 0} files ·{' '}
+                  Level {levelNumber(stage)} · {lesson.notes?.length || 0} notes · {lesson.files?.length || 0} files ·{' '}
                   {lesson.cards?.length || 0} cards
                 </span>
               </div>
@@ -238,9 +239,9 @@ function ThreadMaterialsJourney({ path, onChanged }: { path: PathResponse; onCha
       .filter((stage) => stage.notes.length + stage.files.length + stage.cards.length + stage.recall_drafts.length > 0)
       .map((stage) => ({
         key: `level:${stage.id}`,
-        marker: String(stage.position),
+        marker: String(levelNumber(stage)),
         scope: { kind: 'level' as const, id: stage.id, title: stage.title },
-        subtitle: `Level ${stage.position} owner`,
+        subtitle: `Level ${levelNumber(stage)} owner`,
         notes: stage.notes,
         files: stage.files,
         cards: stage.cards,
@@ -258,9 +259,9 @@ function ThreadMaterialsJourney({ path, onChanged }: { path: PathResponse; onCha
         )
         .map((lesson, lessonIndex) => ({
           key: `lesson:${lesson.id}`,
-          marker: `${stage.position}.${lessonIndex + 1}`,
+          marker: `${levelNumber(stage)}.${lessonIndex + 1}`,
           scope: { kind: 'lesson' as const, id: lesson.id, title: lesson.title },
-          subtitle: `Level ${stage.position} · Lesson owner`,
+          subtitle: `Level ${levelNumber(stage)} · Lesson owner`,
           notes: lesson.notes || [],
           files: lesson.files || [],
           cards: lesson.cards || [],

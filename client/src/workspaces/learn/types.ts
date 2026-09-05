@@ -326,6 +326,7 @@ export interface RecallCard {
   answer: string
   topic?: string | null
   branch?: string | null
+  branch_context?: { id: string; label: string; status: string } | null
   source_title?: string | null
   note_id?: string | null
   due_at?: string | null
@@ -384,6 +385,7 @@ export interface RecallDraft {
   answer: string
   topic?: string | null
   branch?: string | null
+  branch_context?: { id: string; label: string; status: string } | null
   source_title?: string | null
   note_id?: string | null
   status: 'draft' | 'approved' | 'rejected' | string

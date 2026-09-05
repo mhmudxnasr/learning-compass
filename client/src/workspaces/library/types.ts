@@ -178,12 +178,6 @@ export function formatBytes(value: unknown) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function formatQueueMeta(item: LibraryRecord) {
-  const parts = [sourceFormat(item), sourceCreator(item)]
-  if (item.estimated_minutes) parts.push(`~${item.estimated_minutes} min`)
-  return parts.join(' · ')
-}
-
 export function formatReason(item: LibraryRecord) {
   const explicit = String(item.context_brief || item.why_this || '').trim()
   if (explicit) return explicit

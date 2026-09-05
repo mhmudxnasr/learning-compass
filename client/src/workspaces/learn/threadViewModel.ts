@@ -13,6 +13,12 @@ export function domId(prefix: string, value: string) {
   return `${prefix}-${value.replace(/[^a-zA-Z0-9_-]/g, '-')}`
 }
 
+// Authored numbering is learner-facing; positions remain zero-based storage order.
+export function levelNumber(stage: Pick<PathStage, 'title' | 'position'>) {
+  const authored = stage.title.match(/^Level\s+(\d+)\b/i)
+  return authored ? Number(authored[1]) : stage.position + 1
+}
+
 export function levelTitle(stage: PathStage) {
   return stage.title.replace(/^Level \d+\s*[—-]\s*/, '')
 }

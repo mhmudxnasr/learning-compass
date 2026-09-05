@@ -24,6 +24,12 @@ Learning Compass is Mahmood’s private, single-user learning operating system. 
 
 The product interface is English-first. Notes Extractor source notes optimize for durable four-year retrieval: precise English source claims and evidence are paired with concise natural Egyptian-Arabic explanation in separate directional blocks. When supported, notes include Misconception vs. Truth and complete Case Studies & Experiments coverage with researchers, year, method, findings, and source-stated limitations. Handwriting remains verbatim in native note blocks without Obsidian syntax; user-authored blocks retain their original register and direction. The product uses the `Africa/Cairo` timezone.
 
+## Frontend behavior
+
+Home contains active, non-superseded Threads only; a ready count requires an available/in-progress Level and a lesson with study material. Paused/draft Threads remain accessible in Learn. Learner-facing Level labels honor an explicit authored “Level N” prefix, otherwise use storage position plus one; API positions stay zero-based. Authored lesson text uses the same safe semantic block renderer as notes without altering saved text or progression.
+
+Home completion offers an explicit undo for that exact lesson. Files preserves source/book/chapter identity and separates current pairs from earlier versions. Recall presents verified branch labels without rewriting historical card values. Atlas node selection retains map focus; opening its branch is a separate canonical navigation action.
+
 ## Product model
 
 - **Companion removal** retires a complete standalone HTML/PDF pair from current study materials through an explicit pair-level API. Exact source and artifact identities are checked together, and both metadata records change atomically. Immutable files remain in recovery history; source membership and lesson progress are unaffected. Corpus-managed pairs retain their separate all-target lifecycle.

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
 import { FSRS_SCHEDULER_VERSION, scheduleReview } from '../domain'
 import { loadSettings } from '../services/settings'
+import { withRecallBranches } from '../services/recall-branches'
 import { buildLearningBalance } from '../services/learning-balance'
 import { recordLearningEvent } from '../services/learning-core'
 import { LearningScopeError, resolveLearningScope, type ResolvedLearningScope } from '../services/learning-scope'
@@ -402,7 +403,11 @@ app.get('/srs/repair', async (c) => {
         comparison_candidates: comparisons,
       }
     })
-    return c.json({ threshold: RECALL_REPAIR_LAPSE_THRESHOLD, cards: enriched, count: enriched.length })
+    return c.json({
+      threshold: RECALL_REPAIR_LAPSE_THRESHOLD,
+      cards: await withRecallBranches(DB, enriched),
+      count: enriched.length,
+    })
   } catch (err) {
     return c.json(safeError('Recall repair failed')(err), 500)
   }
@@ -420,7 +425,7 @@ app.get('/srs/cards/:id', async (c) => {
     .bind(c.req.param('id'))
     .first<any>()
   if (!card) return c.json({ error: 'card not found' }, 404)
-  return c.json({ card })
+  return c.json({ card: (await withRecallBranches(c.env.DB, [card]))[0] })
 })
 
 // GET /learning/srs/due — Fetch cards due for active recall today
@@ -452,7 +457,11 @@ app.get('/srs/due', async (c) => {
     )
       .bind(today)
       .all()
-    return c.json({ cards: cards.results || [], count: cards.results?.length || 0, today })
+    return c.json({
+      cards: await withRecallBranches(DB, cards.results || []),
+      count: cards.results?.length || 0,
+      today,
+    })
   } catch (err) {
     return c.json(safeError('SRS due failed')(err), 500)
   }

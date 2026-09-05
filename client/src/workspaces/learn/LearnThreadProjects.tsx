@@ -1,3 +1,4 @@
+import { levelNumber } from './threadViewModel'
 import { useEffect, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { Icon } from '../../components/Icon'
@@ -97,9 +98,9 @@ export function ThreadProjects({
           return (
             <li class={`${expanded ? 'is-expanded' : ''} ${isCurrent ? 'is-current' : ''}`} key={stage.id}>
               <span class="vertical-journey-marker" aria-hidden="true">
-                {stage.position}
+                {levelNumber(stage)}
               </span>
-              <section class="vertical-practice-level" aria-label={`Level ${stage.position}: ${levelTitle(stage)}`}>
+              <section class="vertical-practice-level" aria-label={`Level ${levelNumber(stage)}: ${levelTitle(stage)}`}>
                 <button
                   class="vertical-practice-level-trigger"
                   type="button"
@@ -112,7 +113,7 @@ export function ThreadProjects({
                 >
                   <span>
                     <strong>
-                      Level {stage.position} — {levelTitle(stage)}
+                      Level {levelNumber(stage)} — {levelTitle(stage)}
                     </strong>
                     <small>
                       {stage.projects.length || 0} {stage.projects.length === 1 ? 'project' : 'projects'}

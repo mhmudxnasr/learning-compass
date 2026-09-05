@@ -782,7 +782,9 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
   // Text — preserve authored intent where possible, then derive readable CSS tokens.
   const parsedInk = palette.ink ? parseColor(palette.ink) : null
   const inkCandidate = parsedInk || (dark ? mixColors(shell, WHITE, 0.86) : mixColors(accent, BLACK, 0.62))
-  const textPlanes = [shell, canvas, surface]
+  const hoverSurface = mixColors(surface, brand, 0.06)
+  const activeSurface = mixColors(surface, brand, 0.12)
+  const textPlanes = [shell, canvas, surface, ledger, inspector, hoverSurface, activeSurface]
   const ink = ensureTextContrast(inkCandidate, textPlanes)
   const secondaryCandidate = dark ? mixColors(ink, shell, 0.4) : mixColors(ink, accent, 0.35)
   const mutedCandidate = mixColors(secondaryCandidate, shell, dark ? 0.42 : 0.35)
@@ -831,19 +833,23 @@ export function computeThemeVariables(palette: CustomPalette, modeOverride?: The
     '--studio-card': rgbToHex(surface),
     '--studio-canvas': rgbToHex(canvas),
     '--studio-control-surface': rgbToHex(controlSurface),
-    '--studio-surface-hover': rgbToHex(mixColors(surface, brand, 0.06)),
-    '--studio-active-surface': rgbToHex(mixColors(surface, brand, 0.12)),
+    '--studio-surface-hover': rgbToHex(hoverSurface),
+    '--studio-active-surface': rgbToHex(activeSurface),
     '--studio-inspector': rgbToHex(inspector),
     '--studio-ink': rgbToHex(ink),
     '--studio-secondary': rgbToHex(secondary),
     '--studio-muted': rgbToHex(muted),
     '--studio-seam': rgbToHex(seam),
     '--studio-cypress': rgbToHex(brand),
+    '--studio-cypress-text': rgbToHex(ensureTextContrast(brand, [...textPlanes, mixColors(canvas, brand, 0.1)])),
     '--studio-lichen': rgbToHex(highlight),
     '--studio-focus': rgbToHex(brand),
     '--studio-due': rgbToHex(due),
+    '--studio-due-text': rgbToHex(ensureTextContrast(due, [...textPlanes, mixColors(canvas, due, 0.1)])),
     '--studio-danger': rgbToHex(danger),
+    '--studio-danger-text': rgbToHex(ensureTextContrast(danger, [...textPlanes, mixColors(canvas, danger, 0.1)])),
     '--studio-map': rgbToHex(map),
+    '--studio-map-text': rgbToHex(ensureTextContrast(map, [...textPlanes, mixColors(canvas, map, 0.1)])),
     '--studio-sage': rgbToHex(brand),
     '--studio-ochre': rgbToHex(due),
     '--studio-focus-ring': `0 0 0 3px ${rgbToHex(canvas)}, 0 0 0 5px ${rgbToHex(brand)}`,
@@ -865,6 +871,12 @@ const THEME_CONTRAST_PAIRS = [
   ['ink-surface', 'Ink / surface', '--studio-ink', '--studio-surface'],
   ['secondary-shell', 'Quiet text / shell', '--studio-secondary', '--studio-shell'],
   ['secondary-surface', 'Quiet text / surface', '--studio-secondary', '--studio-surface'],
+  ['muted-active', 'Muted text / active row', '--studio-muted', '--studio-active-surface'],
+  ['muted-hover', 'Muted text / hover row', '--studio-muted', '--studio-surface-hover'],
+  ['accent-text', 'Accent text / canvas', '--studio-cypress-text', '--studio-canvas'],
+  ['map-text', 'Map label / canvas', '--studio-map-text', '--studio-canvas'],
+  ['due-text', 'Due label / canvas', '--studio-due-text', '--studio-canvas'],
+  ['danger-text', 'Danger label / canvas', '--studio-danger-text', '--studio-canvas'],
   ['rail', 'Rail text / rail', '--studio-rail-ink', '--studio-rail'],
   ['rail-active', 'Active rail / brand', '--studio-rail-active-ink', '--studio-rail-active-bg'],
   ['action', 'Action text / brand', '--studio-action-ink', '--studio-cypress'],

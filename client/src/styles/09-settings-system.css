@@ -14,7 +14,6 @@
 .setting-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(160px, auto);
-  align-items: center;
   gap: 18px;
   min-height: 62px;
   padding: 10px 0;
@@ -192,12 +191,12 @@
 
 .method-delete {
   border-color: var(--studio-danger);
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
 }
 
 .method-get {
   border-color: var(--studio-map);
-  color: var(--studio-map);
+  color: var(--studio-map-text);
 }
 
 .schedule-list ul {
@@ -233,8 +232,6 @@
 }
 
 .profile-health-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   border-top: 1px solid var(--studio-seam);
 }
 
@@ -465,18 +462,11 @@
     --studio-rail-width: 0px;
   }
 
-  .studio-shell,
-  .studio-shell.has-inspector {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .root-rail {
     display: none;
   }
 
   .mobile-utilities {
-    display: flex;
-    align-items: center;
     justify-content: flex-end;
     gap: 8px;
     padding: max(10px, env(safe-area-inset-top)) 14px 0;
@@ -917,7 +907,7 @@
   font-size: calc(10.5px * var(--font-scale));
 }
 .thread-source-placement-heading > a {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(10.5px * var(--font-scale));
   text-decoration: none;
 }
@@ -953,7 +943,6 @@
   align-items: center;
   padding: clamp(18px, 3vw, 26px);
   border: 1px solid color-mix(in srgb, var(--studio-coral) 44%, var(--studio-seam));
-  border-inline-start: 4px solid var(--studio-coral);
   border-radius: var(--studio-radius-panel);
   background: color-mix(in srgb, var(--studio-coral) 5%, var(--studio-canvas));
 }
@@ -1312,7 +1301,6 @@
   }
 
   .workspace-mode-switcher a {
-    min-width: 0;
     min-height: max(44px, var(--studio-density-mode-height));
     padding-inline: 7px;
     text-align: center;

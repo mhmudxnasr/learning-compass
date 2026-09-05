@@ -146,7 +146,14 @@ app.get('/', async (c) => {
           .bind(like, like)
           .all<any>(),
         DB.prepare(
-          `SELECT id,filename,media_type,created_at FROM artifacts WHERE COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged' AND (filename LIKE ? OR metadata_json LIKE ?) ORDER BY created_at DESC LIMIT 8`,
+          `SELECT a.id,a.filename,a.media_type,a.created_at,
+            COALESCE(json_extract(a.metadata_json,'$.source_title'),r.video_title) source_title,
+            json_extract(a.metadata_json,'$.chapter_title') chapter_title,
+            json_extract(a.metadata_json,'$.chapter_number') chapter_number,
+            json_extract(a.metadata_json,'$.publication_state') publication_state
+          FROM artifacts a LEFT JOIN recommendations r ON r.id=json_extract(a.metadata_json,'$.recommendation_id')
+          WHERE COALESCE(json_extract(a.metadata_json,'$.publication_state'),'ready')!='staged'
+            AND (a.filename LIKE ? OR a.metadata_json LIKE ?) ORDER BY a.created_at DESC LIMIT 8`,
         )
           .bind(like, like)
           .all<any>(),
@@ -293,7 +300,14 @@ app.get('/', async (c) => {
           .bind(like, like)
           .all<any>(),
         DB.prepare(
-          `SELECT id,filename,media_type,created_at FROM artifacts WHERE COALESCE(json_extract(metadata_json,'$.publication_state'),'ready')!='staged' AND (filename LIKE ? OR metadata_json LIKE ?) ORDER BY created_at DESC LIMIT 8`,
+          `SELECT a.id,a.filename,a.media_type,a.created_at,
+            COALESCE(json_extract(a.metadata_json,'$.source_title'),r.video_title) source_title,
+            json_extract(a.metadata_json,'$.chapter_title') chapter_title,
+            json_extract(a.metadata_json,'$.chapter_number') chapter_number,
+            json_extract(a.metadata_json,'$.publication_state') publication_state
+          FROM artifacts a LEFT JOIN recommendations r ON r.id=json_extract(a.metadata_json,'$.recommendation_id')
+          WHERE COALESCE(json_extract(a.metadata_json,'$.publication_state'),'ready')!='staged'
+            AND (a.filename LIKE ? OR a.metadata_json LIKE ?) ORDER BY a.created_at DESC LIMIT 8`,
         )
           .bind(like, like)
           .all<any>(),

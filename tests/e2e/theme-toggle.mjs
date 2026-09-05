@@ -31,6 +31,7 @@ export async function verifyThemeToggle({ page, baseUrl, requestJson }) {
 
   mkdirSync('test-results/theme-toggle', { recursive: true })
   try {
+    await page.setViewportSize({ width: 1440, height: 900 })
     await requestJson('/settings/appearance', { method: 'PUT', body: JSON.stringify({ theme: 'mineral' }) })
     await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
     await page.reload({ waitUntil: 'networkidle' })

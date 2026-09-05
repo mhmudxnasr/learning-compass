@@ -1,3 +1,4 @@
+import { levelNumber } from './threadViewModel'
 import { useEffect, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { routeHref } from '../../app/router'
@@ -110,7 +111,7 @@ export function LearnThreadView({
           {!focusMode && <LessonNavigator key={threadId} path={path.data} lessonId={activeLesson.id} />}
         </>
       )}
-      <main class="course-main">
+      <div class="course-main">
         {activeLesson ? (
           <LessonView
             key={activeLesson.id}
@@ -131,7 +132,7 @@ export function LearnThreadView({
         ) : (
           <Empty title="Start your learning path" body="This Thread has no levels yet. Add a level to begin." />
         )}
-      </main>
+      </div>
       {!activeLesson && (
         <>
           <LevelList threadId={threadId} stages={stages} activeStage={activeStage} />
@@ -299,7 +300,9 @@ function ThreadCommandCenter({
             )}
             <div class="vertical-thread-current">
               <strong>
-                {currentStage ? `Level ${currentStage.position} — ${levelTitle(currentStage)}` : 'No Level available'}
+                {currentStage
+                  ? `Level ${levelNumber(currentStage)} — ${levelTitle(currentStage)}`
+                  : 'No Level available'}
               </strong>
               <span>
                 {next
@@ -403,12 +406,12 @@ function ThreadOverview({ path, currentStage }: { path: PathResponse; currentSta
             return (
               <li class={isCurrent ? 'is-current' : ''} key={stage.id}>
                 <span class="vertical-journey-marker" aria-hidden="true">
-                  {stage.position}
+                  {levelNumber(stage)}
                 </span>
                 <div class="vertical-journey-copy">
                   <a href={threadTabHref(path.thread.id, 'curriculum', stage.id)}>
                     <strong>
-                      Level {stage.position} — {levelTitle(stage)}
+                      Level {levelNumber(stage)} — {levelTitle(stage)}
                     </strong>
                   </a>
                   {(stage.objective || stage.description) && <p>{stage.objective || stage.description}</p>}
@@ -547,12 +550,12 @@ function ThreadCurriculum({
                 return (
                   <a class="vertical-curriculum-result" href={lessonHref(path.thread.id, lesson.id)} key={lesson.id}>
                     <span class="vertical-curriculum-step">
-                      {stage.position}.{index + 1}
+                      {levelNumber(stage)}.{index + 1}
                     </span>
                     <span>
                       <strong>{lesson.title}</strong>
                       <small>
-                        Level {stage.position} — {levelTitle(stage)}
+                        Level {levelNumber(stage)} — {levelTitle(stage)}
                       </small>
                     </span>
                     <span class={`lesson-readiness-pill state-${readiness}`}>{statusLabel(readiness)}</span>
@@ -597,9 +600,12 @@ function ThreadCurriculum({
             return (
               <li class={`${expanded ? 'is-expanded' : ''} ${isLocked ? 'is-preview' : ''}`} key={stage.id}>
                 <span class="vertical-journey-marker" aria-hidden="true">
-                  {stage.position}
+                  {levelNumber(stage)}
                 </span>
-                <section class="vertical-curriculum-level" aria-label={`Level ${stage.position}: ${levelTitle(stage)}`}>
+                <section
+                  class="vertical-curriculum-level"
+                  aria-label={`Level ${levelNumber(stage)}: ${levelTitle(stage)}`}
+                >
                   <button
                     class="vertical-curriculum-level-trigger"
                     type="button"
@@ -612,7 +618,7 @@ function ThreadCurriculum({
                   >
                     <span class="vertical-curriculum-level-copy">
                       <strong>
-                        Level {stage.position} — {levelTitle(stage)}
+                        Level {levelNumber(stage)} — {levelTitle(stage)}
                       </strong>
                       <small>
                         {stage.lessons.length} lessons · {sourceCount} sources
@@ -633,7 +639,7 @@ function ThreadCurriculum({
                       <div
                         class="vertical-curriculum-level-progress"
                         role="progressbar"
-                        aria-label={`Level ${stage.position} lesson progress`}
+                        aria-label={`Level ${levelNumber(stage)} lesson progress`}
                         aria-valuemin={0}
                         aria-valuemax={stage.lessons.length || 1}
                         aria-valuenow={completed}
@@ -658,7 +664,7 @@ function ThreadCurriculum({
                               key={lesson.id}
                             >
                               <span class="vertical-curriculum-step">
-                                {stage.position}.{index + 1}
+                                {levelNumber(stage)}.{index + 1}
                               </span>
                               <span class="vertical-curriculum-lesson-copy">
                                 <strong>{lesson.title}</strong>

@@ -17,7 +17,15 @@ import {
 const clientIndex = readFileSync(new URL('../../client/index.html', import.meta.url), 'utf8')
 
 const TEXT_TOKENS = ['--studio-ink', '--studio-secondary', '--studio-muted'] as const
-const TEXT_PLANES = ['--studio-shell', '--studio-canvas', '--studio-surface'] as const
+const TEXT_PLANES = [
+  '--studio-shell',
+  '--studio-canvas',
+  '--studio-surface',
+  '--studio-ledger',
+  '--studio-inspector',
+  '--studio-surface-hover',
+  '--studio-active-surface',
+] as const
 
 function assertAccessibleText(label: string, palette: CustomPalette, mode: ThemeMode) {
   const variables = computeThemeVariables(palette, mode)
@@ -153,6 +161,25 @@ test('derived contrast correction never mutates the authored palette', () => {
   auditThemeContrast(palette, 'light')
 
   assert.deepEqual(palette, authored)
+})
+
+test('dark teal custom surfaces keep active-turn metadata and file signals readable', () => {
+  const palette: CustomPalette = {
+    brand: '#479c96',
+    shell: '#121919',
+    surface: '#1a2525',
+    highlight: '#213a36',
+    accent: '#77918d',
+    ink: '#b9c6c2',
+    map: '#334c53',
+  }
+  assertAccessibleText('custom teal', palette, 'dark')
+  assertRenderedAudit('custom teal', palette, 'dark')
+  const variables = computeThemeVariables(palette, 'dark')
+  for (const token of ['--studio-cypress-text', '--studio-map-text', '--studio-due-text', '--studio-danger-text']) {
+    for (const plane of TEXT_PLANES)
+      assert.ok(contrastRatio(variables[token], variables[plane])! >= 4.5, `${token} on ${plane}`)
+  }
 })
 
 test('semantic foregrounds remain readable on functional colors', () => {

@@ -374,18 +374,40 @@ app.get('/', async (c) => {
     }
   })
   const recIds = [...new Set(artifacts.map((a: any) => a.metadata?.recommendation_id).filter(Boolean))]
-  const recDetailsByRec = new Map<string, { notebook_url?: string; video_url?: string }>()
+  const recDetailsByRec = new Map<
+    string,
+    {
+      notebook_url?: string
+      video_url?: string
+      content_type?: string
+      branch_id?: string
+      branch_label?: string
+      branch_status?: string
+      domain?: string
+    }
+  >()
   if (recIds.length) {
     const placeholders = recIds.map(() => '?').join(',')
     const recs = await c.env.DB.prepare(
       `
-      SELECT r.id, r.video_url, r.notebook_url
+      SELECT r.id, r.video_url, r.notebook_url,r.content_type,b.id branch_id,b.label branch_label,b.status branch_status,b.super_category domain
       FROM recommendations r
+      LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id
+      LEFT JOIN tree_nodes b ON b.id=COALESCE(m.branch_id,r.branch) AND b.status!='pruned'
       WHERE r.id IN (${placeholders})
     `,
     )
       .bind(...recIds)
-      .all<{ id: string; video_url: string; notebook_url: string }>()
+      .all<{
+        id: string
+        video_url: string
+        notebook_url: string
+        content_type: string
+        branch_id: string
+        branch_label: string
+        branch_status: string
+        domain: string
+      }>()
     for (const row of recs.results || []) recDetailsByRec.set(row.id, row)
   }
   for (const artifact of artifacts) {
@@ -394,6 +416,11 @@ app.get('/', async (c) => {
     artifact.notebook_url = rec?.notebook_url || null
     artifact.source_url = artifact.metadata?.source_url || rec?.video_url || null
     artifact.topic = artifact.metadata?.topic || null
+    artifact.owner_type =
+      rec?.content_type === 'book' || artifact.metadata?.chapter_key ? 'book' : rec ? 'source' : null
+    artifact.branch = rec?.branch_id
+      ? { id: rec.branch_id, label: rec.branch_label, status: rec.branch_status, domain: rec.domain }
+      : null
   }
   return c.json({
     artifacts: [

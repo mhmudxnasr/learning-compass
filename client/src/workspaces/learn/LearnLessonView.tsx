@@ -1,8 +1,10 @@
+import { levelNumber } from './threadViewModel'
 import { useState } from 'preact/hooks'
 import { api } from '../../api'
 import { routeHref } from '../../app/router'
 import { Icon } from '../../components/Icon'
 import { SourceHealthControl } from '../../components/SourceHealthControl'
+import { StudyText } from './StudyText'
 import { cleanTitle, lessonHref, lessonReadiness, roleLabel } from './helpers'
 import { buildSourceMaterialLauncher, type SourceMaterialKind } from './sourceMaterials'
 import { threadTabHref } from './threadViewModel'
@@ -72,7 +74,7 @@ export function LessonView({
           <span aria-hidden="true">/</span>
           <a href={threadTabHref(threadId, 'overview')}>{threadTitle}</a>
           <span aria-hidden="true">/</span>
-          <a href={threadTabHref(threadId, 'curriculum', stage.id)}>Level {stage.position}</a>
+          <a href={threadTabHref(threadId, 'curriculum', stage.id)}>Level {levelNumber(stage)}</a>
         </nav>
         <div class="course-lesson-meta-bar">
           <div class="course-lesson-position">
@@ -115,6 +117,14 @@ export function LessonView({
         <h1 dir="auto">{cleanTitle(lesson.title)}</h1>
         {(lesson.objective || lesson.description) && <p dir="auto">{lesson.objective || lesson.description}</p>}
       </header>
+
+      {lesson.content?.trim() && (
+        <section class="lesson-authored-text" aria-label="Lesson text">
+          <StudyText text={lesson.content} />
+        </section>
+      )}
+
+      {lesson.sources?.length ? <SourceSection sources={lesson.sources} /> : null}
 
       {(prevLesson || nextLesson || canComplete) && (
         <div class="course-lesson-action-bar" aria-label="Lesson actions">
@@ -179,21 +189,6 @@ export function LessonView({
           <FindLessonMaterial threadId={threadId} lesson={lesson} onChanged={onChanged} />
         </>
       ) : null}
-
-      {lesson.sources?.length ? <SourceSection sources={lesson.sources} /> : null}
-
-      {lesson.content?.trim() && (
-        <section class="lesson-authored-text" aria-label="Lesson text">
-          <span class="desk-eyebrow">Study text</span>
-          <div>
-            {lesson.content.split(/\n\s*\n/).map((paragraph, index) => (
-              <p key={index} dir="auto">
-                {paragraph}
-              </p>
-            ))}
-          </div>
-        </section>
-      )}
 
       {isCompleted && !followingLesson && (
         <section class="lesson-finish-note">
@@ -310,6 +305,7 @@ function SourceCard({ source }: { source: PathSource }) {
         sourceUrl={source.video_url}
         companionHref={verifiedCompanionHref(source)}
         compact
+        disclosure
       />
     </li>
   )

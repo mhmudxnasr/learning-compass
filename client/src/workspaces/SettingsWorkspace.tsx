@@ -343,10 +343,15 @@ function jumpToPreference(event: MouseEvent, id: string) {
   const target = document.getElementById(id)
   const canvas = document.querySelector<HTMLElement>('.workspace-canvas')
   if (!target || !canvas) return
-  const jumpNav = document.querySelector<HTMLElement>('.settings-jump-nav')
-  const stickyOffset = (jumpNav?.getBoundingClientRect().height || 0) + 16
+  if (target instanceof HTMLDetailsElement) target.open = true
+  const jumpNav = document.querySelector<HTMLElement>('.preferences-index')
+  const navRect = jumpNav?.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  const overlaps = navRect && navRect.left < targetRect.right && navRect.right > targetRect.left
+  const pinned = jumpNav && ['sticky', 'fixed'].includes(getComputedStyle(jumpNav).position)
+  const stickyOffset = pinned && overlaps ? navRect.height + 16 : 16
   const top = target.getBoundingClientRect().top - canvas.getBoundingClientRect().top + canvas.scrollTop - stickyOffset
-  canvas.scrollTo({ top, behavior: 'smooth' })
+  canvas.scrollTo({ top, behavior: 'instant' })
 }
 
 function SettingsModeSwitcher({
@@ -1098,9 +1103,8 @@ function ThemeContextPreview() {
   return (
     <section class="theme-context-preview" aria-labelledby="appearance-preview-title">
       <div class="theme-preview-heading">
-        <span class="settings-active-label">Live preview</span>
-        <h2 id="appearance-preview-title">Your studio in context</h2>
-        <p>Colors, type, spacing, and corners update here as you make changes.</p>
+        <h2 id="appearance-preview-title">Appearance preview</h2>
+        <p>Changes appear here as you adjust the settings.</p>
       </div>
       <div class="theme-preview-frame" aria-hidden="true">
         <div class="theme-preview-sidebar">
@@ -1212,6 +1216,7 @@ function ThemeSemanticPreview({
 }
 
 function PreferencesView() {
+  const [showAllStyles, setShowAllStyles] = useState(false)
   const settings = useData<SettingsPayload>('/settings')
   const [status, setStatus] = useState('')
   const [theme, setTheme] = useState(() => getSavedTheme())
@@ -1248,7 +1253,6 @@ function PreferencesView() {
   const [enrichCapture, setEnrichCapture] = useState(false)
   const [autoExtract, setAutoExtract] = useState(false)
   const [profileMode, setProfileMode] = useState('automatic')
-  const [engineMode, setEngineMode] = useState('shadow')
   const [deliveryEffort, setDeliveryEffort] = useState<'light' | 'moderate' | 'deep'>('moderate')
   const [deliveryLanguage, setDeliveryLanguage] = useState<'any' | 'en' | 'ar'>('any')
   const [deliveryModes, setDeliveryModes] = useState<Array<'read' | 'watch' | 'listen' | 'practice'>>([])
@@ -1330,7 +1334,6 @@ function PreferencesView() {
     setEnrichCapture(Boolean(resolved.ai_curation?.enrich_capture))
     setAutoExtract(Boolean(resolved.srs_drafts?.auto_extract))
     setProfileMode(resolved.profile_automation?.mode || 'automatic')
-    setEngineMode(resolved.recommendation_engine?.mode || 'shadow')
     setDeliveryEffort(resolved.delivery_context?.effort || 'moderate')
     setDeliveryLanguage(resolved.delivery_context?.language || 'any')
     setDeliveryModes(resolved.delivery_context?.delivery_modes || [])
@@ -2019,6 +2022,9 @@ function PreferencesView() {
             <a href="#font-section" onClick={(event) => jumpToPreference(event, 'font-section')}>
               <span>04</span>Reading
             </a>
+            <a href="#type-controls" onClick={(event) => jumpToPreference(event, 'type-controls')}>
+              <span>05</span>Type tuning
+            </a>
             <a href="#learning-preferences" onClick={(event) => jumpToPreference(event, 'learning-preferences')}>
               <span>06</span>Learning
             </a>
@@ -2033,25 +2039,6 @@ function PreferencesView() {
         </aside>
         <div class="preferences-main">
           <section class="preferences-preview-stage" aria-label="Current appearance preview">
-            <div class="preferences-preview-intro">
-              <span class="preference-section-number">Live system preview</span>
-              <h2>See the whole studio, not a color chip</h2>
-              <p>Type, spacing, corners, surfaces, and actions update together while you tune the system.</p>
-              <div class="preferences-preview-legend">
-                <span>
-                  <i class="is-action" />
-                  Action
-                </span>
-                <span>
-                  <i class="is-surface" />
-                  Surface
-                </span>
-                <span>
-                  <i class="is-signal" />
-                  Signal
-                </span>
-              </div>
-            </div>
             <div class="preferences-preview-rail">
               <ThemeContextPreview />
             </div>
@@ -2061,18 +2048,18 @@ function PreferencesView() {
             <div class="section-head">
               <div>
                 <span class="preference-section-number">01 · Workspace style</span>
-                <h2 id="visual-presets-title">Choose a distinct visual world</h2>
-                <p class="section-description">
-                  Eight premium-product references, rebuilt for Learning Compass. One choice sets color, type, spacing,
-                  and shape across the whole site.
-                </p>
+                <h2 id="visual-presets-title">Choose a workspace style</h2>
+                <p class="section-description">Choose a starting point, then adjust comfort and reading below.</p>
               </div>
               <button type="button" class="btn-surprise" onClick={surpriseMe} disabled={variantGenerating}>
                 {variantGenerating ? 'Creating a style…' : 'Surprise me'}
               </button>
             </div>
             <div class="visual-presets-grid">
-              {VISUAL_PRESETS.map((preset) => {
+              {(showAllStyles
+                ? VISUAL_PRESETS
+                : [...new Set([...(activePreset ? [activePreset] : []), ...VISUAL_PRESETS])].slice(0, 3)
+              ).map((preset) => {
                 const themePreset = THEME_PRESETS.find((item) => item.id === preset.theme)
                 const fontPreset = FONT_PRESETS.find((item) => item.id === preset.font)
                 const isActive = activePreset?.id === preset.id
@@ -2105,6 +2092,14 @@ function PreferencesView() {
                 )
               })}
             </div>
+            <button
+              type="button"
+              class="button secondary"
+              aria-expanded={showAllStyles}
+              onClick={() => setShowAllStyles(!showAllStyles)}
+            >
+              {showAllStyles ? 'Show fewer styles' : `Browse all ${VISUAL_PRESETS.length} styles`}
+            </button>
           </section>
 
           <section class="preference-panel preference-comfort" id="interface-tokens" aria-labelledby="comfort-title">
@@ -2737,7 +2732,7 @@ function PreferencesView() {
                     const value = typography[key]
                     const { min, max } = TYPOGRAPHY_LIMITS[key]
                     return (
-                      <label class="type-range" key={key}>
+                      <label class="type-range" key={key} for={`typography-${key}`}>
                         <span class="type-range-label">
                           <strong>{label}</strong>
                           <output>
@@ -2748,6 +2743,7 @@ function PreferencesView() {
                         <small>{description}</small>
                         <input
                           type="range"
+                          id={`typography-${key}`}
                           min={min}
                           max={max}
                           step={step}
@@ -2847,11 +2843,10 @@ function PreferencesView() {
                   <div>
                     <strong>Draft policy</strong>
                     <span>
-                      Rating never creates cards. The extractor may return zero to four Unit-linked drafts, or explain
-                      why none are useful.
+                      Only cards you write enter Recall. Ratings and extraction never generate cards or recall drafts.
                     </span>
                   </div>
-                  <span class="setting-value">Source note v2</span>
+                  <span class="setting-value">Learner authored</span>
                 </div>
                 <div class="setting-row">
                   <div>
@@ -2967,13 +2962,6 @@ function PreferencesView() {
                     <option value="manual">Always ask first</option>
                   </select>
                 </div>
-                <div class="setting-row">
-                  <div>
-                    <strong>Recommendation engine</strong>
-                    <span>The active serving mode selected by the recommendation system.</span>
-                  </div>
-                  <span class="setting-value">{labelize(engineMode)}</span>
-                </div>
                 <PreferenceToggle
                   label="Prepare notes after retain or apply"
                   description="Eligible completion feedback can start structured extraction; your reflection is never rewritten."
@@ -3026,7 +3014,7 @@ function PreferencesView() {
                     saveAtlas({ animate: value })
                   }}
                 />
-                <label class="type-range">
+                <label class="type-range" for="atlas-text-fade">
                   <span class="type-range-label">
                     <strong>Text fade threshold</strong>
                     <output>{textFade.toFixed(2)}</output>
@@ -3037,6 +3025,7 @@ function PreferencesView() {
                     min={-1}
                     max={1}
                     step={0.05}
+                    id="atlas-text-fade"
                     value={textFade}
                     onInput={(event) => {
                       const v = Number((event.target as HTMLInputElement).value)
@@ -3045,7 +3034,7 @@ function PreferencesView() {
                     }}
                   />
                 </label>
-                <label class="type-range">
+                <label class="type-range" for="atlas-node-size">
                   <span class="type-range-label">
                     <strong>Node size</strong>
                     <output>{atlasNodeSize.toFixed(2)}×</output>
@@ -3056,6 +3045,7 @@ function PreferencesView() {
                     min={0.1}
                     max={3}
                     step={0.02}
+                    id="atlas-node-size"
                     value={atlasNodeSize}
                     onInput={(event) => {
                       const v = Number((event.target as HTMLInputElement).value)
@@ -3064,7 +3054,7 @@ function PreferencesView() {
                     }}
                   />
                 </label>
-                <label class="type-range">
+                <label class="type-range" for="atlas-link-thickness">
                   <span class="type-range-label">
                     <strong>Link thickness</strong>
                     <output>{linkThickness.toFixed(2)}×</output>
@@ -3075,6 +3065,7 @@ function PreferencesView() {
                     min={0.1}
                     max={6}
                     step={0.05}
+                    id="atlas-link-thickness"
                     value={linkThickness}
                     onInput={(event) => {
                       const v = Number((event.target as HTMLInputElement).value)
@@ -3083,7 +3074,7 @@ function PreferencesView() {
                     }}
                   />
                 </label>
-                <label class="type-range">
+                <label class="type-range" for="atlas-branch-links">
                   <span class="type-range-label">
                     <strong>Branch links</strong>
                     <output>{branchLinkThickness.toFixed(2)}×</output>
@@ -3094,6 +3085,7 @@ function PreferencesView() {
                     min={0.1}
                     max={6}
                     step={0.05}
+                    id="atlas-branch-links"
                     value={branchLinkThickness}
                     onInput={(event) => {
                       const v = Number((event.target as HTMLInputElement).value)
@@ -3108,7 +3100,7 @@ function PreferencesView() {
                 <span>How clusters spread and hold together</span>
               </div>
               <div class="atlas-preference-grid">
-                <label class="type-range">
+                <label class="type-range" for="atlas-center-force">
                   <span class="type-range-label">
                     <strong>Center force</strong>
                     <output>{centerForce.toFixed(2)}</output>
@@ -3119,6 +3111,7 @@ function PreferencesView() {
                     min={0}
                     max={2}
                     step={0.01}
+                    id="atlas-center-force"
                     value={centerForce}
                     onInput={(event) => {
                       const v = Number((event.target as HTMLInputElement).value)
@@ -3127,7 +3120,7 @@ function PreferencesView() {
                     }}
                   />
                 </label>
-                <label class="type-range">
+                <label class="type-range" for="atlas-repel-force">
                   <span class="type-range-label">
                     <strong>Repel force</strong>
                     <output>{repelForce.toFixed(2)}</output>
@@ -3138,6 +3131,7 @@ function PreferencesView() {
                     min={0}
                     max={50}
                     step={0.5}
+                    id="atlas-repel-force"
                     value={repelForce}
                     onInput={(event) => {
                       const v = Number((event.target as HTMLInputElement).value)
@@ -3146,7 +3140,7 @@ function PreferencesView() {
                     }}
                   />
                 </label>
-                <label class="type-range">
+                <label class="type-range" for="atlas-link-force">
                   <span class="type-range-label">
                     <strong>Link force</strong>
                     <output>{linkForce.toFixed(2)}</output>
@@ -3157,6 +3151,7 @@ function PreferencesView() {
                     min={0}
                     max={3}
                     step={0.05}
+                    id="atlas-link-force"
                     value={linkForce}
                     onInput={(event) => {
                       const v = Number((event.target as HTMLInputElement).value)

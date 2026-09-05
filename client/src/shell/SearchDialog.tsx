@@ -20,12 +20,37 @@ const groupMeta: Record<string, { label: string; href: (item: any) => string }> 
   memories: { label: 'Hermes memory', href: () => '#/settings?focus=profile' },
 }
 
+function memoryText(item: any): string {
+  try {
+    const value = JSON.parse(item.value_json || 'null')
+    if (typeof value === 'string') return value
+    return (
+      [value?.title, value?.summary, value?.statement, value?.description].find((text) => typeof text === 'string') ||
+      ''
+    )
+  } catch {
+    return ''
+  }
+}
+
 function resultTitle(item: any) {
   if (item.quote) return item.quote.length > 180 ? `${item.quote.slice(0, 177)}…` : item.quote
+  if (item.memory_key) return memoryText(item).slice(0, 180)
+  if (item.assertion_key)
+    return String(item.assertion_key)
+      .replace(/^user\.profile\./, '')
+      .replace(/[._:-]+/g, ' ')
+      .replace(/^\w/, (letter) => letter.toUpperCase())
+  if (item.source_title)
+    return `${item.source_title}${item.chapter_title ? ` — ${item.chapter_number != null ? `${item.chapter_number}. ` : ''}${item.chapter_title}` : ''}`
   return item.title || item.label || item.filename || item.statement || item.memory_key || item.assertion_key || item.id
 }
 
 function resultMeta(groupKey: string, item: any) {
+  if (groupKey === 'artifacts')
+    return `${/pdf/i.test(item.media_type) ? 'PDF' : /html/i.test(item.media_type) ? 'HTML' : item.filename}${['superseded', 'retired'].includes(item.publication_state) ? ' · Earlier version' : ''}`
+  if (groupKey === 'memories') return 'Saved learning preference or context'
+  if (groupKey === 'assertions') return memoryText(item).slice(0, 180) || 'Learning profile preference'
   if (groupKey === 'annotations') {
     const locator = item.selector?.locator || item.selector?.url || item.locator_type || 'exact passage'
     return [item.source_title || 'Source', locator].filter(Boolean).join(' · ')
@@ -82,9 +107,12 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
 
   const groups = useMemo(
     () =>
-      Object.entries(state.data?.groups || {}).filter(
-        ([key, items]) => groupMeta[key] && Array.isArray(items) && items.length,
-      ) as Array<[string, any[]]>,
+      Object.entries(state.data?.groups || {})
+        .map<[string, unknown]>(([key, items]) => [
+          key,
+          key === 'memories' && Array.isArray(items) ? items.filter((item) => Boolean(memoryText(item))) : items,
+        ])
+        .filter(([key, items]) => groupMeta[key] && Array.isArray(items) && items.length) as Array<[string, any[]]>,
     [state.data],
   )
 
@@ -116,17 +144,17 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
       return
     }
 
-    if (event.key === 'ArrowDown') {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       if (!choices.length) return
       event.preventDefault()
-      setSelectedIndex((prev) => (prev + 1 >= choices.length ? 0 : prev + 1))
-      return
-    }
-
-    if (event.key === 'ArrowUp') {
-      if (!choices.length) return
-      event.preventDefault()
-      setSelectedIndex((prev) => (prev - 1 < 0 ? choices.length - 1 : prev - 1))
+      const next =
+        event.key === 'ArrowDown'
+          ? (selectedIndex + 1) % choices.length
+          : selectedIndex <= 0
+            ? choices.length - 1
+            : selectedIndex - 1
+      setSelectedIndex(next)
+      dialogRef.current?.querySelector<HTMLElement>(`[data-search-index="${next}"]`)?.focus()
       return
     }
 
@@ -196,6 +224,15 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
           />
           <kbd>Esc</kbd>
         </header>
+        <p class="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
+          {query.trim().length < 2
+            ? ''
+            : query.trim() !== debouncedQuery || state.loading
+              ? 'Searching…'
+              : state.error
+                ? 'Search could not load. Try again.'
+                : `${flatResults.length} results for ${debouncedQuery}`}
+        </p>
         <div class="search-results">
           {showingRecent && (
             <div class="search-hint">
@@ -223,6 +260,8 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
                 <a
                   key={item.href}
                   href={item.href}
+                  data-search-index={index}
+                  onFocus={() => setSelectedIndex(index)}
                   class={selectedIndex === index ? 'search-item-selected' : ''}
                   onClick={() => {
                     remember(item)
@@ -239,8 +278,15 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
             </section>
           )}
           {state.loading && <div class="search-hint">Searching…</div>}
-          {state.error && <div class="search-hint error">{state.error}</div>}
-          {!state.loading && debouncedQuery.length >= 2 && !groups.length && (
+          {state.error && (
+            <div class="search-hint error">
+              Search could not load.{' '}
+              <button type="button" class="button secondary" onClick={state.reload}>
+                Try again
+              </button>
+            </div>
+          )}
+          {!state.loading && !state.error && debouncedQuery.length >= 2 && !groups.length && (
             <div class="search-hint">
               <strong>No exact match.</strong>
               <span>Try a title, creator, topic, or phrase from a note.</span>
@@ -257,6 +303,8 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
                     <a
                       key={item.id || itemIndex}
                       href={groupMeta[key].href(item)}
+                      data-search-index={itemIndex}
+                      onFocus={() => setSelectedIndex(itemIndex)}
                       class={isSelected ? 'search-item-selected' : ''}
                       onClick={() => {
                         remember(choices[itemIndex])

@@ -204,7 +204,7 @@
 
 .folio-note-delete:hover:not(:disabled),
 .folio-note-delete:focus-visible {
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
   text-decoration: underline;
 }
 
@@ -258,7 +258,7 @@
   border: 1px solid var(--studio-seam);
   border-radius: var(--studio-radius-control);
   background: var(--studio-lichen);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-family: var(--font-mono, monospace);
   font-size: calc(12px * var(--font-scale));
 }
@@ -286,7 +286,7 @@
   font-family: var(--font-mono, monospace);
   text-transform: uppercase;
   background: var(--studio-lichen);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 20%, transparent);
 }
 
@@ -323,7 +323,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: var(--font-medium-weight);
   font-size: calc(13px * var(--font-scale));
   text-decoration: none;
@@ -396,7 +396,7 @@
 
 .folio-note-section-head strong {
   font-size: calc(14px * var(--font-scale));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .folio-note-textarea {
@@ -553,7 +553,7 @@
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 35%, var(--studio-seam));
   background: color-mix(in srgb, var(--studio-cypress) 10%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   flex-shrink: 0;
   align-self: start;
   margin-top: 2px;
@@ -617,7 +617,7 @@
 .folio-status-tag.status-active,
 .folio-status-tag.status-in_progress {
   background: color-mix(in srgb, var(--studio-cypress) 12%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 25%, transparent);
 }
 
@@ -652,7 +652,7 @@
   font-family: var(--font-mono, monospace);
   line-height: 1.2;
   background: color-mix(in srgb, var(--studio-map) 10%, var(--studio-canvas));
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   border: 1px solid color-mix(in srgb, var(--studio-map) 24%, transparent);
 }
 
@@ -670,7 +670,7 @@
 }
 
 .folio-path-row:hover .folio-path-title {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .folio-path-row .folio-path-question {
@@ -765,7 +765,7 @@
 }
 
 .folio-path-row .folio-row-chevron {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(18px * var(--font-scale));
   text-align: end;
   transition: transform 140ms ease;

@@ -30,7 +30,6 @@
 .folio-thread-question {
   margin: 0;
   font-size: calc(15px * var(--font-scale));
-  color: var(--studio-secondary);
 }
 
 .folio-thread-actions {
@@ -61,20 +60,14 @@
 
 .course-thread {
   gap: 34px;
-  width: 100%;
-  max-width: none;
 }
 .course-header {
   display: grid;
-  grid-template-columns: 1fr;
   gap: 32px 48px;
   width: 100%;
   max-width: none;
   padding: 12px 0 32px;
   border-bottom: 1px solid var(--studio-seam);
-}
-.course-hero-copy {
-  max-width: none;
 }
 .course-hero-kicker {
   display: flex;
@@ -94,7 +87,6 @@
 .course-header h1 {
   font-size: clamp(32px, 4vw, 56px);
   line-height: 1.04;
-  max-width: 25ch;
 }
 .course-header-message {
   grid-column: 1 / -1;
@@ -147,17 +139,13 @@
   content: '';
 }
 .course-map button {
-  position: relative;
   display: grid;
   grid-template-columns: 24px 1fr 18px;
-  gap: 10px;
   align-items: center;
   padding: 11px 8px;
-  border: 1px solid transparent;
   border-radius: var(--studio-radius-control);
   background: transparent;
   text-align: left;
-  color: var(--studio-secondary);
 }
 .course-map button > span:first-child {
   z-index: 1;
@@ -167,7 +155,6 @@
   place-items: center;
   border: 1px solid var(--studio-seam);
   border-radius: 50%;
-  background: var(--studio-ledger);
   color: var(--studio-muted);
   font-family: var(--font-mono, monospace);
   font-size: calc(10px * var(--font-scale));
@@ -180,7 +167,6 @@
 }
 .course-map button.is-current > span:first-child {
   border-color: var(--studio-cypress);
-  background: var(--studio-cypress);
   color: var(--studio-canvas);
 }
 .course-map button strong,
@@ -189,7 +175,6 @@
 }
 .course-map button small {
   color: var(--studio-muted);
-  font-size: calc(11px * var(--font-scale));
   margin-top: 3px;
 }
 .course-map button i {
@@ -215,14 +200,12 @@
   gap: 10px;
   flex-wrap: wrap;
   color: var(--studio-muted);
-  font-size: calc(13px * var(--font-scale));
 }
 .course-stage-status {
   padding: 3px 8px;
   border: 1px solid var(--studio-seam);
   border-radius: var(--studio-radius-control);
   font-size: calc(10px * var(--font-scale));
-  font-weight: var(--font-heading-weight);
 }
 .course-gate {
   display: flex;
@@ -273,9 +256,6 @@
   text-decoration: none;
   transition: background-color 140ms ease;
 }
-.course-lesson:hover {
-  background: var(--studio-ledger);
-}
 .course-lesson > span,
 .course-lesson-number {
   color: var(--studio-muted);
@@ -287,7 +267,7 @@
 }
 .course-lesson.is-complete > span,
 .course-lesson.is-complete .course-lesson-number {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .course-lesson small,
 .course-lesson-source-count {
@@ -373,7 +353,7 @@
   padding: 2px 6px;
   border-radius: var(--studio-radius-control);
   background: color-mix(in srgb, var(--studio-cypress) 12%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 25%, transparent);
 }
 .course-source-type-tag,
@@ -400,7 +380,6 @@
 .course-material-launcher {
   display: grid;
   gap: 10px;
-  min-width: 0;
 }
 .course-material-primary {
   display: grid;
@@ -529,7 +508,7 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   background: color-mix(in srgb, var(--studio-cypress) 9%, var(--studio-canvas));
   border-radius: 50%;
 }
@@ -545,7 +524,7 @@
   flex-wrap: wrap;
 }
 .course-material-option-copy strong {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-family: var(--font-mono, monospace);
   font-size: calc(9.5px * var(--font-scale));
   letter-spacing: 0.04em;
@@ -620,20 +599,17 @@
 }
 
 .course-lesson-page .course-source-card {
-  align-items: center;
   gap: 24px;
   padding: 14px 16px;
 }
 .course-lesson-page .course-source-header {
   gap: 6px;
-  padding: 0;
 }
 .course-lesson-page .course-source-type-tag,
 .course-lesson-page .course-source-creator-tag {
   display: none;
 }
 .course-lesson-page .course-source-title {
-  font-size: calc(15px * var(--font-scale));
   line-height: 1.3;
 }
 .course-lesson-page .course-source-rationale {
@@ -646,11 +622,6 @@
   min-height: 34px;
   padding: 5px 11px;
   font-size: calc(12.5px * var(--font-scale));
-}
-.course-lesson-page {
-  width: 100%;
-  max-width: 920px;
-  margin-inline: auto;
 }
 .lesson-duration-pill {
   display: inline-flex;
@@ -702,7 +673,7 @@
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 30%, transparent);
   border-radius: var(--studio-radius-control);
   background: color-mix(in srgb, var(--studio-cypress) 12%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(11px * var(--font-scale));
   font-weight: var(--font-heading-weight);
 }
@@ -815,13 +786,13 @@
   align-items: center;
   gap: 6px;
   border-color: color-mix(in srgb, var(--studio-cypress) 40%, var(--studio-seam));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   background: color-mix(in srgb, var(--studio-cypress) 10%, var(--studio-canvas));
 }
 .course-lesson-completed-btn:hover:not(:disabled) {
   border-color: var(--studio-cypress);
   background: color-mix(in srgb, var(--studio-cypress) 18%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .course-stage-heading-line {
   display: flex;
@@ -854,8 +825,6 @@
 }
 .course-next-action p:last-child {
   max-width: 58ch;
-  margin: 0;
-  color: var(--studio-secondary);
   line-height: 1.5;
 }
 .course-next-action-lock {
@@ -1040,7 +1009,7 @@
   border: 0;
   border-radius: 999px;
   background: color-mix(in srgb, var(--studio-cypress) 12%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-family: var(--font-ui);
   font-size: calc(11px * var(--font-scale));
   font-weight: var(--font-heading-weight);
@@ -1078,7 +1047,7 @@
   font-weight: var(--font-medium-weight);
 }
 .course-map-heading .course-map-edit:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   background: transparent;
 }
 .course-stage-list {
@@ -1167,7 +1136,6 @@
   font-weight: 700;
 }
 .course-section-body {
-  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
@@ -1183,7 +1151,6 @@
 }
 .course-lesson:hover {
   border-color: color-mix(in srgb, var(--studio-cypress) 42%, var(--studio-seam));
-  background: var(--studio-ledger);
 }
 .course-lesson-number {
   grid-row: 1 / span 2;
@@ -1195,7 +1162,6 @@
 }
 .course-lesson-source-count {
   grid-column: 2;
-  font-size: calc(12px * var(--font-scale));
   line-height: 1.35;
 }
 .course-project {
@@ -1277,21 +1243,16 @@
   font-size: calc(12px * var(--font-scale));
 }
 .course-level-number {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-family: var(--font-mono, monospace);
   font-size: calc(12px * var(--font-scale));
 }
 .course-level-mark {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   text-align: right;
 }
 
 /* Lesson focus: brief, material, then one deliberate completion decision. */
-.course-lesson-page {
-  width: 100%;
-  max-width: 920px;
-  margin-inline: auto;
-}
 .course-lesson-header {
   margin-bottom: 12px;
 }
@@ -1319,7 +1280,7 @@
 }
 .lesson-gate-note a {
   margin-inline-start: auto;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: var(--font-heading-weight);
   text-decoration: none;
 }
@@ -1453,7 +1414,6 @@
  * valuable vertical space. */
 .course-thread > .course-main {
   order: 1;
-  margin-inline: auto;
 }
 .course-thread > .course-level-list {
   order: 2;
@@ -1474,7 +1434,7 @@
   text-decoration: none;
 }
 .course-stage-context a:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   text-decoration: underline;
 }
 .course-stage-progress {
@@ -1549,7 +1509,7 @@
 }
 .course-lesson.is-next .course-lesson-number,
 .course-lesson.is-next .course-lesson-source-count {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .course-lesson.is-complete {
   background: color-mix(in srgb, var(--studio-canvas) 72%, var(--studio-ledger));
@@ -1590,7 +1550,7 @@
   border-right: 1px solid color-mix(in srgb, var(--studio-cypress) 18%, transparent);
 }
 .course-map-heading {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: var(--font-heading-weight);
 }
 .course-map button {
@@ -1636,10 +1596,10 @@
   background: var(--studio-cypress);
 }
 .course-map button.is-current i {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .course-stage-header h2 {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: clamp(34px, 3.4vw, 48px);
   line-height: 1.05;
 }
@@ -1652,10 +1612,10 @@
 }
 .course-section > summary strong {
   font-size: calc(22px * var(--font-scale));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .course-section > summary > span:last-child {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: var(--font-heading-weight);
 }
 .course-lesson {
@@ -1666,11 +1626,10 @@
   box-shadow: 0 10px 20px color-mix(in srgb, var(--studio-cypress) 10%, transparent);
 }
 .course-lesson-number {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-weight: var(--font-heading-weight);
 }
 .course-lesson-title {
-  font-size: calc(15px * var(--font-scale));
   font-weight: var(--font-heading-weight);
 }
 .course-lesson-source-count {
@@ -1689,7 +1648,7 @@
 }
 .course-stage-header h1 {
   margin: 6px 0 10px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: clamp(34px, 3.4vw, 48px);
   font-weight: 700;
   line-height: 1.05;
@@ -1852,7 +1811,7 @@
   gap: 4px;
 }
 .course-level-materials > summary strong {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(16px * var(--font-scale));
 }
 .course-level-materials > summary small {
@@ -1964,7 +1923,7 @@ details.lesson-content > summary::after {
 
 details.lesson-learning-contract[open] > summary::after {
   content: '−';
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 details.lesson-content[open] > summary::after {
@@ -2008,7 +1967,7 @@ details.lesson-learning-contract dl > div {
 }
 
 details.lesson-learning-contract dt {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-size: calc(12px * var(--font-scale));
   font-weight: var(--font-heading-weight);
 }
@@ -2076,12 +2035,12 @@ details.lesson-learning-contract dd {
 }
 .course-lesson-status-pill.state-ready {
   background: color-mix(in srgb, var(--studio-cypress) 10%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   border-color: color-mix(in srgb, var(--studio-cypress) 25%, transparent);
 }
 .course-lesson-status-pill.state-in_progress {
   background: color-mix(in srgb, var(--studio-map) 9%, var(--studio-canvas));
-  color: var(--studio-map);
+  color: var(--studio-map-text);
   border-color: color-mix(in srgb, var(--studio-map) 24%, transparent);
 }
 .course-lesson-status-pill.state-needs_material,
@@ -2186,12 +2145,12 @@ details.lesson-learning-contract dd {
   height: 28px;
   border: 1px solid var(--studio-seam);
   border-radius: 999px;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-family: var(--font-mono);
   font-size: calc(11px * var(--font-scale));
 }
 .lesson-more-sources[open] > summary {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 .lesson-more-sources > .course-sources-list {
   padding-top: 8px;
@@ -2250,7 +2209,6 @@ details.lesson-learning-contract dd {
   font-size: calc(15.5px * var(--font-scale));
   font-weight: 600;
   line-height: 1.4;
-  color: var(--studio-ink);
   text-align: start;
   word-break: break-word;
 }
@@ -2258,7 +2216,6 @@ details.lesson-learning-contract dd {
 .course-lesson-page .course-source-rationale {
   margin: 0;
   font-size: calc(13px * var(--font-scale));
-  color: var(--studio-secondary);
   line-height: 1.5;
   text-align: start;
 }
@@ -2296,14 +2253,14 @@ details.lesson-learning-contract dd {
 .course-material-icon-action:hover {
   border-color: color-mix(in srgb, var(--studio-cypress) 48%, var(--studio-seam));
   background: color-mix(in srgb, var(--studio-cypress) 10%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   transform: translateY(-1px);
 }
 
 .course-material-icon-action.is-primary {
   border-color: color-mix(in srgb, var(--studio-cypress) 35%, var(--studio-seam));
   background: color-mix(in srgb, var(--studio-cypress) 12%, var(--studio-canvas));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .course-material-icon-action:focus-visible {
@@ -2398,7 +2355,7 @@ details.lesson-learning-contract dd {
 }
 
 .course-lesson-page .course-source-role-tag {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   background: color-mix(in srgb, var(--studio-cypress) 12%, var(--studio-canvas));
   border-color: color-mix(in srgb, var(--studio-cypress) 28%, var(--studio-seam));
   letter-spacing: 0.035em;
@@ -2422,7 +2379,7 @@ details.lesson-learning-contract dd {
 }
 
 .course-lesson-page .course-material-option-copy strong {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   letter-spacing: 0.035em;
 }
 
@@ -2461,7 +2418,6 @@ details.lesson-learning-contract dd {
 
 .folio-home-queue-item:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--studio-secondary) 45%, var(--studio-seam));
-  outline-offset: 2px;
 }
 
 .folio-home-queue-item {
@@ -2476,7 +2432,6 @@ details.lesson-learning-contract dd {
   background: var(--studio-canvas);
   border-color: color-mix(in srgb, var(--studio-secondary) 42%, var(--studio-seam));
   box-shadow: 0 8px 18px color-mix(in srgb, var(--studio-ink) 12%, transparent);
-  transform: translateY(-2px);
 }
 
 .queue-row.selected::before,
@@ -2610,7 +2565,7 @@ details.lesson-learning-contract dd {
 .folio-stage-state {
   text-align: center;
   font-size: calc(12px * var(--font-scale));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .folio-proof-canvas {
@@ -2671,7 +2626,7 @@ details.lesson-learning-contract dd {
 
 .folio-proof-icon {
   font-size: calc(14px * var(--font-scale));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .folio-proof-copy {
@@ -2711,7 +2666,7 @@ details.lesson-learning-contract dd {
 .folio-mark-source::before {
   content: '▶';
   font-size: calc(10px * var(--font-scale));
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .folio-mark-file::before {
@@ -2751,7 +2706,7 @@ details.lesson-learning-contract dd {
   border-radius: var(--studio-radius-control);
   font-size: calc(11.5px * var(--font-scale));
   text-decoration: none;
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   background: var(--studio-ledger);
 }
 

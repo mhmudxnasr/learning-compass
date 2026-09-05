@@ -375,7 +375,7 @@ a:hover {
 
   .mobile-brand svg {
     flex: 0 0 auto;
-    color: var(--studio-cypress);
+    color: var(--studio-cypress-text);
   }
 
   .mobile-brand strong {
@@ -493,8 +493,6 @@ a:hover {
     width: 108px;
   }
   .root-rail nav {
-    display: flex;
-    align-items: stretch;
     gap: 6px;
     padding: 18px 10px;
   }
@@ -518,7 +516,6 @@ a:hover {
   }
   .root-rail nav > a .rail-label {
     font-size: calc(11px * var(--font-scale));
-    line-height: 1;
   }
   .root-rail nav a.active,
   .rail-bottom a.active {
@@ -902,7 +899,7 @@ body {
   }
 
   .root-rail nav > a {
-    min-height: 42px;
+    min-height: 44px;
     flex-direction: row;
     justify-content: flex-start;
     gap: 11px;
@@ -932,7 +929,7 @@ body {
   }
 
   .root-rail nav a.active .icon {
-    color: var(--studio-cypress);
+    color: var(--studio-cypress-text);
   }
 
   .rail-bottom {
@@ -1052,21 +1049,16 @@ body {
 }
 
 .continuum-home-main,
-.continuum-home-side {
+.continuum-home-side,
+.continuum-home-secondary {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 18px;
 }
 
-.continuum-home-main .folio-home-resurfacing {
-  order: 2;
-}
-.continuum-home-main .continuum-turns {
-  order: 1;
-}
-.continuum-home-main .continuum-quiet-section {
-  order: 3;
+.continuum-home-secondary {
+  grid-column: 1 / -1;
 }
 
 .continuum-home
@@ -1166,11 +1158,11 @@ body {
 }
 
 .continuum-turn:hover {
-  background: color-mix(in srgb, var(--studio-cypress) 5%, var(--studio-surface)) !important;
+  background: var(--studio-surface-hover) !important;
 }
 
 .continuum-turn.is-active {
-  background: color-mix(in srgb, var(--studio-cypress) 8%, var(--studio-surface)) !important;
+  background: var(--studio-active-surface) !important;
 }
 
 .continuum-turn-number {
@@ -1184,7 +1176,7 @@ body {
 }
 
 .continuum-turn.is-active .continuum-turn-number {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .continuum-turn-open {
@@ -1231,6 +1223,12 @@ body {
   line-height: 1.45;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.continuum-turn .folio-home-thread-lesson-title[dir='rtl'] {
+  font-family: var(--font-reading);
+  line-height: 1.7;
+  letter-spacing: 0;
 }
 
 .continuum-turn .folio-home-thread-action {
@@ -1310,11 +1308,11 @@ body {
 
 .continuum-finish-lesson:hover .continuum-finish-mark,
 .continuum-finish-lesson:focus-visible .continuum-finish-mark {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .continuum-finish-lesson.is-saving .continuum-finish-mark {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   animation: continuum-finish-wait 520ms var(--continuum-ease) infinite alternate;
 }
 
@@ -1347,7 +1345,7 @@ body {
 .continuum-turn-error {
   flex-basis: 100%;
   margin: 0;
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
   font-size: calc(11px * var(--font-scale));
   line-height: 1.45;
 }
@@ -1428,7 +1426,7 @@ body {
 }
 
 .continuum-material-link.kind-notebooklm .icon {
-  color: var(--studio-map);
+  color: var(--studio-map-text);
 }
 
 .continuum-home-side {
@@ -1490,7 +1488,7 @@ body {
 }
 
 .continuum-current .folio-home-actions-bar > * {
-  min-height: 40px;
+  min-height: 44px;
   justify-content: center;
 }
 
@@ -1516,7 +1514,7 @@ body {
 }
 
 .continuum-all-files:hover {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .continuum-queue {
@@ -1605,7 +1603,7 @@ body {
 }
 
 .continuum-queue-active {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-family: var(--font-mono);
   font-size: calc(8.5px * var(--font-scale));
 }
@@ -1642,6 +1640,7 @@ body {
 @media (min-width: 1181px) {
   .continuum-home-side {
     position: sticky;
+    align-self: start;
     top: 22px;
   }
 }
@@ -1685,7 +1684,7 @@ body {
     padding-inline: 0;
   }
   .continuum-home-spread {
-    grid-template-columns: minmax(0, 1fr) minmax(290px, 330px);
+    grid-template-columns: minmax(0, 1fr);
     gap: 22px;
   }
 }
@@ -1957,6 +1956,7 @@ body {
 /* Library --------------------------------------------------------------- */
 .folio-library-view {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 18px;
 }
@@ -2816,7 +2816,7 @@ body {
 }
 
 .visual-preset-reference {
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
   font-family: var(--font-mono);
   font-size: calc(9px * var(--font-scale));
   font-weight: 600;
@@ -2947,7 +2947,7 @@ body {
     .workspace-capture-command,
     .capture-dialog .button.primary
   ) {
-  min-height: 42px;
+  min-height: 44px;
   padding-inline: 18px;
   border: 1px solid var(--studio-cypress);
   border-radius: 999px;
@@ -3003,7 +3003,7 @@ body {
     .palette-prompt-button,
     .theme-import-button
   ) {
-  min-height: 40px;
+  min-height: 44px;
   padding-inline: 16px;
   border: 1px solid color-mix(in srgb, var(--studio-seam) 94%, transparent);
   border-radius: 999px;
@@ -3014,7 +3014,7 @@ body {
 
 :root[data-theme='continuum'] .btn-surprise {
   min-width: 145px;
-  min-height: 42px;
+  min-height: 44px;
   font-size: calc(16px * var(--font-scale));
   white-space: nowrap;
 }

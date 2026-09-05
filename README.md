@@ -127,6 +127,8 @@ Read the owning files and their nearby tests before editing. These are starting 
 
 `PROJECT_CONTEXT.md` owns durable product facts; [architecture](docs/architecture.md) and [API](docs/API.md) docs own their respective contracts. The [current handoff](CURRENT_STATE.md#handoff) distinguishes local work from the last recorded deployment. Older state entries are historical evidence. Correct the owning document when a rule changes, and record material changes in `CHANGELOG.md`.
 
+`E2E_FOCUS=quality npm run test:e2e` runs the frontend quality regression slice against disposable Worker/D1 state: responsive reading/actions, Arabic text, semantic lessons, branch/file identity, keyboard navigation, announcements, and error recovery. The full E2E command also includes it alongside routing, offline, and workflow acceptance checks.
+
 ## Run locally
 
 ### Requirements

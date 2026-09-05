@@ -3,243 +3,21 @@
  * content owns hierarchy; it is not a stack of equally weighted cards.
  */
 
-.workspace-chrome {
-  display: none;
-}
-
 @media (min-width: 941px) {
-  .studio-shell {
-    grid-template-columns: 108px minmax(0, 1fr);
-  }
-
-  .studio-shell.has-inspector {
-    grid-template-columns: 108px minmax(0, 1fr) var(--studio-inspector-width);
-  }
-
-  .root-rail {
-    width: 108px;
-  }
-
-  .root-rail nav {
-    display: flex;
-    align-items: stretch;
-    gap: 6px;
-    padding: 18px 10px;
-  }
-
-  .rail-brand {
-    justify-content: center;
-    min-height: 58px;
-    margin: 0 0 13px;
-    padding: 0 0 16px;
-    border-bottom: 1px solid var(--studio-rail-border);
-  }
-
-  .rail-brand strong {
-    display: none;
-  }
-
-  .root-rail nav > a {
-    min-height: 68px;
-    flex-direction: column;
-    justify-content: center;
-    gap: 7px;
-    padding: 8px 5px;
-    text-align: center;
-  }
-
-  .root-rail nav > a .rail-label {
-    font-size: calc(11px * var(--font-scale));
-    line-height: 1;
-  }
-
-  .root-rail nav a.active,
-  .rail-bottom a.active {
-    box-shadow: inset 3px 0 0 var(--studio-lichen);
-  }
-
-  .rail-bottom {
-    margin-top: auto;
-    justify-content: center;
-  }
-
-  .work-area {
-    display: grid;
-    min-width: 0;
-    min-height: 0;
-    grid-template-rows: 64px minmax(0, 1fr);
-  }
-
-  .workspace-chrome {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
-    padding: 0 22px 0 var(--studio-density-canvas-x);
-    border-bottom: 1px solid var(--studio-seam);
-    background: var(--studio-canvas);
-  }
-
-  .workspace-location {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 9px;
-    color: var(--studio-muted);
-    font-size: calc(12px * var(--font-scale));
-  }
-
-  .workspace-location strong {
-    overflow: hidden;
-    color: var(--studio-ink);
-    font-weight: var(--font-medium-weight);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .workspace-location .icon {
-    color: var(--studio-seam-strong);
-  }
-
-  .workspace-commands {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .workspace-search-command,
-  .workspace-capture-command {
-    min-height: 38px;
-    border: 1px solid var(--studio-seam);
-    border-radius: var(--studio-radius-control);
-    font: inherit;
-    cursor: pointer;
-  }
-
-  .workspace-search-command {
-    display: grid;
-    min-width: 238px;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    gap: 9px;
-    padding: 0 9px 0 12px;
-    background: var(--studio-shell);
-    color: var(--studio-muted);
-    text-align: left;
-  }
-
-  .workspace-search-command kbd {
-    padding: 3px 6px;
-    border: 1px solid var(--studio-seam);
-    background: var(--studio-canvas);
-    color: var(--studio-muted);
-    font: 10px/1.2 var(--font-ui);
-  }
-
-  .workspace-capture-command {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 0 14px;
-    border-color: var(--studio-cypress);
-    background: var(--studio-cypress);
-    color: var(--studio-action-ink);
-    font-weight: var(--font-medium-weight);
-  }
-
-  .workspace-search-command:hover,
-  .workspace-search-command:focus-visible {
-    border-color: var(--studio-cypress);
-    color: var(--studio-ink);
-  }
-
-  .workspace-capture-command:hover,
-  .workspace-capture-command:focus-visible {
-    background: color-mix(in srgb, var(--studio-cypress) 86%, var(--studio-ink));
-  }
-
-  .workspace-canvas {
-    min-height: 0;
-  }
 }
 
 /* Home is a master-detail workbench. Current work and its queue share one
  * row; learning rotation and incoming publications form the second row. */
 .folio-home-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(300px, 0.65fr);
   grid-template-areas:
     'home-head home-head'
     'resurfacing resurfacing'
     'current queue'
     'threads feeds';
-  gap: 0 24px;
-  align-items: start;
-}
-
-.folio-home-header {
-  grid-area: home-head;
-  min-height: 104px;
-  align-items: end;
-  padding: 8px 0 22px;
-  border-bottom: 1px solid var(--studio-seam);
-}
-
-.folio-home-header h1 {
-  margin-top: 5px;
-  font-size: clamp(32px, 4vw, 54px);
-}
-
-.folio-home-intro {
-  max-width: 48ch;
-  margin: 0 0 4px;
-  color: var(--studio-muted);
-  line-height: 1.55;
-  text-align: right;
-}
-
-.folio-home-resurfacing {
-  grid-area: resurfacing;
-  margin: 18px 0 0;
-}
-
-.folio-home-focus {
-  grid-area: current;
-  min-height: 330px;
-  margin: 24px 0 0;
-}
-
-.folio-home-sequence {
-  display: contents;
-}
-
-.folio-home-queue {
-  grid-area: queue;
-  min-height: 330px;
-  margin-top: 24px;
-}
-
-.folio-home-threads {
-  grid-area: threads;
-  margin-top: 24px;
-}
-
-.folio-home-feeds {
-  grid-area: feeds;
-  margin-top: 24px;
-}
-
-.folio-home-focus,
-.folio-home-threads,
-.folio-home-queue,
-.folio-home-feeds {
-  border-radius: 0;
 }
 
 @media (max-width: 1100px) {
   .folio-home-workspace {
-    grid-template-columns: 1fr;
     grid-template-areas:
       'home-head'
       'resurfacing'
@@ -248,29 +26,9 @@
       'threads'
       'feeds';
   }
-
-  .folio-home-intro {
-    display: none;
-  }
 }
 
 @media (max-width: 640px) {
-  .folio-home-header {
-    min-height: 82px;
-    padding-bottom: 16px;
-  }
-
-  .folio-home-header h1 {
-    font-size: clamp(30px, 11vw, 44px);
-  }
-
-  .folio-home-focus,
-  .folio-home-queue,
-  .folio-home-threads,
-  .folio-home-feeds {
-    min-height: 0;
-    margin-top: 16px;
-  }
 }
 
 .folio-shelf-loading {
@@ -521,7 +279,7 @@
   border: 1px solid var(--studio-seam);
   border-radius: 50%;
   background: var(--studio-ledger);
-  color: var(--studio-cypress);
+  color: var(--studio-cypress-text);
 }
 
 .source-feedback-expectation textarea {
@@ -534,7 +292,7 @@
   padding: 9px 11px;
 
   background: var(--studio-canvas);
-  color: var(--studio-danger);
+  color: var(--studio-danger-text);
   font-size: calc(12px * var(--font-scale));
 }
 
