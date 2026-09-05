@@ -7,7 +7,7 @@ import { cleanTitle, lessonHref, lessonReadiness, roleLabel } from './helpers'
 import { buildSourceMaterialLauncher, type SourceMaterialKind } from './sourceMaterials'
 import { threadTabHref } from './threadViewModel'
 import type { PathSource, PathStage, ThreadLesson } from './types'
-import { ScopedMaterials } from './LearnThreadMaterials'
+import { ScopedMaterials } from './ScopedMaterials'
 import { FindLessonMaterial } from './FindLessonMaterial'
 import { verifiedCompanionHref } from './threadOfflinePacks'
 
@@ -222,7 +222,7 @@ export function LessonView({
           </small>
         </summary>
         <ScopedMaterials
-          compact
+          showTitle={false}
           scope={{ kind: 'lesson', id: lesson.id, title: lesson.title }}
           notes={lesson.notes || []}
           files={lesson.files || []}

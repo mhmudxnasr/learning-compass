@@ -5,6 +5,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { verifyThreadDesk } from './thread-desk.mjs'
+import { verifyScopedMaterials } from './scoped-materials.mjs'
 
 const { chromium } = createRequire(import.meta.url)('playwright')
 
@@ -97,6 +98,18 @@ const port = await new Promise((resolve, reject) => {
 const baseUrl = `http://127.0.0.1:${port}`
 let server
 let browser
+
+async function openHomeAfterServiceWorkerActivation(page) {
+  // First activation reloads the app. Assertions and synthetic install prompts
+  // must target the controlled document that survives that reload.
+  await page.goto(`${baseUrl}/#/home`, { waitUntil: 'domcontentloaded' })
+  await page.waitForFunction(
+    () => navigator.serviceWorker.controller && performance.getEntriesByType('navigation')[0]?.type === 'reload',
+    null,
+    { timeout: 15000 },
+  )
+  await page.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout: 15000 })
+}
 
 try {
   for (const args of [
@@ -825,7 +838,8 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   page.setDefaultNavigationTimeout(20_000)
   let browserIp = 'e2e-browser-desktop'
-  await page.route(`${baseUrl}/**`, (route) => {
+  // Service-worker fetches need the same isolated identity as page requests.
+  await page.context().route(`${baseUrl}/**`, (route) => {
     route.continue({ headers: { ...route.request().headers(), 'cf-connecting-ip': browserIp, 'x-real-ip': browserIp } })
   })
   const errors = []
@@ -834,7 +848,7 @@ try {
     if (message.type() === 'error') errors.push(message.text())
   })
 
-  await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
+  await openHomeAfterServiceWorkerActivation(page)
   const rootHrefs = await page
     .locator('.root-rail nav[aria-label="Five workspaces"] a')
     .evaluateAll((links) => [...new Set(links.map((link) => link.getAttribute('href')))])
@@ -2131,14 +2145,15 @@ try {
   if (await page.locator('.course-level-materials').evaluate((node) => node.hasAttribute('open')))
     throw new Error('Level materials should use progressive disclosure')
   await page.locator('.course-level-materials > summary').click()
-  if (
-    !(await page.getByRole('link', { name: 'Stage-level checkpoint' }).count()) ||
-    !(await page.getByRole('link', { name: 'hub-level.txt' }).count()) ||
-    !(await page.getByRole('link', { name: 'إيه اللي يسبق النظرية؟' }).count())
-  )
-    throw new Error(
-      `Level route did not render its owned materials: ${await page.locator('.folio-thread').innerText()}`,
-    )
+  const levelNotebook = page.locator('.course-level-materials .learning-scope-workspace')
+  for (const [label, title] of [
+    ['Notes', 'Stage-level checkpoint'],
+    ['Files', 'hub-level.txt'],
+    ['Recall', 'إيه اللي يسبق النظرية؟'],
+  ]) {
+    await levelNotebook.getByRole('tab', { name: new RegExp(`^${label}`) }).click()
+    await levelNotebook.getByRole('link', { name: new RegExp(title) }).waitFor({ state: 'visible' })
+  }
   if (!page.url().includes(`#/learn/t/${hubThread.id}/v/${hubStage.id}`))
     throw new Error('typed Level route did not preserve Thread and Level identity')
   const materialHeaders = { 'content-type': 'application/json', 'x-real-ip': 'e2e-learning-materials' }
@@ -2433,6 +2448,14 @@ try {
     if (!(await page.getByText(ownedMaterial, { exact: true }).count()))
       throw new Error(`Lesson workspace omitted ${ownedMaterial}`)
   const moreMaterials = page.locator('.lesson-more-sources')
+  await verifyScopedMaterials({
+    page,
+    baseUrl,
+    requestJson: requestMaterialJson,
+    threadId: materialThread.id,
+    lessonId: materialNextLesson.id,
+    returnLessonId: materialLesson.id,
+  })
   if ((await moreMaterials.count()) !== 1 || (await moreMaterials.getAttribute('open')) !== null)
     throw new Error('Lesson did not keep secondary material behind one closed disclosure')
   await moreMaterials.locator('summary').click()
@@ -3557,7 +3580,16 @@ try {
     extraHTTPHeaders: { 'x-real-ip': 'e2e-android-browser' },
   })
   androidPage.setDefaultNavigationTimeout(20_000)
-  await androidPage.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
+  await androidPage.context().route(`${baseUrl}/**`, (route) => {
+    route.continue({
+      headers: {
+        ...route.request().headers(),
+        'cf-connecting-ip': 'e2e-android-browser',
+        'x-real-ip': 'e2e-android-browser',
+      },
+    })
+  })
+  await openHomeAfterServiceWorkerActivation(androidPage)
   await androidPage.evaluate(() => {
     const event = new Event('beforeinstallprompt')
     Object.assign(event, {

@@ -5,7 +5,7 @@ This file records user-visible behavior, architecture, dependency, and operating
 ## Unreleased
 
 - Added explicit atomic retirement of standalone HTML/PDF companion pairs from current study materials, preserving source links, lesson progress, original files, and recovery history.
-- Fixed Preferences panels expanding beyond the mobile viewport at enlarged text sizes; refreshed the PWA shell cache to v57.
+- Advanced the PWA shell to v58 for companion retirement while preserving the deployed scoped material notebooks and Preferences layout fixes.
 
 - Cleared the 210 unrebuilt Riyadh companion slots on explicit request, retiring exactly 420 HTML/PDF artifacts while preserving the 84 redesigned pairs, original sources, lesson progress, and recovery history.
 
@@ -13,6 +13,8 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ### Changed
 
+- Advanced the PWA shell to v57 for the scoped material notebooks and constrained the Preferences grid at enlarged mobile text sizes. Android install checks use an isolated rate-limit identity and wait for the Home screen; offline save tests use the browser's actual connection state so service-worker interception cannot bypass the simulation.
+- Replaced the cramped Thread, Level, and Lesson material columns with accessible Notes, Files, and Recall tabs, full-width editors, clear ownership, and readable previews. Draft input survives tab changes; save failures retain it, successful saves report their result, and queued offline writes clear the submitted form to prevent accidental duplicates.
 - Merged all ten outstanding branch histories, retaining the verified current implementations and clarifying the architecture's existing database budget margins.
 - Made Library → Books display the existing Hardcover mirror as read-only reading history without importing it, deduplicating unambiguous matches while keeping mirror-only titles external and mutation-free.
 - Made the Daily resurfacing card open the exact source dossier from its title or card surface while preserving its branch, companion, and review controls.

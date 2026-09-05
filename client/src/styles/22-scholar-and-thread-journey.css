@@ -2812,7 +2812,6 @@ input#thread-desk-query {
     grid-row: 1 / span 2;
   }
 
-  .vertical-materials-create .learning-material-columns,
   .vertical-curriculum .thread-authoring-grid {
     grid-template-columns: 1fr;
   }

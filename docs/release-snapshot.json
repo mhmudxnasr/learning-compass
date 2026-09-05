@@ -1,16 +1,16 @@
 {
   "format": "learning-compass-release-status-v1",
-  "observed_at": "2026-09-04T22:44:24.868Z",
+  "observed_at": "2026-09-05T00:36:56.754Z",
   "source": {
-    "commit_sha": "bb760eea41050ef3230eebdf900da2ae12fbb470",
-    "branch": "main",
+    "commit_sha": "7d4f3eb80ba5fef0ce316c798d79360d1bc37e86",
+    "branch": "fix/lesson-materials-panel",
     "dirty": false
   },
   "production": {
     "origin": "https://recommendations-worker.mhmudnasr30.workers.dev",
     "deployment": {
-      "version_id": "cd7fa264-dac3-4069-b73f-b878c9f00c8a",
-      "deployed_at": "2026-09-04T22:43:57.483542Z"
+      "version_id": "2cc5a728-7f2e-4a63-bda1-e407ce2b8414",
+      "deployed_at": "2026-09-05T00:36:11.471569Z"
     },
     "migrations": {
       "applied_count": 78,
@@ -147,12 +147,12 @@
       "live": {
         "ok": true,
         "status": "live",
-        "observed_at": "2026-09-04T22:44:21.608Z"
+        "observed_at": "2026-09-05T00:36:51.872Z"
       },
       "readiness": {
         "ok": true,
         "status": "healthy",
-        "checked_at": "2026-09-04T22:44:21.636Z",
+        "checked_at": "2026-09-05T00:36:51.859Z",
         "blockers": [],
         "bindings": {
           "d1": true,
@@ -165,41 +165,41 @@
       }
     },
     "budget": {
-      "day_utc": "2026-09-04",
+      "day_utc": "2026-09-05",
       "reads": {
-        "estimated": 669840,
+        "estimated": 15470,
         "budget": 4000000,
         "cloudflare_limit": 5000000,
         "headroom": 1000000,
         "required_headroom": 1000000
       },
       "writes": {
-        "estimated": 1716,
+        "estimated": 4,
         "budget": 70000,
         "cloudflare_limit": 100000,
         "headroom": 30000,
         "required_headroom": 30000
       },
-      "updated_at": "2026-09-04 22:43:13"
+      "updated_at": "2026-09-05 00:36:36"
     },
     "recovery": {
       "latest_verified": {
-        "id": "backup_20260904T190454Z",
+        "id": "backup_20260905T000659Z",
         "status": "verified",
         "storage_target": "local-systemd",
-        "d1_sha256": "872f9e304f8c77b358c72661abee077dda98e946e6d3d515f956718fa904e911",
-        "d1_bytes": 109752120,
-        "artifact_count": 1740,
-        "artifact_bytes": 278644623,
-        "created_at": "2026-09-04 19:16:53",
-        "restore_rehearsed_at": "2026-09-04 19:16:53"
+        "d1_sha256": "3757f3160f757deee999c9ffe05132c9ec7ea3c1fdd28e17b04738014982da9d",
+        "d1_bytes": 112183823,
+        "artifact_count": 1898,
+        "artifact_bytes": 302465210,
+        "created_at": "2026-09-05 00:19:54",
+        "restore_rehearsed_at": "2026-09-05 00:19:54"
       }
     },
     "corpus": {
       "corpora": 3,
       "targets": 252,
       "active_corpora": 1,
-      "pairs": 623
+      "pairs": 628
     }
   },
   "policy": {

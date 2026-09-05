@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'preact/hooks'
-import { api } from '../../api'
-import { uploadArtifact } from '../../app/upload'
 import { objectHref } from '../../app/router'
 import { Icon } from '../../components/Icon'
 import { OfflinePackControl } from '../../components/OfflinePackControl'
@@ -9,6 +7,7 @@ import { domId, materialExcerpt, threadMaterialTotals, threadTabHref } from './t
 import type { NoteRecord, PathArtifact, PathResponse, PathStage, RecallCard, RecallDraft } from './types'
 import { levelOfflinePackResources, threadOfflinePackResources } from './threadOfflinePacks'
 import { ThreadSourceOrganizer } from './ThreadSourceOrganizer'
+import { ScopedMaterials } from './ScopedMaterials'
 
 export function LevelMaterials({
   stage,
@@ -30,7 +29,7 @@ export function LevelMaterials({
         <small>{total} saved</small>
       </summary>
       <ScopedMaterials
-        compact
+        showTitle={false}
         scope={{ kind: 'level', id: stage.id, title: stage.title }}
         notes={stage.notes}
         files={stage.files}
@@ -136,7 +135,6 @@ export function ThreadMaterialLedger({
       </summary>
       <div class="learning-material-ledger-body">
         <ScopedMaterials
-          compact
           scope={{ kind: 'thread', id: path.thread.id, title: path.thread.title }}
           notes={path.notes}
           files={path.files}
@@ -572,7 +570,6 @@ function ThreadMaterialsJourney({ path, onChanged }: { path: PathResponse; onCha
           <Icon name="chevron" size={14} />
         </summary>
         <ScopedMaterials
-          compact
           scope={{ kind: 'thread', id: path.thread.id, title: path.thread.title }}
           notes={path.notes}
           files={path.files}
@@ -581,255 +578,6 @@ function ThreadMaterialsJourney({ path, onChanged }: { path: PathResponse; onCha
           onChanged={onChanged}
         />
       </details>
-    </section>
-  )
-}
-
-export function ScopedMaterials({
-  scope,
-  notes,
-  files,
-  cards,
-  drafts,
-  onChanged,
-  compact = false,
-}: {
-  scope: MaterialScope
-  notes: NoteRecord[]
-  files: PathArtifact[]
-  cards: RecallCard[]
-  drafts: RecallDraft[]
-  onChanged: () => void
-  compact?: boolean
-}) {
-  const [saving, setSaving] = useState<'note' | 'file' | 'card' | null>(null)
-  const [error, setError] = useState('')
-  const scopeBody =
-    scope.kind === 'lesson'
-      ? { lesson_id: scope.id }
-      : scope.kind === 'level'
-        ? { stage_id: scope.id }
-        : { thread_id: scope.id }
-
-  const createNote = async (event: Event) => {
-    event.preventDefault()
-    const form = event.currentTarget as HTMLFormElement
-    const values = new FormData(form)
-    const title = String(values.get('title') || '').trim()
-    const content = String(values.get('content') || '').trim()
-    if (!title || !content) return
-    setSaving('note')
-    setError('')
-    try {
-      await api('/notes', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...scopeBody,
-          title,
-          status: 'active',
-          sections: [{ section_key: 'body', label: 'Notes', content, direction: 'auto' }],
-        }),
-      })
-      form.reset()
-      onChanged()
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Note creation failed.')
-    } finally {
-      setSaving(null)
-    }
-  }
-
-  const uploadFile = async (event: Event) => {
-    event.preventDefault()
-    const form = event.currentTarget as HTMLFormElement
-    const input = form.elements.namedItem('file') as HTMLInputElement | null
-    const file = input?.files?.[0]
-    if (!file) return
-    setSaving('file')
-    setError('')
-    try {
-      await uploadArtifact(file, { ...scopeBody, scope: scope.kind, scope_title: scope.title })
-      form.reset()
-      onChanged()
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'File upload failed.')
-    } finally {
-      setSaving(null)
-    }
-  }
-
-  const createCard = async (event: Event) => {
-    event.preventDefault()
-    const form = event.currentTarget as HTMLFormElement
-    const values = new FormData(form)
-    const question = String(values.get('question') || '').trim()
-    const answer = String(values.get('answer') || '').trim()
-    if (!question || !answer) return
-    setSaving('card')
-    setError('')
-    try {
-      await api('/learning/srs/create', {
-        method: 'POST',
-        body: JSON.stringify({ ...scopeBody, question, answer, topic: scope.title }),
-      })
-      form.reset()
-      onChanged()
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Recall card creation failed.')
-    } finally {
-      setSaving(null)
-    }
-  }
-
-  return (
-    <section class={`learning-scope-workspace ${compact ? 'is-compact' : ''}`} aria-label={`${scope.title} materials`}>
-      <div class="learning-material-heading">
-        <div>
-          <span class="folio-object-kicker">
-            {scope.kind === 'lesson'
-              ? 'Lesson workspace'
-              : scope.kind === 'level'
-                ? 'Level workspace'
-                : 'Direct Thread material'}
-          </span>
-          <h3>{scope.title}</h3>
-        </div>
-        <span class="learning-owner-pill">
-          Owned by {scope.kind === 'lesson' ? 'Lesson' : scope.kind === 'level' ? 'Level' : 'Thread'}
-        </span>
-      </div>
-      <div class="learning-material-columns">
-        <MaterialColumn title="Notes" count={notes.length} empty="No notes in this scope yet.">
-          {notes.map((note) => (
-            <a class="learning-material-row" href={noteHref(note.id)} key={note.id}>
-              <Icon name="note" size={14} />
-              <span>
-                <strong>{note.title}</strong>
-                <small>{note.sections?.[0]?.content || 'Open note'}</small>
-              </span>
-            </a>
-          ))}
-          <details class="learning-add-material">
-            <summary>Add note</summary>
-            <form onSubmit={createNote}>
-              <input name="title" aria-label="Note title" placeholder="Note title" required />
-              <textarea
-                name="content"
-                aria-label="Note body"
-                placeholder="What should this scope remember?"
-                rows={3}
-                required
-              />
-              <button class="button secondary" disabled={saving !== null}>
-                {saving === 'note' ? 'Saving…' : 'Save note'}
-              </button>
-            </form>
-          </details>
-        </MaterialColumn>
-
-        <MaterialColumn title="Files" count={files.length} empty="No files in this scope yet.">
-          {files.map((file) => (
-            <a class="learning-material-row" href={objectHref('library', 'artifact', file.id)} key={file.id}>
-              <Icon name="file" size={14} />
-              <span>
-                <strong>{file.filename}</strong>
-                <small>{file.media_type || 'Stored file'}</small>
-              </span>
-            </a>
-          ))}
-          <details class="learning-add-material">
-            <summary>Add file</summary>
-            <form onSubmit={uploadFile}>
-              <input type="file" name="file" aria-label="Choose file" required />
-              <button class="button secondary" disabled={saving !== null}>
-                {saving === 'file' ? 'Uploading…' : 'Upload file'}
-              </button>
-            </form>
-          </details>
-        </MaterialColumn>
-
-        <MaterialColumn
-          title="Recall Cards"
-          count={cards.length + drafts.length}
-          empty="No recall cards in this scope yet."
-        >
-          {cards.map((card) => (
-            <a class="learning-material-row" href={cardHref(card.id)} key={card.id}>
-              <Icon name="spark" size={14} />
-              <span>
-                <strong lang="ar" dir="rtl">
-                  {card.question}
-                </strong>
-                <small>Approved card · due {card.due_at || 'now'}</small>
-              </span>
-            </a>
-          ))}
-          {drafts.map((draft) => (
-            <div class="learning-material-row is-draft" key={draft.id}>
-              <Icon name="clock" size={14} />
-              <span>
-                <strong lang="ar" dir="rtl">
-                  {draft.question}
-                </strong>
-                <small>Draft · approve in Recall</small>
-              </span>
-            </div>
-          ))}
-          <details class="learning-add-material">
-            <summary>Add card</summary>
-            <form onSubmit={createCard}>
-              <input
-                name="question"
-                lang="ar"
-                dir="rtl"
-                aria-label="Recall question in Arabic"
-                placeholder="السؤال بالعربية"
-                required
-              />
-              <textarea
-                name="answer"
-                lang="ar"
-                dir="rtl"
-                aria-label="Recall answer in Arabic"
-                placeholder="الإجابة بالعربية"
-                rows={2}
-                required
-              />
-              <button class="button secondary" disabled={saving !== null}>
-                {saving === 'card' ? 'Saving…' : 'Create card'}
-              </button>
-            </form>
-          </details>
-        </MaterialColumn>
-      </div>
-      {error && (
-        <p class="learning-material-error" role="alert">
-          {error}
-        </p>
-      )}
-    </section>
-  )
-}
-
-function MaterialColumn({
-  title,
-  count,
-  empty,
-  children,
-}: {
-  title: string
-  count: number
-  empty: string
-  children: any
-}) {
-  return (
-    <section class="learning-material-column">
-      <header>
-        <h4>{title}</h4>
-        <span>{count}</span>
-      </header>
-      {count === 0 && <p class="folio-empty-line">{empty}</p>}
-      {children}
     </section>
   )
 }

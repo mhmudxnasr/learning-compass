@@ -68,6 +68,8 @@ Android uses the same canonical client as an installable PWA rather than a separ
 
 `client/src/main.tsx` is cut over to `client/src/app/entry.tsx`. The replacement is composed under `client/src/app`, `client/src/shell`, `client/src/workspaces`, and shared components; the retired monolithic shell/registry/styles files are removed as part of the cutover.
 
+Scoped material notebooks use Notes, Files, and Recall tabs with full-width lists and editors. Input survives tab switches within the same owner; switching owners resets editor state. Save errors stay beside the form, and queued offline notes/cards are acknowledged separately from confirmed saves. The server's exact Thread/Level/Lesson ownership and direct-completion progression rules remain authoritative.
+
 ## System architecture and ownership
 
 - `src/` contains the Hono Cloudflare Worker, API routes, domain logic, and scheduled infrastructure.
