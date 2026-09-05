@@ -1964,6 +1964,7 @@ a.branch-ledger-title:hover {
 .preferences-page .preferences-main {
   grid-column: 2;
   grid-row: 1;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 .preferences-main > [id] {

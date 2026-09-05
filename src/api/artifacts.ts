@@ -13,6 +13,7 @@ import {
 } from '../artifact-metadata'
 import { Bindings, escapeHtml, safeError, safeErrorMessage } from '../lib'
 import { resolveLearningScope } from '../services/learning-scope'
+import { loadCompanionPair, retireCompanionPair } from '../services/companion-pair-retirement'
 
 const app = new Hono<{ Bindings: Bindings }>()
 app.get('/pair-contract', (c) =>
@@ -1680,6 +1681,26 @@ app.get('/:id', async (c) => {
   const object = await c.env.ARTIFACTS.get(row.r2_key)
   if (!object) return c.json({ error: 'artifact missing' }, 404)
   return new Response(object.body, { headers: artifactHeaders(row) })
+})
+
+app.get('/pairs/:id/record', async (c) => {
+  const pair = await loadCompanionPair(c.env.DB, c.req.param('id'))
+  if (!pair) return c.json({ error: 'pair_not_found' }, 404)
+  return c.json({ pair: pair.record })
+})
+
+app.post('/pairs/:id/retire', async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (body?.confirm !== true) return c.json({ error: 'pair_retirement_confirmation_required' }, 400)
+  const pair = await loadCompanionPair(c.env.DB, c.req.param('id'))
+  if (!pair) return c.json({ error: 'pair_not_found' }, 404)
+  if (!pair.record.can_retire) return c.json({ error: 'pair_not_retirable', pair: pair.record }, 409)
+  for (const key of ['recommendation_id', 'html_artifact_id', 'pdf_artifact_id'] as const) {
+    if (body[key] !== pair.record[key]) return c.json({ error: 'pair_identity_changed', field: key }, 409)
+  }
+  const retired = await retireCompanionPair(c.env.DB, pair)
+  if (!retired?.retired) return c.json({ error: 'pair_retirement_conflict' }, 409)
+  return c.json({ ok: true, pair: retired })
 })
 
 app.delete('/:id', async (c) => {

@@ -4,6 +4,9 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Added explicit atomic retirement of standalone HTML/PDF companion pairs from current study materials, preserving source links, lesson progress, original files, and recovery history.
+- Fixed Preferences panels expanding beyond the mobile viewport at enlarged text sizes; refreshed the PWA shell cache to v57.
+
 - Cleared the 210 unrebuilt Riyadh companion slots on explicit request, retiring exactly 420 HTML/PDF artifacts while preserving the 84 redesigned pairs, original sources, lesson progress, and recovery history.
 
 - Retire six exact duplicate legacy Riyadh companion pairs only when their complete successors remain available, preserving files and lesson progress for the audited replacement release.

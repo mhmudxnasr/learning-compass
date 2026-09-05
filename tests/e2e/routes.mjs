@@ -1670,6 +1670,7 @@ try {
       .slice(0, 12)
     return { overflow: pageNode.scrollWidth - pageNode.clientWidth, offenders }
   })
+  await page.screenshot({ path: '/tmp/learning-compass-preferences-mobile-enlarged.png', animations: 'disabled' })
   if (mobileThemeLayout.overflow > 2)
     throw new Error(`custom theme workshop overflows at mobile enlarged text: ${JSON.stringify(mobileThemeLayout)}`)
   await page.evaluate(() => document.documentElement.style.removeProperty('--font-scale'))

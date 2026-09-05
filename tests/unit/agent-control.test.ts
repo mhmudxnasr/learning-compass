@@ -41,6 +41,29 @@ const sample = [
   ['POST', '/agent/request', 'Execute operation.'],
 ] as const satisfies readonly CapabilityTuple[]
 
+test('standalone companion retirement declares exact guarded identity and readback', async () => {
+  const response = await agentApp.request(
+    'https://compass.test/capabilities?domain=artifacts&q=retire&view=full',
+    {},
+    env,
+  )
+  const { capabilities } = await response.json()
+  const capability = capabilities.find((item: any) => item.method === 'POST')
+  assert.equal(capability.path, '/artifacts/pairs/:id/retire')
+  assert.equal(capability.precondition_path, '/artifacts/pairs/:id/record')
+  assert.equal(capability.verification_path, '/artifacts/pairs/:id/record')
+  assert.deepEqual(capability.required_fields, ['confirm', 'recommendation_id', 'html_artifact_id', 'pdf_artifact_id'])
+  assert.deepEqual(
+    resolveCapabilityReadbacks(
+      'POST /artifacts/pairs/:id/retire',
+      capability.verification_path,
+      capability.path,
+      '/artifacts/pairs/pair-1/retire',
+    ),
+    ['/artifacts/pairs/pair-1/record'],
+  )
+})
+
 const env = {
   DB: {
     prepare: () => {

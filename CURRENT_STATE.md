@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Current work — 2026-09-05 (standalone companion retirement)
+
+The user requested removal of the 25 current companion pairs attached to five Systems Thinking Orientation lessons. Production rejects individual pair-file deletion with `409 lite_visual_pair_artifact_is_immutable`; no requested pair has been removed. The isolated `fix/retire-companion-pairs` branch adds exact pair readback and atomic standalone-pair retirement, preserving files, original sources, placements, lesson progress, and corpus boundaries. This change is not deployed. Production removal remains pending the application release.
+
+The complete `verify:release` gate passes: quality checks, 549 unit tests, TypeScript, client build, all six Worker/D1 integrations, browser/PWA/offline E2E, Hermes contracts and prompt budgets, clean and idempotent migrations, agent contracts, 38 manager cases, 46 installed-client tests, seven native-adapter tests, syntax, and diff/credential checks. Lite Visual wording now fits its existing 6,000-byte budget at 5,990 bytes, with authoring rules intact; the site-operator reference documents guarded pair retirement. Fresh backup `backup_20260905T000659Z` contains 112,183,823 D1 bytes and 1,898 R2 objects (302,465,210 bytes); its restore passes integrity and foreign-key checks and covers all 50 target files. The browser gate exposed an existing 18-pixel Preferences overflow at enlarged mobile text, fixed with a bounded grid column and PWA v57 cache refresh. The user authorized deployment. No dependency installation or companion removal has occurred.
+
 ## Current truth — 2026-09-05 (all branch histories merged)
 
 At Mahmood's request, all ten previously unmerged local branches now have explicit merge commits in the combined `main` history. Existing cherry-picked and adapted implementations remain current; conflicts from older snapshots, competing profile layouts, retired pages/MCP tooling, outdated release receipts, and duplicate tests were resolved against the verified release. The full branch histories remain reachable, and branch names/worktrees were retained.

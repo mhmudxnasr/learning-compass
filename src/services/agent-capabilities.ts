@@ -187,6 +187,15 @@ const RECALL_MUTATION_PRECONDITION_FIELDS = [
 ]
 
 const BODY_SCHEMAS: Record<string, JsonSchema> = {
+  'POST /artifacts/pairs/:id/retire': objectSchema(
+    {
+      confirm: { type: 'boolean', const: true },
+      recommendation_id: { type: 'string', minLength: 1 },
+      html_artifact_id: { type: 'string', minLength: 1 },
+      pdf_artifact_id: { type: 'string', minLength: 1 },
+    },
+    ['confirm', 'recommendation_id', 'html_artifact_id', 'pdf_artifact_id'],
+  ),
   'POST /capture': objectSchema(
     {
       source: { type: 'string', minLength: 1 },
@@ -785,6 +794,7 @@ const BODY_SCHEMAS: Record<string, JsonSchema> = {
 }
 
 const VERIFICATION_OVERRIDES: Record<string, string | null> = {
+  'POST /artifacts/pairs/:id/retire': '/artifacts/pairs/:id/record',
   'POST /capture': '/capture/:id',
   'POST /capture/personal': '/capture/personal/:id',
   'PATCH /capture/personal/:id': '/capture/personal/:id',
@@ -868,6 +878,9 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
 }
 
 const PRECONDITION_OVERRIDES: Record<string, string[]> = {
+  'POST /artifacts/pairs/:id/retire': [
+    'Read the exact pair and require explicit user-directed retirement. Only complete standalone pairs may be retired; preserve corpus-managed pairs and original source/lesson state.',
+  ],
   'POST /capture/:id/triage': [
     'Read the exact capture before changing Queue state.',
     'Queue cap and branch preflight must pass.',
@@ -914,6 +927,7 @@ const PRECONDITION_OVERRIDES: Record<string, string[]> = {
 }
 
 const PRECONDITION_PATH_OVERRIDES: Record<string, string> = {
+  'POST /artifacts/pairs/:id/retire': '/artifacts/pairs/:id/record',
   'PATCH /recommendations/:id/source-url': '/capture/:id/record',
   'DELETE /recommendations/:id/permanent': '/capture/:id/record',
   'DELETE /notes/:id': '/notes/:id',

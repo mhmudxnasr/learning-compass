@@ -616,6 +616,12 @@ const CAPABILITIES = [
   ['POST', '/feedback/proposals/:id/revert', 'Revert one applied proposal and its typed profile revision.'],
   ['POST', '/feedback/proposals/:id/reject', 'Reject a proposed profile or map change.'],
   ['GET', '/artifacts', 'Read R2 artifact metadata and pairs.'],
+  ['GET', '/artifacts/pairs/:id/record', 'Read the exact companion pair identity and retirement state.'],
+  [
+    'POST',
+    '/artifacts/pairs/:id/retire',
+    'Retire one explicitly confirmed standalone HTML/PDF pair from current companions, preserving files, sources, lessons, and recovery history.',
+  ],
   [
     'GET',
     '/artifacts/:id/record',

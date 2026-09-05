@@ -5,6 +5,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createServer, type ViteDevServer } from 'vite'
 import { DatabaseSync } from 'node:sqlite'
+import { selectLearningSourceRenditions } from '../../src/services/learning-material-renditions.ts'
 import {
   inspectArtifactContent,
   liteVisualReceiptSignature,
@@ -472,6 +473,167 @@ class SqliteD1 {
     }
   }
 }
+
+function retirementFixture(ledger = false) {
+  const sqlite = new DatabaseSync(':memory:')
+  sqlite.exec(`CREATE TABLE recommendations(id TEXT PRIMARY KEY,status TEXT,deleted_at TEXT);
+    CREATE TABLE artifacts(id TEXT PRIMARY KEY,metadata_json TEXT,r2_key TEXT);
+    CREATE TABLE lite_visual_pairs(pair_id TEXT PRIMARY KEY,corpus_id TEXT,html_artifact_id TEXT,pdf_artifact_id TEXT,state TEXT);
+    CREATE TABLE thread_lessons(id TEXT PRIMARY KEY,status TEXT);
+    CREATE TABLE thread_lesson_sources(lesson_id TEXT,recommendation_id TEXT);
+    INSERT INTO recommendations VALUES ('source-1','active',NULL),('source-2','consumed',NULL);
+    INSERT INTO thread_lessons VALUES ('lesson-1','in_progress');
+    INSERT INTO thread_lesson_sources VALUES ('lesson-1','source-1');`)
+  for (const pair of ['pair-1', 'pair-2']) {
+    for (const role of ['html', 'pdf']) {
+      sqlite.prepare('INSERT INTO artifacts VALUES (?,?,?)').run(
+        `${pair}-${role}`,
+        JSON.stringify({
+          generator: 'lite-visual',
+          pair_id: pair,
+          recommendation_id: pair === 'pair-1' ? 'source-1' : 'source-2',
+          role,
+          publication_state: 'ready',
+          validation_status: 'passed',
+          asset_policy: 'code-only',
+        }),
+        `r2/${pair}/${role}`,
+      )
+    }
+  }
+  if (ledger) sqlite.exec("INSERT INTO lite_visual_pairs VALUES ('pair-1',NULL,'pair-1-html','pair-1-pdf','active')")
+  const DB = new SqliteD1(sqlite)
+  const env = {
+    DB,
+    ARTIFACTS: {
+      delete() {
+        assert.fail('Retirement must retain R2 bytes')
+      },
+    },
+  }
+  const body = {
+    confirm: true,
+    recommendation_id: 'source-1',
+    html_artifact_id: 'pair-1-html',
+    pdf_artifact_id: 'pair-1-pdf',
+  }
+  const retire = (input = body) =>
+    artifactsApp.request(
+      'http://localhost/pairs/pair-1/retire',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+      env,
+    )
+  const metadata = () => sqlite.prepare('SELECT * FROM artifacts ORDER BY id').all()
+  return { sqlite, DB, env, body, retire, metadata }
+}
+
+for (const ledger of [false, true]) {
+  test(`complete ${ledger ? 'ledger-backed' : 'legacy'} pairs retire atomically without deleting source, lesson, or file history`, async () => {
+    const fixture = retirementFixture(ledger)
+    const { sqlite, env, retire, metadata } = fixture
+    try {
+      const before = metadata()
+      const read = await artifactsApp.request('http://localhost/pairs/pair-1/record', {}, env)
+      assert.equal(read.status, 200)
+      assert.equal((await read.json()).pair.can_retire, true)
+      const response = await retire()
+      assert.equal(response.status, 200)
+      assert.equal((await response.json()).pair.retired, true)
+      const after = metadata()
+      assert.equal(after.length, 4)
+      assert.deepEqual(
+        after.filter((row) => String(row.id).startsWith('pair-2')),
+        before.filter((row) => String(row.id).startsWith('pair-2')),
+      )
+      assert.deepEqual(
+        after.map((row) => row.r2_key),
+        before.map((row) => row.r2_key),
+      )
+      const renditions = selectLearningSourceRenditions(after as any)
+      assert.equal(renditions.has('source-1'), false)
+      assert.ok(renditions.get('source-2')?.html && renditions.get('source-2')?.pdf)
+      assert.equal(sqlite.prepare("SELECT status FROM thread_lessons WHERE id='lesson-1'").get()?.status, 'in_progress')
+      assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM thread_lesson_sources').get()?.n, 1)
+      assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM recommendations').get()?.n, 2)
+      if (ledger)
+        assert.equal(
+          sqlite.prepare("SELECT state FROM lite_visual_pairs WHERE pair_id='pair-1'").get()?.state,
+          'superseded',
+        )
+      assert.equal((await retire()).status, 200)
+      assert.deepEqual(metadata(), after)
+      const verified = await artifactsApp.request('http://localhost/pairs/pair-1/record', {}, env)
+      assert.equal((await verified.json()).pair.retired, true)
+    } finally {
+      sqlite.close()
+    }
+  })
+}
+
+test('pair retirement rejects missing confirmation and mismatched source or artifact identities', async () => {
+  const { sqlite, body, retire, metadata } = retirementFixture()
+  try {
+    const before = metadata()
+    assert.equal((await retire({ ...body, confirm: false })).status, 400)
+    for (const field of ['recommendation_id', 'html_artifact_id', 'pdf_artifact_id']) {
+      assert.equal((await retire({ ...body, [field]: 'wrong-id' })).status, 409)
+    }
+    assert.deepEqual(metadata(), before)
+  } finally {
+    sqlite.close()
+  }
+})
+
+test('pair retirement rejects corpus members, incomplete pairs, and mixed source ownership', async () => {
+  for (const edit of [
+    "UPDATE lite_visual_pairs SET corpus_id='corpus-1'",
+    "DELETE FROM artifacts WHERE id='pair-1-pdf'",
+    "UPDATE artifacts SET metadata_json=json_set(metadata_json,'$.recommendation_id','source-2') WHERE id='pair-1-pdf'",
+  ]) {
+    const { sqlite, retire, metadata } = retirementFixture(true)
+    try {
+      sqlite.exec(edit)
+      const before = metadata()
+      assert.equal((await retire()).status, 409)
+      assert.deepEqual(metadata(), before)
+    } finally {
+      sqlite.close()
+    }
+  }
+})
+
+test('retirement detects a publication change between the read and atomic write', async () => {
+  const { sqlite, DB, retire, metadata } = retirementFixture(true)
+  try {
+    DB.beforeBatch = () =>
+      sqlite.exec(
+        "UPDATE artifacts SET metadata_json=json_set(metadata_json,'$.publication_state','superseded') WHERE id='pair-1-html'",
+      )
+    assert.equal((await retire()).status, 409)
+    for (const row of metadata()) assert.equal(JSON.parse(String(row.metadata_json)).retirement_operation, undefined)
+    assert.equal(sqlite.prepare("SELECT state FROM lite_visual_pairs WHERE pair_id='pair-1'").get()?.state, 'active')
+  } finally {
+    sqlite.close()
+  }
+})
+
+test('retirement rolls back both artifacts if the pair ledger write fails', async () => {
+  const { sqlite, retire, metadata } = retirementFixture(true)
+  try {
+    sqlite.exec(
+      "CREATE TRIGGER fail_retirement BEFORE UPDATE ON lite_visual_pairs BEGIN SELECT RAISE(ABORT,'test ledger failure'); END",
+    )
+    const before = metadata()
+    assert.equal((await retire()).status, 500)
+    assert.deepEqual(metadata(), before)
+  } finally {
+    sqlite.close()
+  }
+})
 
 class ArtifactDatabase {
   inserted: unknown[] | null = null

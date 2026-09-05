@@ -368,8 +368,42 @@ try {
   assert.equal(secondPage.status, 200)
   assert.ok(secondPage.body.total >= 211)
   assert.ok(secondPage.body.recommendations.length >= 10)
+  await query(`INSERT INTO artifacts (id,filename,media_type,r2_key,size_bytes,metadata_json) VALUES
+    ('retire-html','companion.html','text/html','retirement/html',20,'{"pair_id":"retirement-pair","generator":"lite-visual","recommendation_id":"large_0","publication_state":"ready","role":"html"}'),
+    ('retire-pdf','companion.pdf','application/pdf','retirement/pdf',20,'{"pair_id":"retirement-pair","generator":"lite-visual","recommendation_id":"large_0","publication_state":"ready","role":"pdf"}');`)
+  const pairPath = '/artifacts/pairs/retirement-pair/record'
+  const originalPair = await req(pairPath)
+  assert.equal(originalPair.status, 200)
+  assert.equal(originalPair.body.pair.can_retire, true)
+  const retirement = await req('/agent/request', {
+    method: 'POST',
+    body: JSON.stringify({
+      method: 'POST',
+      path: '/artifacts/pairs/retirement-pair/retire',
+      idempotency_key: 'integration-retire-pair',
+      body: {
+        confirm: true,
+        recommendation_id: 'large_0',
+        html_artifact_id: 'retire-html',
+        pdf_artifact_id: 'retire-pdf',
+      },
+      precondition: { path: pairPath, field: 'pair', equals: originalPair.body.pair },
+      verify: { path: pairPath, field: 'pair.retired', equals: true },
+    }),
+  })
+  assert.equal(retirement.status, 200, JSON.stringify(retirement.body))
+  assert.equal(retirement.body.verified, true)
+  assert.equal(retirement.body.receipt.after.data.pair.retired, true)
+  for (const id of ['retire-html', 'retire-pdf']) {
+    const record = await req(`/artifacts/${id}/record`)
+    assert.equal(record.status, 200)
+    assert.equal(record.body.artifact.metadata.publication_state, 'superseded')
+  }
+  const preservedSource = await req('/capture/large_0/record')
+  assert.equal(preservedSource.status, 200)
+  assert.equal(preservedSource.body.item.id, 'large_0')
   console.log(
-    'Hermes upgrade integration passed: clean outcomes, deterministic repair, typed profile, rollout gates, improvement receipts, and capabilities',
+    'Hermes upgrade integration passed: clean outcomes, deterministic repair, typed profile, rollout gates, improvement receipts, capabilities, and guarded companion retirement',
   )
 } finally {
   if (server && server.exitCode === null) {
