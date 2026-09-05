@@ -1,16 +1,16 @@
 {
   "format": "learning-compass-release-status-v1",
-  "observed_at": "2026-09-05T00:36:56.754Z",
+  "observed_at": "2026-09-05T01:05:47.728Z",
   "source": {
-    "commit_sha": "7d4f3eb80ba5fef0ce316c798d79360d1bc37e86",
-    "branch": "fix/lesson-materials-panel",
+    "commit_sha": "ff38c8e494a7872c2b6d176e3b5d30b210ca3890",
+    "branch": "fix/retire-companion-pairs",
     "dirty": false
   },
   "production": {
     "origin": "https://recommendations-worker.mhmudnasr30.workers.dev",
     "deployment": {
-      "version_id": "2cc5a728-7f2e-4a63-bda1-e407ce2b8414",
-      "deployed_at": "2026-09-05T00:36:11.471569Z"
+      "version_id": "2fb36281-639c-47de-ba82-75f6eb10fec5",
+      "deployed_at": "2026-09-05T01:05:22.018049Z"
     },
     "migrations": {
       "applied_count": 78,
@@ -147,12 +147,12 @@
       "live": {
         "ok": true,
         "status": "live",
-        "observed_at": "2026-09-05T00:36:51.872Z"
+        "observed_at": "2026-09-05T01:05:44.813Z"
       },
       "readiness": {
         "ok": true,
         "status": "healthy",
-        "checked_at": "2026-09-05T00:36:51.859Z",
+        "checked_at": "2026-09-05T01:05:44.755Z",
         "blockers": [],
         "bindings": {
           "d1": true,
@@ -167,7 +167,7 @@
     "budget": {
       "day_utc": "2026-09-05",
       "reads": {
-        "estimated": 15470,
+        "estimated": 41000,
         "budget": 4000000,
         "cloudflare_limit": 5000000,
         "headroom": 1000000,
@@ -180,19 +180,19 @@
         "headroom": 30000,
         "required_headroom": 30000
       },
-      "updated_at": "2026-09-05 00:36:36"
+      "updated_at": "2026-09-05 01:05:44"
     },
     "recovery": {
       "latest_verified": {
-        "id": "backup_20260905T000659Z",
+        "id": "backup_20260905T001855Z",
         "status": "verified",
         "storage_target": "local-systemd",
-        "d1_sha256": "3757f3160f757deee999c9ffe05132c9ec7ea3c1fdd28e17b04738014982da9d",
-        "d1_bytes": 112183823,
+        "d1_sha256": "1332880343bb011ba9c06224cde46b5b9404e7abd51e1ed54904e0f76578549d",
+        "d1_bytes": 112184020,
         "artifact_count": 1898,
         "artifact_bytes": 302465210,
-        "created_at": "2026-09-05 00:19:54",
-        "restore_rehearsed_at": "2026-09-05 00:19:54"
+        "created_at": "2026-09-05 00:37:21",
+        "restore_rehearsed_at": "2026-09-05 00:37:21"
       }
     },
     "corpus": {

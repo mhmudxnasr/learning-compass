@@ -5,6 +5,7 @@ This file records user-visible behavior, architecture, dependency, and operating
 ## Unreleased
 
 - Added explicit atomic retirement of standalone HTML/PDF companion pairs from current study materials, preserving source links, lesson progress, original files, and recovery history.
+- Removed all companion selections from the five requested Systems Thinking Orientation lessons: 25 current pairs and seven older fallbacks, with all original sources and lesson progress preserved.
 - Advanced the PWA shell to v58 for companion retirement while preserving the deployed scoped material notebooks and Preferences layout fixes.
 
 - Cleared the 210 unrebuilt Riyadh companion slots on explicit request, retiring exactly 420 HTML/PDF artifacts while preserving the 84 redesigned pairs, original sources, lesson progress, and recovery history.
