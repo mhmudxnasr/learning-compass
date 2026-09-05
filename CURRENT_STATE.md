@@ -1,5 +1,9 @@
 # Learning Compass — Current State
 
+## Worktree consolidation — 2026-09-05
+
+All registered worktree histories are incorporated into main. Nine historical commits across eight detached tips were confirmed patch-equivalent to changes already on main; merge `82f5a53` records their ancestry while preserving the exact source tree. All existing checkouts were clean and had no processes running inside them. Removed 40 extra checkouts and pruned four stale entries; only `/home/mahmud/recommendations-worker` remains. The verified Git bundle, original inventory, 22 archives of ignored local data/diagnostics, checksums, and cleanup receipt are in `/home/mahmud/backups/learning-compass/worktree-cleanup-20260905T033042Z/`. Reproducible dependencies, build output, and Python caches were excluded from those archives. No application code or deployed version changed; verification used patch equivalence, exact tree identity, ancestry checks, backup validation, final worktree inventory, formatting, and diff checks.
+
 ## Hermes skills — 2026-09-05 (loaded-size limits removed)
 
 Removed every per-skill loaded-byte limit and the combined router/operator cap from the canonical contract and verifier, superseding the earlier Lite Visual 8,000-byte allowance. Skill content no longer fails verification because of its size. Fixed-prompt, skill-index, tool-schema, memory, ownership, instruction validity, and installed-parity checks remain active. Hermes contract/fixed-prompt verification, all 10 focused prompt-budget/instruction-audit tests, changed-script lint, formatting, and diff checks pass. This is a local verification-policy change; the deployed Worker below is unchanged and no redeployment is needed.
