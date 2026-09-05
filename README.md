@@ -177,19 +177,19 @@ The checked-in development commands retain their loopback-only write-rate-limit 
 
 ## Commands
 
-| Command                     | Purpose                                                                                                                       |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`               | Run the Vite client only                                                                                                      |
-| `npm run dev:worker`        | Apply the base schema and local migrations, build the client, and run the complete Worker locally                             |
-| `npm run quality`           | Run ESLint, dead-code and dependency analysis, and formatting checks                                                          |
-| `npm test`                  | Run all unit tests and TypeScript checks                                                                                      |
-| `npm run test:integration`  | Run the standalone Worker and D1 integration scenarios sequentially                                                           |
-| `npm run build`             | Create the production client bundle                                                                                           |
-| `npm run test:e2e`          | Create a fresh temporary D1 database and test all root destinations, grouped modes, and responsive shell behavior in Chromium |
-| `npm run verify:release`    | Run the local release gate, including repository and installed Hermes contracts; it does not deploy                           |
-| `npm run verify:manager`    | Run preserved manager fixtures against native Hermes and require a complete passing test report                               |
-| `npm run backup:production` | Export remote D1 and every canonical R2 object, verify checksums, and rehearse a local restore before release                 |
-| `npm run deploy`            | Run the guarded release script and deploy with the repository Wrangler config                                                 |
+| Command                     | Purpose                                                                                                                                |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`               | Run the Vite client only                                                                                                               |
+| `npm run dev:worker`        | Apply the base schema and local migrations, build the client, and run the complete Worker locally                                      |
+| `npm run quality`           | Run ESLint, dead-code and dependency analysis, and formatting checks                                                                   |
+| `npm test`                  | Run all unit tests and TypeScript checks                                                                                               |
+| `npm run test:integration`  | Run the standalone Worker and D1 integration scenarios sequentially                                                                    |
+| `npm run build`             | Create the production client bundle                                                                                                    |
+| `npm run test:e2e`          | Create a fresh temporary D1 database and test all root destinations, grouped modes, and responsive shell behavior in Chromium          |
+| `npm run verify:release`    | Run the optional full local gate for broad/high-risk changes, including installed Hermes contracts; it does not deploy                 |
+| `npm run verify:manager`    | Run preserved manager fixtures against native Hermes and require a complete passing test report                                        |
+| `npm run backup:production` | Export remote D1 and every canonical R2 object, verify checksums, and rehearse a local restore before migrations or risky data changes |
+| `npm run deploy`            | Run fast checks, deploy with the repository Wrangler config, and verify live readiness/smoke; add `-- --full` for the full gate        |
 
 The E2E runner owns its temporary database, Wrangler process, browser, and cleanup. A local test pass therefore does not depend on an old `.wrangler` database.
 
@@ -260,7 +260,7 @@ npm run test:e2e
 git diff --check
 ```
 
-Use the narrower checks while iterating, but run the full set before release. Do not claim a migration, test, synchronization, or deployment succeeded without observing it.
+Choose checks by the changed surface; the commands above are available tools, not a mandatory sequence. Routine releases use `npm run verify:fast` plus affected tests. Reserve the full set for high-risk changes or explicit requests, and do not repeat checks for unchanged inputs. Never claim a skipped check passed.
 
 ### Example: adding source highlights
 
@@ -343,7 +343,7 @@ python3 /home/mahmud/.hermes/skills/lite-visual/scripts/extract_source.py '<URL-
 
 Hermes Lite Visual runs locally from its native skill. Read its Arabic teaching/design guides, write the complete canonical article, and run `scripts/run_workflow.py finish` to render and seal local HTML/PDF. Mandatory editorial passes, fine-scope review forms, forced source duplication, and exhaustive artifact quality checks are removed. The new signed `lite-visual-integrity/v1` receipt explicitly says quality checks were not run. `publish` requires the updated Worker `/artifacts/pair-contract`, then retains atomic publication and exact readback. Historical v6 pairs remain compatible. No source is regenerated by installing this update.
 
-Run `npm run verify:release` and the full [release checklist](docs/release-checklist.md), then deploy only from this repository. Application-only deployments require a fresh complete D1-plus-R2 backup with verified restore, healthy readiness, exact migration parity, and no corpus mutation. Corpus operations remain a separate explicit workflow with exact immutable targets, signed integrity bindings or historical audit evidence, R2 verification, and guarded atomic activation. Direct integrity receipts do not claim quality validation. Migrations through `0077` are applied in production and at exact repository parity; never replay them.
+Normal releases use `npm run deploy`: lint, typecheck, one build, pre/post readiness, budget, and short live smoke checks. `npm run verify:fast` runs just the local gate. Run affected regression tests once; documentation-only commits need formatting and a diff check, with no deployment. Full verification is opt-in through `npm run verify:release` or `npm run deploy -- --full`, and required for schema/security/storage changes or broad refactors. Use the relevant sections of the [release checklist](docs/release-checklist.md). Complete D1-plus-R2 backups and restore rehearsals are required before migrations or risky data changes, not ordinary application-only deployment. Preserve exact migration parity and corpus guards; never replay applied migrations. CI defaults to fast checks, skips Markdown-only changes, cancels superseded runs, and offers portable unit/browser tests through its manual `full` input. Do not wait for CI by default or repeat a passing gate for unchanged inputs.
 
 ```bash
 npx wrangler deploy --config wrangler.toml

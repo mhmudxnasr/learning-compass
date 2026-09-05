@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
@@ -39,10 +40,21 @@ test('the combined release gate is complete and local-only', () => {
   )
 
   const deploy = read('scripts/deploy-release.mjs')
-  assert.match(deploy, /npm', \['run', 'verify:release'\]/)
+  assert.equal(scripts['verify:fast'], 'npm run lint && npm run typecheck && npm run build')
+  assert.match(deploy, /full \? 'verify:release' : 'verify:fast'/)
   assert.match(deploy, /\/health\/ready/)
   assert.match(deploy, /wrangler', 'deploy'/)
   assert.match(deploy, /verify-deploy\.sh/)
+})
+
+test('deployment rejects unknown flags before checks or production access', () => {
+  const result = spawnSync(process.execPath, ['scripts/deploy-release.mjs', '--skip-checks'], {
+    cwd: new URL('../../', import.meta.url),
+    encoding: 'utf8',
+  })
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /Usage: npm run deploy/)
+  assert.equal(result.stdout, '')
 })
 
 test('local Worker commands do not depend on a retired auth flag', () => {

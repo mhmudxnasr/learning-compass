@@ -2,6 +2,8 @@
 
 ## Native Hermes tools
 
+Repository work defaults to fast, scoped verification: affected tests, one lint/typecheck/build gate for application releases, and live readiness/smoke checks. Full suites apply to high-risk changes or explicit requests; full backup/restore applies to migrations or risky data/storage changes. Documentation-only work needs no application deployment, and unchanged checks or CI waits are not repeated by default. `docs/release-checklist.md` and Worker Ops own the detailed procedure.
+
 Routine Thread, progress, resume, and Queue reads use the site operator's common-read table. Thread overviews stop at the hub; exact Thread/Level details are loaded only when requested. Conversational follow-ups retain observed IDs and displayed order, and user corrections replace the selected target. Read-only opening does not authorize writes. The router and operator load write-specific safeguards on demand; the manager evaluation slate covers these short requests and follow-ups against an isolated Worker fixture.
 
 Level status/primary-source work uses the paginated metadata-only path before hydration, retaining the 1 MiB client cap. Native Compass reads, capabilities, and guarded mutations share the first-party client ledger. Ambiguous Lite Visual uploads reconcile exact canonical pair/receipt hashes without automatically repeating the POST; unresolved readback remains explicit. Operational evidence retains exact identities while user-facing replies remain natural.

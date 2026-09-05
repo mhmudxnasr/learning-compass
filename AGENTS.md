@@ -65,11 +65,11 @@ Lite Visual teaching uses natural Egyptian Arabic, precise terms, faithful quota
 
 When a human or AI assistant changes this repository:
 
-1. Update behavior tests in the same change. New domain logic needs unit coverage; route/storage seams need integration coverage; visible navigation or responsive behavior needs E2E coverage.
+1. Add or update focused regression coverage for meaningful behavior changes. Run only affected tests. Documentation, copy, and small styling changes do not need new tests; use a focused visual check for styling. Broad navigation/offline changes warrant E2E.
 2. Update `README.md`, `docs/architecture.md`, `docs/API.md`, `PROJECT_CONTEXT.md`, or focused docs whenever their contract changes. Add a short `CHANGELOG.md` entry that explains what changed and why.
-3. Run `npm run quality` before the broader verification set. It checks lint, dead files/dependencies, and formatting.
+3. Default to fast verification: changed-file formatting, affected tests, and `npm run verify:fast` for an application release. Do not run full quality, all tests, or browser/Hermes suites for every commit. Reuse successful checks for unchanged files; documentation-only follow-ups need no rebuild or redeployment.
 4. Never leave dead exports, unused files, commented-out blocks, generated build output, prototypes, or temporary diagnostics in the repository.
-5. Keep dependencies current. Review `npm outdated` and `npm audit`; document any deliberate version hold in `docs/dependencies.md`, and remove packages when their last consumer disappears.
+5. When dependencies change or maintenance is requested, review `npm outdated` and `npm audit`; document any deliberate version hold in `docs/dependencies.md`, and remove packages when their last consumer disappears.
 6. Keep changes inside the owning layer. A client concern must not leak into Worker services, and automation must use allow-listed API contracts rather than D1 access.
 7. Do not deploy, mutate production data, rotate secrets, or send external notifications unless the current request explicitly authorizes it.
 
@@ -146,19 +146,14 @@ Hermes remains responsible for routing, canonical prose, Worker API execution, d
 
 ## Verification
 
-Run proportionate checks after each change:
+Use the smallest verification set that covers the change:
 
-```bash
-npm test
-npm run build
-npm run test:e2e
-git diff --check
-```
-
-- API/schema/domain changes: unit tests + typecheck at minimum.
-- Client behavior/navigation changes: build + E2E.
-- Release work: full suite and live smoke checks from `docs/release-checklist.md`.
-- Never claim a test, migration, synchronization, or deployment succeeded without observing it.
+- Documentation/instructions: changed-file formatting and `git diff --check`; Hermes contract checks only when its instructions or tools change. No application deployment.
+- Small code fix: affected test files and typecheck; build when client output changes. Do not run unrelated suites.
+- Normal application deployment: `npm run deploy` owns lint, typecheck, one build, pre/post readiness, budget, and short live smoke checks. If those exact inputs already passed locally, use the documented Wrangler command plus live checks without repeating the gate.
+- Schema migrations, security/storage boundaries, broad refactors, or explicit full verification: `npm run verify:release` (or `npm run deploy -- --full`) and relevant recovery prerequisites.
+- Full D1/R2 backup and restore rehearsal are required for migrations or risky data/storage changes, not ordinary code-only releases.
+- Commit and finish after relevant checks pass. Do not wait for CI or rerun unchanged checks unless requested or investigating a failure. Report what ran, without claiming skipped suites passed.
 
 ## Performance and process safety
 

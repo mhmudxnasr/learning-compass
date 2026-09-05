@@ -7,6 +7,9 @@ import {
 
 const repoRoot = new URL('..', import.meta.url).pathname
 const productionOrigin = 'https://recommendations-worker.mhmudnasr30.workers.dev'
+const args = process.argv.slice(2)
+if (args.some((arg) => arg !== '--full')) throw new Error('Usage: npm run deploy [-- --full]')
+const full = args.includes('--full')
 
 const run = (label, command, args) => {
   console.log(`\n==> ${label}`)
@@ -52,7 +55,10 @@ const requireBudgetHeadroom = async (phase) => {
   console.log(`${phase} production budget headroom passed`)
 }
 
-run('Deterministic aggregate release gate', 'npm', ['run', 'verify:release'])
+run(full ? 'Full release verification' : 'Fast release verification', 'npm', [
+  'run',
+  full ? 'verify:release' : 'verify:fast',
+])
 await requireReadiness('Pre-deploy')
 run('Cloudflare Worker and assets deployment', 'npx', ['wrangler', 'deploy', '--config', 'wrangler.toml'])
 await requireReadiness('Post-deploy')

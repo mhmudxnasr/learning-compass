@@ -53,12 +53,12 @@ This verifies the SQL bytes and migration inventory but intentionally reports th
 Before any production migration:
 
 1. inspect the remote migration ledger;
-2. compare it with the repository inventory; migrations through `0076_retire_unrebuilt_riyadh_companions.sql` are applied and must not be replayed;
+2. compare it with the repository inventory; derive applied and pending migrations from the live ledger; never replay applied migrations;
 3. capture the current Worker version;
 4. complete and retain the full D1-plus-R2 snapshot and verified restore receipt; and
 5. record a D1 Time Travel bookmark immediately before applying any new pending migration, then verify the ledger and readiness after migration.
 
-The signed-v6 semantic-completeness and aggregate corpus-audit hold blocks corpus registration, staging, upload, activation, and rollback. It does not block an application-only deployment that performs no corpus mutation and passes the full code release, backup/restore, migration-parity, and readiness gates. Do not configure `ALLOW_UNAUTHENTICATED_LOCAL_WRITES` remotely.
+The signed-v6 semantic-completeness and aggregate corpus-audit hold blocks corpus registration, staging, upload, activation, and rollback. It does not block an application-only deployment that performs no corpus mutation and passes fast verification, affected regressions, migration-parity, and readiness checks. A new full backup/restore is required for migrations or risky data/storage changes, not an ordinary code-only release. Do not configure `ALLOW_UNAUTHENTICATED_LOCAL_WRITES` remotely.
 
 ## Rollback order
 

@@ -25,6 +25,7 @@
     "verify:agent-contract": "node --test tests/unit/agent-control.test.ts && node scripts/verify-hermes-contract.mjs",
     "verify:migrations": "node scripts/rehearse-migrations.mjs",
     "verify:release": "node scripts/verify-release.mjs",
+    "verify:fast": "npm run lint && npm run typecheck && npm run build",
     "export:recovery": "node scripts/export-recovery.mjs",
     "backup:production": "node scripts/backup-production.mjs",
     "rehearse:recovery": "node scripts/rehearse-recovery.mjs",

@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Workflow update — 2026-09-05 (fast commits and releases)
+
+Verified with the fast gate, four focused release-tool tests, Hermes contract/prompt checks, changed-file formatting, and diff checks. Full suites were intentionally not run for this workflow change.
+
+At Mahmood's request, routine releases now use `npm run verify:fast` (lint, typecheck, build) through `npm run deploy`, plus affected regression tests and the existing short live checks. `npm run deploy -- --full` retains the aggregate suite for high-risk changes or explicit requests. CI uses fast checks, skips Markdown-only commits, cancels superseded runs, and runs portable unit/browser suites only through its manual `full` option. Repository and installed Worker Ops instructions agree: no routine full backup for code-only deployment, no repeated checks for unchanged inputs, no waiting for CI by default. Migrations and risky data/storage changes retain recovery prerequisites. This changes development/release tooling only; the deployed application version below is unchanged.
+
 ## Current truth — 2026-09-05 (combined release deployed and branches consolidated)
 
 Worker `69dcc110-2d26-4a76-b4cb-df41b1847c4e` is deployed from clean main commit `a24a864` with PWA shell v59. It combines the material notebooks, companion retirement, bounded Level reads, persistent Feeds Skip, and the material-editor focus fix. All 79 migrations through `0077_feed_entry_dismissals.sql` match production; all 30 required schema objects are present. Readiness is healthy with no release blockers. `docs/release-snapshot.json` records the live version and clean deployment source. Application rollback is Worker `0685ad21-56d8-48d0-81c6-5db846d87bfc`; the additive Feeds table can remain.

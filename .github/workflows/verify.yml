@@ -2,7 +2,21 @@ name: Verify
 
 on:
   push:
+    paths-ignore:
+      - '**/*.md'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Run portable unit tests and browser E2E in addition to fast checks
+        type: boolean
+        default: false
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -14,8 +28,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run test:unit:portable
-      - run: npm run typecheck
-      - run: npm run build
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - run: npm run verify:fast
+      - if: inputs.full == true
+        run: npm run test:unit:portable
+      - if: inputs.full == true
+        run: npx playwright install --with-deps chromium
+      - if: inputs.full == true
+        run: npm run test:e2e

@@ -1,5 +1,9 @@
 # Release checklist
 
+Routine code releases use `npm run deploy` (or `npm run verify:fast` once followed by the documented deployment and live checks). Run affected regression tests only. No full backup, browser suite, manager suite, migration rehearsal, or repeated quality run is required for ordinary code-only releases. Documentation-only changes need formatting and a diff check, without deployment or waiting for CI.
+
+The extended checklist below applies to the affected high-risk surfaces, migrations, broad refactors, or an explicitly requested full release. Use `npm run deploy -- --full` to include the aggregate gate. Keep backup/restore protection for migrations and risky data/storage changes. Do not repeat checks on unchanged inputs.
+
 For Lite Visual direct-workflow changes, test local finish/reuse, source/hash mismatch rejection, honest integrity-only receipt verification, receiver compatibility before job claims, timeouts/lock release, atomic pair storage, and historical v6 compatibility. These implementation regression tests are not per-companion quality audits. Local finish needs no deployment; publishing the new receipt requires the matching Worker release. Do not recreate retired profiles to satisfy obsolete release checks.
 
 - Run `npm run verify:release`; this is the deterministic aggregate release gate and must own the repository test, type, build, E2E, migration, Hermes/agent, installed-skill parity, secret-scan, and diff checks. Preserve exact failures; do not bypass or duplicate a failed stage manually to claim release readiness.
