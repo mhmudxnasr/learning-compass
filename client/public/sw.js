@@ -1,4 +1,4 @@
-const CACHE = 'learning-compass-shell-v62'
+const CACHE = 'learning-compass-shell-v63'
 const DATA_CACHE = 'learning-compass-data-v5'
 const ARTIFACT_CACHE = 'learning-compass-html-artifacts-v2'
 const OFFLINE_PACK_PREFIX = 'learning-compass-offline-pack-v1:'

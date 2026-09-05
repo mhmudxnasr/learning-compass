@@ -8,6 +8,8 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Keep Home's RSS and resurfacing directly below lessons on desktop, with the sticky Queue sidebar confined to its own column. Remove the large blank gap and scrolling overlap while retaining the mobile reading order; advance the PWA shell to v63.
+
 - Add Home's Cairo-aware learning activity calendar with linked, paginated daily history. Add an explicit Obsidian Thread download with ordered curriculum, existing notes and handwriting reflections, book/chapter inclusion, optional companions, and Level filtering. Preserve canonical prose and normal Hermes archive rules; neither feature changes progression or starts extraction.
 
 - Add scoped Recall keyboard grading with explicit hints, focus restoration, single-request save guards, exact-card reveal state, filter recovery, and a completed-review ending. Bring the mobile question/Reveal action ahead of secondary filters. Keep Copy note and Refresh from source in Study tools, with direct panel focus and Escape/Close returning to the toggle. Cover native keyboard grading, failed-save retry, duplicate keys, and saved scheduler revisions in isolated browser tests.

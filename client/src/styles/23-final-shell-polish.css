@@ -1638,10 +1638,22 @@ body {
 }
 
 @media (min-width: 1181px) {
+  .continuum-home-spread {
+    /* Keep the lesson row content-sized even when Queue context is taller. */
+    grid-template-rows: min-content 1fr;
+  }
+
   .continuum-home-side {
+    grid-column: 2;
+    grid-row: 1 / span 2;
     position: sticky;
     align-self: start;
     top: 22px;
+  }
+
+  .continuum-home-secondary {
+    grid-column: 1;
+    grid-row: 2;
   }
 }
 

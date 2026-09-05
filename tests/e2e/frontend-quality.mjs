@@ -208,6 +208,13 @@ export async function verifyFrontendQuality({ page: suitePage, baseUrl, requestJ
         },
       }),
     )
+    // A tall Queue context must not push feeds away from a short lesson list.
+    await page.route(`${baseUrl}/dashboard/briefing`, async (route) => {
+      const response = await route.fetch()
+      const json = await response.json()
+      json.active_items = [{ ...queueItem, why_this: `${queueItem.why_this} `.repeat(12) }]
+      await route.fulfill({ response, json })
+    })
     for (const width of [1440, 1024, 975, 768, 390]) {
       await page.setViewportSize({ width, height: 1000 })
       await goto('#/home', '.continuum-turn')
@@ -224,6 +231,29 @@ export async function verifyFrontendQuality({ page: suitePage, baseUrl, requestJ
       })
       assert.ok(leading >= 1.69, `Arabic title line height ${leading}`)
       assert.equal(await page.getByRole('button', { name: 'Search everything', exact: true }).count(), 1)
+      const homeLayout = await page.locator('.continuum-home-spread').evaluate((spread) => {
+        const bounds = (selector) => spread.querySelector(selector).getBoundingClientRect().toJSON()
+        return {
+          main: bounds('.continuum-home-main'),
+          side: bounds('.continuum-home-side'),
+          secondary: bounds('.continuum-home-secondary'),
+          gap: parseFloat(getComputedStyle(spread).rowGap),
+        }
+      })
+      if (width > 1180) {
+        assert.ok(homeLayout.side.height > homeLayout.main.height, 'Exercise a taller Queue sidebar')
+        assert.ok(
+          Math.abs(homeLayout.secondary.top - homeLayout.main.bottom - homeLayout.gap) < 1,
+          `Feeds must follow lessons without a sidebar-sized gap: ${JSON.stringify(homeLayout)}`,
+        )
+        await page.locator('.continuum-home-secondary').scrollIntoViewIfNeeded()
+        const side = await page.locator('.continuum-home-side').boundingBox()
+        const secondary = await page.locator('.continuum-home-secondary').boundingBox()
+        assert.ok(secondary.x + secondary.width <= side.x, 'Sticky Queue must not overlap feeds after scrolling')
+      } else {
+        assert.ok(homeLayout.side.top >= homeLayout.main.bottom, 'Stack lessons before Queue')
+        assert.ok(homeLayout.secondary.top >= homeLayout.side.bottom, 'Stack Queue before feeds')
+      }
       await capture(`home-${width}`)
       await goto(lessonHref, '.lesson-authored-text')
       const skip = page.getByRole('link', { name: 'Skip to workspace' })
@@ -297,6 +327,7 @@ export async function verifyFrontendQuality({ page: suitePage, baseUrl, requestJ
       await goto('#/learn?mode=practice&focus=recall', '.folio-recall')
       await checkTargets('.recall-view-switcher button')
     }
+    await page.unroute(`${baseUrl}/dashboard/briefing`)
     await goto('#/home', '.continuum-turn')
     const activeTurn = page.locator('.continuum-turn').filter({ hasText: 'Quality active Thread' })
     await activeTurn.getByRole('button', { name: /^Finish lesson:/ }).click()

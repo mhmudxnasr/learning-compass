@@ -2,6 +2,8 @@
 
 ## Handoff
 
+- **Home spacing correction:** Verified locally; the desktop layout keeps RSS/resurfacing below lessons and confines sticky Queue context to its own column. See the correction entry below for evidence; deployment is pending.
+
 - **Learning calendar and Obsidian download:** Deployed; see the release entry below for live checks and the implementation entry for scope. The explicit download includes book/chapter notes while routine Hermes archiving retains its exclusion.
 
 - **Start here:** `AGENTS.md` owns the working rules, `PROJECT_CONTEXT.md` the durable product model, and the README contribution map points to source files and focused tests. Read older entries below only when their history is relevant.
@@ -9,6 +11,12 @@
 - **Frontend:** The deployed Impeccable repairs retain Continuum and the five-root navigation while correcting reading hierarchy, responsive layouts, accessible controls, source identity, and recovery. Workspace code is lazy-loaded; the deployed PWA shell is v62.
 - **Last recorded deployment:** `docs/release-snapshot.json`, observed `2026-09-05T15:51:15.955Z`, records Worker `7fd27a58-d3b2-4560-b3c3-444898c101e6` from clean `a6c74db` with PWA shell v62. Live checks passed at release time; recheck for later operational work.
 - **Local environment:** lockfile dependencies are restored. The deleted `.tmp/` recovery files and separate WhatsApp repository are absent; historical references to those paths are no longer usable. Generated `dist/` output was removed after the successful verification build. Dependency upgrades retain the holds in `docs/dependencies.md`.
+
+## Home spacing correction — 2026-09-05 (verified locally)
+
+Home's desktop Queue context now spans both content rows while the lesson row stays content-sized. RSS/resurfacing occupies the main column beneath lessons, removing the blank gap caused by a tall Queue card and preventing the sticky sidebar from covering RSS while scrolling. The stacked order at 1180px and below remains lessons, Queue, secondary content, then calendar. The PWA shell advances to v63.
+
+`npm run verify:fast`, changed-file formatting, `git diff --check`, and `E2E_FOCUS=quality npm run test:e2e` pass. The browser regression covers tall Queue content, lesson-to-feed spacing, sticky overlap, and stacked order at five widths. Read-only previews with the built CSS and current production content pass desktop/mobile light/dark checks, the 1180/1181px boundary, 135% text sizing, and a longer lesson list. At 1600px, the lesson-to-feed gap shrinks from 272px to the intended 42px. The layout detector reports no findings. Initial JavaScript remains 47.58 KB gzip; CSS is 109.12 KB gzip. Pre-deploy readiness and budget checks pass without blockers.
 
 ## Calendar, Obsidian export, and frontend release — 2026-09-05 (deployed)
 
