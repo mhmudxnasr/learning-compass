@@ -157,7 +157,14 @@ export async function verifyScopedMaterials({ page, baseUrl, requestJson, thread
   await panel().getByLabel('Note title', { exact: true }).fill('Saved while offline')
   await panel().getByLabel('Note body', { exact: true }).fill('Sync this once, without creating a duplicate.')
   await panel().getByRole('button', { name: 'Save note', exact: true }).click()
-  await panel().getByRole('status').filter({ hasText: 'Note queued for sync.' }).waitFor()
+  // The API may queue after its 30-second network deadline; allow the outbox
+  // write and UI update to finish before checking the same durable result.
+  try {
+    await panel().getByRole('status').filter({ hasText: 'Note queued for sync.' }).waitFor({ timeout: 45_000 })
+  } catch (error) {
+    await capture('offline-note-failure')
+    throw new Error(`${error.message}\nOffline note panel: ${await panel().innerText()}`)
+  }
   assert.equal(await panel().getByRole('button', { name: 'Save note', exact: true }).count(), 0)
   await panel().getByRole('button', { name: 'Add note', exact: true }).click()
   assert.equal(await panel().getByLabel('Note title', { exact: true }).inputValue(), '')
