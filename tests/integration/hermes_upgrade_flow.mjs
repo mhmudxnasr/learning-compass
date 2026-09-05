@@ -402,8 +402,70 @@ try {
   const preservedSource = await req('/capture/large_0/record')
   assert.equal(preservedSource.status, 200)
   assert.equal(preservedSource.body.item.id, 'large_0')
+  for (const statement of `
+    INSERT INTO learning_threads (id,title,thread_type,guiding_question,definition_of_done)
+      VALUES ('bounded-thread','Large Thread','understand','Question','Outcome');
+    INSERT INTO learning_path_stages (id,thread_id,title,position,status)
+      VALUES ('bounded-level','bounded-thread','Orientation',0,'in_progress'),
+             ('bounded-empty','bounded-thread','Empty',1,'verified');
+    INSERT INTO thread_lessons (id,thread_id,stage_id,title,position,status,content)
+      VALUES ('bounded-a','bounded-thread','bounded-level','Completed',0,'completed',hex(zeroblob(600000))),
+             ('bounded-b','bounded-thread','bounded-level','Current',1,'in_progress','body'),
+             ('bounded-c','bounded-thread','bounded-level','Future',2,'not_started',NULL);
+    INSERT INTO thread_lesson_sources (lesson_id,recommendation_id,role,position)
+      VALUES ('bounded-b','${captured.body.id}','primary',0);
+  `
+    .split(';')
+    .filter((statement) => statement.trim())) {
+    await query(statement)
+  }
+  const levelUrl = '/learning/core/threads/bounded-thread/path?view=lessons&stage_id=bounded-level&limit=2'
+  const levelPage = await req(levelUrl)
+  assert.equal(levelPage.status, 200)
+  assert.deepEqual(levelPage.body.progress, { total: 3, completed: 1 })
+  assert.deepEqual(
+    levelPage.body.lessons.map((lesson) => lesson.id),
+    ['bounded-a', 'bounded-b'],
+  )
+  assert.equal(levelPage.body.lessons[1].primary_source_id, captured.body.id)
+  assert.equal(levelPage.body.lessons[0].has_content, 1)
+  assert.equal('content' in levelPage.body.lessons[0], false)
+  assert.ok(JSON.stringify(levelPage.body).length < 12000)
+  assert.equal(levelPage.body.pagination.has_more, true)
+  assert.equal(levelPage.body.pagination.next_offset, 2)
+  const lastPage = await req(`${levelUrl}&offset=2`)
+  assert.deepEqual(
+    lastPage.body.lessons.map((lesson) => lesson.id),
+    ['bounded-c'],
+  )
+  assert.equal(lastPage.body.pagination.has_more, false)
+  assert.equal(lastPage.body.pagination.next_offset, null)
+  const beyond = await req(`${levelUrl}&offset=99`)
+  assert.equal(beyond.body.lessons.length, 0)
+  assert.equal(beyond.body.pagination.total, 3)
+  const empty = await req('/learning/core/threads/bounded-thread/path?view=lessons&stage_id=bounded-empty')
+  assert.equal(empty.body.stage.status, 'completed')
+  assert.deepEqual(empty.body.progress, { total: 0, completed: 0 })
+  assert.equal((await req(levelUrl.replace('bounded-thread', 'other-thread'))).status, 404)
+  assert.equal((await req(levelUrl.replace('bounded-level', 'missing-level'))).status, 404)
+  for (const query of [
+    'view=unknown',
+    'view=lessons',
+    'stage_id=bounded-level',
+    'view=lessons&stage_id=bounded-level&limit=51',
+    'view=lessons&stage_id=bounded-level&offset=-1',
+  ]) {
+    assert.equal((await req(`/learning/core/threads/bounded-thread/path?${query}`)).status, 400)
+  }
+  const fullPath = await req('/learning/core/threads/bounded-thread/path')
+  assert.equal(fullPath.status, 200)
+  assert.equal(fullPath.body.stages[0].lessons[0].content.length, 1200000)
+  assert.deepEqual(
+    fullPath.body.stages[0].lessons.map((lesson) => lesson.status),
+    ['completed', 'in_progress', 'not_started'],
+  )
   console.log(
-    'Hermes upgrade integration passed: clean outcomes, deterministic repair, typed profile, rollout gates, improvement receipts, capabilities, and guarded companion retirement',
+    'Hermes upgrade integration passed: bounded Level reads, clean outcomes, deterministic repair, typed profile, rollout gates, improvement receipts, capabilities, and guarded companion retirement',
   )
 } finally {
   if (server && server.exitCode === null) {

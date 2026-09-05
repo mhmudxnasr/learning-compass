@@ -1,5 +1,9 @@
 # Changelog
 
+## Bounded Level lesson reads
+
+- Add `view=lessons&stage_id=...` to the Thread path with validated pagination, exact ownership, live completion statuses, and primary source IDs. Omit large bodies and artifact receipts before hydration while retaining full-path compatibility and unchanged lesson progression.
+
 This file records user-visible behavior, architecture, dependency, and operating-contract changes. Add new work under `Unreleased`; deployment receipts and live health belong in `CURRENT_STATE.md`.
 
 ## Unreleased

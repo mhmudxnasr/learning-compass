@@ -9,6 +9,7 @@ import {
   shouldAutoStartNextLesson,
 } from '../services/learning-core'
 import { loadThreadStudyIndex } from '../services/thread-study-index'
+import { loadLevelLessonPage, parseLevelLessonPage } from '../services/level-lesson-page'
 import { selectLearningSourceRenditions } from '../services/learning-material-renditions'
 import { loadNotebookLearningStates, summarizeNotebookLearningState } from '../services/notebooklm-learning'
 import { loadThreadLearningMaterials } from '../services/learning-scope'
@@ -461,6 +462,17 @@ app.get('/hub', async (c) => {
 })
 
 app.get('/threads/:id/path', async (c) => {
+  const view = c.req.query('view')
+  if (view !== undefined || c.req.query('stage_id') !== undefined) {
+    const page = parseLevelLessonPage(c.req.query())
+    if (view !== 'lessons' || !page) {
+      return c.json({ error: 'Use view=lessons with stage_id, limit=1..50, and a nonnegative integer offset' }, 400)
+    }
+    const result = await loadLevelLessonPage(c.env.DB, c.req.param('id'), page)
+    if (!result) return c.json({ error: 'Level not found in this Thread' }, 404)
+    c.header('Cache-Control', 'private, no-cache')
+    return c.json({ ...result, stage: { ...result.stage, status: publicStatus(result.stage.status) } })
+  }
   const thread = await c.env.DB.prepare(`SELECT * FROM learning_threads WHERE id=?`)
     .bind(c.req.param('id'))
     .first<any>()

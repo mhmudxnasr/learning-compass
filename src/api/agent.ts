@@ -428,7 +428,7 @@ const CAPABILITIES = [
   [
     'GET',
     '/learning/core/threads/:id/path',
-    'Read one complete Learning Thread workspace: direct lesson completion plus each Level and its lessons, notes, files, recall cards, projects, and sources.',
+    'Read a complete Thread workspace, or use view=lessons&stage_id=ID with limit (1–50, default 25) and offset for a metadata-only Level lesson page with statuses, primary source IDs, totals, and has_more; no content or artifact bodies.',
   ],
   [
     'GET',
