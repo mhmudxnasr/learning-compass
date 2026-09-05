@@ -1,4 +1,3 @@
-export const INTELLIGENCE_ENGINE_VERSION = 'v2'
 export const LEARNING_OBJECTIVE_VERSION = 'learning_value_v2'
 export const PROFILE_POLICY_VERSION = 'profile_v2'
 

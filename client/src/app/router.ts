@@ -575,16 +575,9 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   return route
 }
 
-export const parseHash = parseRoute
-
-function normalizeHrefState(root: RootKey, requestedMode?: string, requestedFocus?: string) {
-  const state = normalizeState(root, requestedMode, requestedFocus)
-  return state
-}
-
 /** Return a root URL; modes are groups and focus is local query state. */
 export function routeHref(root: RootKey, mode?: string, focusValue?: string) {
-  const state = normalizeHrefState(root, mode, focusValue)
+  const state = normalizeState(root, mode, focusValue)
   const explicitLeaf = Boolean(mode && !modeMeta(root, mode) && leafMeta(root, mode))
   const explicitFocus = Boolean(focusValue)
   return `#${canonicalRoot(root, state.mode, state.focus, explicitLeaf || explicitFocus, (explicitLeaf || explicitFocus) && root !== 'settings')}`
@@ -594,18 +587,10 @@ export function routeHref(root: RootKey, mode?: string, focusValue?: string) {
 export function objectHref(root: RootKey, type: string, id: string, mode?: string, focusValue?: string) {
   const objectState = mode || focusValue ? undefined : implicitObjectState(root, type)
   if (objectState) return `#/${root}/${encodeURIComponent(type)}/${encodeURIComponent(id)}`
-  const state = normalizeHrefState(root, mode, focusValue)
+  const state = normalizeState(root, mode, focusValue)
   const explicitLeaf = Boolean(mode && !modeMeta(root, mode) && leafMeta(root, mode))
   const explicitFocus = Boolean(focusValue)
   return `#${canonicalObject(root, type, id, state.mode, state.focus, explicitLeaf || explicitFocus, (explicitLeaf || explicitFocus) && root !== 'settings')}`
-}
-
-export function modeLabel(route: Route) {
-  return modeMeta(route.root, route.mode)?.label || route.mode
-}
-
-export function focusLabel(route: Route) {
-  return route.focus ? focusMeta(route.root, route.mode, route.focus)?.label || route.focus : undefined
 }
 
 export function useRoute() {

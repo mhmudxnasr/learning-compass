@@ -8,7 +8,16 @@ import { offlineDataResource, offlinePairResources, type OfflinePackResource } f
 import { LearnCanonView } from '../learn/LearnCanonView'
 import type { LibraryRecord, LibraryViewHandlers } from './types'
 import { bookChapters, bookNextChapter, bookProgress, bookReadingState, mergeBooksWithHardcover } from './bookModel'
-import { artifactLink, formatStatus, objectHref, parseMetadata, sourceCreator, sourceLink, sourceTitle } from './types'
+import {
+  artifactLink,
+  formatStatus,
+  objectHref,
+  offlineArtifactSnapshot,
+  parseMetadata,
+  sourceCreator,
+  sourceLink,
+  sourceTitle,
+} from './types'
 
 // Theme-aware folio spine colors; these follow custom and dark theme tokens.
 const BOOK_ACCENTS = ['var(--studio-cypress)', 'var(--studio-map)', 'var(--studio-due)', 'var(--studio-secondary)']
@@ -41,30 +50,6 @@ function formatBranchPill(branch?: LibraryRecord | null) {
 
 export const computeBookProgress = bookProgress
 
-function bookOfflineArtifactSnapshot(artifact?: LibraryRecord | null) {
-  if (!artifact?.id) return null
-  const metadata = parseMetadata(artifact.metadata || artifact.metadata_json)
-  return {
-    id: artifact.id,
-    filename: artifact.filename,
-    media_type: artifact.media_type,
-    size_bytes: artifact.size_bytes,
-    created_at: artifact.created_at,
-    metadata: {
-      pair_id: metadata.pair_id,
-      role: metadata.role,
-      publication_state: metadata.publication_state,
-      validation_status: metadata.validation_status,
-      revision: metadata.revision,
-      receipt_sha256: metadata.receipt_sha256,
-      validation_receipt_sha256: metadata.validation_receipt_sha256,
-      chapter_key: metadata.chapter_key,
-      chapter_number: metadata.chapter_number,
-      source_title: metadata.source_title,
-    },
-  }
-}
-
 function bookOfflineSnapshot(book: LibraryRecord) {
   const chapters = bookChapters(book).map((chapter) => {
     const verifiedPair = offlinePairResources(chapter.html, chapter.pdf, `${book.id}:${chapter.key}`)
@@ -75,8 +60,8 @@ function bookOfflineSnapshot(book: LibraryRecord) {
       position: chapter.position,
       completed: chapter.completed,
       completed_at: chapter.completed_at,
-      html: verifiedPair.length === 2 ? bookOfflineArtifactSnapshot(chapter.html) : null,
-      pdf: verifiedPair.length === 2 ? bookOfflineArtifactSnapshot(chapter.pdf) : null,
+      html: verifiedPair.length === 2 ? offlineArtifactSnapshot(chapter.html) : null,
+      pdf: verifiedPair.length === 2 ? offlineArtifactSnapshot(chapter.pdf) : null,
     }
   })
   const progress = computeBookProgress(book)

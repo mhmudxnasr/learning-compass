@@ -52,8 +52,6 @@ export async function freeAi(env: { OPENCODE_ZEN_API_KEY?: string }, system: str
   return null
 }
 
-export const freeAiModels = FREE_MODELS
-
 export async function geminiThemeAi(env: { GOOGLE_API_KEY?: string }, prompt: string) {
   if (!env.GOOGLE_API_KEY) return null
   for (const model of [GEMINI_THEME_MODEL, ...GEMINI_THEME_FALLBACKS]) {

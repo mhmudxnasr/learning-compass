@@ -22,6 +22,7 @@ import {
   formatReason,
   formatStatus,
   objectHref,
+  offlineArtifactSnapshot,
   parseMetadata,
   sourceCreator,
   sourceFormat,
@@ -32,30 +33,6 @@ import {
 } from './types'
 
 export type { LibraryViewHandlers } from './types'
-
-function offlineArtifactSnapshot(artifact?: LibraryRecord | null) {
-  if (!artifact?.id) return null
-  const metadata = parseMetadata(artifact.metadata || artifact.metadata_json)
-  return {
-    id: artifact.id,
-    filename: artifact.filename,
-    media_type: artifact.media_type,
-    size_bytes: artifact.size_bytes,
-    created_at: artifact.created_at,
-    metadata: {
-      pair_id: metadata.pair_id,
-      role: metadata.role,
-      publication_state: metadata.publication_state,
-      validation_status: metadata.validation_status,
-      revision: metadata.revision,
-      receipt_sha256: metadata.receipt_sha256,
-      validation_receipt_sha256: metadata.validation_receipt_sha256,
-      chapter_key: metadata.chapter_key,
-      chapter_number: metadata.chapter_number,
-      source_title: metadata.source_title,
-    },
-  }
-}
 
 function offlineSourceItemSnapshot(item: LibraryRecord, html?: LibraryRecord | null, pdf?: LibraryRecord | null) {
   const rawBranch = item.branch && typeof item.branch === 'object' ? item.branch : {}

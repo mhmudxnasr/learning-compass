@@ -1,8 +1,5 @@
 import { formatDate as apiFormatDate, labelize } from '../../api'
-export { findNextThreadLesson, hasLessonStudyMaterial, lessonReadiness } from './lessonState'
-export type { LessonReadiness } from './lessonState'
-
-export { labelize }
+export { findNextThreadLesson, lessonReadiness } from './lessonState'
 
 export function formatDate(value?: string | null) {
   return apiFormatDate(value || undefined)
@@ -41,22 +38,6 @@ export function roleLabel(value?: string | null) {
   )
 }
 
-export function itemLabel(value?: string | null) {
-  return (
-    (
-      {
-        concept: 'Concept',
-        source_role: 'Source study',
-        companion: 'Companion study',
-        recall_prompt: 'Free recall',
-        exercise: 'Exercise',
-        application: 'Application',
-        reflection: 'Reflection',
-      } as Record<string, string>
-    )[value || ''] || labelize(value || 'Item')
-  )
-}
-
 export function directionValue(value?: string | null): 'auto' | 'ltr' | 'rtl' {
   return value === 'ltr' || value === 'rtl' ? value : 'auto'
 }
@@ -69,24 +50,12 @@ export function lessonHref(threadId: string, lessonId: string) {
   return `#/learn/t/${encodeURIComponent(threadId)}/l/${encodeURIComponent(lessonId)}`
 }
 
-export function levelHref(threadId: string, levelId: string) {
-  return `#/learn/t/${encodeURIComponent(threadId)}/v/${encodeURIComponent(levelId)}`
-}
-
 export function noteHref(id: string) {
   return `#/learn/note/${encodeURIComponent(id)}`
 }
 
 export function cardHref(id: string) {
   return `#/learn/card/${encodeURIComponent(id)}`
-}
-
-export function artifactHref(id: string) {
-  return `/artifacts/${encodeURIComponent(id)}`
-}
-
-export function isRequired(item: { required?: number | boolean }) {
-  return item.required === true || Number(item.required) === 1
 }
 
 export function percent(completed: number, total: number) {

@@ -22,6 +22,8 @@ Do not remove these as "unused" without checking the installed Hermes extraction
 
 ## Version holds
 
+The 2026-09-05 Ponytail simplification audit found no unused packages or audit vulnerabilities. Nine packages have available updates (`@cloudflare/workers-types`, `@types/node`, `eslint`, `globals`, `hono`, `playwright`, `ts-fsrs`, `typescript`, and `wrangler`); the existing toolchain holds below still apply. No dependency or lockfile change was needed for the cleanup. Ponytail's six instruction-only skills are installed outside this repository and add no application runtime dependency.
+
 The 2026-09-05 scoped-material notebook fix also retains the lockfile and adds no packages. Its audit reports zero vulnerabilities; the same updates below, plus Playwright 1.63, remain deferred to a dedicated toolchain update.
 
 The 2026-09-05 Threads redesign uses the existing lockfile and adds no dependencies. `npm audit` reports zero vulnerabilities. Newer releases of the Cloudflare types, Node types, ESLint, globals, Hono, ts-fsrs, TypeScript, and Wrangler are available; their upgrades remain a separate dependency change so this UI release does not alter the Worker, scheduler, or compiler baseline.

@@ -61,10 +61,6 @@ export function buildMemoryEvidenceStatements(db: DB, memoryId: string, evidence
   return statements
 }
 
-export async function writeMemoryEvidence(db: DB, memoryId: string, evidence: any[]) {
-  await db.batch(buildMemoryEvidenceStatements(db, memoryId, evidence))
-}
-
 export async function compileMemoryContext(
   db: DB,
   input: {

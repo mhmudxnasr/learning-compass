@@ -120,5 +120,3 @@ export function MapWorkspace({ route, view, onRouteChange }: MapWorkspaceProps) 
     </div>
   )
 }
-
-export default MapWorkspace

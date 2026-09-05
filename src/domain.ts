@@ -91,12 +91,6 @@ export const VALID_RECOMMENDATION_MODES = [
 ] as const
 export type RecommendationMode = (typeof VALID_RECOMMENDATION_MODES)[number]
 
-export const VALID_ENERGY_LEVELS = ['quick_scan', 'medium_focus', 'deep_focus'] as const
-export type EnergyLevel = (typeof VALID_ENERGY_LEVELS)[number]
-
-export const VALID_FORMAT_PREFERENCES = ['paper', 'article', 'podcast', 'book', 'video', 'any'] as const
-export type FormatPreference = (typeof VALID_FORMAT_PREFERENCES)[number]
-
 export function formatNoteAnchors(reflections: Array<{ reflection?: string }>): string[] {
   return reflections
     .map((r) => (r.reflection || '').trim())

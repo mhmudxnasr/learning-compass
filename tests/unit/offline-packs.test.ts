@@ -8,6 +8,7 @@ import {
   offlinePairResources,
 } from '../../client/src/offlinePacks.ts'
 import { normalizeBookChapters } from '../../src/services/book-projection.ts'
+import { offlineArtifactSnapshot } from '../../client/src/workspaces/library/types.ts'
 
 const metadata = (pairId: string, role: 'html' | 'pdf', extra: Record<string, unknown> = {}) => ({
   pair_id: pairId,
@@ -16,6 +17,33 @@ const metadata = (pairId: string, role: 'html' | 'pdf', extra: Record<string, un
   validation_status: 'passed',
   validation_receipt_sha256: `${pairId}-${role}`,
   ...extra,
+})
+
+test('book and source artifact snapshots preserve identity while omitting full receipts', () => {
+  const retainedMetadata = metadata('lv-chapter-1', 'html', {
+    revision: 'revision-1',
+    receipt_sha256: 'signed-receipt-hash',
+    chapter_key: 'chapter-1',
+    chapter_number: 1,
+    source_title: 'Chapter one',
+  })
+  const artifact = {
+    id: 'html-1',
+    filename: 'chapter-1.html',
+    media_type: 'text/html',
+    size_bytes: 120,
+    created_at: '2026-09-05',
+    metadata: { ...retainedMetadata, validation_receipt: { large: 'body' }, job_id: 'internal-job' },
+  }
+  const expected = { ...artifact, metadata: retainedMetadata }
+  assert.deepEqual(offlineArtifactSnapshot(artifact), expected)
+  assert.deepEqual(
+    offlineArtifactSnapshot({ ...artifact, metadata: undefined, metadata_json: JSON.stringify(artifact.metadata) }),
+    expected,
+  )
+  assert.equal(offlineArtifactSnapshot(null), null)
+  assert.equal(offlineArtifactSnapshot({}), null)
+  assert.equal(offlineArtifactSnapshot({ id: 'html-1', metadata_json: '{invalid' })?.metadata.pair_id, undefined)
 })
 
 test('offline resources require one exact verified HTML/PDF pair', () => {

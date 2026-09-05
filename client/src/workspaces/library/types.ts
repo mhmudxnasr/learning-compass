@@ -1,5 +1,5 @@
 import type { Route } from '../../app/router'
-import { objectHref as canonicalObjectHref, routeHref } from '../../app/router'
+import { objectHref as canonicalObjectHref, routeHref } from '../../app/router.ts'
 
 export type LibraryView = 'queue' | 'feeds' | 'files' | 'books' | 'archive'
 export type LibraryObjectType = 'source' | 'artifact' | 'book'
@@ -21,8 +21,6 @@ export type LibraryWorkspaceProps = {
   onSelect?: (selection: LibrarySelection | null) => void
   onNavigate?: (href: string) => void
 }
-
-export type LibraryActionResult = { ok: boolean; error?: string; code?: string }
 
 export type LibraryViewHandlers = {
   onInspect: (selection: LibrarySelection) => void
@@ -75,12 +73,6 @@ export const viewLabels: Record<LibraryView, string> = {
   archive: 'Archive',
 }
 
-export const objectLabels: Record<LibraryObjectType, string> = {
-  source: 'Source',
-  artifact: 'Artifact',
-  book: 'Book',
-}
-
 export function objectHref(type: LibraryObjectType, id: string) {
   if (type === 'book') return canonicalObjectHref('library', type, id, 'books')
   return canonicalObjectHref('library', type, id)
@@ -111,6 +103,31 @@ export function parseMetadata(value: unknown): LibraryRecord {
     return parsed && typeof parsed === 'object' ? parsed : {}
   } catch {
     return {}
+  }
+}
+
+/** Keep cached artifact identity and rendition metadata without copying full receipts. */
+export function offlineArtifactSnapshot(artifact?: LibraryRecord | null) {
+  if (!artifact?.id) return null
+  const metadata = parseMetadata(artifact.metadata || artifact.metadata_json)
+  return {
+    id: artifact.id,
+    filename: artifact.filename,
+    media_type: artifact.media_type,
+    size_bytes: artifact.size_bytes,
+    created_at: artifact.created_at,
+    metadata: {
+      pair_id: metadata.pair_id,
+      role: metadata.role,
+      publication_state: metadata.publication_state,
+      validation_status: metadata.validation_status,
+      revision: metadata.revision,
+      receipt_sha256: metadata.receipt_sha256,
+      validation_receipt_sha256: metadata.validation_receipt_sha256,
+      chapter_key: metadata.chapter_key,
+      chapter_number: metadata.chapter_number,
+      source_title: metadata.source_title,
+    },
   }
 }
 

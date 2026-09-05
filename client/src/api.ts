@@ -222,15 +222,6 @@ export async function flushOfflineMutations() {
   return flushPromise
 }
 
-export function firstArray<T = any>(value: unknown): T[] {
-  if (Array.isArray(value)) return value
-  if (!value || typeof value !== 'object') return []
-  for (const item of Object.values(value)) {
-    if (Array.isArray(item)) return item
-  }
-  return []
-}
-
 export const formatDate = (value?: string) =>
   value ? new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(value)) : 'Not recorded'
 

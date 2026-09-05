@@ -1,5 +1,13 @@
 # Learning Compass — Current State
 
+## Ponytail simplification — 2026-09-05 (local, verified)
+
+Installed the six instruction-only Ponytail skills (`ponytail`, `ponytail-audit`, `ponytail-review`, `ponytail-debt`, `ponytail-gain`, and `ponytail-help`) under `~/.codex/skills`, byte-verified against DietrichGebert/ponytail revision `974d940a1c5344210874150b98ff0d2c861fab6a`. Applied full mode, repository reachability/duplication review, final diff review, and the debt scan. No lifecycle hooks or application dependencies were added. The upstream gain card describes an older benchmark; it is not evidence of Learning Compass savings.
+
+Books and sources now share the identical compact offline artifact projection. Router links call their existing normalization directly. Removed unused label/link helpers, test reset, forwarding aliases, obsolete energy/format constants, and the unused standalone memory-evidence writer; the active atomic write path is unchanged. The application diff removes 93 net lines. The extended Knip scan fell from 38 to 20 unused exports, 25 to 21 exported types, and three to one duplicate-export group; the remainder has internal uses, a dynamic checksum test consumer, or active confidence-alias callers. No further implementation deletion is justified by those findings. The debt scan found zero `ponytail:` markers.
+
+Verified: 62 focused tests including the new snapshot identity/receipt-omission regression, `npm run verify:fast` (lint, TypeScript, one build), `npm run dead-code`, changed-file formatting, and diff checks. Base JavaScript is 145.91 KB gzip including Preact; Vite retains its main-chunk size advisory. Dependency audit reports zero vulnerabilities; available upgrades retain the documented holds. No full/browser/Hermes suite ran because no product, HTTP, schema, storage protocol, or Hermes instruction contract changed. This cleanup is not deployed; production remains the v61 release below, and no production data was changed.
+
 ## Compass logo theme toggle — 2026-09-05 (deployed)
 
 The desktop Compass brand and mobile logo now toggle light/dark mode through the existing appearance settings. The browser remembers the last palette in each mode, including custom day/night colors. Switching preserves the current workspace and typography, keeps Preferences synchronized, supports Enter/Space, and provides a 44px mobile target. Failed saves restore the previous theme with a visible message; network failures use the existing offline mutation queue. A delayed startup settings read cannot overwrite a newer theme choice.

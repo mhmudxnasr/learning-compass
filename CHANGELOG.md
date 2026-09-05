@@ -8,6 +8,8 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Apply Ponytail's simplification audit: share the identical book/source offline artifact projection, call router normalization directly, and remove unused helpers, aliases, and constants. Preserve active validation, route compatibility, recovery, and learning behavior; cover the shared projection's retained fields and receipt omission.
+
 - Advance the PWA shell to v61 so installed clients receive the Compass logo theme toggle.
 - Make the Compass logo toggle light/dark mode on desktop and mobile, remember the last palette in each mode, and save the active appearance through existing settings. Preserve the current workspace and typography; support keyboard activation and synchronized Preferences controls.
 - Remove all loaded-skill byte budgets and the combined router/operator cap from Hermes verification. Preserve fixed-prompt, skill-index, tool-schema, memory, and skill-integrity checks.
