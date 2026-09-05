@@ -1,10 +1,12 @@
 # Learning Compass — Current State
 
-## Compass logo theme toggle — 2026-09-05 (local)
+## Compass logo theme toggle — 2026-09-05 (deployed)
 
 The desktop Compass brand and mobile logo now toggle light/dark mode through the existing appearance settings. The browser remembers the last palette in each mode, including custom day/night colors. Switching preserves the current workspace and typography, keeps Preferences synchronized, supports Enter/Space, and provides a 44px mobile target. Failed saves restore the previous theme with a visible message; network failures use the existing offline mutation queue. A delayed startup settings read cannot overwrite a newer theme choice.
 
-Verified: 20 focused theme/settings tests, lint, TypeScript, production build, and focused Chromium E2E for mouse/keyboard activation, reload persistence, preset/custom palette restoration, Preferences synchronization, save-failure recovery, desktop/mobile layouts, and enlarged mobile text. Light/dark screenshots were inspected. Base JavaScript is 146.07 KB gzip including Preact. Changed-file formatting and diff checks pass. This change is committed locally; production remains unchanged. No API contract, schema, or Hermes workflow changed.
+Worker `9145072d-ce6c-4744-b5c2-a16550a09b7d` is deployed from clean main commit `ebaa50d` with PWA shell v61. Pre/post deployment liveness, readiness, migration parity, and budget checks passed with no blockers; all 11 installed smoke checks passed. The live main JavaScript, Preact chunk, CSS, and service worker match the verified local build byte for byte, and the live shell references those exact assets. `docs/release-snapshot.json` records the deployment. Application rollback is Worker `ae8753cf-33d2-42f2-8715-9e406a6136b8`.
+
+Verified: 20 focused theme/settings tests, lint, TypeScript, production build, and focused Chromium E2E for mouse/keyboard activation, reload persistence, preset/custom palette restoration, Preferences synchronization, save-failure recovery, desktop/mobile layouts, and enlarged mobile text. Light/dark screenshots were inspected. The release cache bump also passed three Android/PWA tests and the focused shell-version regression; the build was refreshed, and unchanged checks were reused. Base JavaScript is 146.07 KB gzip including Preact. Changed-file formatting and diff checks pass. No API contract, schema, or Hermes workflow changed.
 
 ## Worktree consolidation — 2026-09-05
 
