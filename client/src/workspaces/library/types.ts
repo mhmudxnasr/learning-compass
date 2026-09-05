@@ -48,12 +48,10 @@ export type LibraryViewHandlers = {
     why_this?: string
     url?: string
   }) => Promise<void>
-  onAddFeed?: (url: string, branchId: string) => void
+  onAddFeed?: (url: string, branchId: string) => Promise<boolean>
   onSyncFeeds?: () => void
   onSyncFeed?: (feedId: string) => void
   onDeleteFeed?: (feed: LibraryRecord) => void
-  onDeleteFeedEntry?: (feedId: string, item: LibraryRecord) => void
-  onClearFeedEntries?: (feedId: string) => void
   onFeedbackSaved?: (sourceId: string, receipt: LibraryRecord) => void
   onReload?: () => void
   onQueueDeliveryChange?: (context: {

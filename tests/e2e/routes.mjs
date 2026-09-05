@@ -5,6 +5,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { verifyThreadDesk } from './thread-desk.mjs'
+import { verifyFeedTriage } from './feeds.mjs'
 
 const { chromium } = createRequire(import.meta.url)('playwright')
 
@@ -98,7 +99,7 @@ const baseUrl = `http://127.0.0.1:${port}`
 let server
 let browser
 
-try {
+suite: try {
   for (const args of [
     [
       'd1',
@@ -834,7 +835,16 @@ try {
     if (message.type() === 'error') errors.push(message.text())
   })
 
+  if (process.env.E2E_FOCUS === 'feeds') {
+    await verifyFeedTriage({ page, baseUrl, requestJson, wrangler, persistDir })
+    console.log(
+      'E2E passed: feed pagination, persistent skip, source preservation, failure recovery, and responsive navigation',
+    )
+    break suite
+  }
+
   await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
+  await page.locator('.root-rail nav[aria-label="Five workspaces"]').waitFor({ state: 'visible' })
   const rootHrefs = await page
     .locator('.root-rail nav[aria-label="Five workspaces"] a')
     .evaluateAll((links) => [...new Set(links.map((link) => link.getAttribute('href')))])
@@ -2040,6 +2050,7 @@ try {
   await page.goto(`${baseUrl}/#/learn?mode=paths`, { waitUntil: 'networkidle' })
   await page.locator('.folio-paths').waitFor({ state: 'visible' })
   await verifyThreadDesk({ page, baseUrl, requestJson })
+  await verifyFeedTriage({ page, baseUrl, requestJson, wrangler, persistDir })
   await page.getByRole('button', { name: 'All', exact: true }).click()
   if (!(await page.getByRole('link', { name: 'Revisit Thread: Systems Thinking' }).count()))
     throw new Error('Learn Paths did not render an explicit Thread review affordance')

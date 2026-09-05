@@ -181,6 +181,11 @@ const CAPABILITIES = [
   ['GET', '/capture/feeds/:id/entries', 'Read every article imported from one feed, paginated.'],
   [
     'POST',
+    '/capture/feeds/:id/entries/:recId/dismiss',
+    'Skip one article from a feed while preserving its saved source.',
+  ],
+  [
+    'POST',
     '/capture/feeds',
     'Subscribe to an RSS or Atom feed under a required verified default branch and import its latest entries; optional limit caps the initial import.',
   ],

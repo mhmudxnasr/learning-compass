@@ -1,5 +1,15 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-05 (Feeds split triage, local)
+
+Mahmood selected the third live design variation: a compact publication/title navigator beside one article excerpt, with direct original-source access and one-click Skip. Phones put the current article and its controls before the navigator; Open/Skip sit in normal flow below the article identity, without covering the excerpt. Search and subscription management remain secondary disclosures. The reader loads the remaining feed beyond the old 50-entry ceiling and remembers the selected article within the browser session.
+
+Skip immediately removes the exact feed/source pair and advances without reloading the list. `POST /capture/feeds/:id/entries/:recId/dismiss` stores an idempotent dismissal; the saved source, Queue state, and import GUID remain intact. Feed reads and counts exclude dismissals, so refresh and scheduled import cannot restore a skipped entry. A failed request restores the visible entry and reports the failure. Migration `0077_feed_entry_dismissals.sql`, the API/agent contract, and the installed RSS/site-operator guidance describe this separate operation rather than the legacy destructive entry DELETE.
+
+Implementation is isolated on `codex/feeds-design-variations-20260905`. The local PWA shell is v57; migration 0077 and the application deployment remain pending. No production data or deployment was changed. The existing dependency lockfile is retained, with zero vulnerabilities reported by `npm audit` and no package installation.
+
+Verification: 543/543 unit tests, TypeScript, and the production build pass (136.54 KB main JavaScript gzip, 144.23 KB including Preact). `E2E_FOCUS=feeds npm run test:e2e` passes against disposable local Worker/D1 storage, covering more than 50 entries, immediate removal without refetch, persisted counts and reload, idempotence, unchanged source state, failure restoration, remembered selection, search, phone content clearance, and keyboard order. The full E2E run reaches Preferences but stops on its mobile enlarged-text overflow (18px), outside the changed Feeds selectors. Desktop, 632px, and 390px captures were inspected with normal motion; the final reviewer disposition is **ship**, with both reported phone-layout/keyboard fixes scored resolved. Installed Hermes contracts and prompt/memory checks pass.
+
 ## Current truth — 2026-09-05 (all branch histories merged)
 
 At Mahmood's request, all ten previously unmerged local branches now have explicit merge commits in the combined `main` history. Existing cherry-picked and adapted implementations remain current; conflicts from older snapshots, competing profile layouts, retired pages/MCP tooling, outdated release receipts, and duplicate tests were resolved against the verified release. The full branch histories remain reachable, and branch names/worktrees were retained.

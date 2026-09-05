@@ -224,6 +224,7 @@ const BODY_SCHEMAS: Record<string, JsonSchema> = {
   ),
   'POST /capture/feeds/sync': objectSchema({ limit: { type: 'integer', minimum: 1, maximum: 20 } }),
   'POST /capture/feeds/:id/sync': objectSchema({ limit: { type: 'integer', minimum: 1, maximum: 20 } }),
+  'POST /capture/feeds/:id/entries/:recId/dismiss': objectSchema({}),
   'POST /annotations': objectSchema(
     {
       recommendation_id: { type: 'string', minLength: 1 },
@@ -793,6 +794,7 @@ const VERIFICATION_OVERRIDES: Record<string, string | null> = {
   'POST /capture/feeds': '/capture/feeds',
   'POST /capture/feeds/sync': '/capture/feeds',
   'POST /capture/feeds/:id/sync': '/capture/feeds/:id/entries',
+  'POST /capture/feeds/:id/entries/:recId/dismiss': '/capture/feeds/:id/entries',
   'POST /annotations': '/annotations/:id',
   'PATCH /annotations/:id': '/annotations/:id',
   'POST /annotations/:id/archive': '/annotations/:id',

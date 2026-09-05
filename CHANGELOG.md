@@ -4,6 +4,8 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Replace the long RSS card list with a compact split reader. Skip removes an article from its feed and advances without reloading, preserves its saved source and learning state, and restores it on request failure. Add durable feed-entry dismissals in migration `0077` and expose the guarded RSS capability.
+
 - Cleared the 210 unrebuilt Riyadh companion slots on explicit request, retiring exactly 420 HTML/PDF artifacts while preserving the 84 redesigned pairs, original sources, lesson progress, and recovery history.
 
 - Retire six exact duplicate legacy Riyadh companion pairs only when their complete successors remain available, preserving files and lesson progress for the audited replacement release.

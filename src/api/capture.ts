@@ -3,6 +3,7 @@ import { queueDecision } from '../domain'
 import { Bindings, redactSensitiveText, safeError } from '../lib'
 import { createCapture } from '../services/capture'
 import { addFeed, syncAllFeeds, syncFeed } from '../services/rss'
+import { dismissFeedEntry } from '../services/feed-triage'
 import { recordRecommendationSignal } from '../services/intelligence-v2'
 import { loadCaptureQueue } from '../services/capture-queue'
 import { selectLearningSourceRenditions } from '../services/learning-material-renditions'
@@ -230,6 +231,8 @@ app.get('/feeds', async (c) => {
     FROM feed_sources fs
     LEFT JOIN tree_nodes n ON n.id=fs.branch_id
     LEFT JOIN feed_entries fe ON fe.feed_id=fs.id
+      AND EXISTS (SELECT 1 FROM recommendations r WHERE r.id=fe.recommendation_id AND (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM feed_entry_dismissals fd WHERE fd.feed_id=fe.feed_id AND fd.recommendation_id=fe.recommendation_id)
     GROUP BY fs.id ORDER BY fs.created_at DESC`,
   ).all()
   return c.json({ feeds: rows.results || [] })
@@ -248,12 +251,14 @@ app.get('/feeds/:id/entries', async (c) => {
         JOIN recommendation_meta m ON m.recommendation_id=r.id
         LEFT JOIN tree_nodes n ON n.id=m.branch_id
         WHERE (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM feed_entry_dismissals fd WHERE fd.feed_id=fe.feed_id AND fd.recommendation_id=fe.recommendation_id)
         ORDER BY COALESCE(fe.published_at,fe.created_at) DESC LIMIT ? OFFSET ?`,
       )
         .bind(limit, offset)
         .all(),
       c.env.DB.prepare(
-        `SELECT COUNT(*) count FROM feed_entries fe JOIN recommendations r ON r.id=fe.recommendation_id WHERE (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL`,
+        `SELECT COUNT(*) count FROM feed_entries fe JOIN recommendations r ON r.id=fe.recommendation_id WHERE (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM feed_entry_dismissals fd WHERE fd.feed_id=fe.feed_id AND fd.recommendation_id=fe.recommendation_id)`,
       ).first<{ count: number }>(),
     ])
     return c.json({
@@ -279,12 +284,14 @@ app.get('/feeds/:id/entries', async (c) => {
       JOIN recommendation_meta m ON m.recommendation_id=r.id
       LEFT JOIN tree_nodes n ON n.id=m.branch_id
       WHERE fe.feed_id=? AND (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM feed_entry_dismissals fd WHERE fd.feed_id=fe.feed_id AND fd.recommendation_id=fe.recommendation_id)
       ORDER BY COALESCE(fe.published_at,fe.created_at) DESC LIMIT ? OFFSET ?`,
     )
       .bind(feed.id, limit, offset)
       .all(),
     c.env.DB.prepare(
-      `SELECT COUNT(*) count FROM feed_entries fe JOIN recommendations r ON r.id=fe.recommendation_id WHERE fe.feed_id=? AND (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL`,
+      `SELECT COUNT(*) count FROM feed_entries fe JOIN recommendations r ON r.id=fe.recommendation_id WHERE fe.feed_id=? AND (r.status IS NULL OR r.status != 'deleted') AND r.deleted_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM feed_entry_dismissals fd WHERE fd.feed_id=fe.feed_id AND fd.recommendation_id=fe.recommendation_id)`,
     )
       .bind(feed.id)
       .first<{ count: number }>(),
@@ -347,6 +354,12 @@ app.post('/feeds/:id/sync', async (c) => {
   } catch (error) {
     return c.json({ error: error instanceof Error ? redactSensitiveText(error, 500) : 'Feed check failed' }, 400)
   }
+})
+
+app.post('/feeds/:id/entries/:recId/dismiss', async (c) => {
+  const entry = await dismissFeedEntry(c.env.DB, c.req.param('id'), c.req.param('recId'))
+  if (!entry) return c.json({ error: 'feed entry not found' }, 404)
+  return c.json({ ok: true, entry, source_preserved: true })
 })
 
 app.delete('/feeds/:id/entries/:recId', async (c) => {

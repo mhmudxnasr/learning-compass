@@ -29,6 +29,8 @@ A zero-noise, purpose-first personal knowledge ledger. Unlike generic read-it-la
 
 ## Capabilities and Constraints
 
+- **Feed triage**: A compact article navigator sits beside one source excerpt. Open article opens the original; Skip removes that exact entry from the feed and advances immediately. Failure restores the entry. Skipping preserves the saved source and Queue state, persists across refreshes, and is not negative taste feedback. Subscriptions stay under Manage.
+
 - **Learning desk**: Threads is a daily study workspace. Active, Planning, Paused, Completed, and All views share searchable, bounded rows with exact next-lesson actions, known duration, current/future material gaps, priority, and pause/resume. Search and sort survive a return from a lesson. A new Thread starts in Planning and opens first-Level authoring; it does not promise an automatically generated curriculum.
 - **Study workspace**: Each Thread keeps its intended outcome editable, collects scope-owned notes into a notebook, and supports optional developing understanding or closing reflection. Lesson pages expose searchable curriculum navigation, persistent focus mode, authored study text with Arabic direction support, passive source formats, and exact-owner Library material selection. Direct completion and automatic next-lesson advancement retain their existing rules.
 
