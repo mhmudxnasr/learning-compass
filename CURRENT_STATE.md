@@ -2,21 +2,23 @@
 
 ## Handoff
 
-- **Home spacing correction:** Verified locally; the desktop layout keeps RSS/resurfacing below lessons and confines sticky Queue context to its own column. See the correction entry below for evidence; deployment is pending.
+- **Home spacing correction:** Deployed and verified; the desktop layout keeps RSS/resurfacing below lessons and confines sticky Queue context to its own column. See the correction entry below for evidence.
 
 - **Learning calendar and Obsidian download:** Deployed; see the release entry below for live checks and the implementation entry for scope. The explicit download includes book/chapter notes while routine Hermes archiving retains its exclusion.
 
 - **Start here:** `AGENTS.md` owns the working rules, `PROJECT_CONTEXT.md` the durable product model, and the README contribution map points to source files and focused tests. Read older entries below only when their history is relevant.
 - **Frontend audit:** The isolated Impeccable repair set reached 40/40 after independent design/technical confirmation and closure of the final two polish deductions. See the final-confirmation entry below for scope, evidence, and limits. The combined release includes these repairs.
-- **Frontend:** The deployed Impeccable repairs retain Continuum and the five-root navigation while correcting reading hierarchy, responsive layouts, accessible controls, source identity, and recovery. Workspace code is lazy-loaded; the deployed PWA shell is v62.
-- **Last recorded deployment:** `docs/release-snapshot.json`, observed `2026-09-05T15:51:15.955Z`, records Worker `7fd27a58-d3b2-4560-b3c3-444898c101e6` from clean `a6c74db` with PWA shell v62. Live checks passed at release time; recheck for later operational work.
+- **Frontend:** The deployed Impeccable repairs retain Continuum and the five-root navigation while correcting reading hierarchy, responsive layouts, accessible controls, source identity, and recovery. Workspace code is lazy-loaded; the deployed PWA shell is v63.
+- **Last recorded deployment:** `docs/release-snapshot.json`, observed `2026-09-05T16:05:15.086Z`, records Worker `0f89d577-5287-452b-9ba2-d8ccb3eb0fd1` from clean `0b432d5` with PWA shell v63. Live checks passed at release time; recheck for later operational work.
 - **Local environment:** lockfile dependencies are restored. The deleted `.tmp/` recovery files and separate WhatsApp repository are absent; historical references to those paths are no longer usable. Generated `dist/` output was removed after the successful verification build. Dependency upgrades retain the holds in `docs/dependencies.md`.
 
-## Home spacing correction — 2026-09-05 (verified locally)
+## Home spacing correction — 2026-09-05 (deployed)
 
 Home's desktop Queue context now spans both content rows while the lesson row stays content-sized. RSS/resurfacing occupies the main column beneath lessons, removing the blank gap caused by a tall Queue card and preventing the sticky sidebar from covering RSS while scrolling. The stacked order at 1180px and below remains lessons, Queue, secondary content, then calendar. The PWA shell advances to v63.
 
 `npm run verify:fast`, changed-file formatting, `git diff --check`, and `E2E_FOCUS=quality npm run test:e2e` pass. The browser regression covers tall Queue content, lesson-to-feed spacing, sticky overlap, and stacked order at five widths. Read-only previews with the built CSS and current production content pass desktop/mobile light/dark checks, the 1180/1181px boundary, 135% text sizing, and a longer lesson list. At 1600px, the lesson-to-feed gap shrinks from 272px to the intended 42px. The layout detector reports no findings. Initial JavaScript remains 47.58 KB gzip; CSS is 109.12 KB gzip. Pre-deploy readiness and budget checks pass without blockers.
+
+Deployed clean `0b432d5` as Worker `0f89d577-5287-452b-9ba2-d8ccb3eb0fd1`, reusing the passing fast gate. The post-release snapshot has no readiness or budget blockers, and all 11 installed smoke checks pass. A production browser confirms the 42px gap and no sticky overlap after scrolling; the published stylesheet matches the local build byte for byte and shell v63 is live. The prior Worker `7fd27a58-d3b2-4560-b3c3-444898c101e6` is the rollback target. No schema or learning-content change was required. Generated build output was removed after verification.
 
 ## Calendar, Obsidian export, and frontend release — 2026-09-05 (deployed)
 
