@@ -2,7 +2,9 @@
 
 ## Handoff
 
-- **Shell divider alignment:** Corrected and visually verified the 10px mismatch between the sidebar brand divider and workspace command bar. Both use one desktop header height; an isolated release build and deployment are pending because Workspace style work is concurrent.
+- **Workspace styles:** Local implementation expands all eight styles into distinct compositions and rebuilds their picker specimens and selection labels. Saved palette identity owns composition without a new API field. Focused verification is in progress; this task does not authorize deployment.
+
+- **Shell divider alignment:** Deployed and verified. Both desktop dividers align at 58px. The release used an isolated commit export; concurrent Workspace style changes remain separate and unfinished.
 
 - **Home banner removal:** Deployed and verified at Mahmood's request. Home opens directly into lessons and Queue context without the large Today banner or aggregate counters.
 
@@ -12,15 +14,17 @@
 
 - **Start here:** `AGENTS.md` owns the working rules, `PROJECT_CONTEXT.md` the durable product model, and the README contribution map points to source files and focused tests. Read older entries below only when their history is relevant.
 - **Frontend audit:** The isolated Impeccable repair set reached 40/40 after independent design/technical confirmation and closure of the final two polish deductions. See the final-confirmation entry below for scope, evidence, and limits. The combined release includes these repairs.
-- **Frontend:** The deployed Impeccable repairs retain Continuum and the five-root navigation while correcting reading hierarchy, responsive layouts, accessible controls, source identity, and recovery. Workspace code is lazy-loaded; the deployed PWA shell is v64.
-- **Last recorded deployment:** `docs/release-snapshot.json`, observed `2026-09-05T16:12:17.329Z`, records Worker `fd2c0458-c887-4e59-a729-4d4a08912c17` from clean `b0d22d5` with PWA shell v64. Live checks passed at release time; recheck for later operational work.
+- **Frontend:** The deployed Impeccable repairs retain Continuum and the five-root navigation while correcting reading hierarchy, responsive layouts, accessible controls, source identity, and recovery. Workspace code is lazy-loaded; the deployed PWA shell is v65.
+- **Last recorded deployment:** `docs/release-snapshot.json`, observed `2026-09-05T16:18:14.321Z`, records Worker `04365a1a-dac1-4f73-9287-e25f2de98913` from an isolated `44b07c0` export with PWA shell v65. Its dirty flag reflects concurrent local Workspace style edits that were excluded from this release. Live checks passed at release time; recheck for later operational work.
 - **Local environment:** lockfile dependencies are restored. The deleted `.tmp/` recovery files and separate WhatsApp repository are absent; historical references to those paths are no longer usable. Generated `dist/` output was removed after the successful verification build. Dependency upgrades retain the holds in `docs/dependencies.md`.
 
-## Shell divider alignment — 2026-09-05 (verified locally)
+## Shell divider alignment — 2026-09-05 (deployed)
 
 The desktop rail brand and workspace command bar share `--studio-desktop-header-height` (58px). Removed the rail's extra top padding and asymmetric brand padding so both divider edges align at 58px instead of 68px/58px. The PWA shell advances to v65.
 
 Browser geometry and visual checks pass in light/dark themes at 1600, 1181, 1180, 1024, and 941px; mobile keeps its existing utility bar and dock at 940 and 390px. The logo remains keyboard-focusable with a target above 44px, and alignment holds at 140% text sizing in a short viewport. Changed-file formatting, `git diff --check`, and the initial fast gate pass. The separate Workspace style task changed theme/settings during that build, so deployment must use an isolated export of this committed correction instead of its unfinished client output.
+
+The isolated `44b07c0` export passed `npm run verify:fast`; its CSS matched the visually checked build. Copied only those release assets into the primary directory and verified unchanged Worker/config/package inputs before deploying Worker `04365a1a-dac1-4f73-9287-e25f2de98913`. All 11 live smoke checks pass and the release snapshot has no readiness or budget blockers. Production confirms both divider edges at 58px on wide and compact desktops; entry assets match the isolated build byte for byte, and shell v65 is live. Initial JavaScript is 47.45 KB gzip; CSS is 108.78 KB gzip. The prior Worker `fd2c0458-c887-4e59-a729-4d4a08912c17` is the rollback target. Removed the temporary export and release build after verification; concurrent source edits were preserved.
 
 ## Home banner removal — 2026-09-05 (deployed)
 
