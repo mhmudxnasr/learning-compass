@@ -156,6 +156,11 @@ export async function verifyScopedMaterials({ page, baseUrl, requestJson, thread
   await page.context().setOffline(true)
   await panel().getByLabel('Note title', { exact: true }).fill('Saved while offline')
   await panel().getByLabel('Note body', { exact: true }).fill('Sync this once, without creating a duplicate.')
+  assert.equal(await panel().getByLabel('Note title', { exact: true }).inputValue(), 'Saved while offline')
+  assert.equal(
+    await panel().getByLabel('Note body', { exact: true }).inputValue(),
+    'Sync this once, without creating a duplicate.',
+  )
   await panel().getByRole('button', { name: 'Save note', exact: true }).click()
   // The API may queue after its 30-second network deadline; allow the outbox
   // write and UI update to finish before checking the same durable result.

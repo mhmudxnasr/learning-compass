@@ -286,7 +286,11 @@ function MaterialEditor({
           onClick={() => {
             setOpen(true)
             setMessage('')
-            requestAnimationFrame(() => formRef.current?.querySelector('input')?.focus())
+            requestAnimationFrame(() => {
+              const form = formRef.current
+              // Do not steal focus if the learner has already entered a field.
+              if (form && !form.hidden && !form.contains(document.activeElement)) form.querySelector('input')?.focus()
+            })
           }}
         >
           <Icon name="capture" size={15} />

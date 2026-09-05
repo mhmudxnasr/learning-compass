@@ -8,6 +8,7 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Prevent delayed material-editor focus from stealing typing from a field the learner has already selected; verify offline note title/body stay separate before durable queuing.
 - Make Hermes's routine Compass reads direct and scoped: Thread inventories/overviews, resume questions, Queue reads, and conversational target corrections. Keep write safeguards in an on-demand reference, reduce repeated instructions, and extend manager routing coverage with realistic short requests and follow-ups. Repair evaluation profile copying for dangling retired skill links and support explicit reasoning comparisons.
 
 - Synchronize Hermes routing with native Compass tools and bounded Level reads; reject retired adapter and forced reply instructions. Reconcile ambiguous Lite Visual uploads by exact pair/receipt readback without repeating writes, and cover oversized bodies/receipts plus HTTP 500 recovery in regression tests.
