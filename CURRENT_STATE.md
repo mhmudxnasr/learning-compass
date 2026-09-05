@@ -1,6 +1,18 @@
 # Learning Compass — Current State
 
-## Current truth — 2026-09-05 (Hermes routing reliability, local)
+## Current truth — 2026-09-05 (combined release deployed and branches consolidated)
+
+Worker `69dcc110-2d26-4a76-b4cb-df41b1847c4e` is deployed from clean main commit `a24a864` with PWA shell v59. It combines the material notebooks, companion retirement, bounded Level reads, persistent Feeds Skip, and the material-editor focus fix. All 79 migrations through `0077_feed_entry_dismissals.sql` match production; all 30 required schema objects are present. Readiness is healthy with no release blockers. `docs/release-snapshot.json` records the live version and clean deployment source. Application rollback is Worker `0685ad21-56d8-48d0-81c6-5db846d87bfc`; the additive Feeds table can remain.
+
+The full `npm run verify:release` gate passed: quality, 554 unit tests, TypeScript, production build, six integration suites, responsive/PWA/offline browser E2E, clean and idempotent migration rehearsal, Hermes contracts/prompt budgets, 40 manager tests, 48 installed-client tests, seven native-adapter tests, syntax, and diff checks. Base JavaScript is 145.01 KB gzip, below the 150 KB limit. GitHub CI passed for `a24a864`. Post-deployment verification passed all 11 installed smoke checks, 13 additional API reads, three shell assets, and PWA v59.
+
+Native Hermes reads the seven-lesson Orientation Level in exactly 2,449 compact JSON bytes, with the previous lesson IDs, statuses, and primary-source mappings unchanged. Regression coverage includes both a 1.2 MB lesson body and a 1.2 MB artifact receipt; the full-path API remains compatible. The fifth existing companion pair is still ready, with its artifact identities and receipt/file hashes verified through the installed uploader's canonical GET recovery. Ambiguous 500/timeout outcomes now reconcile without an automatic second upload; unresolved outcomes remain explicit and non-retryable. The original 500's underlying server cause is unknown. This release did not regenerate companions or change lesson progress.
+
+The pre-migration recovery snapshot `backup_20260905T020546Z_reconciled` contains 1,908 remotely acquired and checksum-verified artifacts (305,922,882 bytes) and a matching D1 export. An in-flight publication made the first export two artifacts older than its R2 inventory; that failed snapshot was preserved, and a fresh export was matched by every artifact ID, key, filename, and size. The reconciled disposable restore passed SQLite integrity, zero foreign-key violations, and all 29 pre-migration schema objects. Recovery evidence is under `/home/mahmud/backups/learning-compass/snapshots/`; the immediate pre-apply Time Travel bookmark and full release logs are under `.tmp/finish-release-20260905/`.
+
+All five feature branches are merged and deleted; only main remains locally and remotely. Existing historical worktree drafts were archived without restoring obsolete implementations, and every extant project worktree is clean. Verified Git bundles and the cleanup receipt are under `/home/mahmud/backups/learning-compass/`. Installed Hermes identity, routing, site client, authoring guidance, and upload recovery are synchronized; snapshots of the 14 affected installed files are under `hermes-sync-20260905/final-installed/` there. The native adapter is unchanged and byte-identical to its installed copy.
+
+## Verification history — 2026-09-05 (Hermes routing reliability)
 
 Installed Hermes is dedicated to Learning Compass. The router and site-operator entry points total 9,210 bytes, down from 17,884; write-specific safeguards remain in `references/write-operations.md`. Common reads distinguish Thread lists, hub overviews, exact Thread/Level details, resume questions, and Queue inventory. Follow-ups preserve displayed order and IDs; corrections replace the target; inspection never changes learning state. The checked-in SOUL source matches the installed identity.
 
@@ -10,7 +22,7 @@ The evaluation slate now has 31 cases, adding ten short-request, typo, Arabic, e
 
 Real-model diagnostics are not a release certificate: the first ten-case trial passed seven and exposed fixture CLI guidance failures; a focused resume/follow-up replay passed both after actionable client guidance. The Thread overview uses one hub read instead of the baseline's hub plus two unnecessary full-path reads. Additional mutation diagnostics found a missing evaluator turn identity (fixed) and overly literal historical response grading. The small higher-reasoning comparison did not establish an improvement, so the model, medium reasoning, and platform tool settings remain unchanged. No broad rerun or deployment is claimed here; the release task owns integration and deployment.
 
-## Current truth — 2026-09-05 (combined release in verification)
+## Verification history — 2026-09-05 (combined release before deployment)
 
 Main now integrates the deployed material notebooks and companion retirement, the bounded metadata-only Level read, and the selected Feeds split reader with persistent Skip. The combined PWA shell is v59. Migration `0077_feed_entry_dismissals.sql` is additive and awaits the verified pre-migration backup and release gate. No new companion retirement or lesson-progress change is part of this release. Earlier dated entries retain their original task status; this entry owns the combined release status.
 

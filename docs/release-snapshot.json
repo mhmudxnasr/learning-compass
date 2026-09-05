@@ -1,29 +1,33 @@
 {
   "format": "learning-compass-release-status-v1",
-  "observed_at": "2026-09-05T01:05:47.728Z",
+  "observed_at": "2026-09-05T02:27:25.065Z",
   "source": {
-    "commit_sha": "ff38c8e494a7872c2b6d176e3b5d30b210ca3890",
-    "branch": "fix/retire-companion-pairs",
+    "commit_sha": "a24a8644677df6a532be64b1b85bb3042c600180",
+    "branch": "main",
     "dirty": false
   },
   "production": {
     "origin": "https://recommendations-worker.mhmudnasr30.workers.dev",
     "deployment": {
-      "version_id": "2fb36281-639c-47de-ba82-75f6eb10fec5",
-      "deployed_at": "2026-09-05T01:05:22.018049Z"
+      "version_id": "69dcc110-2d26-4a76-b4cb-df41b1847c4e",
+      "deployed_at": "2026-09-05T02:26:54.546504Z"
     },
     "migrations": {
-      "applied_count": 78,
+      "applied_count": 79,
       "highest": {
-        "name": "0076_retire_unrebuilt_riyadh_companions.sql",
-        "applied_at": "2026-09-04 20:59:09"
+        "name": "0077_feed_entry_dismissals.sql",
+        "applied_at": "2026-09-05 02:26:20"
       },
       "pending_local": [],
       "unexpected_remote": []
     },
     "schema": {
-      "expected_count": 29,
+      "expected_count": 30,
       "present": [
+        {
+          "name": "feed_entry_dismissals",
+          "type": "table"
+        },
         {
           "name": "idx_agent_jobs_lesson_material",
           "type": "index"
@@ -147,12 +151,12 @@
       "live": {
         "ok": true,
         "status": "live",
-        "observed_at": "2026-09-05T01:05:44.813Z"
+        "observed_at": "2026-09-05T02:27:21.601Z"
       },
       "readiness": {
         "ok": true,
         "status": "healthy",
-        "checked_at": "2026-09-05T01:05:44.755Z",
+        "checked_at": "2026-09-05T02:27:21.604Z",
         "blockers": [],
         "bindings": {
           "d1": true,
@@ -167,39 +171,39 @@
     "budget": {
       "day_utc": "2026-09-05",
       "reads": {
-        "estimated": 41000,
+        "estimated": 98350,
         "budget": 4000000,
         "cloudflare_limit": 5000000,
         "headroom": 1000000,
         "required_headroom": 1000000
       },
       "writes": {
-        "estimated": 4,
+        "estimated": 164,
         "budget": 70000,
         "cloudflare_limit": 100000,
         "headroom": 30000,
         "required_headroom": 30000
       },
-      "updated_at": "2026-09-05 01:05:44"
+      "updated_at": "2026-09-05 02:27:20"
     },
     "recovery": {
       "latest_verified": {
-        "id": "backup_20260905T001855Z",
+        "id": "backup_20260905T020546Z_reconciled",
         "status": "verified",
         "storage_target": "local-systemd",
-        "d1_sha256": "1332880343bb011ba9c06224cde46b5b9404e7abd51e1ed54904e0f76578549d",
-        "d1_bytes": 112184020,
-        "artifact_count": 1898,
-        "artifact_bytes": 302465210,
-        "created_at": "2026-09-05 00:37:21",
-        "restore_rehearsed_at": "2026-09-05 00:37:21"
+        "d1_sha256": "4b1f4fec60de53190ca71180ac1b7ca4e63cb94fa97a0f34e152f4ff4afc81f5",
+        "d1_bytes": 112330416,
+        "artifact_count": 1908,
+        "artifact_bytes": 305922882,
+        "created_at": "2026-09-05 02:21:25",
+        "restore_rehearsed_at": "2026-09-05 02:21:25"
       }
     },
     "corpus": {
       "corpora": 3,
       "targets": 252,
       "active_corpora": 1,
-      "pairs": 628
+      "pairs": 633
     }
   },
   "policy": {
