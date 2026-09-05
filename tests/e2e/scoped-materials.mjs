@@ -163,7 +163,7 @@ export async function verifyScopedMaterials({ page, baseUrl, requestJson, thread
     await panel().getByRole('status').filter({ hasText: 'Note queued for sync.' }).waitFor({ timeout: 45_000 })
   } catch (error) {
     await capture('offline-note-failure')
-    throw new Error(`${error.message}\nOffline note panel: ${await panel().innerText()}`)
+    throw new Error(`${error.message}\nOffline note panel: ${await panel().innerText()}`, { cause: error })
   }
   assert.equal(await panel().getByRole('button', { name: 'Save note', exact: true }).count(), 0)
   await panel().getByRole('button', { name: 'Add note', exact: true }).click()
