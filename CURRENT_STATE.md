@@ -2,6 +2,8 @@
 
 ## Handoff
 
+- **Shell divider alignment:** Corrected and visually verified the 10px mismatch between the sidebar brand divider and workspace command bar. Both use one desktop header height; an isolated release build and deployment are pending because Workspace style work is concurrent.
+
 - **Home banner removal:** Deployed and verified at Mahmood's request. Home opens directly into lessons and Queue context without the large Today banner or aggregate counters.
 
 - **Home spacing correction:** Deployed and verified; the desktop layout keeps RSS/resurfacing below lessons and confines sticky Queue context to its own column. See the correction entry below for evidence.
@@ -13,6 +15,12 @@
 - **Frontend:** The deployed Impeccable repairs retain Continuum and the five-root navigation while correcting reading hierarchy, responsive layouts, accessible controls, source identity, and recovery. Workspace code is lazy-loaded; the deployed PWA shell is v64.
 - **Last recorded deployment:** `docs/release-snapshot.json`, observed `2026-09-05T16:12:17.329Z`, records Worker `fd2c0458-c887-4e59-a729-4d4a08912c17` from clean `b0d22d5` with PWA shell v64. Live checks passed at release time; recheck for later operational work.
 - **Local environment:** lockfile dependencies are restored. The deleted `.tmp/` recovery files and separate WhatsApp repository are absent; historical references to those paths are no longer usable. Generated `dist/` output was removed after the successful verification build. Dependency upgrades retain the holds in `docs/dependencies.md`.
+
+## Shell divider alignment — 2026-09-05 (verified locally)
+
+The desktop rail brand and workspace command bar share `--studio-desktop-header-height` (58px). Removed the rail's extra top padding and asymmetric brand padding so both divider edges align at 58px instead of 68px/58px. The PWA shell advances to v65.
+
+Browser geometry and visual checks pass in light/dark themes at 1600, 1181, 1180, 1024, and 941px; mobile keeps its existing utility bar and dock at 940 and 390px. The logo remains keyboard-focusable with a target above 44px, and alignment holds at 140% text sizing in a short viewport. Changed-file formatting, `git diff --check`, and the initial fast gate pass. The separate Workspace style task changed theme/settings during that build, so deployment must use an isolated export of this committed correction instead of its unfinished client output.
 
 ## Home banner removal — 2026-09-05 (deployed)
 

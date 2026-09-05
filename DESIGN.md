@@ -98,6 +98,7 @@ The visual references are functional. Linear informs shell precision and list de
 - Home retains a completion receipt with an explicit Undo completion action until another lesson is finished or the workspace is left. Undo reopens that exact lesson through the normal lesson API; it never changes source consumption or creates cards.
 - Typed object views, the inspector, Capture, Search, and other dialogs use the same Canvas, Surface, Inspector, Seam, and Coral roles as their owning workspace. An ambiguous Android URL-plus-prose share opens a focused two-choice dialog: whole-source Capture or exact selected passage, with the original title, URL, and text visible and a non-destructive Decide later exit.
 - At 940px and below, the rail becomes a sticky utility bar and five-item bottom dock. Content moves to one column without changing task order.
+- Above 940px, the rail brand and workspace command bar share one header height so their bottom dividers align in both expanded and compact rails.
 
 - Ordinary workspaces use a centered canvas capped at 1280px. Atlas alone remains edge-to-edge because the graph is the work surface rather than content inside a page.
 - Grouped modes live in the desktop command bar with one restrained active rule. Subordinate filters stay in the working field only where the active mode needs them; compact layouts return the modes to equal-width inline controls.

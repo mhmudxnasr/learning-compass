@@ -8,6 +8,8 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Align the sidebar brand divider with the workspace command bar using a shared desktop header height. Remove the rail's extra top padding and advance the PWA shell to v65.
+
 - Remove Home's redundant Today banner and aggregate counters so the page opens directly into current lessons and Queue context. Delete its unused calculation/styles and advance the PWA shell to v64.
 
 - Keep Home's RSS and resurfacing directly below lessons on desktop, with the sticky Queue sidebar confined to its own column. Remove the large blank gap and scrolling overlap while retaining the mobile reading order; advance the PWA shell to v63.

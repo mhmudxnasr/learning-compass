@@ -797,6 +797,7 @@ a:hover {
 
 /* Continuum — authoritative shell and Home composition. */
 :root {
+  --studio-desktop-header-height: 58px;
   --continuum-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --continuum-shadow: 0 18px 48px color-mix(in srgb, var(--studio-rail) 40%, transparent);
 }
@@ -855,15 +856,15 @@ body {
     display: flex;
     align-items: stretch;
     gap: 4px;
-    padding: 14px 12px;
+    padding: 0 12px 14px;
   }
 
   .rail-brand {
     justify-content: flex-start;
-    min-height: 54px;
+    min-height: var(--studio-desktop-header-height);
     gap: 10px;
     margin: 0 4px 12px;
-    padding: 0 8px 12px;
+    padding: 0 8px;
     border-bottom-color: var(--studio-rail-border);
     color: var(--studio-rail-ink);
   }
@@ -916,7 +917,7 @@ body {
   }
 
   .work-area {
-    grid-template-rows: 58px minmax(0, 1fr);
+    grid-template-rows: var(--studio-desktop-header-height) minmax(0, 1fr);
     background: var(--studio-canvas);
   }
 
