@@ -1,5 +1,9 @@
 # Learning Compass — Current State
 
+## Local artifact cleanup — 2026-09-05
+
+Removed 302 ignored files (12.68 MiB): the orphaned retired bridge bytecode under `tools/`, old `.playwright-cli/` browser output, `.impeccable/` review artifacts, `test-results/` screenshots, `.codex-tmp/` one-off scripts/caches, and 54 merge-stage code copies under `.tmp/release-20260905/`. All cleanup targets are absent. The remaining 151 `.tmp/` recovery files retain their exact pre-cleanup SHA-256 hashes, including the database export, worktree archives, patches, and release receipts. The separate WhatsApp repository, installed dependencies, and current build remain present. No tracked application file or production state changed; verification used the exact removal inventory, recovery-file hashes, changed-file formatting, and diff checks. No application tests or deployment were needed.
+
 ## Ponytail simplification — 2026-09-05 (local, verified)
 
 Installed the six instruction-only Ponytail skills (`ponytail`, `ponytail-audit`, `ponytail-review`, `ponytail-debt`, `ponytail-gain`, and `ponytail-help`) under `~/.codex/skills`, byte-verified against DietrichGebert/ponytail revision `974d940a1c5344210874150b98ff0d2c861fab6a`. Applied full mode, repository reachability/duplication review, final diff review, and the debt scan. No lifecycle hooks or application dependencies were added. The upstream gain card describes an older benchmark; it is not evidence of Learning Compass savings.
