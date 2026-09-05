@@ -401,8 +401,10 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
       await api('/capture/feeds', { method: 'POST', body: JSON.stringify({ url, branch_id: branchId, limit: 5 }) })
       setNotice('Feed subscribed and latest entries added to Library.')
       reload()
+      return true
     } catch (actionError) {
       setNotice(actionMessage(actionError))
+      return false
     } finally {
       setWorking('')
     }
@@ -457,37 +459,6 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     }
   }
 
-  const deleteFeedEntry = async (feedId: string, item: LibraryRecord) => {
-    const busyKey = `delete-entry:${item.id}`
-    setWorking(busyKey)
-    setNotice('')
-    try {
-      await api(`/capture/feeds/${encodeURIComponent(feedId)}/entries/${encodeURIComponent(String(item.id))}`, {
-        method: 'DELETE',
-      })
-      setNotice('Article removed from feed.')
-      reload()
-    } catch (actionError) {
-      setNotice(actionMessage(actionError))
-    } finally {
-      setWorking('')
-    }
-  }
-
-  const clearFeedEntries = async (feedId: string) => {
-    setWorking('clear-feed-entries')
-    setNotice('')
-    try {
-      await api(`/capture/feeds/${encodeURIComponent(feedId)}/entries`, { method: 'DELETE' })
-      setNotice('All articles removed for this feed.')
-      reload()
-    } catch (actionError) {
-      setNotice(actionMessage(actionError))
-    } finally {
-      setWorking('')
-    }
-  }
-
   const handlers: LibraryViewHandlers = {
     onInspect: inspect,
     onQueue: queue,
@@ -503,8 +474,6 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
     onSyncFeeds: syncFeeds,
     onSyncFeed: syncFeed,
     onDeleteFeed: deleteFeed,
-    onDeleteFeedEntry: deleteFeedEntry,
-    onClearFeedEntries: clearFeedEntries,
     onFeedbackSaved: (sourceId, result) => setFeedbackReceipt({ sourceId, result }),
     onReload: reload,
     onQueueDeliveryChange: setQueueDelivery,
@@ -561,7 +530,9 @@ export function LibraryWorkspace({ route, embedded = false, onInspect, onSelect,
       <ArchiveView data={loaded} handlers={handlers} />
     )
   return (
-    <div class={`library-workspace workspace-surface ${view === 'books' ? 'is-books-room' : ''}`}>
+    <div
+      class={`library-workspace workspace-surface ${view === 'books' ? 'is-books-room' : view === 'feeds' ? 'is-feeds-room' : ''}`}
+    >
       {modeSwitcher}
       {content}
     </div>

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { verifyThreadDesk } from './thread-desk.mjs'
 import { verifyScopedMaterials } from './scoped-materials.mjs'
+import { verifyFeedTriage } from './feeds.mjs'
 
 const { chromium } = createRequire(import.meta.url)('playwright')
 
@@ -111,7 +112,7 @@ async function openHomeAfterServiceWorkerActivation(page) {
   await page.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout: 15000 })
 }
 
-try {
+suite: try {
   for (const args of [
     [
       'd1',
@@ -847,6 +848,14 @@ try {
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text())
   })
+
+  if (process.env.E2E_FOCUS === 'feeds') {
+    await verifyFeedTriage({ page, baseUrl, requestJson, wrangler, persistDir })
+    console.log(
+      'E2E passed: feed pagination, persistent skip, source preservation, failure recovery, and responsive navigation',
+    )
+    break suite
+  }
 
   await openHomeAfterServiceWorkerActivation(page)
   const rootHrefs = await page
@@ -2055,6 +2064,9 @@ try {
   await page.goto(`${baseUrl}/#/learn?mode=paths`, { waitUntil: 'networkidle' })
   await page.locator('.folio-paths').waitFor({ state: 'visible' })
   await verifyThreadDesk({ page, baseUrl, requestJson })
+  await verifyFeedTriage({ page, baseUrl, requestJson, wrangler, persistDir })
+  await page.goto(`${baseUrl}/#/learn?mode=paths`, { waitUntil: 'networkidle' })
+  await page.locator('.folio-paths').waitFor({ state: 'visible' })
   await page.getByRole('button', { name: 'All', exact: true }).click()
   if (!(await page.getByRole('link', { name: 'Revisit Thread: Systems Thinking' }).count()))
     throw new Error('Learn Paths did not render an explicit Thread review affordance')

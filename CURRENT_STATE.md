@@ -1,5 +1,9 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-05 (combined release in verification)
+
+Main now integrates the deployed material notebooks and companion retirement, the bounded metadata-only Level read, and the selected Feeds split reader with persistent Skip. The combined PWA shell is v59. Migration `0077_feed_entry_dismissals.sql` is additive and awaits the verified pre-migration backup and release gate. No new companion retirement or lesson-progress change is part of this release. Earlier dated entries retain their original task status; this entry owns the combined release status.
+
 ## Current truth — 2026-09-05 (standalone companion retirement, deployed)
 
 Worker `2fb36281-639c-47de-ba82-75f6eb10fec5` deployed at `2026-09-05T01:05:22Z` from source `ff38c8e` on `fix/retire-companion-pairs`, with PWA shell v58. It preserves the deployed scoped material notebooks from `7d4f3eb` and adds guarded, atomic retirement of complete standalone companion pairs. Application rollback is Worker `2cc5a728-7f2e-4a63-bda1-e407ce2b8414`. No migration or dependency installation was needed; the primary checkout remains unchanged.
@@ -17,9 +21,20 @@ Notes, Files, and Recall now use accessible tabs and full-width editors across T
 The complete aggregate release gate passes: quality checks, all 542 unit tests, TypeScript, production build, six Worker/D1 integrations, responsive/PWA/offline E2E, clean/idempotent migration rehearsal, Hermes contracts, 38 manager tests, 46 installed site-client tests, seven native adapter tests, and secret/diff checks. The material tests cover note/file/card persistence, exact ownership, duplicate submission, failed uploads, validation, draft preservation, offline sync, desktop/tablet/320px and 390px mobile layouts, dark theme, and 200% text. Release preparation also fixes the Preferences grid's enlarged-text overflow. Browser tests use isolated identities for page and service-worker requests, wait for initial service-worker activation/reload, and simulate offline saves with the actual browser connection state.
 
 Worker `2cc5a728-7f2e-4a63-bda1-e407ce2b8414` deployed at `2026-09-05T00:36:11Z` from source `7d4f3eb` on `fix/lesson-materials-panel`, with PWA shell v57. Production health, readiness, budget, public API boundaries, and the exact Leverage points lesson's tabs and add/cancel editors pass live verification. Desktop/mobile renders were inspected, and a fresh browser installed v57 without writing learning data. Migration parity remains exact at 78 applied migrations through `0076`; no migration or dependency installation was needed. The primary checkout remains unchanged. Application rollback is Worker `cd7fa264-dac3-4069-b73f-b878c9f00c8a`. The complete D1 and 1,896-object R2 backup `backup_20260904T233845Z` passed its disposable restore; `docs/release-snapshot.json` records the newer verified recovery receipt and zero production blockers at observation time.
+
 ## Bounded Level read repair — implementation pending verification
 
 A dedicated worktree based on `21023f9` adds a paginated metadata-only Level projection to the existing Thread path. It preserves lesson state and the full-path response while avoiding the 1 MiB client failure caused by hydrated course content. Verification and deployment are pending; no production data has changed.
+
+## Current truth — 2026-09-05 (Feeds split triage, local)
+
+Mahmood selected the third live design variation: a compact publication/title navigator beside one article excerpt, with direct original-source access and one-click Skip. Phones put the current article and its controls before the navigator; Open/Skip sit in normal flow below the article identity, without covering the excerpt. Search and subscription management remain secondary disclosures. The reader loads the remaining feed beyond the old 50-entry ceiling and remembers the selected article within the browser session.
+
+Skip immediately removes the exact feed/source pair and advances without reloading the list. `POST /capture/feeds/:id/entries/:recId/dismiss` stores an idempotent dismissal; the saved source, Queue state, and import GUID remain intact. Feed reads and counts exclude dismissals, so refresh and scheduled import cannot restore a skipped entry. A failed request restores the visible entry and reports the failure. Migration `0077_feed_entry_dismissals.sql`, the API/agent contract, and the installed RSS/site-operator guidance describe this separate operation rather than the legacy destructive entry DELETE.
+
+Implementation is isolated on `codex/feeds-design-variations-20260905`. The local PWA shell is v57; migration 0077 and the application deployment remain pending. No production data or deployment was changed. The existing dependency lockfile is retained, with zero vulnerabilities reported by `npm audit` and no package installation.
+
+Verification: 543/543 unit tests, TypeScript, and the production build pass (136.54 KB main JavaScript gzip, 144.23 KB including Preact). `E2E_FOCUS=feeds npm run test:e2e` passes against disposable local Worker/D1 storage, covering more than 50 entries, immediate removal without refetch, persisted counts and reload, idempotence, unchanged source state, failure restoration, remembered selection, search, phone content clearance, and keyboard order. The full E2E run reaches Preferences but stops on its mobile enlarged-text overflow (18px), outside the changed Feeds selectors. Desktop, 632px, and 390px captures were inspected with normal motion; the final reviewer disposition is **ship**, with both reported phone-layout/keyboard fixes scored resolved. Installed Hermes contracts and prompt/memory checks pass.
 
 ## Current truth — 2026-09-05 (all branch histories merged)
 

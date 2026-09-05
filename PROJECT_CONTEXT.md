@@ -48,6 +48,8 @@ Saved sources and books have dedicated item pages with addressable Overview, Fil
 
 ## Frontend contract
 
+Library → Triage → Feeds uses a compact title navigator beside one readable article. Open article is passive and opens the original in a new tab. Skip immediately advances and persists dismissal of the exact feed/source association, with rollback on failure; it never deletes the saved source, teaches dislike, or changes Queue. Retained import GUIDs prevent resurfacing on feed refresh. Publication filtering, search, branch context, Queue actions, and subscription management stay in the same room; reading position survives reload within the browser session.
+
 The shipped client is **Continuum**: a warm editorial knowledge workspace with five root destinations and 12 grouped modes, with subordinate focus filters. The default light system uses paper-like planes, a dark labeled rail, crisp black type, and confident coral actions; the shell retains a 220px rail on wide desktops, a compact 82px rail on smaller laptops, a 58px command bar, a working canvas, and an optional inspector. Home leads with one current lesson turn per active Thread, exposes its passive Original/HTML/PDF/NotebookLM links in place, allows a directly completable lesson to finish with an in-place confirmation/transition to the next turn, and keeps the active Queue source in a quieter contextual rail:
 
 | Root destination | Grouped modes and subordinate focuses                                                                                                                                                       |

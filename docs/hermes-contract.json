@@ -353,6 +353,10 @@
     "verification": "Presentation never substitutes for canonical readback or permits invented success."
   },
   "route_ownership": {
+    "POST /capture/feeds/:id/entries/:recId/dismiss": {
+      "owner": "rss-feed",
+      "permission": "explicit_feed_skip"
+    },
     "GET /agent/capabilities": {
       "owner": "learning-compass-site-operator",
       "permission": "read"

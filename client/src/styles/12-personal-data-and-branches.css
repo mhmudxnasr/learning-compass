@@ -763,40 +763,10 @@
   line-height: 1.45;
 }
 
-.folio-feed-form-row {
-  display: grid;
-  grid-template-columns: minmax(240px, 1.35fr) minmax(220px, 1fr) auto;
-  gap: 10px;
-  align-items: end;
-}
-
-.folio-feed-form-row > input,
-.folio-feed-form-row > select {
-  width: 100%;
-  min-height: 42px;
-  box-sizing: border-box;
-}
-
-.folio-feed-branch-help {
-  margin: 8px 0 0;
-  color: var(--studio-muted);
-  font-size: calc(11.5px * var(--font-scale));
-}
-
-.folio-feed-branch-pill {
-  width: fit-content;
-  max-width: 100%;
-  margin-top: 7px;
-}
-
 @media (max-width: 760px) {
   .data-trust-summary {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .folio-feed-form-row {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 

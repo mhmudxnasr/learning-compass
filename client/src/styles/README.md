@@ -16,5 +16,7 @@ workspace remains discoverable in a reasonably sized file.
   owning rule and verify desktop, mobile, light, dark, and text zoom behavior.
 
 The higher-numbered files contain compatibility and responsive refinements.
+`25-feeds.css` owns the Feeds split reader, subscription disclosure, and their
+responsive behavior; obsolete feed selectors were removed from the older Library modules.
 Reordering imports is a behavior change and requires the full client build and
 E2E suite.

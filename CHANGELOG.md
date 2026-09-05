@@ -8,9 +8,11 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Integrate the selected Feeds reader and bounded Level reads with the deployed material notebooks and retirement controls; advance the combined PWA shell to v59 and retain both feature suites in full release verification.
 - Added explicit atomic retirement of standalone HTML/PDF companion pairs from current study materials, preserving source links, lesson progress, original files, and recovery history.
 - Removed all companion selections from the five requested Systems Thinking Orientation lessons: 25 current pairs and seven older fallbacks, with all original sources and lesson progress preserved.
 - Advanced the PWA shell to v58 for companion retirement while preserving the deployed scoped material notebooks and Preferences layout fixes.
+- Replace the long RSS card list with a compact split reader. Skip removes an article from its feed and advances without reloading, preserves its saved source and learning state, and restores it on request failure. Add durable feed-entry dismissals in migration `0077` and expose the guarded RSS capability.
 
 - Cleared the 210 unrebuilt Riyadh companion slots on explicit request, retiring exactly 420 HTML/PDF artifacts while preserving the 84 redesigned pairs, original sources, lesson progress, and recovery history.
 

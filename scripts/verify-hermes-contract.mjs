@@ -137,6 +137,7 @@ expectedMigrations.push('0073_source_annotation_revisions.sql')
 expectedMigrations.push('0074_lite_visual_corpus_scope_lineage.sql')
 expectedMigrations.push('0075_riyadh_legacy_pair_visibility.sql')
 expectedMigrations.push('0076_retire_unrebuilt_riyadh_companions.sql')
+expectedMigrations.push('0077_feed_entry_dismissals.sql')
 if (
   migrationNames.length !== expectedMigrations.length ||
   expectedMigrations.some((name, index) => migrationNames[index] !== name)

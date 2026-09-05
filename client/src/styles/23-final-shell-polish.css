@@ -2062,9 +2062,7 @@ body {
   box-shadow: none;
 }
 
-.folio-files-ledger,
-.folio-feeds-list,
-.folio-feed-entries-shelf {
+.folio-files-ledger {
   border-color: color-mix(in srgb, var(--studio-seam) 84%, transparent);
   background: color-mix(in srgb, var(--studio-surface) 72%, var(--studio-canvas));
   box-shadow: none;
