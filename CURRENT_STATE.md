@@ -1,5 +1,9 @@
 # Learning Compass — Current State
 
+## Extended local cleanup — 2026-09-05
+
+At Mahmood's explicit request, removed the complete `.tmp/`, `whatsapp-insights-site/` (including its separate Git repository), `node_modules/`, and `dist/` directories. This supersedes the preservation statements in the earlier cleanup entry: the 151 local recovery files, database dump, worktree archives, patches, and release receipts under `.tmp/` are gone. Historical entries referencing `.tmp/` retain their original observations but those local paths are no longer available. Backups outside this checkout were not targeted. All four directories are absent; tracked application sources and dependency manifests remain intact. Run `npm ci` before future local builds, tests, or extraction workflows that depend on this repository's Node packages. Verified the exact deletion scope, directory absence, Markdown formatting, and Git diff; no application tests, rebuild, dependency reinstall, or deployment ran.
+
 ## Local artifact cleanup — 2026-09-05
 
 Removed 302 ignored files (12.68 MiB): the orphaned retired bridge bytecode under `tools/`, old `.playwright-cli/` browser output, `.impeccable/` review artifacts, `test-results/` screenshots, `.codex-tmp/` one-off scripts/caches, and 54 merge-stage code copies under `.tmp/release-20260905/`. All cleanup targets are absent. The remaining 151 `.tmp/` recovery files retain their exact pre-cleanup SHA-256 hashes, including the database export, worktree archives, patches, and release receipts. The separate WhatsApp repository, installed dependencies, and current build remain present. No tracked application file or production state changed; verification used the exact removal inventory, recovery-file hashes, changed-file formatting, and diff checks. No application tests or deployment were needed.
