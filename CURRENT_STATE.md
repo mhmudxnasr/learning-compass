@@ -1,5 +1,20 @@
 # Learning Compass — Current State
 
+## Handoff
+
+- **Start here:** `AGENTS.md` owns the working rules, `PROJECT_CONTEXT.md` the durable product model, and the README contribution map points to source files and focused tests. Read older entries below only when their history is relevant.
+- **Local work:** Ponytail simplification and artifact cleanup are committed. The verified maintenance pass adds checked import boundaries, a portable instruction audit, and clearer onboarding; it removes the fixed client bundle-size cap at Mahmood's request.
+- **Last recorded deployment:** `docs/release-snapshot.json`, observed `2026-09-05T03:41:17.365Z`, records Worker `9145072d-ce6c-4744-b5c2-a16550a09b7d` from `ebaa50d` with PWA shell v61. This is historical release evidence, not a fresh live-health claim. Local maintenance has not been deployed.
+- **Local environment:** lockfile dependencies are restored. The deleted `.tmp/` recovery files and separate WhatsApp repository are absent; historical references to those paths are no longer usable. Generated `dist/` output was removed after the successful verification build. Dependency upgrades retain the holds in `docs/dependencies.md`.
+
+## Repository guidance and architecture checks — 2026-09-05 (local, verified)
+
+Added a shared contribution map and current handoff, ESLint checks for the existing layer boundaries, and `npm run verify:instructions` inside lint. The portable check reuses the Hermes instruction auditor without requiring installed skills. Removed stale mandatory Lite Visual review paperwork, fixed deployment/migration claims in durable guidance, and a forced reply template from the OpenCode adapter. Active repository and installed Worker Ops guidance now report client bundle sizes without a fixed cap. No application behavior, API, schema, or production state changed.
+
+The lint check found maintenance importing scheduled reminder delivery from the HTTP module. Delivery and its shared helpers now live in `src/services/notifications.ts`; maintenance and notification routes use that service. Existing notification security, redaction, and recall projection tests follow the new owner.
+
+Verified: 35 focused tests, `npm run verify:fast` (lint including eight instruction documents, TypeScript, one build), `npm run dead-code`, `npm run verify:hermes`, changed-file formatting, and diff checks. The moved delivery logic compiles identically and HTTP route bodies are unchanged. Dependency audit reports zero vulnerabilities; `npm outdated` retains the nine documented upgrade holds. Vite still reports emitted sizes and its ordinary large-chunk advisory, without an enforced bundle-size cap. No full browser/integration/manager suite or deployment ran; no new dependency was installed.
+
 ## Local dependencies restored — 2026-09-05
 
 At Mahmood's request, `npm ci` restored the lockfile dependencies (278 packages installed, zero audit vulnerabilities). TypeScript checking passes and both dependency manifests are unchanged. The checkout now occupies about 531 MiB, including 451 MiB in `node_modules/`; `.tmp/`, the separate WhatsApp repository, and `dist/` remain absent. This supersedes the dependency-reinstallation requirement below. No build or deployment ran.

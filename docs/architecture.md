@@ -34,6 +34,10 @@ The Worker serves the built client from its Assets binding. The client reaches d
 
 Dependencies point inward: workspace views may use features and the shared API client; API routes may use services and domain helpers. Domain/service code cannot import the client, features cannot own global routing, and Hermes cannot bypass the Worker. A change that crosses one of these boundaries must update both contracts and boundary tests.
 
+`eslint.config.js` rejects relative imports between Worker and client code, UI-library imports in the Worker, service/domain imports of HTTP routes or the composition root, and feature imports of workspaces. These rules cover static imports, re-exports, and literal dynamic imports using the repository's relative-path conventions. `tests/unit/architecture-boundaries.test.ts` exercises both allowed and forbidden directions. `npm run lint` also runs the portable instruction audit to catch broken local references, missing npm commands, and known retired workflow instructions.
+
+Scheduled reminder delivery and shared notification helpers live in `src/services/notifications.ts`. Maintenance calls that service directly; `src/api/notifications.ts` owns the HTTP routes and uses the same delivery helpers.
+
 ## Request and data boundaries
 
 1. The client validates interaction state and sends a typed request through `client/src/api.ts`.

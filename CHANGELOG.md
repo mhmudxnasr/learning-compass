@@ -8,6 +8,10 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Remove the fixed 150 KB client-bundle cap at Mahmood's request; keep size reporting and lazy loading guidance, and synchronize the installed Hermes Worker Ops instructions.
+- Add a shared repository contribution map and current handoff. Check architectural import directions through ESLint and audit active instructions during lint without requiring a local Hermes installation. Correct retired Lite Visual paperwork, a forced reply template, and stale deployment/migration claims so future contributors follow the current contracts.
+- Move scheduled reminder delivery and its shared helpers from the notification routes into a service, removing maintenance's dependency on the HTTP layer while preserving delivery behavior.
+
 - Apply Ponytail's simplification audit: share the identical book/source offline artifact projection, call router normalization directly, and remove unused helpers, aliases, and constants. Preserve active validation, route compatibility, recovery, and learning behavior; cover the shared projection's retained fields and receipt omission.
 
 - Advance the PWA shell to v61 so installed clients receive the Compass logo theme toggle.

@@ -10,7 +10,7 @@ test('every user-facing recall due projection excludes paused and retired cards'
     'src/api/dashboard.ts',
     'src/api/home.ts',
     'src/api/learning-core.ts',
-    'src/api/notifications.ts',
+    'src/services/notifications.ts',
     'src/services/agent-briefing.ts',
   ]
   for (const path of directDueSurfaces) {

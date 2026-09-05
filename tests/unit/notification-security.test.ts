@@ -52,7 +52,7 @@ test('public URL validation rejects IPv4-mapped private IPv6 literals before any
 })
 
 test('web push delivery never follows an endpoint redirect', () => {
-  const source = readFileSync('src/api/notifications.ts', 'utf8')
+  const source = readFileSync('src/services/notifications.ts', 'utf8')
   assert.match(source, /fetch\(endpoint,\s*\{[\s\S]*?method: 'POST',[\s\S]*?redirect: 'manual'/)
   assert.match(source, /Push service redirects are not allowed/)
 })

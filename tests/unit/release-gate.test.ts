@@ -14,7 +14,7 @@ test('the combined release gate is complete and local-only', () => {
   for (const required of [
     "run('Code style and static analysis', 'npm', ['run', 'quality'])",
     "run('Unit tests and TypeScript', 'npm', ['test'])",
-    "run('Production build and bundle budget', 'npm', ['run', 'build'])",
+    "run('Production build', 'npm', ['run', 'build'])",
     "run('Worker-backed responsive, PWA, offline, and public-boundary E2E', 'npm', ['run', 'test:e2e'])",
     "run('Hermes contracts and Telegram prompt budgets', 'npm', ['run', 'verify:hermes'])",
     "run('Fresh and idempotent migration rehearsal', 'npm', ['run', 'verify:migrations'])",

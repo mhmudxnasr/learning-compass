@@ -35,7 +35,7 @@ test.before(async () => {
   captureApp = captureModule.default
   hardcoverApp = hardcoverApiModule.default
   notificationsApp = notificationsModule.default
-  deliverScheduledReminders = notificationsModule.deliverScheduledReminders
+  deliverScheduledReminders = (await vite.ssrLoadModule('/src/services/notifications.ts')).deliverScheduledReminders
   syncHardcoverLibrary = hardcoverServiceModule.syncHardcoverLibrary
   syncFeed = rssModule.syncFeed
 })
@@ -252,12 +252,13 @@ test('Hardcover failures redact provider detail in D1 and API responses', async 
 test('every audited operational boundary calls the shared redactor', () => {
   const index = readFileSync(new URL('../../src/index.ts', import.meta.url), 'utf8')
   const notifications = readFileSync(new URL('../../src/api/notifications.ts', import.meta.url), 'utf8')
+  const delivery = readFileSync(new URL('../../src/services/notifications.ts', import.meta.url), 'utf8')
   const rss = readFileSync(new URL('../../src/services/rss.ts', import.meta.url), 'utf8')
   const capture = readFileSync(new URL('../../src/api/capture.ts', import.meta.url), 'utf8')
   const hardcoverService = readFileSync(new URL('../../src/services/hardcover.ts', import.meta.url), 'utf8')
   const hardcoverApi = readFileSync(new URL('../../src/api/hardcover.ts', import.meta.url), 'utf8')
   assert.match(index, /const failure = safeErrorMessage\(error\)/)
-  assert.equal(notifications.match(/deliveryFailure\(err,/g)?.length, 4)
+  assert.equal((notifications + delivery).match(/deliveryFailure\(err,/g)?.length, 4)
   for (const source of [rss, capture, hardcoverService, hardcoverApi])
     assert.match(source, /redactSensitiveText\(error,/)
   assert.doesNotMatch(rss, /error instanceof Error \? error\.message/)

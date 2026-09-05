@@ -9,10 +9,10 @@ This is a project adapter, not a second source of workflow truth.
 
 ## Start
 
-1. Read `/home/mahmud/recommendations-worker/AGENTS.md`, `PROJECT_CONTEXT.md`, `CURRENT_STATE.md`, and the directly relevant source files.
-2. Read `/home/mahmud/.hermes/skills/workflow/learning-compass-operating-system/SKILL.md` and let it select one focused owner.
-3. For live site operations, read `/home/mahmud/.hermes/skills/workflow/learning-compass-site-operator/SKILL.md`.
-4. Discover the exact operation from `GET /agent/capabilities`; never infer a mutation route from this adapter.
+1. From the current checkout, read `AGENTS.md`, `PROJECT_CONTEXT.md`, the `Handoff` section of `CURRENT_STATE.md`, and directly relevant source files.
+2. For repository code or documentation, use the contribution map and focused checks in `README.md`. An installed Hermes runtime is not required for this work.
+3. For live site operations, read `/home/mahmud/.hermes/skills/workflow/learning-compass-operating-system/SKILL.md` and `/home/mahmud/.hermes/skills/workflow/learning-compass-site-operator/SKILL.md`.
+4. Discover the exact live operation from `GET /agent/capabilities`; never infer a mutation route from this adapter.
 
 ## Contract
 
@@ -26,6 +26,4 @@ This is a project adapter, not a second source of workflow truth.
 
 When the request concerns Threads, levels, lessons, projects, sources, progression, or evidence, load the project skill `learning-thread-authoring` before acting.
 
-Return the compact receipt:
-
-`intent → target → before → mutation/job → after → evidence → blocker`
+Keep target identities, mutation/readback evidence, and blockers in the operation receipt. Explain the verified outcome naturally; include identifiers when they help inspection.

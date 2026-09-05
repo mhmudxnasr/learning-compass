@@ -4,10 +4,12 @@ This is Mahmood's private, single-user learning operating system. Work autonomou
 
 ## Start Every Task
 
-1. Read `PROJECT_CONTEXT.md`, `CURRENT_STATE.md`, and the files directly relevant to the task.
+1. Read `PROJECT_CONTEXT.md`, the `Handoff` section of `CURRENT_STATE.md`, and the files directly relevant to the task. Older state entries are history; load them only for a related investigation.
 2. Run `git status --short`. Existing changes belong to the user; never discard or rewrite unrelated work.
 3. Inspect before editing. Prefer `rg`/`rg --files`; use `apply_patch` for manual edits.
 4. Implement the smallest complete change. Do not create speculative abstractions or placeholder routes.
+
+Use the contribution map in `README.md` to find the owning module and focused tests. These checked-in instructions apply to every coding model; optional personal skills and the installed Hermes runtime are not prerequisites for repository work. Product invariants live in `PROJECT_CONTEXT.md`, HTTP contracts in `docs/API.md`, ownership in `docs/architecture.md`, and observed operational state in `CURRENT_STATE.md` and `docs/release-snapshot.json`. Recheck live state when a task depends on it. Correct conflicting guidance at its owner instead of adding another override.
 
 ## Product Invariants
 
@@ -148,7 +150,7 @@ Hermes remains responsible for routing, canonical prose, Worker API execution, d
 
 Use the smallest verification set that covers the change:
 
-- Documentation/instructions: changed-file formatting and `git diff --check`; Hermes contract checks only when its instructions or tools change. No application deployment.
+- Documentation/instructions: `npm run verify:instructions`, changed-file formatting, and `git diff --check`; Hermes contract checks only when its instructions or tools change. No application deployment.
 - Small code fix: affected test files and typecheck; build when client output changes. Do not run unrelated suites.
 - Normal application deployment: `npm run deploy` owns lint, typecheck, one build, pre/post readiness, budget, and short live smoke checks. If those exact inputs already passed locally, use the documented Wrangler command plus live checks without repeating the gate.
 - Schema migrations, security/storage boundaries, broad refactors, or explicit full verification: `npm run verify:release` (or `npm run deploy -- --full`) and relevant recovery prerequisites.
@@ -159,7 +161,7 @@ Use the smallest verification set that covers the change:
 
 - Avoid broad file reads, parallel dev servers, repeated full builds, and unbounded watchers.
 - E2E owns its Wrangler/Workerd/Playwright lifecycle. Confirm no processes remain after interrupted tests.
-- Keep the base client bundle at or below 150 KB gzip, excluding lazy graph/vendor chunks.
+- Report client bundle sizes when relevant; there is no fixed bundle-size cap.
 - Lazy-load heavy graph and analytics libraries. Avoid effects that refetch or rerender indefinitely.
 - Never deploy for D1/R2 data-only writes.
 - Deploy code only from this directory with:

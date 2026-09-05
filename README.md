@@ -1,5 +1,7 @@
 # Learning Compass
 
+For repository work, start with [AGENTS.md](AGENTS.md), the durable [project context](PROJECT_CONTEXT.md), and the [current handoff](CURRENT_STATE.md#handoff). Use the [contribution map](#contribution-map) below to select source files and tests. The codebase uses the same checked-in guidance for every model.
+
 Threads is the main study workspace: plan a question, author its Levels and lessons, continue the exact next lesson, organize source material, and keep a notebook and optional synthesis. Its study desk preserves search and sorting, exposes priority and material gaps, and gives lessons a searchable curriculum navigator and focus mode. New Threads begin in Planning; creation does not generate a curriculum automatically.
 
 Learn opens Threads. Compact lessons begin with the current lesson and a collapsed curriculum control. Notes uses one reading column with optional contents and study tools; English claims and Arabic explanations retain their original order and direction, while extraction receipts remain under provenance. Books places the next chapter before source diagnostics and provides jumps to My Books and Canon. Search remembers the last eight items opened from its results locally, with an explicit clear action. Atlas offers domain selection and keeps domain labels legible at overview zoom.
@@ -12,12 +14,12 @@ Consumption normally happens at the real source. A verified Lite Visual companio
 
 ```text
 capture → curate → consume externally → reflect → extract notes
-        → approve recall cards → review → update map → resurface
+        → author recall cards → review → update map → resurface
 ```
 
 1. **Capture:** Global Add anything turns URLs, text, PDFs, HTML, videos, Telegram shares, and RSS/Atom entries into ordinary source records, or logs typed personal media with its own status and progress outside Queue.
 2. **Commit:** an item can be archived, excluded, or promoted to the active Queue. The Queue normally holds no more than five items.
-3. **Consume:** opening an item starts or resumes a learning session, then hands off to the original source.
+3. **Consume:** explicit Start/Resume in Queue tracks a learning session and opens the selected source or companion. Opening a saved item elsewhere is passive.
 4. **Return:** the user records a five-part reflection and may complete and rate the session in the same action.
 5. **Process:** structured notes are stored in D1. Large source files and generated reading companions live in R2.
 6. **Review:** explicit `retain`/`apply` may create a separate source-shaped note and anchored Learning Units. Automated flash-card generation is disabled; every new recall card requires an explicit learner-authored Arabic question and answer. Repeatedly lapsed or paused cards remain repairable through wording-preserving, semantic-reset, pause/retire/restore, and explicit schedule-reset actions without deleting review history.
@@ -111,7 +113,19 @@ AGENTS.md                     coding and AI-maintenance contract
 CHANGELOG.md                  user-visible, architecture, and dependency history
 ```
 
-Start with [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for the durable product model, [docs/architecture.md](docs/architecture.md) for ownership boundaries, and [CURRENT_STATE.md](CURRENT_STATE.md) for verified operational reality. Read [AGENTS.md](AGENTS.md) before changing code and record material changes in [CHANGELOG.md](CHANGELOG.md).
+### Contribution map
+
+Read the owning files and their nearby tests before editing. These are starting points; follow the affected call path when a change crosses layers.
+
+| Change                            | Start here                                                                                            | Focused checks                                                                                                                 |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Capture and Queue rules           | `src/api/capture.ts`, `src/services/`, `src/domain.ts`                                                | `tests/unit/capture-inbox-contract.test.ts`, `tests/unit/domain.test.ts`                                                       |
+| Threads and lesson progression    | `src/api/learning-core.ts`, `src/services/learning-core.ts`, `client/src/workspaces/learn/`           | `tests/unit/learning-auto-advance.test.ts`, `tests/unit/thread-lesson-navigation.test.ts`                                      |
+| Books and offline packs           | `client/src/workspaces/library/`, `client/src/offlinePacks.ts`                                        | `tests/unit/book-model.test.ts`, `tests/unit/offline-packs.test.ts`                                                            |
+| Navigation and appearance         | `client/src/app/router.ts`, `client/src/shell/`, `client/src/theme.ts`, `client/src/styles/README.md` | `tests/unit/routes.test.ts`, `tests/unit/settings-appearance.test.ts`; relevant responsive E2E for UI changes                  |
+| Repository rules and verification | `AGENTS.md`, `eslint.config.js`, `scripts/verify-instructions.mjs`                                    | `tests/unit/architecture-boundaries.test.ts`, `tests/unit/hermes-instruction-audit.test.ts`, `tests/unit/release-gate.test.ts` |
+
+`PROJECT_CONTEXT.md` owns durable product facts; [architecture](docs/architecture.md) and [API](docs/API.md) docs own their respective contracts. The [current handoff](CURRENT_STATE.md#handoff) distinguishes local work from the last recorded deployment. Older state entries are historical evidence. Correct the owning document when a rule changes, and record material changes in `CHANGELOG.md`.
 
 ## Run locally
 
@@ -119,7 +133,7 @@ Start with [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for the durable product mode
 
 - Node.js 22
 - npm
-- A Chromium browser installed through Playwright for E2E and Hermes Lite Visual PDF rendering
+- A Chromium browser installed through Playwright only for browser tests or Lite Visual PDF rendering
 - A Cloudflare account only when applying remote migrations or deploying
 
 ### Install
@@ -128,8 +142,9 @@ Start with [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for the durable product mode
 git clone https://github.com/mhmudxnasr/learning-compass.git
 cd learning-compass
 npm ci
-npx playwright install --with-deps chromium
 ```
+
+Install the browser with `npx playwright install --with-deps chromium` when needed. Ordinary code and documentation work does not require the installed Hermes environment. `npm run test:unit:portable` excludes tests that require Mahmood's local extraction tools; `npm run verify:hermes` and the full release gate check that installed integration separately.
 
 ### Create the local database
 
@@ -179,19 +194,21 @@ The checked-in development commands retain their loopback-only write-rate-limit 
 
 ## Commands
 
-| Command                     | Purpose                                                                                                                                |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`               | Run the Vite client only                                                                                                               |
-| `npm run dev:worker`        | Apply the base schema and local migrations, build the client, and run the complete Worker locally                                      |
-| `npm run quality`           | Run ESLint, dead-code and dependency analysis, and formatting checks                                                                   |
-| `npm test`                  | Run all unit tests and TypeScript checks                                                                                               |
-| `npm run test:integration`  | Run the standalone Worker and D1 integration scenarios sequentially                                                                    |
-| `npm run build`             | Create the production client bundle                                                                                                    |
-| `npm run test:e2e`          | Create a fresh temporary D1 database and test all root destinations, grouped modes, and responsive shell behavior in Chromium          |
-| `npm run verify:release`    | Run the optional full local gate for broad/high-risk changes, including installed Hermes contracts; it does not deploy                 |
-| `npm run verify:manager`    | Run preserved manager fixtures against native Hermes and require a complete passing test report                                        |
-| `npm run backup:production` | Export remote D1 and every canonical R2 object, verify checksums, and rehearse a local restore before migrations or risky data changes |
-| `npm run deploy`            | Run fast checks, deploy with the repository Wrangler config, and verify live readiness/smoke; add `-- --full` for the full gate        |
+| Command                       | Purpose                                                                                                                                |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                 | Run the Vite client only                                                                                                               |
+| `npm run dev:worker`          | Apply the base schema and local migrations, build the client, and run the complete Worker locally                                      |
+| `npm run quality`             | Run ESLint, dead-code and dependency analysis, and formatting checks                                                                   |
+| `npm run verify:instructions` | Check repository instruction links, npm commands, and known retired rules without an installed Hermes runtime                          |
+| `npm run verify:fast`         | Run lint (including instruction checks), TypeScript checks, and one production build                                                   |
+| `npm test`                    | Run all unit tests and TypeScript checks                                                                                               |
+| `npm run test:integration`    | Run the standalone Worker and D1 integration scenarios sequentially                                                                    |
+| `npm run build`               | Create the production client bundle                                                                                                    |
+| `npm run test:e2e`            | Create a fresh temporary D1 database and test all root destinations, grouped modes, and responsive shell behavior in Chromium          |
+| `npm run verify:release`      | Run the optional full local gate for broad/high-risk changes, including installed Hermes contracts; it does not deploy                 |
+| `npm run verify:manager`      | Run preserved manager fixtures against native Hermes and require a complete passing test report                                        |
+| `npm run backup:production`   | Export remote D1 and every canonical R2 object, verify checksums, and rehearse a local restore before migrations or risky data changes |
+| `npm run deploy`              | Run fast checks, deploy with the repository Wrangler config, and verify live readiness/smoke; add `-- --full` for the full gate        |
 
 The E2E runner owns its temporary database, Wrangler process, browser, and cleanup. A local test pass therefore does not depend on an old `.wrangler` database.
 
@@ -242,7 +259,7 @@ Agent access must remain allow-listed through `/agent/capabilities`, `/agent/ope
 
 ### 5. Add or change a destination
 
-`client/src/app/router.ts` is the route source of truth for the Botanical Folio five-root shell. Every registered view needs:
+`client/src/app/router.ts` is the route source of truth for the Continuum five-root shell. Every registered view needs:
 
 - a real purpose;
 - loading, empty, populated, and error states;
@@ -250,19 +267,17 @@ Agent access must remain allow-listed through `/agent/capabilities`, `/agent/ope
 - mobile behavior;
 - an E2E assertion.
 
-Keep graph and analytics libraries lazy-loaded. The base client bundle must remain at or below 150 KB gzip, excluding lazy graph/vendor chunks.
+Keep graph and analytics libraries lazy-loaded. Inspect emitted bundle sizes when changing dependencies or loading behavior; there is no fixed bundle-size cap.
 
-### 6. Verify the full change
+### 6. Verify the affected behavior
 
 ```bash
-npm run quality
-npm test
-npm run build
-npm run test:e2e
+node --test tests/unit/routes.test.ts  # Example: choose the affected test files.
+npm run verify:fast
 git diff --check
 ```
 
-Choose checks by the changed surface; the commands above are available tools, not a mandatory sequence. Routine releases use `npm run verify:fast` plus affected tests. Reserve the full set for high-risk changes or explicit requests, and do not repeat checks for unchanged inputs. Never claim a skipped check passed.
+Routine releases use `npm run verify:fast` plus affected tests. Documentation-only work needs changed-file formatting, `npm run verify:instructions`, and a diff check. Run `npm run verify:hermes` when installed Hermes contracts or instructions change. Reserve `npm run verify:release` for high-risk changes or explicit full verification, and do not repeat passed checks for unchanged inputs. Never claim a skipped check passed.
 
 For Notes, Books section jumps, recent search, and Atlas domain controls, `E2E_FOCUS=reading npm run test:e2e` runs the focused browser checks against a disposable local database and saves responsive screenshots under `test-results/reading-refinements/`.
 
@@ -347,7 +362,7 @@ python3 /home/mahmud/.hermes/skills/lite-visual/scripts/extract_source.py '<URL-
 
 Hermes Lite Visual runs locally from its native skill. Read its Arabic teaching/design guides, write the complete canonical article, and run `scripts/run_workflow.py finish` to render and seal local HTML/PDF. Mandatory editorial passes, fine-scope review forms, forced source duplication, and exhaustive artifact quality checks are removed. The new signed `lite-visual-integrity/v1` receipt explicitly says quality checks were not run. `publish` requires the updated Worker `/artifacts/pair-contract`, then retains atomic publication and exact readback. Historical v6 pairs remain compatible. No source is regenerated by installing this update.
 
-Normal releases use `npm run deploy`: lint, typecheck, one build, pre/post readiness, budget, and short live smoke checks. `npm run verify:fast` runs just the local gate. Run affected regression tests once; documentation-only commits need formatting and a diff check, with no deployment. Full verification is opt-in through `npm run verify:release` or `npm run deploy -- --full`, and required for schema/security/storage changes or broad refactors. Use the relevant sections of the [release checklist](docs/release-checklist.md). Complete D1-plus-R2 backups and restore rehearsals are required before migrations or risky data changes, not ordinary application-only deployment. Preserve exact migration parity and corpus guards; never replay applied migrations. CI defaults to fast checks, skips Markdown-only changes, cancels superseded runs, and offers portable unit/browser tests through its manual `full` input. Do not wait for CI by default or repeat a passing gate for unchanged inputs.
+Normal releases use `npm run deploy`: lint, typecheck, one build, pre/post readiness, budget, and short live smoke checks. `npm run verify:fast` runs just the local gate. Run affected regression tests once; documentation-only commits need `npm run verify:instructions`, formatting, and a diff check, with no deployment. Full verification is opt-in through `npm run verify:release` or `npm run deploy -- --full`, and required for schema/security/storage changes or broad refactors. Use the relevant sections of the [release checklist](docs/release-checklist.md). Complete D1-plus-R2 backups and restore rehearsals are required before migrations or risky data changes, not ordinary application-only deployment. Preserve exact migration parity and corpus guards; never replay applied migrations. CI defaults to fast checks, skips Markdown-only changes, cancels superseded runs, and offers portable unit/browser tests through its manual `full` input. Do not wait for CI by default or repeat a passing gate for unchanged inputs.
 
 ```bash
 npx wrangler deploy --config wrangler.toml

@@ -1,4 +1,4 @@
-import { deliverScheduledReminders } from '../api/notifications'
+import { deliverScheduledReminders } from './notifications'
 import type { Bindings } from '../lib'
 import { syncAllFeeds } from './rss'
 import { backfillResurfacing } from './resurfacing'

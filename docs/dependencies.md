@@ -30,7 +30,7 @@ The 2026-09-05 Threads redesign uses the existing lockfile and adds no dependenc
 
 TypeScript is held on the current 6.x line because the installed `typescript-eslint` release declares support through TypeScript 6.x, not 7.x. Upgrade TypeScript 7 only after the lint toolchain declares compatible peer support and the complete typecheck, unit, build, and E2E gates pass. This is a compatibility hold, not an invitation to ignore other updates.
 
-Vite 8 uses Rolldown configuration under `build.rolldownOptions`. Do not restore the removed Rollup object-form `manualChunks` configuration; use the function form in `vite.config.ts` and verify the base bundle budget after upgrades.
+Vite 8 uses Rolldown configuration under `build.rolldownOptions`. Do not restore the removed Rollup object-form `manualChunks` configuration; use the function form in `vite.config.ts` and inspect emitted bundle sizes after upgrades.
 
 ## Install-script policy
 
@@ -41,7 +41,7 @@ npm dependency lifecycle scripts are denied unless explicitly listed in `package
 1. Run `npm outdated` and `npm audit` and read the upstream migration notes for major updates.
 2. Upgrade the smallest related package group and review the lockfile for unexpected packages or new lifecycle scripts.
 3. Run `npm run quality`, `npm test`, `npm run build`, and `npm run test:e2e`.
-4. For Worker or Wrangler changes, run migration rehearsal and the release gate. For UI build changes, inspect the emitted gzip sizes and preserve the 150 KB base-client limit.
+4. For Worker or Wrangler changes, run migration rehearsal and the release gate. For UI build changes, inspect the emitted gzip sizes; there is no fixed bundle-size cap.
 5. Update this file for a new hold or ownership exception and add the reason to `CHANGELOG.md`.
 
 Remove packages as soon as their last real consumer is removed. `npm run dead-code` is the checked-in reachability gate for unused files, dependencies, and unlisted imports.

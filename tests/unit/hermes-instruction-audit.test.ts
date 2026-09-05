@@ -99,6 +99,7 @@ test('natural prose may report exact facts without requiring a literal response 
   for (const instruction of [
     'Its final receipt prints literal item.id.',
     'Recommendation results print the literal source ID.',
+    'Return the compact receipt:',
   ])
     assert.equal(audit(instruction)[0].code, 'forced-response-template')
   assert.equal(
@@ -133,4 +134,30 @@ test('project routing cannot restrict Hermes to the retired adapter surface', (t
     'retired-adapter-surface',
   )
   assert.deepEqual(audit('Prefer native `compass_read`, `compass_capabilities`, and `compass_mutate`.'), [])
+})
+
+test('project guides reject retired mandatory authoring steps and frozen deployment claims', (t) => {
+  const { repoRoot, skillsRoot } = fixture(t)
+  const audit = (text: string) =>
+    auditInstructions({
+      repoRoot,
+      skillsRoot,
+      packageScripts: {},
+      documents: [{ path: join(repoRoot, '.hermes.md'), text }],
+    })
+  assert.equal(
+    audit('`source-scope.json` must partition every normalized word.')[0].code,
+    'retired-lite-visual-workflow',
+  )
+  assert.equal(audit('The deterministic v6 gate checks every source scope.')[0].code, 'retired-lite-visual-workflow')
+  assert.equal(
+    audit('The current deployment is `2fff478d-e866-476c-a7bc-ca6142ef1c0f`.')[0].code,
+    'frozen-deployment-state',
+  )
+  assert.deepEqual(
+    audit(
+      'Use direct authoring and integrity-only receipts. Historical v6 receipts retain their original meaning. Read CURRENT_STATE.md for dated deployment evidence.',
+    ),
+    [],
+  )
 })
