@@ -414,6 +414,9 @@ try {
              ('bounded-c','bounded-thread','bounded-level','Future',2,'not_started',NULL);
     INSERT INTO thread_lesson_sources (lesson_id,recommendation_id,role,position)
       VALUES ('bounded-b','${captured.body.id}','primary',0);
+    INSERT INTO artifacts (id,filename,media_type,r2_key,metadata_json)
+      VALUES ('bounded-receipt','evidence.html','text/html','bounded/evidence',
+        json_object('recommendation_id','${captured.body.id}','provider_receipt',hex(zeroblob(600000))));
   `
     .split(';')
     .filter((statement) => statement.trim())) {

@@ -96,6 +96,11 @@ test('frozen migration claims fail while conditional ledger instructions and sch
 
 test('natural prose may report exact facts without requiring a literal response template', (t) => {
   const { audit } = fixture(t)
+  for (const instruction of [
+    'Its final receipt prints literal item.id.',
+    'Recommendation results print the literal source ID.',
+  ])
+    assert.equal(audit(instruction)[0].code, 'forced-response-template')
   assert.equal(
     audit('Return the canonical receipt `intent → target → before → mutation/job → after → evidence → blocker`.')[0]
       .code,
@@ -119,4 +124,13 @@ test('referenced instructions are audited as well as the entry point', (t) => {
   const issues = auditInstructions({ repoRoot, skillsRoot, packageScripts: {}, documents })
   assert.equal(issues.length, 1)
   assert.equal(issues[0].path, join(skillRoot, 'references/detail.md'))
+})
+
+test('project routing cannot restrict Hermes to the retired adapter surface', (t) => {
+  const { audit } = fixture(t)
+  assert.equal(
+    audit('The Worker adapter may expose only `list_capabilities` and `site_request`.')[0].code,
+    'retired-adapter-surface',
+  )
+  assert.deepEqual(audit('Prefer native `compass_read`, `compass_capabilities`, and `compass_mutate`.'), [])
 })

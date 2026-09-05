@@ -99,7 +99,7 @@ export function auditInstructions({ documents, repoRoot, skillsRoot, packageScri
         )
       }
       if (
-        /\b(?:say exactly|quote .{0,50}label.{0,12}exactly|final (?:line|response).{0,80}(?:must print|prints)|Return (?:the canonical|one compact) receipt|Return the receipt:|Report: `intent|Return `intent)/i.test(
+        /\b(?:say exactly|quote .{0,50}label.{0,12}exactly|final (?:line|response|receipt).{0,80}(?:must print|prints)|Recommendation results print the literal|Return (?:the canonical|one compact) receipt|Return the receipt:|Report: `intent|Return `intent)/i.test(
           line,
         )
       ) {
@@ -108,6 +108,9 @@ export function auditInstructions({ documents, repoRoot, skillsRoot, packageScri
           'forced-response-template',
           'Keep exact evidence in the operation receipt; allow natural user-facing wording.',
         )
+      }
+      if (/Worker adapter may expose only `list_capabilities` and `site_request`/.test(line)) {
+        add(number, 'retired-adapter-surface', 'Use the installed native Compass tools and shared site client.')
       }
     }
   }

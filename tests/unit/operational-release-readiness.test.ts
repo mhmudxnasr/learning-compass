@@ -39,7 +39,7 @@ const environment = (
     ...overrides,
   }) as any
 
-test('release readiness requires migrations 0068–0074 schema, production bindings, and signing key', async () => {
+test('release readiness requires current schema, production bindings, and signing key', async () => {
   const healthy = await loadReleaseContractHealth(environment())
   assert.equal(healthy.ok, true)
   assert.deepEqual(healthy.schema.missing, [])
@@ -60,6 +60,11 @@ test('release readiness requires migrations 0068–0074 schema, production bindi
   assert.deepEqual(missing.schema.missing_columns, ['source_annotations.revision_of_annotation_id'])
   assert.equal(missing.bindings.ai, false)
   assert.equal(missing.signing_secret_configured, false)
+  const missingFeedDismissals = await loadReleaseContractHealth(
+    environment(releaseSchema.filter((name) => name !== 'feed_entry_dismissals')),
+  )
+  assert.equal(missingFeedDismissals.ok, false)
+  assert.deepEqual(missingFeedDismissals.schema.missing, ['feed_entry_dismissals'])
 })
 
 test('release migration and recovery scripts fail closed on omitted evidence', () => {

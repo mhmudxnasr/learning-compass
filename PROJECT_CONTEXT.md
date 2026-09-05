@@ -2,6 +2,8 @@
 
 ## Native Hermes tools
 
+Level status/primary-source work uses the paginated metadata-only path before hydration, retaining the 1 MiB client cap. Native Compass reads, capabilities, and guarded mutations share the first-party client ledger. Ambiguous Lite Visual uploads reconcile exact canonical pair/receipt hashes without automatically repeating the POST; unresolved readback remains explicit. Operational evidence retains exact identities while user-facing replies remain natural.
+
 The default-profile `compass-native` plugin wraps the first-party site client, canonical source extractor, PDF evidence extraction, and NotebookLM CLI. Exa is an optional discovery tool; existing default search remains unchanged. This supersedes older statements that Compass has no local model-tool schema. Worker endpoints, mutation guards, canonical storage, and specialist ownership are unchanged. No MCP service or separate Compass profile is added. Details and verification are in `integrations/hermes-compass/README.md`.
 
 ## Purpose

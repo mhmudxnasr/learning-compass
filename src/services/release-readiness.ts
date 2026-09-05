@@ -30,6 +30,7 @@ export const REQUIRED_RELEASE_SCHEMA = [
   'share_intakes',
   'idx_share_intakes_pending',
   'idx_source_annotations_revision',
+  'feed_entry_dismissals',
 ] as const
 
 export const REQUIRED_RELEASE_COLUMNS = {

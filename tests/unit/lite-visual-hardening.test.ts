@@ -104,3 +104,73 @@ test('workflow runner reuses an unchanged passing pair instead of rerendering a 
   assert.equal(result.status, 0, result.stderr)
   assert.equal(result.stdout.trim(), 'passed\nNone')
 })
+
+test('atomic publisher reconciles ambiguous writes without repeating the POST or trusting mismatched files', () => {
+  const result = spawnSync(
+    'python3',
+    [
+      '-c',
+      `
+import contextlib, importlib.util, io, json, pathlib, tempfile, types, urllib.error
+path = pathlib.Path.home()/'.hermes/skills/lite-visual/scripts/upload_pair.py'
+spec = importlib.util.spec_from_file_location('uploader_recovery_test', path)
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+with tempfile.TemporaryDirectory() as tmp:
+    receipt_file = pathlib.Path(tmp)/'receipt.json'; receipt_file.write_text('{}')
+    receipt = {key: str(index)*64 for index,key in enumerate(u.PAIR_HASH_FIELDS)}
+    args = types.SimpleNamespace(worker='https://worker.example', recommendation_id='source',
+        source_url='https://source.example', source_title='Source', corpus_id=None, chapter_key=None,
+        pair_id='lv-source', supersedes_pair_id=None, receipt=receipt_file, html=receipt_file,
+        pdf=receipt_file, revision=None, chapter_title=None, chapter_number=None)
+    u.parse_args=lambda argv:args
+    u.validate_inputs=lambda args:receipt
+    u.preflight_target=lambda args:None
+    original_request=u.request_json
+    for mode in ['committed500','committedTimeout','absent','readFailure','mismatch','validation400']:
+        calls=[]
+        def request(req):
+            calls.append((req.get_method(),req.full_url))
+            if req.get_method()=='POST':
+                raise u.UploadError('timeout' if mode=='committedTimeout' else 'HTTP 500' if mode!='validation400' else 'HTTP 400', ambiguous=mode!='validation400')
+            if mode=='absent': raise u.UploadError('HTTP 404')
+            if mode=='readFailure': raise u.UploadError('HTTP 503',ambiguous=True)
+            if '/pairs/' in req.full_url:
+                return 200,{'pair':{'id':'lv-source','recommendation_id':'source','html_artifact_id':'h',
+                    'pdf_artifact_id':'p','complete':True,'retired':False,'corpus_id':None}}
+            if '/artifacts/' in req.full_url:
+                aid=req.full_url.split('/')[-2]
+                metadata={'pair_id':'lv-source','recommendation_id':'source','role':'html' if aid=='h' else 'pdf',
+                    'publication_state':'ready','validation_receipt':receipt,
+                    'html_sha256':receipt['html_sha256'],'pdf_sha256':receipt['pdf_sha256'],
+                    'validation_receipt_sha256':u.file_hash(receipt_file)}
+                if mode=='mismatch': metadata['pdf_sha256']='wrong'
+                return 200,{'artifact':{'id':aid,'metadata':metadata}}
+            return 200,{'companion':{'status':'ready','pair_id':'lv-source','primary':{'id':'h'},'secondary':{'id':'p'}}}
+        u.request_json=request
+        out=io.StringIO()
+        with contextlib.redirect_stdout(out): status=u.main([])
+        body=json.loads(out.getvalue())
+        assert sum(method=='POST' for method,_ in calls)==1,(mode,calls)
+        if mode.startswith('committed'):
+            assert status==0 and body['ok'] and body['recovered_after_ambiguous_write'],body
+        else:
+            assert status==1 and not body['ok'],body
+            if mode=='validation400': assert len(calls)==1,calls
+            else: assert body['mutation_outcome_unknown'] and body['retry'] is False,body
+    # Real HTTP classification must preserve the request ID and distinguish 4xx from 5xx.
+    for code in (400,500):
+        def fail(req,timeout):
+            raise urllib.error.HTTPError(req.full_url,code,'failure',{},io.BytesIO(b'{"request_id":"trace-id"}'))
+        u.urllib.request.urlopen=fail
+        try: original_request(u.urllib.request.Request('https://worker.example/pairs',data=b'x'))
+        except u.UploadError as exc:
+            assert exc.ambiguous is (code>=500) and 'trace-id' in str(exc)
+        else: raise AssertionError('missing HTTP error')
+print('publication recovery scenarios passed')
+`,
+    ],
+    { encoding: 'utf8' },
+  )
+  assert.equal(result.status, 0, result.stderr || result.stdout)
+  assert.match(result.stdout, /publication recovery scenarios passed/)
+})

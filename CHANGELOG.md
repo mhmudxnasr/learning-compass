@@ -8,6 +8,7 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Synchronize Hermes routing with native Compass tools and bounded Level reads; reject retired adapter and forced reply instructions. Reconcile ambiguous Lite Visual uploads by exact pair/receipt readback without repeating writes, and cover oversized bodies/receipts plus HTTP 500 recovery in regression tests.
 - Integrate the selected Feeds reader and bounded Level reads with the deployed material notebooks and retirement controls; advance the combined PWA shell to v59 and retain both feature suites in full release verification.
 - Added explicit atomic retirement of standalone HTML/PDF companion pairs from current study materials, preserving source links, lesson progress, original files, and recovery history.
 - Removed all companion selections from the five requested Systems Thinking Orientation lessons: 25 current pairs and seven older fallbacks, with all original sources and lesson progress preserved.

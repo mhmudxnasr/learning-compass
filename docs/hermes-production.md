@@ -99,6 +99,8 @@ The Worker fingerprints method, path, and body under each mutation key. Reusing 
 
 ## Failure and retry matrix
 
+Lite Visual multipart publication uses its dedicated uploader. An HTTP 5xx, timeout, or malformed upload response triggers canonical pair readback without a second POST. Recovery requires the exact target, pair, artifact hashes, receipt/chapter binding, and ready source (or exact staged corpus job/run). Missing, unavailable, or mismatched readback remains an unresolved outcome with the original request ID, never automatic retry permission. The 1 MiB site-client response cap remains intact; Level status work uses the paginated metadata-only Thread path and follows all pages.
+
 | Evidence                                      | Meaning                                                               | Action                                                                                                                  |
 | --------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `2xx` plus matching readback                  | Verified success                                                      | Report completion                                                                                                       |
