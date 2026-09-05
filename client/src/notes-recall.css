@@ -472,8 +472,14 @@
 }
 .note-editor-section > div {
   display: grid;
-  grid-template-columns: 1fr 90px;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 1fr);
   gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .note-editor-section > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .recall-workspace {
@@ -525,6 +531,16 @@
   align-items: end;
   gap: 8px;
 }
+.recall-filter-disclosure > summary {
+  min-height: 44px;
+  display: list-item;
+  padding-block: 12px;
+  color: var(--studio-secondary);
+  cursor: pointer;
+}
+.recall-filter-disclosure[open] .recall-filters {
+  padding-top: 8px;
+}
 .recall-filters > label {
   display: grid;
   gap: 4px;
@@ -551,44 +567,13 @@
   max-width: none;
   display: grid;
   gap: 0;
-  margin: clamp(18px, 3vw, 32px) auto 0;
+  margin: 0 auto;
   padding: 0;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--studio-cypress) 18%, var(--studio-seam));
   border-radius: calc(var(--studio-radius-panel) + 5px);
   background: var(--studio-surface);
   box-shadow: 0 24px 64px color-mix(in srgb, var(--studio-ink) 9%, transparent);
-}
-.recall-review-progress {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 46px;
-  padding: 0 clamp(20px, 4vw, 38px);
-  border-bottom: 1px solid color-mix(in srgb, var(--studio-cypress) 18%, var(--studio-seam));
-  background: color-mix(in srgb, var(--studio-cypress) 6%, var(--studio-surface));
-  color: var(--studio-secondary);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-}
-.recall-review-progress > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.recall-review-progress > span:first-child {
-  color: var(--studio-cypress-text);
-  font-weight: 700;
-}
-.recall-review-progress .icon {
-  flex: 0 0 auto;
-}
-.recall-review-progress strong {
-  color: var(--studio-ink);
-  font-size: 12px;
 }
 .recall-review-card > header {
   display: flex;
@@ -601,8 +586,10 @@
 }
 .recall-card-schedule {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 9px;
+  padding: 0 clamp(20px, 4vw, 38px) 20px;
   flex: 0 0 auto;
   color: var(--studio-muted);
   font-family: var(--font-mono);
@@ -890,11 +877,16 @@
   }
   .recall-view-switcher {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     width: 100%;
   }
   .recall-view-switcher button {
     justify-content: center;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 4px;
+    min-width: 0;
+    white-space: normal;
   }
   .recall-filters .recall-search {
     min-width: 0;
@@ -908,7 +900,7 @@
     justify-content: flex-start;
   }
   .recall-prompt {
-    padding: 40px 20px 30px;
+    padding: 24px 20px 20px;
   }
   .recall-review-action {
     padding: 0 20px 36px;

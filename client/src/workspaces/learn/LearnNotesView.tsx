@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'preact/hooks'
+import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { useData } from '../../app/useData'
 import { ItemParentLinks } from '../../components/ItemSections'
@@ -7,9 +7,10 @@ import { Empty, ErrorState, Loading } from '../../components/States'
 import { Icon } from '../../components/Icon'
 import { buildNoteReaderDocument, directionForText } from './noteReader'
 import { ReaderBlockComponent } from './StudyText'
-import { Direction, DistillationBlock, NoteDossierResponse, NoteRecord, NotesResponse } from './types'
-import { directionValue, formatDate, lessonHref, noteHref, threadHref } from './helpers'
+import { DistillationBlock, NoteDossierResponse, NoteRecord, NotesResponse } from './types'
+import { formatDate, lessonHref, noteHref, threadHref } from './helpers'
 import { NoteBranchSelect } from './NoteBranchSelect'
+import { hasNoteDraft, NoteEditor } from './NoteEditor'
 
 type NoteFilter = 'all' | 'source' | 'personal' | 'reflection'
 
@@ -24,7 +25,14 @@ type NoteGroup = {
 export function LearnNotesView({ noteId }: { noteId?: string }) {
   const notes = useData<NotesResponse>('/notes')
   if (noteId)
-    return <NoteDetailWorkspace noteId={noteId} allNotes={notes.data?.notes || []} reloadLibrary={notes.reload} />
+    return (
+      <NoteDetailWorkspace
+        key={noteId}
+        noteId={noteId}
+        allNotes={notes.data?.notes || []}
+        reloadLibrary={notes.reload}
+      />
+    )
   if (notes.loading && !notes.data) return <Loading label="Loading notes" />
   if (notes.error && !notes.data) return <ErrorState message={notes.error} retry={notes.reload} />
   return <NotesIndex notes={notes.data?.notes || []} reload={notes.reload} />
@@ -267,9 +275,38 @@ function NoteDetailWorkspace({
   const [activeOutlineId, setActiveOutlineId] = useState('')
   const [contentsOpen, setContentsOpen] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
+  const toolsElement = useRef<HTMLElement>(null)
+  const toolsToggle = useRef<HTMLButtonElement>(null)
+  const editToggle = useRef<HTMLButtonElement>(null)
+  const returnToEdit = useRef(false)
   const [selectedBlock, setSelectedBlock] = useState('')
   const [claimText, setClaimText] = useState('')
   const [synthesisText, setSynthesisText] = useState('')
+
+  useLayoutEffect(() => {
+    if (toolsOpen) toolsElement.current?.focus()
+  }, [toolsOpen])
+
+  useLayoutEffect(() => {
+    if (!editing && returnToEdit.current) {
+      editToggle.current?.focus()
+      returnToEdit.current = false
+    }
+  }, [editing])
+
+  const openEditor = () => {
+    setMessage('')
+    setEditing(true)
+  }
+  const closeEditor = () => {
+    returnToEdit.current = true
+    setEditing(false)
+  }
+
+  const closeTools = () => {
+    setToolsOpen(false)
+    toolsToggle.current?.focus()
+  }
 
   if (dossier.loading && !dossier.data) return <Loading label="Loading note" />
   if (dossier.error && !dossier.data) return <ErrorState message={dossier.error} retry={dossier.reload} />
@@ -425,10 +462,10 @@ function NoteDetailWorkspace({
     return (
       <NoteEditor
         note={note}
-        onCancel={() => setEditing(false)}
+        onCancel={closeEditor}
         onDelete={remove}
         onSaved={() => {
-          setEditing(false)
+          closeEditor()
           dossier.reload()
           reloadLibrary()
           setMessage('Saved.')
@@ -437,7 +474,15 @@ function NoteDetailWorkspace({
     )
 
   return (
-    <section class="folio-note-reading note-reading-workspace scholar-note-workspace">
+    <section
+      class="folio-note-reading note-reading-workspace scholar-note-workspace"
+      onKeyDown={(event) => {
+        if (toolsOpen && event.key === 'Escape' && !event.isComposing) {
+          event.preventDefault()
+          closeTools()
+        }
+      }}
+    >
       <header class="note-reading-actions scholar-note-actions">
         <div>
           <button
@@ -445,20 +490,12 @@ function NoteDetailWorkspace({
             type="button"
             aria-expanded={toolsOpen}
             aria-controls="note-study-tools"
+            ref={toolsToggle}
             onClick={() => setToolsOpen(!toolsOpen)}
           >
             <Icon name="menu" size={14} />
             Study tools
           </button>
-          <button class="button secondary" type="button" onClick={copyNote}>
-            <Icon name="copy" size={14} />
-            Copy
-          </button>
-          {note.kind === 'guide' && (
-            <button class="button secondary" type="button" onClick={reprocess} disabled={working}>
-              Reprocess
-            </button>
-          )}
           {overviewTarget && (
             <a
               class="button secondary"
@@ -490,12 +527,20 @@ function NoteDetailWorkspace({
                     : 'Source'}{' '}
             </a>
           )}
-          <button class="button primary" type="button" aria-label="Edit note" onClick={() => setEditing(true)}>
+          <button class="button primary" type="button" aria-label="Edit note" ref={editToggle} onClick={openEditor}>
             <Icon name="edit" size={14} />
             Edit
           </button>
         </div>
       </header>
+      {hasNoteDraft(note.id) && (
+        <p class="folio-status">
+          You have an unsaved draft on this browser.{' '}
+          <button class="button secondary" type="button" onClick={openEditor}>
+            Resume editing
+          </button>
+        </p>
+      )}
       {message && (
         <output class="folio-status" aria-live="polite">
           {message}
@@ -613,8 +658,29 @@ function NoteDetailWorkspace({
         </article>
 
         {toolsOpen && (
-          <aside id="note-study-tools" class="scholar-note-tools" aria-label="Study tools">
+          <aside
+            id="note-study-tools"
+            class="scholar-note-tools"
+            aria-label="Study tools"
+            tabIndex={-1}
+            ref={toolsElement}
+          >
             <strong class="scholar-tools-title">Study tools</strong>
+            <button class="button secondary" type="button" onClick={closeTools}>
+              Close study tools
+            </button>
+            <section aria-label="Note actions">
+              <span>Note actions</span>
+              <button class="button secondary" type="button" onClick={copyNote}>
+                <Icon name="copy" size={14} />
+                Copy note
+              </button>
+              {note.kind === 'guide' && (
+                <button class="button secondary" type="button" onClick={reprocess} disabled={working}>
+                  Refresh from source
+                </button>
+              )}
+            </section>
             <section>
               <span>Knowledge branch</span>
               {note.branch_id && note.branch_label ? (
@@ -622,7 +688,7 @@ function NoteDetailWorkspace({
                   {note.branch_label}
                 </a>
               ) : (
-                <button type="button" class="button secondary" onClick={() => setEditing(true)}>
+                <button type="button" class="button secondary" onClick={openEditor}>
                   Choose a branch
                 </button>
               )}
@@ -837,155 +903,5 @@ function NoteDetailWorkspace({
         </section>
       )}
     </section>
-  )
-}
-
-function NoteEditor({
-  note,
-  onCancel,
-  onDelete,
-  onSaved,
-}: {
-  note: NoteRecord
-  onCancel: () => void
-  onDelete: () => void
-  onSaved: () => void
-}) {
-  const [title, setTitle] = useState(note.title)
-  const [branch, setBranch] = useState(note.branch_id || '')
-  const initialSourceUrl = note.source_url || note.rec_video_url || note.rec_source_url || ''
-  const [sourceUrl, setSourceUrl] = useState(initialSourceUrl)
-  const [abstract, setAbstract] = useState(note.abstract || '')
-  const [sections, setSections] = useState(
-    (note.sections || []).map((section) => ({
-      ...section,
-      label: section.label || '',
-      direction: directionValue(section.direction),
-    })),
-  )
-  const [working, setWorking] = useState(false)
-  const [error, setError] = useState('')
-
-  const updateSection = (index: number, patch: Partial<{ label: string; content: string; direction: Direction }>) =>
-    setSections(sections.map((section, position) => (position === index ? { ...section, ...patch } : section)))
-  const addSection = () =>
-    setSections([...sections, { section_key: `section_${Date.now()}`, label: '', content: '', direction: 'auto' }])
-
-  const save = async (event: Event) => {
-    event.preventDefault()
-    setWorking(true)
-    setError('')
-    try {
-      await api(`/notes/${encodeURIComponent(note.id)}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          title: title.trim(),
-          branch_id: branch.trim() || undefined,
-          source_url: sourceUrl.trim() || undefined,
-          abstract: abstract.trim() || undefined,
-          sections,
-        }),
-      })
-      onSaved()
-    } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : 'Save failed.')
-    } finally {
-      setWorking(false)
-    }
-  }
-
-  return (
-    <form class="note-editor folio-note-document" onSubmit={save}>
-      <header>
-        <button class="button quiet" type="button" onClick={onCancel}>
-          ← Cancel
-        </button>
-        <div>
-          <button class="button quiet danger-btn" type="button" onClick={onDelete}>
-            Delete
-          </button>
-          <button class="button primary" type="submit" disabled={working || !title.trim()}>
-            {working ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      </header>
-      {error && <output class="notes-error-banner">{error}</output>}
-      <section aria-label="Note editor">
-        <label>
-          Title
-          <input
-            class="note-editor-title"
-            value={title}
-            onInput={(event) => setTitle((event.target as HTMLInputElement).value)}
-            required
-          />
-        </label>
-        <div class="note-editor-meta folio-note-meta">
-          <NoteBranchSelect
-            value={branch}
-            label={note.branch_label}
-            onChange={setBranch}
-            allowEmpty={!note.branch_id}
-          />
-          <label>
-            Source URL
-            <input
-              type="url"
-              value={sourceUrl}
-              onInput={(event) => setSourceUrl((event.target as HTMLInputElement).value)}
-            />
-          </label>
-          {sourceUrl && (
-            <a href={sourceUrl} target="_blank" rel="noreferrer">
-              Source
-            </a>
-          )}
-        </div>
-        {note.kind === 'guide' && (
-          <label>
-            Short orientation
-            <textarea
-              rows={3}
-              value={abstract}
-              onInput={(event) => setAbstract((event.target as HTMLTextAreaElement).value)}
-            />
-          </label>
-        )}
-        <div class="note-editor-section-head">
-          <h2>Foundation</h2>
-          <button class="button secondary" type="button" onClick={addSection}>
-            Add section
-          </button>
-        </div>
-        {sections.map((section, index) => (
-          <section class="note-editor-section" key={section.section_key}>
-            <div>
-              <input
-                aria-label={`Section ${index + 1} label`}
-                value={section.label || ''}
-                onInput={(event) => updateSection(index, { label: (event.target as HTMLInputElement).value })}
-              />
-              <select
-                aria-label={`Section ${index + 1} direction`}
-                value={section.direction || 'auto'}
-                onChange={(event) =>
-                  updateSection(index, { direction: (event.target as HTMLSelectElement).value as Direction })
-                }
-              >
-                <option value="auto">Auto</option>
-                <option value="ltr">LTR</option>
-                <option value="rtl">RTL</option>
-              </select>
-            </div>
-            <textarea
-              rows={12}
-              dir={directionValue(section.direction)}
-              value={section.content}
-              onInput={(event) => updateSection(index, { content: (event.target as HTMLTextAreaElement).value })}
-            />
-          </section>
-        ))}
-      </section>
-    </form>
   )
 }

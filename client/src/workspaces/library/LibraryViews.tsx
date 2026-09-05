@@ -556,7 +556,7 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
         metadata.topic ||
         ''
       const text =
-        `${metadata.source_title || ''} ${metadata.chapter_title || ''} ${metadata.chapter_key || ''} ${metadata.chapter_number ?? ''} ${primary.branch?.label || ''} ${primary.filename || ''} ${topic} ${group.map((f) => f.filename || '').join(' ')}`.toLowerCase()
+        `${primary.owner_title || ''} ${metadata.source_title || ''} ${metadata.chapter_title || ''} ${metadata.chapter_key || ''} ${metadata.chapter_number ?? ''} ${primary.branch?.label || ''} ${primary.filename || ''} ${topic} ${group.map((f) => f.filename || '').join(' ')}`.toLowerCase()
       return text.includes(q)
     })
   }, [groups, query, showEarlier])
@@ -567,7 +567,7 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
         <div>
           <p class="folio-kicker">Reading companions and documents</p>
           <h1>Files</h1>
-          <p>Generated companions and uploaded documents. Open HTML to read or download PDF for offline annotation.</p>
+          <p>Reading companions and uploaded documents. Open a format to read; select a title for its details.</p>
         </div>
         <span class="folio-count-readout">
           <strong>{filtered.length}</strong>
@@ -624,16 +624,20 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
               primary.topic ||
               metadata.topic ||
               null
-            const bookTitle = metadata.source_title || primary.filename || 'Reading document'
+            const bookTitle = primary.owner_title || metadata.source_title || primary.filename || 'Reading document'
             const chapter = metadata.chapter_title || metadata.chapter_key
+            const upload = !metadata.pair_id && !chapter
             const title = chapter
               ? `${metadata.chapter_number != null ? `${metadata.chapter_number}. ` : ''}${chapter}`
-              : bookTitle
+              : upload
+                ? primary.filename || bookTitle
+                : bookTitle
             const ownerType = primary.owner_type === 'book' || chapter ? 'book' : 'source'
             const fullTitle = chapter ? `${bookTitle} — ${title}` : title
-            const primaryHref = metadata.recommendation_id
-              ? objectHref(ownerType, String(metadata.recommendation_id))
-              : objectHref('artifact', String(primary.id))
+            const primaryHref =
+              metadata.recommendation_id && !upload
+                ? objectHref(ownerType, String(metadata.recommendation_id))
+                : objectHref('artifact', String(primary.id))
             const earlier = ['superseded', 'retired'].includes(metadata.publication_state)
             const immutablePair = group.some(
               (file) => file.metadata?.generator === 'lite-visual' && file.metadata?.pair_id,
@@ -645,7 +649,7 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
                   <a
                     class="folio-file-title-link"
                     href={primaryHref}
-                    title={`Open ${bookTitle}${chapter ? ` — ${title}` : ''}`}
+                    title={upload ? 'Open file details' : `Open ${bookTitle}${chapter ? ` — ${title}` : ''}`}
                   >
                     <span class="folio-file-body">
                       {chapter && (
@@ -666,6 +670,11 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
                       </span>
                     </span>
                   </a>
+                  {upload && metadata.recommendation_id && primary.owner_title && (
+                    <a class="folio-file-owner" href={objectHref(ownerType, String(metadata.recommendation_id))}>
+                      {ownerType === 'book' ? 'Book' : 'Source'}: {primary.owner_title}
+                    </a>
+                  )}
                   {primary.branch?.id && (
                     <a
                       class="folio-badge folio-badge-branch"
@@ -677,6 +686,20 @@ export function FilesView({ data, handlers }: { data: LibraryRecord; handlers: L
                 </div>
 
                 <div class="folio-file-actions">
+                  {group
+                    .filter((file) => file !== htmlFile && file !== pdfFile)
+                    .map((file) => (
+                      <a
+                        key={file.id}
+                        class="folio-file-badge"
+                        href={artifactLink(file)}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Open ${file.filename || title}`}
+                      >
+                        <span class="badge-format">Open {fileKind(file)}</span>
+                      </a>
+                    ))}
                   {originalUrl && (
                     <a
                       class="folio-file-badge folio-badge-source"
@@ -958,7 +981,7 @@ export function ObjectRouteView({
           <h1>{title}</h1>
           <p>
             {type === 'artifact'
-              ? item.metadata?.source_title || 'Owned file in the R2 library.'
+              ? item.metadata?.source_title || 'A document saved in your Library.'
               : `${sourceCreator(item)}${item.created_at ? ` · added ${formatDate(item.created_at)}` : ''}`}
           </p>
         </div>

@@ -165,7 +165,10 @@ export function fileKind(item: LibraryRecord) {
   const media = `${item.media_type || ''} ${item.filename || ''}`.toLowerCase()
   if (media.includes('pdf')) return 'PDF'
   if (media.includes('html')) return 'HTML'
-  if (media.includes('markdown') || media.includes('text/plain') || media.includes('.md')) return 'Markdown'
+  if (media.includes('markdown') || media.includes('.md')) return 'Markdown'
+  if (media.includes('text/plain') || media.includes('.txt')) return 'Text'
+  if (media.includes('audio')) return 'Audio'
+  if (media.includes('video')) return 'Video'
   if (media.includes('image')) return 'Image'
   return 'File'
 }

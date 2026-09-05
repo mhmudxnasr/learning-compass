@@ -545,8 +545,8 @@
 
   .mobile-dock a.active,
   .mobile-dock a:hover {
-    background: var(--studio-lichen);
-    color: var(--studio-focus);
+    background: var(--studio-active-surface);
+    color: var(--studio-ink);
   }
 
   .workspace-canvas {

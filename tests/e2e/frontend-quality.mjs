@@ -122,6 +122,7 @@ export async function verifyFrontendQuality({ page: suitePage, baseUrl, requestJ
     const filesResponse = await requestJson('/artifacts')
     const ownedFile = filesResponse.artifacts.find((file) => file.id === uploaded.id)
     assert.equal(ownedFile?.owner_type, 'book')
+    assert.equal(ownedFile?.owner_title, 'Quality file identity book')
     assert.equal(ownedFile?.branch?.id, 'fixture-branch-id')
     assert.equal(ownedFile?.branch?.label, 'Readable fixture branch')
     const foundFiles = await requestJson('/search?q=quality-reading-context')
@@ -129,6 +130,21 @@ export async function verifyFrontendQuality({ page: suitePage, baseUrl, requestJ
       foundFiles.groups.artifacts.find((file) => file.id === uploaded.id)?.source_title,
       'Quality file identity book',
     )
+    await goto('#/library?mode=assets&focus=files', '.folio-files-ledger')
+    await page.getByRole('searchbox', { name: 'Filter files' }).fill('Quality file identity book')
+    const uploadRow = page
+      .locator('.folio-file-card')
+      .filter({ has: page.locator(`a[href="#/library/artifact/${uploaded.id}"]`) })
+    assert.equal(
+      await uploadRow.getByRole('link', { name: 'Book: Quality file identity book' }).getAttribute('href'),
+      `#/library/book/${book.book.id}`,
+    )
+    const uploadLink = await uploadRow
+      .getByRole('link', { name: 'Open quality-reading-context.txt', exact: true })
+      .getAttribute('href')
+    const fileResponse = await fetch(new URL(uploadLink, baseUrl))
+    assert.equal(fileResponse.ok, true)
+    assert.match(await fileResponse.text(), /Reading context for the owned book\./)
     const artifacts = ['html', 'pdf'].map((format) => ({
       id: `quality-${format}`,
       filename: `long-source-companion.${format}`,
@@ -218,6 +234,28 @@ export async function verifyFrontendQuality({ page: suitePage, baseUrl, requestJ
       assert.equal(await page.getByRole('heading', { name: 'The useful idea' }).count(), 1)
       assert.equal(await page.locator('.study-text strong').innerText(), 'Reinforcing feedback')
       assert.equal(await page.locator('.study-text li').count(), 2)
+      assert.equal(await page.locator('.study-text .reader-paragraph[dir="rtl"]').getAttribute('lang'), 'ar')
+      assert.equal(
+        await page
+          .locator('.study-text .reader-paragraph')
+          .filter({ hasText: 'Reinforcing feedback' })
+          .getAttribute('lang'),
+        'en',
+      )
+      if (width === 390) {
+        const dockColors = await page.locator('.mobile-dock a.active').evaluate((node) => {
+          const style = getComputedStyle(node)
+          const hex = (value) =>
+            '#' +
+            value
+              .match(/[\d.]+/g)
+              .slice(0, 3)
+              .map((n) => Number(n).toString(16).padStart(2, '0'))
+              .join('')
+          return { foreground: hex(style.color), background: hex(style.backgroundColor) }
+        })
+        assert.ok(contrastRatio(dockColors.foreground, dockColors.background) >= 4.5, JSON.stringify(dockColors))
+      }
       assert.equal(await page.evaluate(() => window.untrustedLesson), undefined)
       const lessonY = (await page.locator('.lesson-authored-text').boundingBox()).y
       assert.ok(lessonY < 720, `Reading starts too low at ${width}: ${lessonY}`)
@@ -342,7 +380,7 @@ export async function verifyFrontendQuality({ page: suitePage, baseUrl, requestJ
     await page.locator('.folio-branch-review').waitFor()
     assert.ok(page.url().endsWith('#/map/branch/fixture-branch-id'))
 
-    await page.setViewportSize({ width: 390, height: 1000 })
+    await page.setViewportSize({ width: 390, height: 844 })
     const newCard = await post('/learning/srs/create', {
       branch: 'fixture-branch-id',
       question: 'إزاي نفهم السبب والنتيجة؟',
@@ -353,17 +391,104 @@ export async function verifyFrontendQuality({ page: suitePage, baseUrl, requestJ
     assert.equal(recallCard.branch, 'fixture-branch-id')
     const dueCards = await requestJson('/learning/srs/due')
     assert.equal(dueCards.cards.find((card) => card.id === newCard.card_id)?.branch_context?.id, 'fixture-branch-id')
-    await page.route(`${baseUrl}/learning/srs/due`, (route) => route.fulfill({ json: { cards: [recallCard] } }))
+    const secondCard = await post('/learning/srs/create', {
+      branch: 'fixture-branch-id',
+      question: 'إزاي نراجع أثر التدخل؟',
+      answer: 'نتابع النتيجة ونقارنها بالتوقع.',
+    })
+    const { card: nextCard } = await requestJson(`/learning/srs/cards/${secondCard.card_id}`)
+    await page.route(`${baseUrl}/learning/srs/due`, (route) =>
+      route.fulfill({ json: { cards: [recallCard, nextCard] } }),
+    )
     await goto('#/learn?mode=practice&focus=recall', '.recall-review-card')
+    const revealBounds = await page.getByRole('button', { name: 'Reveal answer' }).boundingBox()
+    assert.ok(
+      revealBounds.y + revealBounds.height < page.viewportSize().height - 90,
+      'The review question and reveal action must fit above the mobile dock',
+    )
+    await capture('recall-ready-mobile')
+    await page.locator('.recall-filter-disclosure > summary').click()
     assert.equal(await page.getByRole('searchbox', { name: 'Search question, source, or anchor' }).count(), 1)
     assert.equal(await page.locator('.recall-review-card .recall-branch-badge').innerText(), 'Readable fixture branch')
-    await page.getByRole('button', { name: 'Reveal answer' }).click()
+    await page.getByRole('button', { name: 'Reveal answer' }).focus()
+    await page.keyboard.press('Space')
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-recall-grade')), '0')
     assert.equal(
       await page.getByRole('button', { name: 'Good', exact: true }).getAttribute('aria-describedby'),
       'recall-grade-4',
     )
     await checkTargets('.recall-grades button')
     await capture('recall-mobile')
+
+    let attempts = 0
+    let rejectReview = true
+    let releaseReview
+    const heldReview = new Promise((resolve) => {
+      releaseReview = resolve
+    })
+    await page.route(`${baseUrl}/learning/srs/review`, async (route) => {
+      attempts += 1
+      if (rejectReview) {
+        await heldReview
+        await route.fulfill({ status: 500, json: { error: 'Review could not be saved. Try again.' } })
+      } else await route.continue()
+    })
+    const recallSearch = page.getByRole('searchbox', { name: 'Search question, source, or anchor' })
+    await recallSearch.fill('التدخل')
+    await page.getByRole('heading', { name: nextCard.question, exact: true }).waitFor()
+    assert.equal(
+      await page.locator('.recall-review-card').getAttribute('data-state'),
+      'question',
+      'Changing cards must not reveal a different answer',
+    )
+    await recallSearch.fill('')
+    await recallSearch.focus()
+    await page.keyboard.press('3')
+    assert.equal(attempts, 0, 'Typing outside the review must not grade a card')
+    await page.getByRole('heading', { name: 'No matching questions', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
+    await page.getByRole('button', { name: 'Good', exact: true }).focus()
+    const firstAttempt = page.waitForRequest((request) => request.url().endsWith('/learning/srs/review'))
+    await page.keyboard.press('3')
+    await firstAttempt
+    await page.keyboard.press('3')
+    assert.equal(attempts, 1, 'Repeated grading while saving must send one request')
+    assert.equal(await page.getByRole('button', { name: 'Good', exact: true }).isDisabled(), true)
+    releaseReview()
+    await page.getByText('Review could not be saved. Try again.', { exact: true }).waitFor()
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-recall-grade')), '4')
+    assert.equal(
+      (await requestJson(`/learning/srs/cards/${newCard.card_id}`)).card.scheduler_revision,
+      recallCard.scheduler_revision,
+    )
+    rejectReview = false
+    const savedReview = () =>
+      page.waitForResponse((response) => response.url().endsWith('/learning/srs/review') && response.ok())
+    const firstSaved = savedReview()
+    await page.keyboard.press('3')
+    await firstSaved
+    await page.getByRole('heading', { name: nextCard.question, exact: true }).waitFor()
+    assert.equal(await page.evaluate(() => document.activeElement?.hasAttribute('data-recall-reveal')), true)
+    await page.keyboard.down('Enter')
+    await page.getByRole('button', { name: 'Again', exact: true }).waitFor()
+    await page.keyboard.down('Enter')
+    await page.keyboard.up('Enter')
+    assert.equal(await page.locator('.recall-review-card').getAttribute('data-state'), 'answer')
+    assert.equal(attempts, 2, 'Holding Reveal must not submit an unintended grade')
+    const secondSaved = savedReview()
+    await page.keyboard.press('4')
+    await secondSaved
+    await page.getByRole('heading', { name: 'Review complete', exact: true }).waitFor()
+    assert.equal(
+      await page.getByRole('region', { name: 'Recall status' }).evaluate((node) => document.activeElement === node),
+      true,
+    )
+    for (const card of [recallCard, nextCard])
+      assert.equal(
+        (await requestJson(`/learning/srs/cards/${card.id}`)).card.scheduler_revision,
+        card.scheduler_revision + 1,
+      )
+    await page.unroute(`${baseUrl}/learning/srs/review`)
 
     await goto('#/library?mode=assets&focus=files', '.folio-file-actions')
     await page.getByLabel('Include earlier versions').check()
@@ -427,12 +552,83 @@ export async function verifyFrontendQuality({ page: suitePage, baseUrl, requestJ
     const listedTime = (
       await page
         .locator('.note-ledger-row')
-        .filter({ hasText: 'Quality reading-time agreement' })
+        .filter({ has: page.locator(`a[href="#/learn/note/${note.id}"]`) })
         .locator('.note-ledger-measure')
         .innerText()
     ).match(/\d+\s*min/)?.[0]
     await goto(`#/learn/note/${note.id}`, '.scholar-note-meta')
     assert.equal(await page.locator('.scholar-note-meta > span').first().innerText(), listedTime)
+    assert.equal(await page.getByRole('button', { name: 'Copy note', exact: true }).count(), 0)
+    assert.ok((await page.locator('.scholar-note-actions button').count()) <= 3)
+    await page.getByRole('button', { name: 'Study tools', exact: true }).click()
+    await page.getByRole('button', { name: 'Copy note', exact: true }).waitFor()
+    const studyTools = page.getByRole('complementary', { name: 'Study tools', exact: true })
+    assert.equal(await studyTools.evaluate((node) => document.activeElement === node), true)
+    await checkTargets('.scholar-note-tools [aria-label="Note actions"] .button')
+    await studyTools.screenshot({ path: `${output}/note-tools-mobile.png`, animations: 'disabled' })
+    await page.keyboard.press('Escape')
+    assert.equal(await studyTools.count(), 0)
+    assert.equal(
+      await page
+        .getByRole('button', { name: 'Study tools', exact: true })
+        .evaluate((node) => document.activeElement === node),
+      true,
+    )
+    for (const label of ['Your claim', 'New concise synthesis']) {
+      await page.getByRole('button', { name: 'Study tools', exact: true }).click()
+      await page.getByRole('textbox', { name: label, exact: true }).fill(`Unsaved ${label}`)
+      await page.keyboard.press('Escape')
+      assert.equal(await studyTools.count(), 0)
+      assert.equal(
+        await page
+          .getByRole('button', { name: 'Study tools', exact: true })
+          .evaluate((node) => document.activeElement === node),
+        true,
+      )
+      await page.getByRole('button', { name: 'Study tools', exact: true }).click()
+      assert.equal(await page.getByRole('textbox', { name: label, exact: true }).inputValue(), `Unsaved ${label}`)
+      await page.keyboard.press('Escape')
+    }
+    const edit = page.getByRole('button', { name: 'Edit note', exact: true })
+    await edit.click()
+    const titleInput = page.getByRole('textbox', { name: 'Title', exact: true })
+    assert.equal(await titleInput.evaluate((node) => document.activeElement === node), true)
+    const draftTitle = 'Quality recovered writing'
+    await titleInput.fill(draftTitle)
+    const sectionInput = page.getByRole('textbox', { name: 'Section 1 content: Study', exact: true })
+    await sectionInput.fill('My deliberate draft. شرح عربي محفوظ.')
+    await page.getByRole('link', { name: 'Home', exact: true }).click()
+    await page.locator('.continuum-turn').first().waitFor()
+    await page.locator('.note-editor').waitFor({ state: 'detached' })
+    await page.goBack({ waitUntil: 'networkidle' })
+    await page.getByRole('button', { name: 'Resume editing', exact: true }).click()
+    assert.equal(await titleInput.inputValue(), draftTitle)
+    assert.equal(await sectionInput.inputValue(), 'My deliberate draft. شرح عربي محفوظ.')
+    await page.reload({ waitUntil: 'networkidle' })
+    await page.getByRole('button', { name: 'Resume editing', exact: true }).click()
+    assert.equal(await titleInput.inputValue(), draftTitle)
+    assert.equal((await requestJson(`/notes/${note.id}`)).note.title, 'Quality reading-time agreement')
+    await page.route(`${baseUrl}/notes/${note.id}`, async (route) => {
+      if (route.request().method() === 'PUT')
+        await route.fulfill({ status: 500, json: { error: 'Note could not be saved. Try again.' } })
+      else await route.continue()
+    })
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await page.getByText('Note could not be saved. Try again.', { exact: true }).waitFor()
+    assert.equal(await titleInput.inputValue(), draftTitle)
+    await page.unroute(`${baseUrl}/notes/${note.id}`)
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await edit.waitFor()
+    assert.equal(await edit.evaluate((node) => document.activeElement === node), true)
+    assert.equal((await requestJson(`/notes/${note.id}`)).note.title, draftTitle)
+    await edit.click()
+    await titleInput.fill('Discard this edit')
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    assert.equal(await edit.evaluate((node) => document.activeElement === node), true)
+    assert.equal(await page.getByText('Saved.', { exact: true }).count(), 0)
+    await edit.click()
+    assert.equal(await titleInput.inputValue(), draftTitle)
+    await page.getByRole('button', { name: 'Cancel' }).click()
 
     await goto('#/library?mode=assets&focus=files', '.folio-file-actions')
     const variables = computeThemeVariables(

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'preact/hooks'
+import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { api } from '../../api'
 import { useData } from '../../app/useData'
 import { objectHref } from '../../app/router'
@@ -27,6 +27,7 @@ export function LearnRecallView() {
   const [branch, setBranch] = useState('all')
   const [query, setQuery] = useState('')
   const [message, setMessage] = useState('')
+  const searchInput = useRef<HTMLInputElement>(null)
 
   const dueCards = useMemo(() => due.data?.cards || [], [due.data?.cards])
   const pendingDrafts = useMemo(
@@ -68,11 +69,9 @@ export function LearnRecallView() {
     <section class="learn-workspace folio-learn folio-recall recall-workspace" aria-labelledby="recall-title">
       <header class="recall-head">
         <div>
-          <p class="folio-object-kicker">Learn / Recall</p>
           <h1 id="recall-title">Recall</h1>
-          <p class="folio-lede">Arabic source-grounded questions only. Review what is due; edit or reject the rest.</p>
+          <p class="folio-lede">Recall the answer before revealing it.</p>
         </div>
-        <span class="folio-measure">{dueCards.length} due</span>
       </header>
 
       {message && (
@@ -111,35 +110,45 @@ export function LearnRecallView() {
             </button>
           ))}
         </nav>
-        <div class="recall-filters">
-          <label>
-            <span>Branch</span>
-            <select value={branch} onChange={(event) => setBranch((event.target as HTMLSelectElement).value)}>
-              <option value="all">All branches</option>
-              <option value="unassigned">Unassigned branch</option>
-              {branches.map(([id, label]) => (
-                <option key={id} value={id}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label class="recall-search">
-            <Icon name="search" size={14} />
-            <input
-              type="search"
-              aria-label="Search question, source, or anchor"
-              value={query}
-              onInput={(event) => setQuery((event.target as HTMLInputElement).value)}
-              placeholder="Search question, source, or anchor"
-            />
-          </label>
-        </div>
+        <details class="recall-filter-disclosure">
+          <summary>Filter questions{branch !== 'all' || query.trim() ? ' · Active' : ''}</summary>
+          <div class="recall-filters">
+            <label>
+              <span>Branch</span>
+              <select value={branch} onChange={(event) => setBranch((event.target as HTMLSelectElement).value)}>
+                <option value="all">All branches</option>
+                <option value="unassigned">Unassigned branch</option>
+                {branches.map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label class="recall-search">
+              <Icon name="search" size={14} />
+              <input
+                ref={searchInput}
+                type="search"
+                aria-label="Search question, source, or anchor"
+                value={query}
+                onInput={(event) => setQuery((event.target as HTMLInputElement).value)}
+                placeholder="Search question, source, or anchor"
+              />
+            </label>
+          </div>
+        </details>
       </div>
 
       {view === 'due' && (
         <DueReview
           cards={dueCards.filter(matches)}
+          hasFilters={branch !== 'all' || Boolean(query.trim())}
+          clearFilters={() => {
+            setBranch('all')
+            setQuery('')
+            searchInput.current?.focus()
+          }}
           loading={due.loading && !due.data}
           error={due.error}
           reload={() => {
@@ -238,67 +247,121 @@ function recallPrecondition(card: RecallCard) {
 
 function DueReview({
   cards,
+  hasFilters,
+  clearFilters,
   loading,
   error,
   reload,
   setMessage,
 }: {
   cards: RecallCard[]
+  hasFilters: boolean
+  clearFilters: () => void
   loading: boolean
   error: string
   reload: () => void
   setMessage: (message: string) => void
 }) {
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [revealed, setRevealed] = useState(false)
+  const [reviewedIds, setReviewedIds] = useState<string[]>([])
+  const [revealedCard, setRevealedCard] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
-  const active = cards.find((card) => card.id === activeId) || cards[0]
-  const activePosition = active ? cards.findIndex((card) => card.id === active.id) + 1 : 0
+  const reviewElement = useRef<HTMLElement>(null)
+  const saving = useRef(false)
+  const pendingFocus = useRef<number | 'question' | null>(null)
+  const remaining = cards.filter((card) => !reviewedIds.includes(card.id))
+  const active = remaining[0]
+  const activeKey = active ? `${active.id}:${active.content_revision}` : null
+  const revealed = Boolean(activeKey && activeKey === revealedCard)
+
+  useLayoutEffect(() => {
+    if (loading || working || pendingFocus.current === null || !reviewElement.current) return
+    const selector =
+      pendingFocus.current === 'question' ? '[data-recall-reveal]' : `[data-recall-grade="${pendingFocus.current}"]`
+    const target = reviewElement.current.querySelector<HTMLElement>(selector) || reviewElement.current
+    target.focus()
+    pendingFocus.current = null
+  }, [active?.id, revealed, loading, working])
+
+  const revealAnswer = () => {
+    pendingFocus.current = 0
+    setRevealedCard(activeKey)
+  }
 
   const review = async (grade: number) => {
-    if (!active || !revealed) return
+    if (!active || !revealed || saving.current) return
+    saving.current = true
     setWorking(true)
+    setMessage('Saving review…')
     try {
       await api('/learning/srs/review', {
         method: 'POST',
         body: JSON.stringify({ card_id: active.id, grade, ...recallPrecondition(active) }),
       })
-      setActiveId(cards.find((card) => card.id !== active.id)?.id || null)
-      setRevealed(false)
+      setReviewedIds((ids) => [...ids, active.id])
+      setRevealedCard(null)
+      pendingFocus.current = 'question'
       setMessage('Review saved.')
       reload()
     } catch (cause: unknown) {
+      pendingFocus.current = grade
       setMessage(cause instanceof Error ? cause.message : 'The review could not be saved.')
     } finally {
+      saving.current = false
       setWorking(false)
     }
   }
 
   if (loading) return <Loading label="Loading due recall" />
   if (error) return <ErrorState message={error} retry={reload} />
-  if (!active) return <Empty title="Nothing is due" body="Approved questions will return when FSRS schedules them." />
+  if (!active)
+    return (
+      <section ref={reviewElement} tabIndex={-1} aria-label="Recall status">
+        <Empty
+          title={
+            hasFilters && !cards.length
+              ? 'No matching questions'
+              : reviewedIds.length
+                ? 'Review complete'
+                : 'Nothing is due'
+          }
+          body={
+            hasFilters && !cards.length
+              ? 'Try another search or clear the filters to see your due questions.'
+              : 'Your next questions will appear when they are due.'
+          }
+        />
+        {hasFilters && !cards.length && (
+          <button class="button secondary" type="button" onClick={clearFilters}>
+            Clear filters
+          </button>
+        )}
+      </section>
+    )
 
   return (
-    <article class="recall-review-card" data-state={revealed ? 'answer' : 'question'}>
-      <div class="recall-review-progress" aria-label={`Review ${activePosition} of ${cards.length}`}>
-        <span>
-          <Icon name="recall" size={16} />
-          Due review
-        </span>
-        <span>
-          <strong>{activePosition}</strong> / {cards.length}
-        </span>
-      </div>
+    <article
+      class="recall-review-card"
+      ref={reviewElement}
+      tabIndex={-1}
+      data-state={revealed ? 'answer' : 'question'}
+      onKeyDown={(event) => {
+        if (event.repeat && ['Enter', ' ', '1', '2', '3', '4'].includes(event.key)) {
+          event.preventDefault()
+          return
+        }
+        if (!revealed || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+        const grade = { '1': 0, '2': 2, '3': 4, '4': 5 }[event.key]
+        if (grade === undefined) return
+        event.preventDefault()
+        void review(grade)
+      }}
+    >
       <header>
         <SourceLine item={active} />
-        <div class="recall-card-schedule">
-          <span>{active.repetitions || 0} reviews</span>
-          <span>Due {formatDate(active.due_at)}</span>
-        </div>
       </header>
       <div class="recall-prompt">
         <span>Question</span>
-        <h2 lang="ar" dir="rtl">
+        <h2 id="recall-current-question" lang="ar" dir="rtl">
           {active.question}
         </h2>
       </div>
@@ -312,11 +375,17 @@ function DueReview({
         </div>
       ) : (
         <div class="recall-review-action">
-          <button class="button primary" type="button" onClick={() => setRevealed(true)}>
+          <button
+            class="button primary"
+            type="button"
+            data-recall-reveal
+            aria-describedby="recall-current-question recall-reveal-help"
+            onClick={revealAnswer}
+          >
             <span>Reveal answer</span>
             <Icon name="chevron" size={16} />
           </button>
-          <small>Pause and retrieve before revealing.</small>
+          <small id="recall-reveal-help">Pause and retrieve, then press Space or Enter on Reveal answer.</small>
         </div>
       )}
       {revealed && (
@@ -328,13 +397,15 @@ function DueReview({
               [2, 'Hard', 'Recalled with effort'],
               [4, 'Good', 'Recalled correctly'],
               [5, 'Easy', 'Recalled immediately'],
-            ].map(([grade, label, meaning]) => (
+            ].map(([grade, label, meaning], index) => (
               <button
                 class="button secondary"
                 type="button"
                 key={grade}
                 aria-label={String(label)}
                 aria-describedby={`recall-grade-${grade}`}
+                aria-keyshortcuts={String(index + 1)}
+                data-recall-grade={grade}
                 onClick={() => review(Number(grade))}
                 disabled={working}
               >
@@ -343,8 +414,14 @@ function DueReview({
               </button>
             ))}
           </div>
+          <small>With focus in this card: 1 Again · 2 Hard · 3 Good · 4 Easy.</small>
         </div>
       )}
+      <footer class="recall-card-schedule" aria-label={`${remaining.length} cards remaining`}>
+        <span>{remaining.length} remaining</span>
+        <span>{active.repetitions || 0} reviews</span>
+        <span>Due {formatDate(active.due_at)}</span>
+      </footer>
     </article>
   )
 }

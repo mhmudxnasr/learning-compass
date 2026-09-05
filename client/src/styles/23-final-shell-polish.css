@@ -2140,8 +2140,7 @@ body {
 }
 
 .thread-filter-toolbar,
-.notes-index-tools,
-.recall-controls {
+.notes-index-tools {
   margin: 0;
   padding: 16px 0;
   border-bottom: 1px solid color-mix(in srgb, var(--studio-seam) 76%, transparent);
@@ -2695,7 +2694,7 @@ body {
 
   .recall-review-card {
     min-height: 300px;
-    margin-top: 18px;
+    margin-top: 0;
     padding: 0;
     box-shadow: none;
   }

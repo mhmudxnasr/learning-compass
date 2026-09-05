@@ -476,6 +476,12 @@ a.folio-badge {
   overflow-wrap: anywhere;
 }
 
+a.folio-file-owner {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
 .folio-file-main-link > .folio-badge {
   margin-top: 8px;
   width: fit-content;

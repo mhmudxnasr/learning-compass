@@ -6,6 +6,10 @@ Threads offer an explicit Obsidian ZIP download of existing notes, separate hand
 
 The Compass brand in the desktop rail and mobile toolbar toggles light/dark mode without navigation. Each browser remembers its last palette in each mode, including custom day/night palettes; the active choice uses the existing server-owned appearance setting. The control supports keyboard activation and stays synchronized with Preferences.
 
+Recall supports explicit keyboard grading only inside the focused review card, retains context and focus after failed saves, and ends the current review after successful cards are exhausted. A revealed answer belongs to that exact card revision; filtering to another card never reveals it automatically. Note copying and source refresh remain available inside Study tools while the main reading toolbar stays focused on reading, ownership, and editing. These UI actions preserve the existing source, note, scheduling, and direct-lesson-completion contracts.
+
+Interrupted note edits are retained as per-note drafts on the same browser, with an explicit Resume editing action. Save updates the canonical note and clears the draft only after success; Cancel explicitly discards the draft. Draft recovery never updates source notes automatically, and an older recovered draft requires confirmation before replacing a more recently saved note. Files exposes the owning book/source title separately from uploaded-file details and direct format access.
+
 ## Native Hermes tools
 
 Loaded Hermes skill content has no per-skill or combined router/operator byte budget. Fixed-prompt, skill-index, tool-schema, and memory limits remain separate; skill ownership, instruction validity, and installed parity checks still apply.

@@ -3,8 +3,16 @@ import test from 'node:test'
 import {
   buildNoteReaderDocument,
   directionForText,
+  languageForText,
   parseNoteBlocks,
 } from '../../client/src/workspaces/learn/noteReader.ts'
+
+test('bilingual reading language follows text rather than the layout direction', () => {
+  assert.equal(languageForText('English explanation.'), 'en')
+  assert.equal(languageForText('السلوك البشري (Behaviorism)'), 'ar')
+  assert.equal(languageForText('עברית'), undefined)
+  assert.equal(languageForText('123 ١٢٣'), undefined)
+})
 
 test('note reader removes Obsidian front matter and promotes the embedded source link', () => {
   const document = buildNoteReaderDocument({

@@ -40,6 +40,14 @@ export function directionForText(text: string): ReadingDirection {
   return rtl > 0 && rtl >= latin * 0.35 ? 'rtl' : 'ltr'
 }
 
+export function languageForText(text: string): 'ar' | 'en' | undefined {
+  const letters = text.match(/\p{Letter}/gu) || []
+  const arabic = letters.filter((letter) => /\p{Script=Arabic}/u.test(letter)).length
+  const latin = letters.filter((letter) => /\p{Script=Latin}/u.test(letter)).length
+  if (arabic > 0 && arabic >= latin * 0.35) return 'ar'
+  return latin > 0 ? 'en' : undefined
+}
+
 function stripFrontMatter(content: string): string {
   const lines = content.replace(/\r\n?/g, '\n').split('\n')
   const first = lines.findIndex((line) => line.trim())
