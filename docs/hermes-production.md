@@ -50,9 +50,9 @@ Simple manager reads have a one-logical-read budget. The only extra transport at
 
 ## Prompt and context ownership
 
-The operations, recommendation, and Lite Visual skills load a compact entry point plus only the references required for the chosen task. Their loaded-entry budgets live in `docs/hermes-contract.json`. `npm run verify:hermes` audits active skill Markdown and references for real npm scripts and local paths, rejects frozen migration-state claims in procedures, and keeps the structured specialist receipt separate from the user-facing reply. This is a bounded static check, not a semantic proof of arbitrary instructions or current production state.
+Skills load an entry point plus the references required for the chosen task. Loaded skill content has no per-skill byte ceiling or combined router/operator ceiling. `npm run verify:hermes` audits active skill Markdown and references for real npm scripts and local paths, rejects frozen migration-state claims in procedures, and keeps the structured specialist receipt separate from the user-facing reply. This is a bounded static check, not a semantic proof of arbitrary instructions or current production state.
 
-Lite Visual's loaded entry point has an 8,000-byte ceiling, accommodating its 7,514-byte installed instructions with modest headroom. This per-skill allowance does not change the default Telegram fixed-prompt limits or other skills' budgets.
+Default Telegram fixed-prompt, skill-index, tool-schema, and memory limits remain in `docs/hermes-contract.json`; these do not impose a size limit on an individual loaded skill.
 
 | Context                                          | Owner                                 | Loading rule                                                     |
 | ------------------------------------------------ | ------------------------------------- | ---------------------------------------------------------------- |

@@ -8,6 +8,7 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Remove all loaded-skill byte budgets and the combined router/operator cap from Hermes verification. Preserve fixed-prompt, skill-index, tool-schema, memory, and skill-integrity checks.
 - Raise Lite Visual's loaded-skill budget from 6,000 to 8,000 bytes to accommodate its installed instructions without changing other prompt limits.
 - Refine reading and navigation: single-column bilingual Notes with optional tools and verbatim provenance, next chapters before source diagnostics, compact lesson navigation, clearer Home/Threads hierarchy, canonical branch names, and 44px study actions. Learn now opens Threads; search remembers eight local selections and Atlas offers domain navigation. Preserve content, progression rules, and theme choices.
 - Make routine commits and releases fast: affected regression tests, lint/typecheck/build for deployment, and short live checks. Keep full verification opt-in or for high-risk changes, reserve full backup/restore for migrations or risky data changes, and remove default browser suites and Markdown-only runs from CI. Synchronize repository and Hermes instructions; avoid repeated checks and waiting for CI by default.

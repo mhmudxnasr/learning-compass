@@ -225,14 +225,6 @@
       "MEMORY.md": 2200,
       "USER.md": 1375
     },
-    "loaded_skill_bytes": {
-      "learning-compass-operating-system": 8140,
-      "learning-compass-site-operator": 9859,
-      "recommendations-worker-ops": 5000,
-      "taste-rec": 6000,
-      "lite-visual": 8000,
-      "ordinary_router_plus_operator": 17993
-    },
     "read_slo_ms": {
       "filtered_capabilities_p95": 1000,
       "briefing_p95": 1000

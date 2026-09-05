@@ -1,5 +1,9 @@
 # Learning Compass — Current State
 
+## Hermes skills — 2026-09-05 (loaded-size limits removed)
+
+Removed every per-skill loaded-byte limit and the combined router/operator cap from the canonical contract and verifier, superseding the earlier Lite Visual 8,000-byte allowance. Skill content no longer fails verification because of its size. Fixed-prompt, skill-index, tool-schema, memory, ownership, instruction validity, and installed-parity checks remain active. Hermes contract/fixed-prompt verification, all 10 focused prompt-budget/instruction-audit tests, changed-script lint, formatting, and diff checks pass. This is a local verification-policy change; the deployed Worker below is unchanged and no redeployment is needed.
+
 ## Current truth — 2026-09-05 (UI refinement deployed)
 
 Worker `ae8753cf-33d2-42f2-8715-9e406a6136b8` is deployed from clean main commit `612d2ad` with PWA shell v60. It implements the accepted Impeccable critique: a single-column Notes reader with optional contents/study tools and verbatim receipt provenance, Books next-chapter priority and section jumps, collapsed compact lesson navigation, clearer Home/Threads hierarchy, canonical branch labels, visible format names and 44px actions, Threads as Learn's default, eight local recent-search selections, and readable Atlas domain entry. Note editing preserves canonical branch IDs; explicit default-mode links no longer trigger recovery notices. No schema migration or production content change was needed. Application rollback is Worker `69dcc110-2d26-4a76-b4cb-df41b1847c4e`.

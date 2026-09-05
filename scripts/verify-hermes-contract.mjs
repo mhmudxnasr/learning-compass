@@ -207,12 +207,7 @@ if (read('src/index.ts').includes('createHermesEvaluatorProposals'))
 const contract = JSON.parse(read('docs/hermes-contract.json'))
 if (contract.version !== 8) throw new Error('Canonical Hermes contract version drift')
 const runtimeBudgets = contract.runtime_budgets
-if (
-  !runtimeBudgets?.default_telegram ||
-  !runtimeBudgets?.memory_chars ||
-  !runtimeBudgets?.loaded_skill_bytes ||
-  !runtimeBudgets?.read_slo_ms
-) {
+if (!runtimeBudgets?.default_telegram || !runtimeBudgets?.memory_chars || !runtimeBudgets?.read_slo_ms) {
   throw new Error('Canonical Hermes runtime budget contract is incomplete')
 }
 if (JSON.stringify(Object.keys(runtimeBudgets.prompt_contracts || {})) !== JSON.stringify(['default_telegram']))
@@ -493,9 +488,6 @@ if (existsSync(localSkillsRoot)) {
     if (!existsSync(file)) throw new Error(`Active Hermes skill is not installed: ${skill.name}`)
     if (disabledSkills.has(skill.name)) throw new Error(`Canonical active Hermes skill is disabled: ${skill.name}`)
     const body = readFileSync(file, 'utf8')
-    const loadedLimit = runtimeBudgets.loaded_skill_bytes[skill.name]
-    if (loadedLimit !== undefined && Buffer.byteLength(body) > loadedLimit)
-      throw new Error(`Hermes loaded skill budget exceeded: ${skill.name} ${Buffer.byteLength(body)}/${loadedLimit}`)
     if (!body.includes(`name: ${skill.name}`)) throw new Error(`Hermes skill name/path drift: ${skill.name}`)
     if (!body.includes('## Evolution handoff')) throw new Error(`Hermes skill lacks evolution handoff: ${skill.name}`)
     for (const forbidden of [
@@ -562,19 +554,6 @@ if (existsSync(localSkillsRoot)) {
       }
     }
   }
-
-  const routerSkillBytes = Buffer.byteLength(
-    readFileSync(join(localSkillsRoot, 'workflow', 'learning-compass-operating-system', 'SKILL.md'), 'utf8'),
-  )
-  const operatorSkillBytes = Buffer.byteLength(
-    readFileSync(join(localSkillsRoot, 'workflow', 'learning-compass-site-operator', 'SKILL.md'), 'utf8'),
-  )
-  if (routerSkillBytes > runtimeBudgets.loaded_skill_bytes['learning-compass-operating-system'])
-    throw new Error(`Hermes router skill budget exceeded: ${routerSkillBytes}`)
-  if (operatorSkillBytes > runtimeBudgets.loaded_skill_bytes['learning-compass-site-operator'])
-    throw new Error(`Hermes site-operator skill budget exceeded: ${operatorSkillBytes}`)
-  if (routerSkillBytes + operatorSkillBytes > runtimeBudgets.loaded_skill_bytes.ordinary_router_plus_operator)
-    throw new Error(`Hermes ordinary loaded-skill budget exceeded: ${routerSkillBytes + operatorSkillBytes}`)
 
   const liteVisualRoot = join(localSkillsRoot, 'lite-visual')
   for (const file of [

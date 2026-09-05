@@ -2,6 +2,8 @@
 
 ## Native Hermes tools
 
+Loaded Hermes skill content has no per-skill or combined router/operator byte budget. Fixed-prompt, skill-index, tool-schema, and memory limits remain separate; skill ownership, instruction validity, and installed parity checks still apply.
+
 Repository work defaults to fast, scoped verification: affected tests, one lint/typecheck/build gate for application releases, and live readiness/smoke checks. Full suites apply to high-risk changes or explicit requests; full backup/restore applies to migrations or risky data/storage changes. Documentation-only work needs no application deployment, and unchanged checks or CI waits are not repeated by default. `docs/release-checklist.md` and Worker Ops own the detailed procedure.
 
 Routine Thread, progress, resume, and Queue reads use the site operator's common-read table. Thread overviews stop at the hub; exact Thread/Level details are loaded only when requested. Conversational follow-ups retain observed IDs and displayed order, and user corrections replace the selected target. Read-only opening does not authorize writes. The router and operator load write-specific safeguards on demand; the manager evaluation slate covers these short requests and follow-ups against an isolated Worker fixture.
