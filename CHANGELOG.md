@@ -8,6 +8,7 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Make the Compass logo toggle light/dark mode on desktop and mobile, remember the last palette in each mode, and save the active appearance through existing settings. Preserve the current workspace and typography; support keyboard activation and synchronized Preferences controls.
 - Remove all loaded-skill byte budgets and the combined router/operator cap from Hermes verification. Preserve fixed-prompt, skill-index, tool-schema, memory, and skill-integrity checks.
 - Raise Lite Visual's loaded-skill budget from 6,000 to 8,000 bytes to accommodate its installed instructions without changing other prompt limits.
 - Refine reading and navigation: single-column bilingual Notes with optional tools and verbatim provenance, next chapters before source diagnostics, compact lesson navigation, clearer Home/Threads hierarchy, canonical branch names, and 44px study actions. Learn now opens Threads; search remembers eight local selections and Atlas offers domain navigation. Preserve content, progression rules, and theme choices.

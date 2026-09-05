@@ -1268,9 +1268,20 @@ function PreferencesView() {
   const typographySaveTimer = useRef<number | null>(null)
 
   useEffect(() => {
+    const syncTheme = () => {
+      setTheme(getSavedTheme())
+      setCustomPalette(getSavedCustomPalette())
+      setThemePair(getSavedThemePair())
+      setThemeMode(document.documentElement.dataset.colorMode === 'dark' ? 'night' : 'day')
+    }
+    window.addEventListener('themechange', syncTheme)
+    return () => window.removeEventListener('themechange', syncTheme)
+  }, [])
+
+  useEffect(() => {
     if (!resolved) return
     const savedPalette = getSavedCustomPalette()
-    const currentTheme = (resolved.appearance as any)?.theme || getSavedTheme()
+    const currentTheme = getSavedTheme()
     const rawPalette = (resolved.appearance as any)?.custom_palette
     const currentPalette = rawPalette
       ? {

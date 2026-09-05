@@ -960,8 +960,11 @@ export function getSavedDisplayPreferences(): DisplayPreferences {
   }
 }
 
+let themeRevision = 0
+
 export function applyTheme(themeId: string, customPalette?: CustomPalette) {
   if (typeof document === 'undefined') return
+  themeRevision += 1
   const root = document.documentElement
   const resolvedThemeId = themeId === 'botanical' ? 'continuum' : themeId
 
@@ -981,12 +984,34 @@ export function applyTheme(themeId: string, customPalette?: CustomPalette) {
 
   try {
     localStorage.setItem('taste-map-theme', root.dataset.theme)
+    localStorage.setItem(`taste-map-theme-${mode}`, root.dataset.theme)
+    localStorage.setItem('taste-map-theme-mode', mode === 'dark' ? 'night' : 'day')
     if (customPalette) {
       localStorage.setItem('taste-map-custom-palette', JSON.stringify(customPalette))
+      saveThemePair({ ...getSavedThemePair(), [mode === 'dark' ? 'night' : 'day']: customPalette })
     }
   } catch {}
 
   window.dispatchEvent(new Event('themechange'))
+}
+
+/** Restore the last palette used in the opposite mode without changing typography. */
+export function toggleThemeMode() {
+  const mode: ThemeMode = document.documentElement.dataset.colorMode === 'dark' ? 'light' : 'dark'
+  let theme = mode === 'dark' ? 'carbon' : 'continuum'
+  try {
+    const saved = localStorage.getItem(`taste-map-theme-${mode}`)
+    if (saved === 'custom' || THEME_PRESETS.some((preset) => preset.id === saved && preset.mode === mode)) {
+      theme = saved!
+    } else if (getSavedTheme() === 'custom') {
+      theme = 'custom'
+    }
+  } catch {
+    // Presets remain usable when browser storage is unavailable.
+  }
+  const custom_palette = theme === 'custom' ? getSavedThemePair()[mode === 'dark' ? 'night' : 'day'] : undefined
+  applyTheme(theme, custom_palette)
+  return { theme, ...(custom_palette ? { custom_palette } : {}) }
 }
 
 export function getSavedCustomPalette(): CustomPalette {
@@ -1234,6 +1259,7 @@ export function initTheme() {
 /** Rehydrate the server-owned visual system before a non-Settings route renders. */
 export async function hydrateThemeFromServer() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return
+  const revision = themeRevision
   try {
     const response = await authFetch('/settings')
     if (!response.ok) return
@@ -1251,7 +1277,8 @@ export async function hydrateThemeFromServer() {
     // a newer visual system from another device.
     const palette =
       theme === 'custom' ? serverPalette || (storedPair ? getActiveCustomPalette() : undefined) : undefined
-    applyTheme(theme, palette)
+    // A logo click or Preferences choice made during startup wins over this older read.
+    if (revision === themeRevision) applyTheme(theme, palette)
     if (typeof appearance.font === 'string') {
       applyFont(
         appearance.font,

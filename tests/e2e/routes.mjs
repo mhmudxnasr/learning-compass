@@ -8,6 +8,7 @@ import { verifyThreadDesk } from './thread-desk.mjs'
 import { verifyScopedMaterials } from './scoped-materials.mjs'
 import { verifyFeedTriage } from './feeds.mjs'
 import { verifyReadingRefinements } from './reading-refinements.mjs'
+import { verifyThemeToggle } from './theme-toggle.mjs'
 
 const { chromium } = createRequire(import.meta.url)('playwright')
 
@@ -850,6 +851,13 @@ suite: try {
     if (message.type() === 'error') errors.push(message.text())
   })
 
+  if (process.env.E2E_FOCUS === 'theme') {
+    await openHomeAfterServiceWorkerActivation(page)
+    await verifyThemeToggle({ page, baseUrl, requestJson })
+    console.log('E2E passed: logo theme toggle, keyboard controls, saved presets/custom pairs, and responsive layouts')
+    break suite
+  }
+
   if (process.env.E2E_FOCUS === 'reading') {
     await verifyReadingRefinements({ page, baseUrl, requestJson, bookId: directBook.book.id })
     console.log('E2E passed: reading layouts, branch identity, Books navigation, recent search, and Atlas domains')
@@ -875,7 +883,11 @@ suite: try {
   if (await page.locator('.root-rail + .context-pane, .context-pane').count())
     throw new Error('desktop shell rendered a permanent context pane')
   const desktopRail = page.locator('.root-rail')
-  if (await desktopRail.getByRole('button').count()) throw new Error('desktop rail must remain navigation-only')
+  if (
+    (await desktopRail.getByRole('button').count()) !== 1 ||
+    !(await desktopRail.locator('button.rail-brand').count())
+  )
+    throw new Error('desktop rail must expose only its brand theme toggle beside the five destinations')
   const desktopCommands = page.locator('.workspace-chrome')
   if (
     (await desktopCommands.getByRole('button', { name: /Search everything/ }).count()) !== 1 ||
@@ -3596,6 +3608,7 @@ suite: try {
     throw new Error('offline Android shell lost its primary navigation')
   await page.context().setOffline(false)
 
+  await verifyThemeToggle({ page, baseUrl, requestJson })
   await verifyReadingRefinements({ page, baseUrl, requestJson, bookId: directBook.book.id })
 
   const androidPage = await browser.newPage({

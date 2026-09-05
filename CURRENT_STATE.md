@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## Compass logo theme toggle — 2026-09-05 (local)
+
+The desktop Compass brand and mobile logo now toggle light/dark mode through the existing appearance settings. The browser remembers the last palette in each mode, including custom day/night colors. Switching preserves the current workspace and typography, keeps Preferences synchronized, supports Enter/Space, and provides a 44px mobile target. Failed saves restore the previous theme with a visible message; network failures use the existing offline mutation queue. A delayed startup settings read cannot overwrite a newer theme choice.
+
+Verified: 20 focused theme/settings tests, lint, TypeScript, production build, and focused Chromium E2E for mouse/keyboard activation, reload persistence, preset/custom palette restoration, Preferences synchronization, save-failure recovery, desktop/mobile layouts, and enlarged mobile text. Light/dark screenshots were inspected. Base JavaScript is 146.07 KB gzip including Preact. Changed-file formatting and diff checks pass. This change is committed locally; production remains unchanged. No API contract, schema, or Hermes workflow changed.
+
 ## Worktree consolidation — 2026-09-05
 
 All registered worktree histories are incorporated into main. Nine historical commits across eight detached tips were confirmed patch-equivalent to changes already on main; merge `82f5a53` records their ancestry while preserving the exact source tree. All existing checkouts were clean and had no processes running inside them. Removed 40 extra checkouts and pruned four stale entries; only `/home/mahmud/recommendations-worker` remains. The verified Git bundle, original inventory, 22 archives of ignored local data/diagnostics, checksums, and cleanup receipt are in `/home/mahmud/backups/learning-compass/worktree-cleanup-20260905T033042Z/`. Reproducible dependencies, build output, and Python caches were excluded from those archives. No application code or deployed version changed; verification used patch equivalence, exact tree identity, ancestry checks, backup validation, final worktree inventory, formatting, and diff checks.

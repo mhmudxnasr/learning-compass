@@ -1,7 +1,9 @@
 import type { ComponentChildren } from 'preact'
-import { useEffect, useRef } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { BrandMark, Icon, type IconName } from '../components/Icon'
 import { modes, type RootKey, type Route, roots, routeHref } from '../app/router'
+import { api, ApiError } from '../api'
+import { applyTheme, getSavedCustomPalette, getSavedTheme, toggleThemeMode } from '../theme'
 
 const rootIcons: Record<RootKey, IconName> = {
   home: 'home',
@@ -39,6 +41,37 @@ export function StudioShell({
   const activeMode = modes[route.root].find((item) => item.key === route.mode)
   const activeFocus = activeMode?.focuses?.find((item) => item.key === route.focus)
   const hasInspector = Boolean(inspector)
+  const [darkMode, setDarkMode] = useState(() => document.documentElement.dataset.colorMode === 'dark')
+  const [themeSaving, setThemeSaving] = useState(false)
+  const [themeStatus, setThemeStatus] = useState('')
+  const themeLabel = `Compass: switch to ${darkMode ? 'light' : 'dark'} mode`
+
+  useEffect(() => {
+    const syncTheme = () => setDarkMode(document.documentElement.dataset.colorMode === 'dark')
+    window.addEventListener('themechange', syncTheme)
+    return () => window.removeEventListener('themechange', syncTheme)
+  }, [])
+
+  const onThemeToggle = async () => {
+    if (themeSaving) return
+    const previousTheme = getSavedTheme()
+    const previousPalette = getSavedCustomPalette()
+    const appearance = toggleThemeMode()
+    setThemeSaving(true)
+    setThemeStatus('')
+    try {
+      await api('/settings/appearance', { method: 'PUT', body: JSON.stringify(appearance) })
+    } catch (error) {
+      if (error instanceof ApiError && error.offlineQueued) {
+        setThemeStatus('Theme saved on this device. It will sync when the connection returns.')
+      } else {
+        applyTheme(previousTheme, previousTheme === 'custom' ? previousPalette : undefined)
+        setThemeStatus('Could not save the theme. Please try again.')
+      }
+    } finally {
+      setThemeSaving(false)
+    }
+  }
 
   useEffect(() => {
     if (!hasInspector) {
@@ -90,10 +123,17 @@ export function StudioShell({
 
       <aside class="root-rail" aria-label="Main navigation">
         <nav aria-label="Five workspaces">
-          <div class="rail-brand" aria-label="Learning Compass">
+          <button
+            type="button"
+            class="rail-brand"
+            aria-label={themeLabel}
+            title={themeLabel}
+            disabled={themeSaving}
+            onClick={onThemeToggle}
+          >
             <BrandMark size={28} />
             <strong>Compass</strong>
-          </div>
+          </button>
           {roots.map((item) => (
             <a
               key={item.key}
@@ -167,10 +207,17 @@ export function StudioShell({
           </div>
         </header>
         <div class="mobile-utilities" aria-label="Workspace tools">
-          <div class="mobile-brand" aria-label="Learning Compass">
+          <button
+            type="button"
+            class="mobile-brand"
+            aria-label={themeLabel}
+            title={themeLabel}
+            disabled={themeSaving}
+            onClick={onThemeToggle}
+          >
             <BrandMark size={23} />
             <strong>Compass</strong>
-          </div>
+          </button>
           <button type="button" class="button secondary" onClick={onSearch} aria-keyshortcuts="Control+K Meta+K">
             <Icon name="search" size={16} /> Search
           </button>
@@ -178,6 +225,11 @@ export function StudioShell({
             <Icon name="capture" size={17} /> Capture
           </button>
         </div>
+        {themeStatus && (
+          <div class="route-notice" role="status">
+            {themeStatus}
+          </div>
+        )}
         {route.recoveredFrom && !route.notFound && (
           <div class="route-notice route-recovered" role="status">
             <Icon name="sync" size={14} />

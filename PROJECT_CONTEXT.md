@@ -1,5 +1,7 @@
 # Learning Compass — Project Context
 
+The Compass brand in the desktop rail and mobile toolbar toggles light/dark mode without navigation. Each browser remembers its last palette in each mode, including custom day/night palettes; the active choice uses the existing server-owned appearance setting. The control supports keyboard activation and stays synchronized with Preferences.
+
 ## Native Hermes tools
 
 Loaded Hermes skill content has no per-skill or combined router/operator byte budget. Fixed-prompt, skill-index, tool-schema, and memory limits remain separate; skill ownership, instruction validity, and installed parity checks still apply.
