@@ -1,16 +1,16 @@
 {
   "format": "learning-compass-release-status-v1",
-  "observed_at": "2026-09-05T03:41:17.365Z",
+  "observed_at": "2026-09-05T15:51:15.955Z",
   "source": {
-    "commit_sha": "ebaa50d35972d7a475f559973110eb4606398a52",
+    "commit_sha": "a6c74db80262ee68cbbfd79c97de8a8e02121e52",
     "branch": "main",
     "dirty": false
   },
   "production": {
     "origin": "https://recommendations-worker.mhmudnasr30.workers.dev",
     "deployment": {
-      "version_id": "9145072d-ce6c-4744-b5c2-a16550a09b7d",
-      "deployed_at": "2026-09-05T03:40:53.111611Z"
+      "version_id": "7fd27a58-d3b2-4560-b3c3-444898c101e6",
+      "deployed_at": "2026-09-05T15:50:50.473066Z"
     },
     "migrations": {
       "applied_count": 79,
@@ -151,12 +151,12 @@
       "live": {
         "ok": true,
         "status": "live",
-        "observed_at": "2026-09-05T03:41:13.997Z"
+        "observed_at": "2026-09-05T15:51:12.504Z"
       },
       "readiness": {
         "ok": true,
         "status": "healthy",
-        "checked_at": "2026-09-05T03:41:13.991Z",
+        "checked_at": "2026-09-05T15:51:12.501Z",
         "blockers": [],
         "bindings": {
           "d1": true,
@@ -171,20 +171,20 @@
     "budget": {
       "day_utc": "2026-09-05",
       "reads": {
-        "estimated": 183730,
+        "estimated": 543000,
         "budget": 4000000,
         "cloudflare_limit": 5000000,
         "headroom": 1000000,
         "required_headroom": 1000000
       },
       "writes": {
-        "estimated": 382,
+        "estimated": 538,
         "budget": 70000,
         "cloudflare_limit": 100000,
         "headroom": 30000,
         "required_headroom": 30000
       },
-      "updated_at": "2026-09-05 03:41:13"
+      "updated_at": "2026-09-05 15:51:12"
     },
     "recovery": {
       "latest_verified": {
@@ -203,7 +203,7 @@
       "corpora": 3,
       "targets": 252,
       "active_corpora": 1,
-      "pairs": 671
+      "pairs": 674
     }
   },
   "policy": {

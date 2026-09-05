@@ -2,13 +2,19 @@
 
 ## Handoff
 
-- **Learning calendar and Obsidian download:** Implemented locally; see the entry below for scope and checks. The explicit download includes book/chapter notes while routine Hermes archiving retains its exclusion. No deployment or production data changes.
+- **Learning calendar and Obsidian download:** Deployed; see the release entry below for live checks and the implementation entry for scope. The explicit download includes book/chapter notes while routine Hermes archiving retains its exclusion.
 
 - **Start here:** `AGENTS.md` owns the working rules, `PROJECT_CONTEXT.md` the durable product model, and the README contribution map points to source files and focused tests. Read older entries below only when their history is relevant.
-- **Frontend audit:** The isolated Impeccable repair set reached 40/40 after independent design/technical confirmation and closure of the final two polish deductions. See the final-confirmation entry below for scope, evidence, and limits. It is local only.
-- **Local work:** The verified Impeccable frontend repairs retain Continuum and the five-root navigation while correcting reading hierarchy, responsive layouts, accessible controls, source identity, and recovery. Workspace code is lazy-loaded; the local PWA shell is v62. The entry below owns this task's exact evidence; no deployment was performed.
-- **Last recorded deployment:** `docs/release-snapshot.json`, observed `2026-09-05T03:41:17.365Z`, records Worker `9145072d-ce6c-4744-b5c2-a16550a09b7d` from `ebaa50d` with PWA shell v61. This is historical release evidence, not a fresh live-health claim. Local maintenance and frontend repairs have not been deployed.
+- **Frontend audit:** The isolated Impeccable repair set reached 40/40 after independent design/technical confirmation and closure of the final two polish deductions. See the final-confirmation entry below for scope, evidence, and limits. The combined release includes these repairs.
+- **Frontend:** The deployed Impeccable repairs retain Continuum and the five-root navigation while correcting reading hierarchy, responsive layouts, accessible controls, source identity, and recovery. Workspace code is lazy-loaded; the deployed PWA shell is v62.
+- **Last recorded deployment:** `docs/release-snapshot.json`, observed `2026-09-05T15:51:15.955Z`, records Worker `7fd27a58-d3b2-4560-b3c3-444898c101e6` from clean `a6c74db` with PWA shell v62. Live checks passed at release time; recheck for later operational work.
 - **Local environment:** lockfile dependencies are restored. The deleted `.tmp/` recovery files and separate WhatsApp repository are absent; historical references to those paths are no longer usable. Generated `dist/` output was removed after the successful verification build. Dependency upgrades retain the holds in `docs/dependencies.md`.
+
+## Calendar, Obsidian export, and frontend release — 2026-09-05 (deployed)
+
+At Mahmood's explicit request, deployed clean main commit `a6c74db` as Worker `7fd27a58-d3b2-4560-b3c3-444898c101e6`, including the calendar/export and completed frontend repairs. PWA shell v62 is live. The prior Worker `9145072d-ce6c-4744-b5c2-a16550a09b7d` is the application rollback target. No schema migration or learning-content mutation was needed.
+
+Reused the passing combined fast gate, focused regression/E2E, and Hermes checks on unchanged inputs; rebuilt the removed client output successfully. Pre/post release snapshots confirm healthy liveness/readiness, all 79 migrations in parity, all 30 required schema objects, and budget headroom without blockers. All 11 installed live smoke checks pass. Production calendar month/day reads and a real Thread Obsidian manifest pass; that sampled Thread correctly reports three sources awaiting extracted notes. All 13 published shell/JavaScript/CSS files match the local build byte for byte. Initial JavaScript remains 47.58 KB gzip including API/Preact, CSS 109.09 KB gzip, and the lazy ZIP module 0.74 KB gzip. Wrangler's initial credential refresh failure cleared through its existing OAuth login before deployment; no new credential was added. `docs/release-snapshot.json` records the observed release. Generated build output was removed after verification.
 
 ## Learning calendar and Obsidian Thread download — 2026-09-05 (local, verified)
 
