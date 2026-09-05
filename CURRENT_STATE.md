@@ -1,5 +1,15 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-05 (bounded Level read deployed; Orientation companions published)
+
+Implementation `84685a6` on `fix/bounded-level-read`, based on deployed baseline `f5d0c1b`, is deployed as Worker `0685ad21-56d8-48d0-81c6-5db846d87bfc` at 100%. The paginated metadata-only `path?view=lessons&stage_id=...` projection preserves the full-path API and avoids hydrating oversized lesson bodies and artifact receipts. The live Systems Thinking Orientation response contains all seven lessons in 2,450 bytes of formatted client output. Application rollback is Worker `2fb36281-639c-47de-ba82-75f6eb10fec5`; the primary checkout remains unchanged.
+
+The existing aggregate release gate passed: quality, 551 unit tests, TypeScript, build, six integration scenarios, browser/PWA/offline E2E, migration rehearsal, Hermes contracts, 38 manager cases, 46 installed-client tests, seven native-adapter tests, syntax, and final diff checks. The integration fixture covers a 1.2 MB lesson body, pagination, ownership, unchanged statuses, and full-path compatibility. Post-deployment readiness, deployment-version verification, and all 11 live smoke checks passed. No second deployment or repeat full gate was needed during handoff recovery.
+
+Five existing Arabic HTML/PDF pairs were published and canonically verified for the primary sources of Feedback loops, Leverage points, Second-order effects, Modeling exercise, and One real-world application. The fifth upload initially returned HTTP 500; its canonical source showed no ready pair, and one retry of the same finished pair succeeded. All five distinct pairs are ready. Verification is integrity-only; editorial/layout audits were not run, and no companion was regenerated. Before/after Level reads preserve every lesson status and primary-source mapping: two completed lessons, Feedback loops in progress, and four not started. No lesson progress was changed.
+
+The manifest, release/publication receipts, canonical before/after reads, and existing ten-file `level-0-companions.zip` remain under `~/.hermes/work/orientation-companions/`; `completion-receipt.json` records the complete outcome and the fifth-publication recovery.
+
 ## Current truth — 2026-09-05 (standalone companion retirement, deployed)
 
 Worker `2fb36281-639c-47de-ba82-75f6eb10fec5` deployed at `2026-09-05T01:05:22Z` from source `ff38c8e` on `fix/retire-companion-pairs`, with PWA shell v58. It preserves the deployed scoped material notebooks from `7d4f3eb` and adds guarded, atomic retirement of complete standalone companion pairs. Application rollback is Worker `2cc5a728-7f2e-4a63-bda1-e407ce2b8414`. No migration or dependency installation was needed; the primary checkout remains unchanged.
@@ -17,9 +27,6 @@ Notes, Files, and Recall now use accessible tabs and full-width editors across T
 The complete aggregate release gate passes: quality checks, all 542 unit tests, TypeScript, production build, six Worker/D1 integrations, responsive/PWA/offline E2E, clean/idempotent migration rehearsal, Hermes contracts, 38 manager tests, 46 installed site-client tests, seven native adapter tests, and secret/diff checks. The material tests cover note/file/card persistence, exact ownership, duplicate submission, failed uploads, validation, draft preservation, offline sync, desktop/tablet/320px and 390px mobile layouts, dark theme, and 200% text. Release preparation also fixes the Preferences grid's enlarged-text overflow. Browser tests use isolated identities for page and service-worker requests, wait for initial service-worker activation/reload, and simulate offline saves with the actual browser connection state.
 
 Worker `2cc5a728-7f2e-4a63-bda1-e407ce2b8414` deployed at `2026-09-05T00:36:11Z` from source `7d4f3eb` on `fix/lesson-materials-panel`, with PWA shell v57. Production health, readiness, budget, public API boundaries, and the exact Leverage points lesson's tabs and add/cancel editors pass live verification. Desktop/mobile renders were inspected, and a fresh browser installed v57 without writing learning data. Migration parity remains exact at 78 applied migrations through `0076`; no migration or dependency installation was needed. The primary checkout remains unchanged. Application rollback is Worker `cd7fa264-dac3-4069-b73f-b878c9f00c8a`. The complete D1 and 1,896-object R2 backup `backup_20260904T233845Z` passed its disposable restore; `docs/release-snapshot.json` records the newer verified recovery receipt and zero production blockers at observation time.
-## Bounded Level read repair — implementation pending verification
-
-A dedicated worktree based on `21023f9` adds a paginated metadata-only Level projection to the existing Thread path. It preserves lesson state and the full-path response while avoiding the 1 MiB client failure caused by hydrated course content. Verification and deployment are pending; no production data has changed.
 
 ## Current truth — 2026-09-05 (all branch histories merged)
 
