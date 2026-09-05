@@ -54,7 +54,7 @@ function moveViewport(cy: Core | null, action: 'in' | 'out' | 'fit', reducedMoti
   cy.stop()
   if (action === 'fit') {
     cy.animate(
-      { fit: { eles: cy.elements(), padding: cy.width() < 600 ? 24 : 72 } },
+      { fit: { eles: cy.elements(), padding: cy.width() < 600 ? 88 : 72 } },
       { duration: reducedMotion ? 0 : 440, easing: 'ease-out-cubic' },
     )
     return
@@ -558,7 +558,7 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
       })
 
       cyRef.current = cy
-      cy.fit(cy.elements(), cy.width() < 600 ? 24 : 72)
+      cy.fit(cy.elements(), cy.width() < 600 ? 88 : 72)
     } else {
       const currentNodes = new Set(cy.nodes().map((n) => n.id()))
       const toAdd: ElementDefinition[] = []
@@ -666,6 +666,8 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
         'text-border-opacity': branchOpacity * 0.7,
       })
       cy.nodes('[type = "category"], [type = "root"]').style({
+        'font-size': Math.max(14.5 * Math.sqrt(atlasRef.current.node_size), 14 / Math.max(zoom, 0.01)),
+        'text-max-width': Math.max(190, 190 / Math.max(zoom, 0.01)),
         'text-opacity': 1,
         'text-background-opacity': 0.96,
         'text-border-opacity': 0.7,
@@ -1142,7 +1144,7 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
       fitPendingRef.current = false
       requestAnimationFrame(() => {
         cy.stop().animate(
-          { fit: { eles: cy.elements(), padding: cy.width() < 600 ? 24 : 72 } },
+          { fit: { eles: cy.elements(), padding: cy.width() < 600 ? 88 : 72 } },
           { duration: reducedMotion || !atlasRef.current.animate ? 0 : 440, easing: 'ease-out-cubic' },
         )
       })
@@ -1263,6 +1265,8 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
       'text-border-opacity': 0.7,
     })
     cy.nodes('[type = "category"], [type = "root"]').style({
+      'font-size': Math.max(14.5 * Math.sqrt(ns), 14 / Math.max(zoom, 0.01)),
+      'text-max-width': Math.max(190, 190 / Math.max(zoom, 0.01)),
       'text-opacity': 1,
       'text-background-opacity': 0.96,
       'text-border-opacity': 0.7,
@@ -1451,6 +1455,17 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
     setVisible(id === 'all' ? visibleIdsForDepth(model, depth) : branchSubtreeIds(model, id))
   }
 
+  const focusDomain = (name: string) => {
+    fitPendingRef.current = true
+    setBranchFocus('all')
+    setIsolateId(null)
+    setSelectedId('')
+    onSelectRef.current?.(null)
+    setFrontierFilter('all')
+    setClusterFilter(name)
+    setVisible(visibleIdsForDepth(model, depth))
+  }
+
   const changeDepth = (value: 'branches' | 'core' | 'all') => {
     fitPendingRef.current = true
     setDepth(value)
@@ -1567,6 +1582,28 @@ export default function AtlasPage({ initialSelectedId, onSelect }: AtlasPageProp
       class={`atlas atlas-canvas-view ${isFullscreen ? 'atlas-fullscreen' : ''} ${atlas.animate && !reducedMotion ? 'atlas-motion' : ''}`}
     >
       <h1 class="visually-hidden">Atlas</h1>
+      <nav class="atlas-domain-navigation" aria-label="Explore knowledge domains">
+        <label>
+          Explore a domain
+          <select
+            aria-label="Explore a domain"
+            value={clusterFilter}
+            onChange={(event) => focusDomain(event.currentTarget.value)}
+          >
+            <option value="all">Whole map</option>
+            {[...model.clusters.keys()].sort().map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {clusterFilter !== 'all' && (
+          <button type="button" class="button secondary" onClick={() => focusDomain('all')}>
+            Whole map
+          </button>
+        )}
+      </nav>
       <div class="atlas-stage">
         <div class="atlas-canvas-shell">
           <div class="atlas-floating-bar" aria-label="Atlas controls and depth">

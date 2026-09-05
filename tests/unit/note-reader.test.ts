@@ -65,3 +65,30 @@ test('reader does not turn ordinary prose labels into generated cards', () => {
     false,
   )
 })
+test('reader separates receipts without changing canonical text or language order', () => {
+  const sections = [
+    {
+      section_key: 'claim',
+      label: 'Claim and explanation',
+      content: 'A precise claim.\n\nشرح المعنى بالعربي.',
+      direction: 'auto',
+    },
+    {
+      section_key: 'extraction_receipt',
+      label: 'Extraction receipt',
+      content: '{"contract":"extraction/v1","hash":"abc"}',
+      direction: 'ltr',
+    },
+  ]
+  const before = JSON.stringify(sections)
+  const document = buildNoteReaderDocument({ id: 'receipt-test', title: 'A note', sections })
+  assert.equal(document.sections.length, 1)
+  assert.deepEqual(
+    document.sections[0].blocks.map((block) => block.direction),
+    ['ltr', 'rtl'],
+  )
+  assert.deepEqual(document.provenance, [sections[1]])
+  assert.ok(document.outline.every((entry) => entry.sectionKey !== 'extraction_receipt'))
+  assert.equal(JSON.stringify(sections), before)
+  assert.equal(document.wordCount, 6)
+})

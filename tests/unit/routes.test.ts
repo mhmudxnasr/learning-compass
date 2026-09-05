@@ -3,6 +3,13 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { modes, objectHref, parseRoute, roots, routeHref, views } from '../../client/src/app/router.ts'
+
+test('explicit current default modes do not announce legacy route recovery', () => {
+  for (const href of ['#/learn?mode=paths', '#/library?mode=books', '#/map?mode=atlas']) {
+    assert.equal(parseRoute(href).recoveredFrom, undefined)
+    assert.equal(parseRoute(href).notFound, undefined)
+  }
+})
 import {
   calibratedConfidence,
   canonicalizeUrl,
@@ -439,7 +446,7 @@ test('the router exposes five roots and twelve grouped modes with focus state', 
   )
   assert.deepEqual(
     roots.find((root) => root.key === 'learn'),
-    { key: 'learn', label: 'Learn', defaultMode: 'practice', defaultFocus: 'notes', defaultView: 'notes' },
+    { key: 'learn', label: 'Learn', defaultMode: 'paths', defaultView: 'paths' },
   )
   assert.equal(modes.library.find((mode) => mode.key === 'catalog')?.label, 'Archive')
   assert.deepEqual(
@@ -473,9 +480,9 @@ test('Library Archive requests completed and excluded records before pagination'
 
 test('root modes parse from query state while typed object links keep their identity', () => {
   const learn = parseRoute('#/learn')
-  assert.equal(learn.mode, 'practice')
-  assert.equal(learn.focus, 'notes')
-  assert.equal(learn.view, 'notes')
+  assert.equal(learn.mode, 'paths')
+  assert.equal(learn.focus, undefined)
+  assert.equal(learn.view, 'paths')
   assert.equal(learn.canonical, '/learn')
 
   const learnThread = parseRoute('#/learn/thread/thread%201')

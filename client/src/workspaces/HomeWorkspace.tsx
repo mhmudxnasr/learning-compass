@@ -71,7 +71,7 @@ function sourceFileLabel(file: LibraryRecord) {
 }
 
 function MaterialLink({ option }: { option: SourceMaterialOption }) {
-  const shortLabel = option.kind === 'notebooklm' ? 'NBLM' : option.format
+  const shortLabel = option.kind === 'notebooklm' ? 'NotebookLM' : option.format
   return (
     <a
       class={`continuum-material-link kind-${option.kind}`}
@@ -273,7 +273,6 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
     <div class="folio-home-workspace continuum-home">
       <header class="folio-home-header continuum-home-header">
         <div>
-          <p class="folio-kicker">Your learning desk</p>
           <h1>Today</h1>
         </div>
         <div class="continuum-home-status" aria-label="Today’s study state">
@@ -395,9 +394,7 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
           <section class="folio-home-threads continuum-turns" aria-labelledby="home-threads-title">
             <div class="folio-section-heading folio-home-threads-heading">
               <div>
-                <p class="folio-kicker">Current rotation</p>
                 <h2 id="home-threads-title">{threads.length ? 'What comes next' : 'No current Threads'}</h2>
-                {threads.length > 0 && <p>One deliberate turn from each active Thread.</p>}
               </div>
               <a
                 class="folio-heading-link"
@@ -582,6 +579,11 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
               </div>
               {activeSource ? (
                 <>
+                  {activeSource.branch_id && (
+                    <a class="folio-branch-pill" href={`#/map/branch/${encodeURIComponent(activeSource.branch_id)}`}>
+                      {activeSource.branch_label || 'Branch unavailable'}
+                    </a>
+                  )}
                   <p class="folio-record-meta">
                     {sourceCreator(activeSource)} · {sourceFormat(activeSource)}
                     {activeSource.estimated_minutes ? ` · ~${activeSource.estimated_minutes} min` : ''}
@@ -616,9 +618,7 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
                       Open Queue to start
                     </a>
                   </div>
-                  <p class="folio-action-note">
-                    Opening from Home is passive. Queue owns the tracked Start/Resume action.
-                  </p>
+                  <p class="folio-action-note">Open Queue to start or resume a tracked session.</p>
                   <a class="continuum-all-files" href={itemHref(activeSource, 'files')}>
                     Item files
                   </a>
@@ -670,6 +670,14 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
                       <a class="folio-home-queue-item-title item-title-link" href={itemHref(item)}>
                         {sourceTitle(item)}
                       </a>
+                      {item.branch_id && (
+                        <a
+                          class="folio-branch-pill continuum-queue-branch"
+                          href={`#/map/branch/${encodeURIComponent(item.branch_id)}`}
+                        >
+                          {item.branch_label || 'Branch unavailable'}
+                        </a>
+                      )}
                       <button
                         type="button"
                         class="item-focus-button"

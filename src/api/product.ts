@@ -890,12 +890,12 @@ app.get('/notes', async (c) => {
   const kind = c.req.query('kind')
   const notes = kind
     ? await c.env.DB.prepare(
-        `SELECT n.*, r.branch as rec_branch, r.content_type as rec_content_type, r.video_title as rec_title FROM notes n LEFT JOIN recommendations r ON n.recommendation_id = r.id WHERE n.kind=? ORDER BY n.updated_at DESC LIMIT 200`,
+        `SELECT n.*, b.id resolved_branch_id,b.label resolved_branch_label,r.branch as rec_branch, r.content_type as rec_content_type, r.video_title as rec_title FROM notes n LEFT JOIN recommendations r ON n.recommendation_id = r.id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes b ON b.id=COALESCE(n.branch_id,m.branch_id,r.branch) WHERE n.kind=? ORDER BY n.updated_at DESC LIMIT 200`,
       )
         .bind(kind)
         .all<any>()
     : await c.env.DB.prepare(
-        `SELECT n.*, r.branch as rec_branch, r.content_type as rec_content_type, r.video_title as rec_title FROM notes n LEFT JOIN recommendations r ON n.recommendation_id = r.id ORDER BY n.updated_at DESC LIMIT 200`,
+        `SELECT n.*, b.id resolved_branch_id,b.label resolved_branch_label,r.branch as rec_branch, r.content_type as rec_content_type, r.video_title as rec_title FROM notes n LEFT JOIN recommendations r ON n.recommendation_id = r.id LEFT JOIN recommendation_meta m ON m.recommendation_id=r.id LEFT JOIN tree_nodes b ON b.id=COALESCE(n.branch_id,m.branch_id,r.branch) ORDER BY n.updated_at DESC LIMIT 200`,
       ).all<any>()
   const rows = notes.results || []
   if (!rows.length) return c.json({ notes: [] })
@@ -910,8 +910,10 @@ app.get('/notes', async (c) => {
     byNote.set(section.note_id, [...(byNote.get(section.note_id) || []), section])
   const output = rows.map((note) => ({
     ...note,
-    branch_id: note.branch_id || note.rec_branch || null,
-    branch_label: note.rec_branch || note.branch_id || null,
+    branch_id: note.resolved_branch_id || note.branch_id || null,
+    branch_label: note.resolved_branch_label || null,
+    resolved_branch_id: undefined,
+    resolved_branch_label: undefined,
     content_type: note.rec_content_type || null,
     source_url: note.source_url || note.rec_video_url || null,
     provenance: (() => {
@@ -935,7 +937,7 @@ app.get('/notes/hub', async (c) => {
 app.get('/notes/:id', async (c) => {
   const noteId = c.req.param('id')
   const note = await c.env.DB.prepare(
-    `SELECT n.*, r.branch as rec_branch, r.content_type as rec_content_type, r.video_title as rec_title, r.video_url as rec_video_url, json_extract(m.source_metadata_json,'$.raw_source') as rec_source_url, COALESCE(n.thread_id,l.thread_id) as owner_thread_id FROM notes n LEFT JOIN recommendations r ON n.recommendation_id = r.id LEFT JOIN recommendation_meta m ON m.recommendation_id = n.recommendation_id LEFT JOIN thread_lessons l ON l.id=n.lesson_id WHERE n.id=?`,
+    `SELECT n.*, b.id resolved_branch_id,b.label resolved_branch_label,r.branch as rec_branch, r.content_type as rec_content_type, r.video_title as rec_title, r.video_url as rec_video_url, json_extract(m.source_metadata_json,'$.raw_source') as rec_source_url, COALESCE(n.thread_id,l.thread_id) as owner_thread_id FROM notes n LEFT JOIN recommendations r ON n.recommendation_id = r.id LEFT JOIN recommendation_meta m ON m.recommendation_id = n.recommendation_id LEFT JOIN tree_nodes b ON b.id=COALESCE(n.branch_id,m.branch_id,r.branch) LEFT JOIN thread_lessons l ON l.id=n.lesson_id WHERE n.id=?`,
   )
     .bind(noteId)
     .first<any>()
@@ -1015,8 +1017,10 @@ app.get('/notes/:id', async (c) => {
 
   const output = {
     ...note,
-    branch_id: note.branch_id || note.rec_branch || null,
-    branch_label: note.rec_branch || note.branch_id || null,
+    branch_id: note.resolved_branch_id || note.branch_id || null,
+    branch_label: note.resolved_branch_label || null,
+    resolved_branch_id: undefined,
+    resolved_branch_label: undefined,
     content_type: note.rec_content_type || null,
     source_url: note.source_url || note.rec_video_url || note.rec_source_url || null,
     provenance: (() => {

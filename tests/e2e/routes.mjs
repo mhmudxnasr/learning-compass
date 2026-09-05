@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { verifyThreadDesk } from './thread-desk.mjs'
 import { verifyScopedMaterials } from './scoped-materials.mjs'
 import { verifyFeedTriage } from './feeds.mjs'
+import { verifyReadingRefinements } from './reading-refinements.mjs'
 
 const { chromium } = createRequire(import.meta.url)('playwright')
 
@@ -15,7 +16,7 @@ const publicLearningUpdatePath = '/updates/learning-materials'
 const rootRoutes = [
   { root: 'home', href: '#/home', expected: '.folio-home-workspace' },
   { root: 'library', href: '#/library', expected: '.folio-books-view' },
-  { root: 'learn', href: '#/learn', expected: '.folio-notes' },
+  { root: 'learn', href: '#/learn', expected: '.folio-paths' },
   { root: 'map', href: '#/map', expected: '.atlas-empty-state, .atlas-canvas-view' },
   { root: 'settings', href: '#/settings', expected: '.profile-settings-page' },
 ]
@@ -54,7 +55,7 @@ const modeRoutes = [
     focus: 'files',
     expected: '.folio-files-view',
   },
-  { root: 'learn', href: '#/learn', mode: 'practice', expected: '.folio-notes' },
+  { root: 'learn', href: '#/learn', mode: 'paths', expected: '.folio-paths' },
   { root: 'learn', href: '#/learn?mode=paths', mode: 'paths', expected: '.folio-paths' },
   {
     root: 'learn',
@@ -849,6 +850,12 @@ suite: try {
     if (message.type() === 'error') errors.push(message.text())
   })
 
+  if (process.env.E2E_FOCUS === 'reading') {
+    await verifyReadingRefinements({ page, baseUrl, requestJson, bookId: directBook.book.id })
+    console.log('E2E passed: reading layouts, branch identity, Books navigation, recent search, and Atlas domains')
+    break suite
+  }
+
   if (process.env.E2E_FOCUS === 'feeds') {
     await verifyFeedTriage({ page, baseUrl, requestJson, wrangler, persistDir })
     console.log(
@@ -927,7 +934,7 @@ suite: try {
     })
     if (routeState.path !== `/${route.root}`)
       throw new Error(`${route.href}: mode escaped its root path (${routeState.path})`)
-    const defaultModes = { home: 'today', library: 'books', learn: 'practice', map: 'atlas', settings: 'personal' }
+    const defaultModes = { home: 'today', library: 'books', learn: 'paths', map: 'atlas', settings: 'personal' }
     if (route.mode && route.mode !== defaultModes[route.root] && routeState.query.mode !== route.mode)
       throw new Error(`${route.href}: mode query was not preserved (${JSON.stringify(routeState.query)})`)
     if (route.focus && routeState.query.focus !== route.focus)
@@ -2077,7 +2084,7 @@ suite: try {
     throw new Error('typed Thread route is missing its Thread h1')
   if (
     (await page.locator('.course-stage-context').getByRole('link', { name: 'Threads' }).getAttribute('href')) !==
-    '#/learn?mode=paths'
+    '#/learn'
   )
     throw new Error('Thread breadcrumb does not return to the Threads index')
   if (
@@ -2867,7 +2874,7 @@ suite: try {
   await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
   await page.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout: 15000 })
   const homeBody = await page.locator('.workspace-canvas').innerText()
-  for (const value of ['Current source', 'Current rotation', 'Queue', 'RSS Feeds']) {
+  for (const value of ['Current source', 'What comes next', 'Queue', 'RSS Feeds']) {
     if (!homeBody.toLowerCase().includes(value.toLowerCase())) throw new Error(`Home is missing ${value}: ${homeBody}`)
   }
   if ((await page.locator('.folio-home-focus').count()) !== 1)
@@ -3046,6 +3053,7 @@ suite: try {
   const attachedNote = sourceRecord.notes.find((note) => note.kind === 'reflection')
   await page.locator(`a[href^="#/learn/note/${attachedNote.id}"]`).first().click()
   await page.locator('.scholar-note-workspace').waitFor({ state: 'visible' })
+  await page.getByRole('button', { name: 'Study tools', exact: true }).click()
   await page
     .getByRole('navigation', { name: 'Related material' })
     .getByRole('link', { name: 'Source files', exact: true })
@@ -3203,6 +3211,8 @@ suite: try {
     }),
   })
   const extractedNotes = (await requestJson('/notes')).notes
+  if (extractedNotes.find((note) => note.id === 'e2e_source_note')?.branch_label !== 'Readable fixture branch')
+    throw new Error('source note did not resolve its canonical branch label')
   if (
     !extractedNotes.some((note) => note.id === 'e2e_source_note') ||
     !extractedNotes.some(
@@ -3585,6 +3595,8 @@ suite: try {
   if (!(await page.locator('.mobile-dock').isVisible()))
     throw new Error('offline Android shell lost its primary navigation')
   await page.context().setOffline(false)
+
+  await verifyReadingRefinements({ page, baseUrl, requestJson, bookId: directBook.book.id })
 
   const androidPage = await browser.newPage({
     viewport: { width: 390, height: 844 },

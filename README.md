@@ -2,6 +2,8 @@
 
 Threads is the main study workspace: plan a question, author its Levels and lessons, continue the exact next lesson, organize source material, and keep a notebook and optional synthesis. Its study desk preserves search and sorting, exposes priority and material gaps, and gives lessons a searchable curriculum navigator and focus mode. New Threads begin in Planning; creation does not generate a curriculum automatically.
 
+Learn opens Threads. Compact lessons begin with the current lesson and a collapsed curriculum control. Notes uses one reading column with optional contents and study tools; English claims and Arabic explanations retain their original order and direction, while extraction receipts remain under provenance. Books places the next chapter before source diagnostics and provides jumps to My Books and Canon. Search remembers the last eight items opened from its results locally, with an explicit clear action. Atlas offers domain selection and keeps domain labels legible at overview zoom.
+
 Learning Compass is a private, single-user learning system. It collects material from many sources, keeps the active queue small, tracks learning at the original source, and keeps a correctable personal ledger of books, movies, series, podcasts, courses, games, albums, ratings, and progress. Reflection can become structured notes, and that history maintains a personal knowledge map.
 
 Consumption normally happens at the real source. A verified Lite Visual companion is the deliberate exception: it is an Arabic complete-source substitute whose semantic HTML article is canonical and whose linked A4 PDF is printed from that exact file. Learning Compass manages deciding what matters, remembering where you stopped, processing what you learned, and resurfacing it later.
@@ -261,6 +263,8 @@ git diff --check
 ```
 
 Choose checks by the changed surface; the commands above are available tools, not a mandatory sequence. Routine releases use `npm run verify:fast` plus affected tests. Reserve the full set for high-risk changes or explicit requests, and do not repeat checks for unchanged inputs. Never claim a skipped check passed.
+
+For Notes, Books section jumps, recent search, and Atlas domain controls, `E2E_FOCUS=reading npm run test:e2e` runs the focused browser checks against a disposable local database and saves responsive screenshots under `test-results/reading-refinements/`.
 
 ### Example: adding source highlights
 

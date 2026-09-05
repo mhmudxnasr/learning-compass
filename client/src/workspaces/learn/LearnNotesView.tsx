@@ -9,6 +9,7 @@ import { Icon } from '../../components/Icon'
 import { buildNoteReaderDocument, directionForText, NoteReaderBlock } from './noteReader'
 import { Direction, DistillationBlock, NoteDossierResponse, NoteRecord, NotesResponse } from './types'
 import { directionValue, formatDate, lessonHref, noteHref, threadHref } from './helpers'
+import { NoteBranchSelect } from './NoteBranchSelect'
 
 type NoteFilter = 'all' | 'source' | 'personal' | 'reflection'
 
@@ -68,10 +69,6 @@ function NotesIndex({ notes, reload }: { notes: NoteRecord[]; reload: () => void
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const groups = useMemo(() => groupNotes(notes), [notes])
-  const branches = useMemo(
-    () => [...new Set(notes.map((note) => note.branch_label || note.branch_id).filter(Boolean) as string[])].sort(),
-    [notes],
-  )
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
     return groups.filter((group) => {
@@ -165,20 +162,7 @@ function NotesIndex({ notes, reload }: { notes: NoteRecord[]; reload: () => void
               autoFocus
             />
           </label>
-          <label>
-            Branch
-            <input
-              value={newBranch}
-              onInput={(event) => setNewBranch((event.target as HTMLInputElement).value)}
-              list="note-branches"
-              placeholder="Optional"
-            />
-          </label>
-          <datalist id="note-branches">
-            {branches.map((branch) => (
-              <option key={branch} value={branch} />
-            ))}
-          </datalist>
+          <NoteBranchSelect value={newBranch} onChange={setNewBranch} />
           <button class="button primary" type="submit" disabled={working || !newTitle.trim()}>
             {working ? 'Creating…' : 'Create'}
           </button>
@@ -215,7 +199,7 @@ function NotesIndex({ notes, reload }: { notes: NoteRecord[]; reload: () => void
           {visible.map((group) => {
             const note = group.primary
             const reflection = group.notes.find((item) => item.kind === 'reflection')
-            const branch = note.branch_label || note.branch_id
+            const branch = note.branch_label || 'Branch unavailable'
             return (
               <article class="note-ledger-row" role="listitem" key={group.key}>
                 <a href={noteHref(note.id)} class="note-ledger-main">
@@ -341,6 +325,8 @@ function NoteDetailWorkspace({
   const [message, setMessage] = useState('')
   const [working, setWorking] = useState(false)
   const [activeOutlineId, setActiveOutlineId] = useState('')
+  const [contentsOpen, setContentsOpen] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
   const [selectedBlock, setSelectedBlock] = useState('')
   const [claimText, setClaimText] = useState('')
   const [synthesisText, setSynthesisText] = useState('')
@@ -389,8 +375,9 @@ function NoteDetailWorkspace({
     location.hash = routeHref('learn', 'practice', 'notes').slice(1)
   }
   const goToOutline = (id: string) => {
-    globalThis.document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     setActiveOutlineId(id)
+    setContentsOpen(false)
+    requestAnimationFrame(() => globalThis.document.getElementById(id)?.scrollIntoView({ block: 'start' }))
   }
 
   const blockKey = (block: DistillationBlock) => `${block.section_key}:${block.block_index}:${block.checksum}`
@@ -513,6 +500,16 @@ function NoteDetailWorkspace({
     <section class="folio-note-reading note-reading-workspace scholar-note-workspace">
       <header class="note-reading-actions scholar-note-actions">
         <div>
+          <button
+            class="button secondary"
+            type="button"
+            aria-expanded={toolsOpen}
+            aria-controls="note-study-tools"
+            onClick={() => setToolsOpen(!toolsOpen)}
+          >
+            <Icon name="menu" size={14} />
+            Study tools
+          </button>
           <button class="button secondary" type="button" onClick={copyNote}>
             <Icon name="copy" size={14} />
             Copy
@@ -551,7 +548,6 @@ function NoteDetailWorkspace({
                   : overviewTarget.kind === 'book'
                     ? 'Book'
                     : 'Source'}{' '}
-              <span class="folio-branch-pill">{note.branch_label || note.branch_id || 'Unassigned'}</span>
             </a>
           )}
           <button class="button primary" type="button" aria-label="Edit note" onClick={() => setEditing(true)}>
@@ -566,59 +562,56 @@ function NoteDetailWorkspace({
         </output>
       )}
 
-      <div class="scholar-note-shell">
-        <aside class="scholar-note-nav" aria-label="Note sections">
-          <strong>Chapter sections</strong>
-          <div>
-            {(document.outline.length
-              ? document.outline
-              : document.sections.map((section) => ({
-                  id: `section-${section.key}`,
-                  label: section.label || 'Note',
-                  level: 1,
-                  sectionKey: section.key,
-                }))
-            ).map((item, index) => (
-              <button
-                class={`${activeOutlineId === item.id || (!activeOutlineId && index === 0) ? 'active' : ''} level-${item.level}`}
-                type="button"
-                onClick={() => goToOutline(item.id)}
-                key={`${item.id}-${index}`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-          {(prevNote || nextNote) && (
-            <nav class="scholar-note-neighbors" aria-label="Other notes">
-              {prevNote && (
-                <a href={noteHref(prevNote.id)}>
-                  Previous
-                  <br />
-                  <span>{prevNote.title}</span>
-                </a>
-              )}
-              {nextNote && (
-                <a href={noteHref(nextNote.id)}>
-                  Next
-                  <br />
-                  <span>{nextNote.title}</span>
-                </a>
-              )}
-            </nav>
-          )}
-        </aside>
+      <details
+        class="scholar-note-nav"
+        open={contentsOpen}
+        onToggle={(event) => setContentsOpen(event.currentTarget.open)}
+      >
+        <summary>Contents</summary>
+        <div>
+          {(document.outline.length
+            ? document.outline
+            : document.sections.map((section) => ({
+                id: `section-${section.key}`,
+                label: section.label || 'Note',
+                level: 1,
+                sectionKey: section.key,
+              }))
+          ).map((item, index) => (
+            <button
+              class={`${activeOutlineId === item.id || (!activeOutlineId && index === 0) ? 'active' : ''} level-${item.level}`}
+              type="button"
+              onClick={() => goToOutline(item.id)}
+              key={`${item.id}-${index}`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        {(prevNote || nextNote) && (
+          <nav class="scholar-note-neighbors" aria-label="Other notes">
+            {prevNote && (
+              <a href={noteHref(prevNote.id)}>
+                Previous
+                <br />
+                <span>{prevNote.title}</span>
+              </a>
+            )}
+            {nextNote && (
+              <a href={noteHref(nextNote.id)}>
+                Next
+                <br />
+                <span>{nextNote.title}</span>
+              </a>
+            )}
+          </nav>
+        )}
+      </details>
 
+      <div class={`scholar-note-shell${toolsOpen ? ' has-tools' : ''}`}>
         <main class="scholar-note-document">
           <header class="scholar-note-head">
-            <span class="folio-branch-pill">{note.branch_label || note.branch_id || 'Unassigned'}</span>
-            <p>
-              {note.kind === 'guide'
-                ? 'Source synthesis'
-                : note.kind === 'reflection'
-                  ? 'My reflection'
-                  : 'Knowledge note'}
-            </p>
+            <span class="folio-branch-pill">{note.branch_label || 'Branch unavailable'}</span>
             <h1 dir={directionForText(note.title)}>{note.title}</h1>
             <div class="scholar-note-meta">
               <span>{document.readingMinutes} min</span>
@@ -634,126 +627,107 @@ function NoteDetailWorkspace({
 
           {document.sections.length ? (
             <div class="scholar-note-bilingual">
-              <article class="scholar-language-column scholar-language-english" aria-label="English synthesis">
-                <div class="scholar-language-head">
-                  <strong>English synthesis</strong>
-                  <span>Source argument and cases</span>
-                </div>
-                {document.sections.map((section) => {
-                  const blocks = section.blocks.filter((block) => block.direction === 'ltr')
-                  if (!blocks.length) return null
-                  return (
-                    <section id={`section-${section.key}`} class="note-reading-section" key={`en-${section.key}`}>
-                      {document.sections.length > 1 && section.label && (
-                        <h2 class="note-section-label">{section.label}</h2>
-                      )}
-                      {blocks.map((block, index) => (
-                        <ReaderBlockComponent block={block} key={index} />
-                      ))}
-                    </section>
-                  )
-                })}
-                {reflectionDocument?.sections.map((section) =>
-                  section.blocks
-                    .filter((block) => block.direction === 'ltr')
-                    .map((block, index) => (
-                      <ReaderBlockComponent block={block} key={`reflection-en-${section.key}-${index}`} />
+              {document.sections.map((section) => (
+                <section id={`section-${section.key}`} class="note-reading-section" key={section.key}>
+                  {document.sections.length > 1 && section.label && (
+                    <h2 class="note-section-label" dir="auto">
+                      {section.label}
+                    </h2>
+                  )}
+                  {section.blocks.map((block, index) => (
+                    <ReaderBlockComponent block={block} key={index} />
+                  ))}
+                </section>
+              ))}
+              {reflectionDocument && (
+                <section class="note-reading-section" aria-label="My reflection">
+                  <h2 class="note-section-label">My reflection</h2>
+                  {reflectionDocument.sections.flatMap((section) =>
+                    section.blocks.map((block, index) => (
+                      <ReaderBlockComponent block={block} key={`reflection-${section.key}-${index}`} />
                     )),
-                )}
-              </article>
-
-              <article
-                class="scholar-language-column scholar-language-arabic"
-                aria-label="Arabic interpretation"
-                dir="rtl"
-              >
-                <div class="scholar-language-head">
-                  <strong>التفسير الشخصي</strong>
-                  <span>الملاحظات والتطبيق</span>
-                </div>
-                {document.sections.map((section) => {
-                  const blocks = section.blocks.filter((block) => block.direction === 'rtl')
-                  if (!blocks.length) return null
-                  return (
-                    <section class="note-reading-section" key={`ar-${section.key}`}>
-                      {blocks.map((block, index) => (
-                        <ReaderBlockComponent block={block} key={index} />
-                      ))}
-                    </section>
-                  )
-                })}
-                {reflectionDocument?.sections.map((section) =>
-                  section.blocks
-                    .filter((block) => block.direction === 'rtl')
-                    .map((block, index) => (
-                      <ReaderBlockComponent block={block} key={`reflection-ar-${section.key}-${index}`} />
-                    )),
-                )}
-              </article>
+                  )}
+                </section>
+              )}
             </div>
           ) : (
             <Empty title="This note is empty" body="Edit the note to add content." />
           )}
+          {document.provenance.length > 0 && (
+            <details class="note-provenance">
+              <summary>Provenance details</summary>
+              {document.provenance.map((section) => (
+                <section key={section.section_key}>
+                  <h2>{section.label || 'Extraction receipt'}</h2>
+                  <pre dir="ltr">{section.content}</pre>
+                </section>
+              ))}
+            </details>
+          )}
         </main>
 
-        <aside class="scholar-note-tools" aria-label="Study tools">
-          <strong class="scholar-tools-title">Study tools</strong>
-          <section>
-            <span>Knowledge branch</span>
-            <a class="folio-branch-pill" href={objectHref('map', 'branch', note.branch_id || note.branch_label || '')}>
-              {note.branch_label || note.branch_id || 'Unassigned'}
-            </a>
-          </section>
-          <ItemParentLinks sourceId={note.recommendation_id} />
-          <section>
-            <span>Source</span>
-            {sourceUrl ? (
-              <a class="relation-source-link" href={sourceUrl} target="_blank" rel="noreferrer">
-                Open original source{' '}
-                <span class="folio-branch-pill">{note.branch_label || note.branch_id || 'Unassigned'}</span>
+        {toolsOpen && (
+          <aside id="note-study-tools" class="scholar-note-tools" aria-label="Study tools">
+            <strong class="scholar-tools-title">Study tools</strong>
+            <section>
+              <span>Knowledge branch</span>
+              <a
+                class="folio-branch-pill"
+                href={objectHref('map', 'branch', note.branch_id || note.branch_label || '')}
+              >
+                {note.branch_label || 'Branch unavailable'}
               </a>
-            ) : (
-              <p>No source link</p>
+            </section>
+            <ItemParentLinks sourceId={note.recommendation_id} />
+            <section>
+              <span>Source</span>
+              {sourceUrl ? (
+                <a class="relation-source-link" href={sourceUrl} target="_blank" rel="noreferrer">
+                  Open original source
+                </a>
+              ) : (
+                <p>No source link</p>
+              )}
+            </section>
+            <section>
+              <span>Record</span>
+              <p>
+                {document.wordCount.toLocaleString()} words · {document.readingMinutes} min
+              </p>
+              <p>
+                {note.status || 'Published'} · {formatDate(note.updated_at)}
+              </p>
+            </section>
+            {sourceNote && (
+              <section>
+                <span>Source synthesis</span>
+                <a href={noteHref(sourceNote.id)}>{sourceNote.title}</a>
+              </section>
             )}
-          </section>
-          <section>
-            <span>Record</span>
-            <p>
-              {document.wordCount.toLocaleString()} words · {document.readingMinutes} min
-            </p>
-            <p>
-              {note.status || 'Published'} · {formatDate(note.updated_at)}
-            </p>
-          </section>
-          {sourceNote && (
+            {relatedNotes.length > 0 && (
+              <section>
+                <span>Related notes</span>
+                <div class="scholar-related-notes">
+                  {relatedNotes.slice(0, 5).map((related) => (
+                    <a href={noteHref(related.id)} key={related.id}>
+                      {related.title}
+                    </a>
+                  ))}
+                </div>
+              </section>
+            )}
             <section>
-              <span>Source synthesis</span>
-              <a href={noteHref(sourceNote.id)}>{sourceNote.title}</a>
+              <span>Retention</span>
+              <p>{units.length} retained ideas</p>
+              <p>
+                {recall.cards.length} recall cards · {recall.drafts.length} drafts
+              </p>
             </section>
-          )}
-          {relatedNotes.length > 0 && (
-            <section>
-              <span>Related notes</span>
-              <div class="scholar-related-notes">
-                {relatedNotes.slice(0, 5).map((related) => (
-                  <a href={noteHref(related.id)} key={related.id}>
-                    {related.title}
-                  </a>
-                ))}
-              </div>
-            </section>
-          )}
-          <section>
-            <span>Retention</span>
-            <p>{units.length} retained ideas</p>
-            <p>
-              {recall.cards.length} recall cards · {recall.drafts.length} drafts
-            </p>
-          </section>
-        </aside>
+          </aside>
+        )}
       </div>
 
-      {distillation && (
+      {toolsOpen && distillation && (
         <section class="note-distillation scholar-retained-ideas" aria-labelledby="distillation-title">
           <div class="note-section-heading">
             <div>
@@ -852,7 +826,7 @@ function NoteDetailWorkspace({
         </section>
       )}
 
-      {units.length > 0 && (
+      {toolsOpen && units.length > 0 && (
         <section class="note-retained-ideas scholar-retained-ideas" aria-labelledby="retained-ideas-title">
           <div class="note-section-heading">
             <div>
@@ -884,7 +858,7 @@ function NoteDetailWorkspace({
           </ol>
         </section>
       )}
-      {backlinks.length > 0 && (
+      {toolsOpen && backlinks.length > 0 && (
         <section
           class="note-retained-ideas scholar-retained-ideas note-backlinks"
           aria-labelledby="note-backlinks-title"
@@ -929,7 +903,7 @@ function NoteEditor({
   onSaved: () => void
 }) {
   const [title, setTitle] = useState(note.title)
-  const [branch, setBranch] = useState(note.branch_label || note.branch_id || '')
+  const [branch, setBranch] = useState(note.branch_id || '')
   const initialSourceUrl = note.source_url || note.rec_video_url || note.rec_source_url || ''
   const [sourceUrl, setSourceUrl] = useState(initialSourceUrl)
   const [abstract, setAbstract] = useState(note.abstract || '')
@@ -998,10 +972,12 @@ function NoteEditor({
           />
         </label>
         <div class="note-editor-meta folio-note-meta">
-          <label>
-            Branch
-            <input value={branch} onInput={(event) => setBranch((event.target as HTMLInputElement).value)} />
-          </label>
+          <NoteBranchSelect
+            value={branch}
+            label={note.branch_label}
+            onChange={setBranch}
+            allowEmpty={!note.branch_id}
+          />
           <label>
             Source URL
             <input

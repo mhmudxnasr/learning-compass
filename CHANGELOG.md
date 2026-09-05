@@ -8,6 +8,7 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Refine reading and navigation: single-column bilingual Notes with optional tools and verbatim provenance, next chapters before source diagnostics, compact lesson navigation, clearer Home/Threads hierarchy, canonical branch names, and 44px study actions. Learn now opens Threads; search remembers eight local selections and Atlas offers domain navigation. Preserve content, progression rules, and theme choices.
 - Make routine commits and releases fast: affected regression tests, lint/typecheck/build for deployment, and short live checks. Keep full verification opt-in or for high-risk changes, reserve full backup/restore for migrations or risky data changes, and remove default browser suites and Markdown-only runs from CI. Synchronize repository and Hermes instructions; avoid repeated checks and waiting for CI by default.
 - Prevent delayed material-editor focus from stealing typing from a field the learner has already selected; verify offline note title/body stay separate before durable queuing.
 - Make Hermes's routine Compass reads direct and scoped: Thread inventories/overviews, resume questions, Queue reads, and conversational target corrections. Keep write safeguards in an on-demand reference, reduce repeated instructions, and extend manager routing coverage with realistic short requests and follow-ups. Repair evaluation profile copying for dangling retired skill links and support explicit reasoning comparisons.

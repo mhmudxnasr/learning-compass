@@ -97,10 +97,8 @@ The visual references are functional. Linear informs shell precision and list de
 - Typed object views, the inspector, Capture, Search, and other dialogs use the same Canvas, Surface, Inspector, Seam, and Coral roles as their owning workspace. An ambiguous Android URL-plus-prose share opens a focused two-choice dialog: whole-source Capture or exact selected passage, with the original title, URL, and text visible and a non-destructive Decide later exit.
 - At 940px and below, the rail becomes a sticky utility bar and five-item bottom dock. Content moves to one column without changing task order.
 
-- Desktop uses a 108px navigation-only root rail and a separate 64px workspace command bar. Root location, grouped modes, global search, and capture share that command plane instead of competing inside the rail or appearing as a detached second header.
 - Ordinary workspaces use a centered canvas capped at 1280px. Atlas alone remains edge-to-edge because the graph is the work surface rather than content inside a page.
 - Grouped modes live in the desktop command bar with one restrained active rule. Subordinate filters stay in the working field only where the active mode needs them; compact layouts return the modes to equal-width inline controls.
-- Home is a master-detail workbench, not a card dashboard: current source and Queue share the decision row; Current rotation and incoming publications share the supporting row; seams define hierarchy without four floating boxes.
 - Map Review preserves the branch index beside a readable dossier on normal laptops. Signals and decisions move beneath the dossier instead of forcing a cramped third permanent rail.
 - Settings → Preferences is a settings studio rather than a component gallery: a compact section index anchors the desktop, the current visual system has one truthful summary, a single in-flow studio preview demonstrates the combined result, and controls progress from complete workspace styles to comfort, expert appearance, learning behavior, and Map tuning. The index becomes a horizontal section strip on compact layouts; the preview never competes as a permanent third rail.
 - Below 940px, the root rail becomes a branded sticky utility bar and five-item bottom dock. Root modes use equal-width grids sized to their actual count, including a single four-column Library row at phone widths.
@@ -134,6 +132,14 @@ Controls use a 14px radius. Cards use 18px and panels use 22px in the default wo
 Motion uses paint, opacity, and transform only. Route entry is a short 260ms fade-and-rise. Hover movement is limited to 1-3px. Reduced motion removes route entry and transitions.
 
 ## Components
+
+### Reading and retrieval
+
+- Notes uses one centered reading column with a 76ch outer measure, 28–40px desktop titles (26–32px compact), 17px English and 18px Arabic body text scaled by the existing preference. Arabic text retains 1.9 line height and independent direction. Original section/block order keeps claims beside their explanations. Contents is a closed disclosure; Study tools opens an optional rail, stacking below the document on compact layouts. Extraction/processing receipts stay verbatim in a separate provenance disclosure and out of the reading outline.
+- Books shows identity, progress, and the next chapter before the full source-health control. Healthy diagnostics collapse; actionable problems expand. Current Book, My Books, and Canon are in-page jumps within one room.
+- Home allows lesson titles to wrap to two lines and keeps source branch pills visible. Material formats have icon-and-label controls across Home and lessons; study actions are at least 44px. Threads uses filter counts instead of a separate statistics band, and Learn opens Threads by default.
+- Empty global search shows up to eight items previously opened from search on this browser. Arrow keys and Enter reopen items; Clear recent items removes the local history. No server records or learning progress change.
+- Atlas offers a domain selector before the canvas. Selection clears conflicting branch/frontier filters and fits that domain; Whole map restores the complete overview. Domain labels retain a readable screen size at overview zoom.
 
 ### Feeds: article triage
 
@@ -181,7 +187,7 @@ Feeds extends the selected Continuum workspace theme with a compact title naviga
 - **Resources:** Thread, Level, and Lesson owners share one faceted vertical index. Exactly one owner opens at a time, long note bodies become bounded excerpts, and large owner/item sets reveal incrementally. Navigable item titles carry navigation without duplicate owner-workspace actions; direct material creation remains explicit progressive disclosure.
 - **Material organizer:** Resources begins with search over existing branch-owned Library sources and shows every current Thread, Level, and Lesson placement. The learner chooses an exact Level or Lesson, role, expected contribution, and position before Attach; attached rows expose edit/reorder and remove without turning the source into a duplicate or a Queue item. Current Thread and current Level offline packs sit with their owning material indexes.
 - **Find material:** An empty incomplete lesson in the current Level may show one explicit Find material action. Pending/running/retry, ready, abstained, and failed states remain in that lesson. A ready result is a reviewable external-source pick with title, creator, expected contribution, branch, and URL; it never looks attached, queued, started, or completed until the learner takes the separate canonical action. Abstention is first-class and shows its reason.
-- **Lesson sequence:** One breadcrumb and one compact metadata row establish place, duration, and truthful readiness; a locked Level reads Locked rather than Ready to study. The near-header action bar renders only when previous/next navigation or a valid complete/reopen action exists. There is no manual Level-start gate: direct completion activates an available Level, starts the next unfinished lesson, and activates the next Level plus its first lesson after a Level's final completion. The dashboard refreshes to the same canonical next turn. Successful completion opens the next ordered Thread lesson when one remains; reopening and final-Thread completion stay on the current page. A searchable course navigator keeps all Levels and the current lesson available beside the study canvas; persistent Focus on lesson hides it, and narrow screens place it in a bounded panel above the lesson. Saved authored text is readable in a comfortable paper plane with preserved paragraphs and Arabic direction. The final lesson links back to the Thread for optional closing reflection. Study materials are a flat ledger with source identity on the left and only compact, accessible icon actions for HTML, PDF, Original, and NotebookLM on the right. Every additional source remains preserved under one More materials disclosure, and notes/files/recall stay behind one final disclosure. Material icons retain complete purpose, availability, and metadata in their accessible labels and use tonal emphasis plus hairline seams, never nested cards or a multi-pixel side stripe.
+- **Lesson sequence:** One breadcrumb and one compact metadata row establish place, duration, and truthful readiness; a locked Level reads Locked rather than Ready to study. The near-header action bar renders only when previous/next navigation or a valid complete/reopen action exists. There is no manual Level-start gate: direct completion activates an available Level, starts the next unfinished lesson, and activates the next Level plus its first lesson after a Level's final completion. The dashboard refreshes to the same canonical next turn. Successful completion opens the next ordered Thread lesson when one remains; reopening and final-Thread completion stay on the current page. A searchable course navigator keeps all Levels and the current lesson available beside the study canvas; persistent Focus on lesson hides it, and compact screens keep it behind a closed All lessons control above the current lesson. Saved authored text is readable in a comfortable paper plane with preserved paragraphs and Arabic direction. The final lesson links back to the Thread for optional closing reflection. Study materials are a flat ledger with source identity on the left and compact, accessible icon-and-label actions for HTML, PDF, Original, and NotebookLM on the right. Every additional source remains preserved under one More materials disclosure, and notes/files/recall stay behind one final disclosure. Material icons retain complete purpose, availability, and metadata in their accessible labels and use tonal emphasis plus hairline seams, never nested cards or a multi-pixel side stripe.
 
 ### Source anchors and Recall repair
 
@@ -206,21 +212,21 @@ Feeds extends the selected Continuum workspace theme with a compact title naviga
 
 ### Buttons
 
-- **Shape:** Rounded rectangle with a 9px radius.
+- **Shape:** Rounded rectangle using the 14px default control token; primary actions may use pill geometry.
 - **Primary:** Solid Coral surface, black action text, pill geometry, and 8px 18px padding.
 - **Secondary:** Control Surface background, a 1px Seam border, and Secondary text.
 - **Hover / Focus:** Coral focus ring with a Canvas separation ring; subtle tonal background shift.
 
 ### Cards and ledger rows
 
-- **Corner Style:** 14px radius for cards; list rows inside a panel remain square to one another.
+- **Corner Style:** 18px default card radius; list rows inside a panel remain square to one another.
 - **Background:** Surface or Canvas according to depth.
 - **Border:** 1px solid Seam.
 - **Internal Padding:** 14px 18px.
 
 ### Inputs and search fields
 
-- **Style:** 1px Seam border, Control Surface background, 9px radius.
+- **Style:** 1px Seam border, Control Surface background, and the 14px default control token.
 - **Focus:** Coral border with a visible outer ring.
 
 ## Working rules

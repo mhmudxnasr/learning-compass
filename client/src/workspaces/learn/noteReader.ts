@@ -24,6 +24,7 @@ export interface NoteOutlineItem {
 
 export interface NoteReaderDocument {
   sections: NoteReaderSection[]
+  provenance: NonNullable<NoteRecord['sections']>
   outline: NoteOutlineItem[]
   contentSourceUrl?: string
   wordCount: number
@@ -170,13 +171,20 @@ export function parseNoteBlocks(
 export function buildNoteReaderDocument(note: NoteRecord): NoteReaderDocument {
   let contentSourceUrl: string | undefined
   const outline: NoteOutlineItem[] = []
-  const sections = (note.sections || []).flatMap((section, sectionIndex) => {
+  // Receipts remain verbatim in the record, editor, and provenance disclosure.
+  const isReceipt = (section: NonNullable<NoteRecord['sections']>[number]) =>
+    [section.section_key, section.label].some((value) =>
+      /^(?:extraction|processing)[ _-]receipt(?:[ _-]v\d+)?$/i.test(value || ''),
+    )
+  const provenance = (note.sections || []).filter(isReceipt)
+  const readingSections = (note.sections || []).filter((section) => !isReceipt(section))
+  const sections = readingSections.flatMap((section, sectionIndex) => {
     const cleaned = extractContentSource(stripFrontMatter(section.content || ''))
     contentSourceUrl ||= cleaned.sourceUrl
     const sectionKey = section.section_key || `sec-${sectionIndex}`
     const blocks = parseNoteBlocks(cleaned.content, section.direction, sectionKey)
     if (!blocks.length) return []
-    if ((note.sections || []).filter((item) => item.content?.trim()).length > 1) {
+    if (readingSections.filter((item) => item.content?.trim()).length > 1) {
       outline.push({
         id: `section-${sectionKey}`,
         label: section.label || `Section ${sectionIndex + 1}`,
@@ -193,5 +201,12 @@ export function buildNoteReaderDocument(note: NoteRecord): NoteReaderDocument {
     .flatMap((section) => section.blocks.flatMap((block) => (block.kind === 'list' ? block.items : [block.text])))
     .join(' ')
   const wordCount = allText.match(/[\p{L}\p{N}]+/gu)?.length || 0
-  return { sections, outline, contentSourceUrl, wordCount, readingMinutes: Math.max(1, Math.ceil(wordCount / 180)) }
+  return {
+    sections,
+    provenance,
+    outline,
+    contentSourceUrl,
+    wordCount,
+    readingMinutes: Math.max(1, Math.ceil(wordCount / 180)),
+  }
 }

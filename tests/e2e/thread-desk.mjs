@@ -120,6 +120,19 @@ export async function verifyThreadDesk({ page, baseUrl, requestJson }) {
     const selector =
       name === 'overview' ? '.thread-purpose-sheet' : name === 'lesson' ? '.lesson-authored-text' : '.thread-desk-row'
     await capture(`mobile-${name}`, selector)
+    if (name === 'lesson') {
+      assert.equal(await page.getByRole('navigation', { name: 'Course navigator' }).count(), 0)
+      const toggle = page.getByRole('button', { name: /All lessons/ })
+      assert.equal(await toggle.getAttribute('aria-expanded'), 'false')
+      assert.ok((await page.locator('.course-lesson-header h1').boundingBox()).y < 500)
+      await toggle.click()
+      assert.equal(await page.getByRole('navigation', { name: 'Course navigator' }).count(), 1)
+      await toggle.click()
+      const completion = await page
+        .getByRole('button', { name: /Mark lesson complete|Completed · Reopen lesson/ })
+        .boundingBox()
+      assert.ok(completion.height >= 44)
+    }
     assert.equal(
       await page.evaluate(() => {
         const canvas = document.querySelector('.workspace-canvas')

@@ -573,11 +573,32 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
     <div class="folio-books-view books-reading-fold books-room">
       <div class="folio-view-intro">
         <div>
-          <p class="folio-kicker">Library and reading desk</p>
           <h1>Books</h1>
-          <p>Current reading desk, personal book collection, and canon memberships.</p>
+          <p>Continue reading, find a book, or explore Canon.</p>
         </div>
       </div>
+      <nav class="books-room-jumps" aria-label="Books sections">
+        {primaryBook && (
+          <button
+            type="button"
+            onClick={() => document.getElementById('books-reading-desk')?.scrollIntoView({ block: 'start' })}
+          >
+            Current book
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => document.getElementById('books-library')?.scrollIntoView({ block: 'start' })}
+        >
+          My books
+        </button>
+        <button
+          type="button"
+          onClick={() => document.getElementById('books-canon')?.scrollIntoView({ block: 'start' })}
+        >
+          Canon
+        </button>
+      </nav>
       {primaryBook ? (
         <section
           id="books-reading-desk"
@@ -633,23 +654,6 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
           )}
 
           <BookKnowledgeContext book={primaryBook} />
-          {String(primaryBook.video_url || '').trim() && (
-            <SourceHealthControl
-              sourceId={String(primaryBook.id)}
-              sourceUrl={String(primaryBook.video_url)}
-              companionHref={
-                nextOfflineResources.length
-                  ? nextChapter?.html?.id
-                    ? artifactLink(nextChapter.html)
-                    : nextChapter?.pdf?.id
-                      ? artifactLink(nextChapter.pdf)
-                      : null
-                  : null
-              }
-              onReplaced={() => handlers.onReload?.()}
-            />
-          )}
-
           {nextChapter ? (
             <section
               class={`reading-fold-next ${readingComplete ? 'is-reading-complete' : ''}`}
@@ -709,6 +713,22 @@ export function BooksView({ data, handlers }: { data: LibraryRecord; handlers: L
                 <Icon name="chevron" size={14} />
               </a>
             </div>
+          )}
+
+          {String(primaryBook.video_url || '').trim() && (
+            <SourceHealthControl
+              sourceId={String(primaryBook.id)}
+              sourceUrl={String(primaryBook.video_url)}
+              companionHref={
+                nextOfflineResources.length && nextChapter?.html?.id
+                  ? artifactLink(nextChapter.html)
+                  : nextOfflineResources.length && nextChapter?.pdf?.id
+                    ? artifactLink(nextChapter.pdf)
+                    : null
+              }
+              disclosure
+              onReplaced={() => handlers.onReload?.()}
+            />
           )}
 
           {primaryBook && bookChapters(primaryBook).length > 0 && (

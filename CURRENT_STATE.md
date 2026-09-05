@@ -1,5 +1,11 @@
 # Learning Compass — Current State
 
+## UI refinement — 2026-09-05 (verified locally; not deployed)
+
+Implemented the accepted Impeccable critique: a single-column Notes reader with optional contents/study tools and verbatim receipt provenance, Books next-chapter priority and section jumps, collapsed compact lesson navigation, clearer Home/Threads hierarchy, canonical branch labels, visible format names and 44px actions, Threads as Learn's default, eight local recent-search selections, and readable Atlas domain entry. Note editing preserves canonical branch IDs; explicit default-mode links no longer trigger recovery notices. PWA shell is v60. No deployment or production data mutation has been performed; the deployed release below remains unchanged.
+
+Verification passed: 39 focused unit tests; lint, TypeScript, and production build; the full responsive/offline Chromium E2E suite; and the focused reading E2E recheck after the final Atlas edge-padding adjustment. Desktop, tablet, mobile, and dark-theme screenshots were reviewed. Base JavaScript is 145.74 KB gzip, below the 150 KB limit. Changed-file formatting, diff checks, and the focused Impeccable component scan passed. The installed Site Operator route reference agrees with the new UI contracts. The standalone Hermes fixed-prompt check passed, but the aggregate Hermes contract check remains blocked by the unrelated installed `lite-visual` skill exceeding its loaded budget (7,514 / 6,000 bytes); that skill was not changed in this task.
+
 ## Workflow update — 2026-09-05 (fast commits and releases)
 
 Verified with the fast gate, four focused release-tool tests, Hermes contract/prompt checks, changed-file formatting, and diff checks. Full suites were intentionally not run for this workflow change.

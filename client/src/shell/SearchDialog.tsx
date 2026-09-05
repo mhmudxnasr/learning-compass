@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { useData } from '../app/useData'
 import { Icon } from '../components/Icon'
 import { itemHref } from '../app/router'
+import { clearRecentSearchItems, readRecentSearchItems, rememberSearchItem } from './recentSearchItems'
 
 const groupMeta: Record<string, { label: string; href: (item: any) => string }> = {
   recs: { label: 'Sources', href: (item) => itemHref(item) },
@@ -36,6 +37,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [recentItems, setRecentItems] = useState(readRecentSearchItems)
   const dialogRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
@@ -96,6 +98,17 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
     return list
   }, [groups])
 
+  const showingRecent = query.trim().length < 2
+  const choices = showingRecent
+    ? recentItems
+    : flatResults.map(({ groupKey, item, href }) => ({
+        href,
+        title: String(resultTitle(item)).slice(0, 300),
+        meta: String(resultMeta(groupKey, item)).slice(0, 200),
+      }))
+  const remember = (item: { href: string; title: string; meta: string }) =>
+    setRecentItems(rememberSearchItem(item, recentItems))
+
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
       event.preventDefault()
@@ -104,22 +117,23 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
     }
 
     if (event.key === 'ArrowDown') {
-      if (!flatResults.length) return
+      if (!choices.length) return
       event.preventDefault()
-      setSelectedIndex((prev) => (prev + 1 >= flatResults.length ? 0 : prev + 1))
+      setSelectedIndex((prev) => (prev + 1 >= choices.length ? 0 : prev + 1))
       return
     }
 
     if (event.key === 'ArrowUp') {
-      if (!flatResults.length) return
+      if (!choices.length) return
       event.preventDefault()
-      setSelectedIndex((prev) => (prev - 1 < 0 ? flatResults.length - 1 : prev - 1))
+      setSelectedIndex((prev) => (prev - 1 < 0 ? choices.length - 1 : prev - 1))
       return
     }
 
-    if (event.key === 'Enter' && selectedIndex >= 0 && flatResults[selectedIndex]) {
+    if (event.key === 'Enter' && selectedIndex >= 0 && choices[selectedIndex]) {
       event.preventDefault()
-      const target = flatResults[selectedIndex]
+      const target = choices[selectedIndex]
+      remember(target)
       window.location.hash = target.href.replace(/^#/, '')
       onClose()
       return
@@ -183,11 +197,46 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
           <kbd>Esc</kbd>
         </header>
         <div class="search-results">
-          {query.trim().length < 2 && (
+          {showingRecent && (
             <div class="search-hint">
-              <strong>Search the whole evidence system.</strong>
-              <span>Type at least two characters. Results open exact object routes.</span>
+              <strong>Find something you saved or learned.</strong>
+              <span>Type a title, creator, or phrase. Use at least two characters.</span>
             </div>
+          )}
+          {showingRecent && recentItems.length > 0 && (
+            <section aria-label="Recently opened from search">
+              <div class="search-recent-heading">
+                <h3>Recently opened</h3>
+                <button
+                  type="button"
+                  class="button quiet"
+                  onClick={() => {
+                    clearRecentSearchItems()
+                    setRecentItems([])
+                    setSelectedIndex(-1)
+                  }}
+                >
+                  Clear recent items
+                </button>
+              </div>
+              {recentItems.map((item, index) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  class={selectedIndex === index ? 'search-item-selected' : ''}
+                  onClick={() => {
+                    remember(item)
+                    onClose()
+                  }}
+                >
+                  <span>
+                    <strong dir="auto">{item.title}</strong>
+                    <small>{item.meta}</small>
+                  </span>
+                  <Icon name="chevron" size={16} />
+                </a>
+              ))}
+            </section>
           )}
           {state.loading && <div class="search-hint">Searching…</div>}
           {state.error && <div class="search-hint error">{state.error}</div>}
@@ -197,29 +246,33 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
               <span>Try a title, creator, topic, or phrase from a note.</span>
             </div>
           )}
-          {groups.map(([key, items]) => (
-            <section key={key}>
-              <h3>{groupMeta[key].label}</h3>
-              {items.map((item) => {
-                const itemIndex = currentIndexTracker++
-                const isSelected = itemIndex === selectedIndex
-                return (
-                  <a
-                    key={item.id || itemIndex}
-                    href={groupMeta[key].href(item)}
-                    class={isSelected ? 'search-item-selected' : ''}
-                    onClick={onClose}
-                  >
-                    <span>
-                      <strong>{resultTitle(item)}</strong>
-                      <small>{resultMeta(key, item)}</small>
-                    </span>
-                    <Icon name="chevron" size={16} />
-                  </a>
-                )
-              })}
-            </section>
-          ))}
+          {!showingRecent &&
+            groups.map(([key, items]) => (
+              <section key={key}>
+                <h3>{groupMeta[key].label}</h3>
+                {items.map((item) => {
+                  const itemIndex = currentIndexTracker++
+                  const isSelected = itemIndex === selectedIndex
+                  return (
+                    <a
+                      key={item.id || itemIndex}
+                      href={groupMeta[key].href(item)}
+                      class={isSelected ? 'search-item-selected' : ''}
+                      onClick={() => {
+                        remember(choices[itemIndex])
+                        onClose()
+                      }}
+                    >
+                      <span>
+                        <strong>{resultTitle(item)}</strong>
+                        <small>{resultMeta(key, item)}</small>
+                      </span>
+                      <Icon name="chevron" size={16} />
+                    </a>
+                  )
+                })}
+              </section>
+            ))}
         </div>
       </section>
     </div>

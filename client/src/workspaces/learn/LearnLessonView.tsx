@@ -324,10 +324,7 @@ function SourceMaterialLauncher({ source }: { source: PathSource }) {
   const materials = [launcher.primary, ...launcher.alternatives]
 
   return (
-    <div
-      class="course-material-launcher is-icon-only"
-      aria-label={`Open formats for ${source.video_title || 'this source'}`}
-    >
+    <div class="course-material-launcher" aria-label={`Open formats for ${source.video_title || 'this source'}`}>
       {materials.map((material, index) => {
         const description = [material.label, material.purpose, ...material.details, material.availability]
           .filter(Boolean)
@@ -343,7 +340,7 @@ function SourceMaterialLauncher({ source }: { source: PathSource }) {
             key={material.kind}
           >
             <Icon name={materialIcon(material.kind)} size={16} />
-            <span class="visually-hidden">{material.format}</span>
+            <span>{material.kind === 'notebooklm' ? 'NotebookLM' : material.format}</span>
           </a>
         )
       })}

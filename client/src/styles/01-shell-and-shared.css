@@ -1583,6 +1583,16 @@ dialog::backdrop {
   text-transform: uppercase;
 }
 
+.search-recent-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.search-recent-heading button {
+  min-height: 44px;
+}
+
 .search-results > section > a,
 .command-results > button {
   display: flex;

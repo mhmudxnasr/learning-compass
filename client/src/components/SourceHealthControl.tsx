@@ -46,12 +46,14 @@ export function SourceHealthControl({
   sourceId,
   sourceUrl,
   compact = false,
+  disclosure = false,
   companionHref,
   onReplaced,
 }: {
   sourceId: string
   sourceUrl?: string | null
   compact?: boolean
+  disclosure?: boolean
   companionHref?: string | null
   onReplaced?: (sourceUrl: string) => void
 }) {
@@ -231,7 +233,7 @@ export function SourceHealthControl({
     )
   }
 
-  return (
+  const content = (
     <section class={`source-health-control state-${health?.status || 'unchecked'}`} aria-label="Original source health">
       <div class="source-health-heading">
         <div>
@@ -336,5 +338,13 @@ export function SourceHealthControl({
         </p>
       )}
     </section>
+  )
+  return disclosure ? (
+    <details class="source-health-disclosure" open={Boolean(problem || error)}>
+      <summary>Source status: {error ? 'Could not check' : health ? copy.label : 'Not checked'}</summary>
+      {content}
+    </details>
+  ) : (
+    content
   )
 }

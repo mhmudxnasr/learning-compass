@@ -65,7 +65,7 @@ export function itemHref(
 export const roots: RootDefinition[] = [
   { key: 'home', label: 'Home', defaultMode: 'today', defaultView: 'today' },
   { key: 'library', label: 'Library', defaultMode: 'books', defaultView: 'books' },
-  { key: 'learn', label: 'Learn', defaultMode: 'practice', defaultFocus: 'notes', defaultView: 'notes' },
+  { key: 'learn', label: 'Learn', defaultMode: 'paths', defaultView: 'paths' },
   { key: 'map', label: 'Map', defaultMode: 'atlas', defaultView: 'atlas' },
   { key: 'settings', label: 'Settings', defaultMode: 'personal', defaultFocus: 'profile', defaultView: 'profile' },
 ]
@@ -548,6 +548,7 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
   for (const key of ['mode', 'focus']) if (originalQuery.has(key)) routingQuery.set(key, originalQuery.get(key)!)
   const rawComparable = rawPath + (routingQuery.size ? `?${routingQuery}` : '')
   const changed = canonical !== rawComparable
+  const explicitDefaultMode = pathParts.length === 1 && queryMode === defaultState(root).mode && !queryFocus
   const recovered = Boolean(
     exactAlias ||
     movedBookObject ||
@@ -568,7 +569,7 @@ export function parseRoute(hash = typeof location === 'undefined' ? '' : locatio
     parentObjectId: invalidObject ? undefined : parentObjectId,
     query,
     canonical,
-    recoveredFrom: recovered || changed ? rawPath : undefined,
+    recoveredFrom: recovered || (changed && !explicitDefaultMode) ? rawPath : undefined,
     notFound: invalid ? true : undefined,
   }
   return route

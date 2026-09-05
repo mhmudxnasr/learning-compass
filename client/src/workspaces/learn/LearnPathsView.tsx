@@ -64,7 +64,6 @@ export function LearnPathsView() {
   if (hub.loading && !hub.data) return <Loading label="Loading Learning Threads" />
   if (hub.error && !hub.data) return <ErrorState message={hub.error} retry={hub.reload} />
   const paths = hub.data?.paths || []
-  const active = paths.filter((path) => path.status === 'active')
   const visible = paths
     .filter(
       (path) =>
@@ -108,7 +107,6 @@ export function LearnPathsView() {
     <section class="learn-workspace folio-paths thread-desk" aria-labelledby="learn-threads-title">
       <header class="thread-desk-heading">
         <div>
-          <span class="desk-eyebrow">Your learning workspace</span>
           <h1 id="learn-threads-title">Learning Threads</h1>
           <p>Continue a lesson or plan your next question.</p>
         </div>
@@ -130,20 +128,6 @@ export function LearnPathsView() {
           }}
         />
       )}
-      <div class="thread-desk-pulse" aria-label="Learning overview">
-        <span>
-          <strong>{active.length}</strong> active Threads
-        </span>
-        <span>
-          <strong>
-            {active.filter((path) => ['ready', 'in_progress'].includes(path.next_lesson?.readiness || '')).length}
-          </strong>{' '}
-          ready to continue
-        </span>
-        <span>
-          <strong>{paths.filter((path) => path.status === 'draft').length}</strong> in planning
-        </span>
-      </div>
       <div class="thread-desk-toolbar">
         <div class="thread-desk-filters" aria-label="Thread status">
           {filters.map((item) => (
@@ -272,7 +256,6 @@ function ThreadDeskRow({
       <div class="thread-desk-identity">
         <div class="desk-row-meta">
           <span class={`desk-state state-${path.status}`}>{statusLabel(path.status)}</span>
-          <span>{path.thread_type || 'understand'}</span>
           {Number(path.priority) >= 4 && (
             <span>
               <Icon name="pin" size={12} />

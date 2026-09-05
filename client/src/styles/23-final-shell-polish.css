@@ -1079,9 +1079,9 @@ body {
 }
 
 .continuum-home .folio-heading-link {
-  width: 38px;
-  min-width: 38px;
-  height: 38px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
   border: 1px solid var(--studio-seam);
   border-radius: 9px;
   background: var(--studio-control-surface);
@@ -1101,7 +1101,7 @@ body {
 }
 
 .continuum-turns > .folio-section-heading {
-  padding: clamp(20px, 2.5vw, 30px);
+  padding: 16px 24px;
   border-bottom: 1px solid color-mix(in srgb, var(--studio-seam) 78%, transparent);
 }
 
@@ -1118,10 +1118,10 @@ body {
 .continuum-turn {
   position: relative;
   display: grid;
-  min-height: 138px;
-  grid-template-columns: 48px minmax(0, 1fr);
+  min-height: 120px;
+  grid-template-columns: 28px minmax(0, 1fr);
   gap: 0 14px;
-  padding: 20px clamp(18px, 2.4vw, 28px);
+  padding: 16px clamp(18px, 2.4vw, 28px);
   border: 0 !important;
   border-bottom: 1px solid color-mix(in srgb, var(--studio-seam) 72%, transparent) !important;
   border-radius: 0 !important;
@@ -1144,7 +1144,6 @@ body {
 
 .continuum-turn.is-active {
   background: color-mix(in srgb, var(--studio-cypress) 8%, var(--studio-surface)) !important;
-  box-shadow: inset 2px 0 0 var(--studio-cypress) !important;
 }
 
 .continuum-turn-number {
@@ -1178,12 +1177,19 @@ body {
 
 .continuum-turn .folio-object-kicker {
   color: var(--studio-muted);
-  font-size: calc(11px * var(--font-scale));
+  font-size: calc(13px * var(--font-scale));
   font-weight: 500;
   letter-spacing: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .continuum-turn .folio-home-thread-lesson-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
   color: var(--studio-ink);
   font-family: var(--font-display);
   font-size: clamp(calc(17px * var(--font-scale)), 1.8vw, calc(22px * var(--font-scale)));
@@ -1194,8 +1200,10 @@ body {
 
 .continuum-turn .folio-home-thread-copy small {
   color: var(--studio-muted);
-  font-size: calc(11.5px * var(--font-scale));
+  font-size: calc(13px * var(--font-scale));
   line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .continuum-turn .folio-home-thread-action {
@@ -1232,7 +1240,7 @@ body {
 .continuum-finish-lesson {
   position: relative;
   display: inline-flex;
-  min-height: 34px;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
   gap: 6px;
@@ -1243,7 +1251,7 @@ body {
   background: var(--studio-control-surface);
   color: var(--studio-secondary);
   font-family: var(--font-ui);
-  font-size: calc(10.5px * var(--font-scale));
+  font-size: calc(13px * var(--font-scale));
   font-weight: 550;
   cursor: pointer;
   outline: none;
@@ -1364,7 +1372,7 @@ body {
 .continuum-material-link,
 .continuum-extra-files a {
   display: inline-flex;
-  min-height: 34px;
+  min-height: 44px;
   align-items: center;
   gap: 7px;
   padding: 0 10px;
@@ -1372,7 +1380,7 @@ body {
   border-radius: 8px;
   background: var(--studio-control-surface);
   color: var(--studio-secondary);
-  font-size: calc(10.5px * var(--font-scale));
+  font-size: calc(13px * var(--font-scale));
   font-weight: 550;
   text-decoration: none;
 }
@@ -1552,10 +1560,21 @@ body {
 .continuum-queue .folio-home-queue-item-title {
   overflow: hidden;
   color: inherit;
-  font-size: calc(11.5px * var(--font-scale));
+  font-size: calc(13px * var(--font-scale));
   font-weight: 500;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+}
+
+.continuum-queue-branch {
+  grid-column: 2;
+  width: fit-content;
+  max-width: 100%;
+}
+.continuum-queue .item-focus-button {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  min-height: 44px;
 }
 
 .continuum-queue-active {
@@ -1709,12 +1728,12 @@ body {
     align-items: stretch;
   }
   .continuum-finish-lesson {
-    width: 100%;
-    min-height: 40px;
+    width: auto;
+    min-height: 44px;
     margin-inline-start: 0;
   }
   .continuum-material-link {
-    min-height: 40px;
+    min-height: 44px;
   }
   .continuum-current .folio-home-actions-bar {
     grid-template-columns: 1fr;

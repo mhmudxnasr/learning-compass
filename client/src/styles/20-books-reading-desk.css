@@ -585,6 +585,40 @@
   }
 }
 
+.books-room-jumps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-bottom: 16px;
+}
+.books-room-jumps button {
+  min-height: 44px;
+  padding: 6px 0;
+  color: var(--studio-secondary);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.books-room-jumps button:hover {
+  color: var(--studio-ink);
+}
+.books-room :is(#books-library, #books-canon, #books-reading-desk) {
+  scroll-margin-top: 80px;
+}
+.source-health-disclosure {
+  margin-block: 12px;
+  color: var(--studio-secondary);
+  font-size: calc(13px * var(--font-scale));
+}
+.source-health-disclosure > summary {
+  min-height: 44px;
+  padding-block: 12px;
+  cursor: pointer;
+}
+
 /* Focused Book overview — status, context, next chapter, then a closed chapter ledger. */
 .book-overview-fold {
   width: min(100%, 1040px);
