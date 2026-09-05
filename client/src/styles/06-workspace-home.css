@@ -139,7 +139,6 @@
  * row; learning rotation and incoming publications form the second row. */
 .folio-home-workspace {
   grid-template-areas:
-    'home-head home-head'
     'resurfacing resurfacing'
     'current queue'
     'threads feeds';
@@ -148,7 +147,6 @@
 @media (max-width: 1100px) {
   .folio-home-workspace {
     grid-template-areas:
-      'home-head'
       'resurfacing'
       'current'
       'queue'

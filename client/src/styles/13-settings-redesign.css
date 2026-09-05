@@ -870,10 +870,6 @@
   max-width: 1280px;
 }
 
-.folio-home-header h1 {
-  font-size: calc(clamp(24px, 2.8vw, 32px) * var(--font-scale));
-}
-
 @media (max-width: 940px) {
   .workspace-canvas > * {
     width: 100%;
@@ -883,10 +879,6 @@
   .workspace-canvas button,
   .workspace-canvas .folio-button {
     min-height: 44px;
-  }
-
-  .folio-home-header > .folio-button {
-    display: none;
   }
 
   .folio-home-focus {

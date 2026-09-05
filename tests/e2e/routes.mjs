@@ -3490,8 +3490,6 @@ suite: try {
       .count()) !== 1
   )
     throw new Error('mobile shell is missing its theme, Search, or Capture control')
-  if (await page.locator('.folio-home-header > .folio-button').isVisible())
-    throw new Error('mobile Home repeats the global Capture action')
   if (await page.locator('.context-pane, .context-scrim, .navigation-sheet').count())
     throw new Error('mobile shell rendered a redundant navigation sheet or context pane')
   const mobileRootHrefs = await page

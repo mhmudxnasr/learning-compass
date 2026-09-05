@@ -2,6 +2,8 @@
 
 ## Handoff
 
+- **Home banner removal:** Removed and verified locally at Mahmood's request. Home opens directly into lessons and Queue context; deployment is pending.
+
 - **Home spacing correction:** Deployed and verified; the desktop layout keeps RSS/resurfacing below lessons and confines sticky Queue context to its own column. See the correction entry below for evidence.
 
 - **Learning calendar and Obsidian download:** Deployed; see the release entry below for live checks and the implementation entry for scope. The explicit download includes book/chapter notes while routine Hermes archiving retains its exclusion.
@@ -11,6 +13,12 @@
 - **Frontend:** The deployed Impeccable repairs retain Continuum and the five-root navigation while correcting reading hierarchy, responsive layouts, accessible controls, source identity, and recovery. Workspace code is lazy-loaded; the deployed PWA shell is v63.
 - **Last recorded deployment:** `docs/release-snapshot.json`, observed `2026-09-05T16:05:15.086Z`, records Worker `0f89d577-5287-452b-9ba2-d8ccb3eb0fd1` from clean `0b432d5` with PWA shell v63. Live checks passed at release time; recheck for later operational work.
 - **Local environment:** lockfile dependencies are restored. The deleted `.tmp/` recovery files and separate WhatsApp repository are absent; historical references to those paths are no longer usable. Generated `dist/` output was removed after the successful verification build. Dependency upgrades retain the holds in `docs/dependencies.md`.
+
+## Home banner removal — 2026-09-05 (verified locally)
+
+Removed the large Today banner, aggregate readiness/Queue counters, their calculation, and unused styles. Home starts directly with current lessons and Queue context; its screen-reader heading remains available. Removed the former banner-to-content padding and aligned the sticky sidebar to the lesson panel. The PWA shell advances to v64.
+
+`npm run verify:fast`, changed-file formatting, and `git diff --check` pass. The focused `E2E_FOCUS=quality npm run test:e2e` suite passes against the finished build; an earlier run timed out loading Files during the build update. Read-only previews with production content confirm no banner or empty inset, aligned desktop columns, preserved stacked order, and no overlap or horizontal overflow at 390, 1180, 1181, and 1600px in light/dark themes. The lesson panel moves from 240px to 90px at desktop width. Initial JavaScript is 47.45 KB gzip; CSS is 108.78 KB gzip. Pre-deploy readiness and budget checks pass without blockers.
 
 ## Home spacing correction — 2026-09-05 (deployed)
 

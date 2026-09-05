@@ -8,6 +8,8 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Remove Home's redundant Today banner and aggregate counters so the page opens directly into current lessons and Queue context. Delete its unused calculation/styles and advance the PWA shell to v64.
+
 - Keep Home's RSS and resurfacing directly below lessons on desktop, with the sticky Queue sidebar confined to its own column. Remove the large blank gap and scrolling overlap while retaining the mobile reading order; advance the PWA shell to v63.
 
 - Add Home's Cairo-aware learning activity calendar with linked, paginated daily history. Add an explicit Obsidian Thread download with ordered curriculum, existing notes and handwriting reflections, book/chapter inclusion, optional companions, and Level filtering. Preserve canonical prose and normal Hermes archive rules; neither feature changes progression or starts extraction.

@@ -1571,7 +1571,6 @@
 
 :is(
   .folio-view-intro,
-  .folio-home-header,
   .learn-surface-head,
   .notes-index-head,
   .recall-head,
@@ -1586,7 +1585,6 @@
 }
 :is(
     .folio-view-intro,
-    .folio-home-header,
     .learn-surface-head,
     .notes-index-head,
     .recall-head,
@@ -1742,7 +1740,6 @@
   }
   :is(
     .folio-view-intro,
-    .folio-home-header,
     .learn-surface-head,
     .notes-index-head,
     .recall-head,

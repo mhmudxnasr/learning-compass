@@ -260,10 +260,6 @@ a:hover {
   padding-top: 0;
 }
 
-.folio-home-header {
-  min-height: 54px;
-}
-
 .folio-home-focus {
   padding: clamp(22px, 3vw, 34px);
   border-color: color-mix(in srgb, var(--studio-seam) 82%, var(--studio-ink));
@@ -618,20 +614,9 @@ a:hover {
 .folio-home-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.65fr) minmax(300px, 0.65fr);
-  grid-template-areas: 'home-head home-head' 'resurfacing resurfacing' 'current queue' 'threads feeds';
+  grid-template-areas: 'resurfacing resurfacing' 'current queue' 'threads feeds';
   gap: 0 24px;
   align-items: start;
-}
-.folio-home-header {
-  grid-area: home-head;
-  min-height: 104px;
-  align-items: end;
-  padding: 8px 0 22px;
-  border-bottom: 1px solid var(--studio-seam);
-}
-.folio-home-header h1 {
-  margin-top: 5px;
-  font-size: clamp(32px, 4vw, 54px);
 }
 .folio-home-intro {
   max-width: 48ch;
@@ -675,7 +660,7 @@ a:hover {
 @media (max-width: 1100px) {
   .folio-home-workspace {
     grid-template-columns: 1fr;
-    grid-template-areas: 'home-head' 'resurfacing' 'current' 'queue' 'threads' 'feeds';
+    grid-template-areas: 'resurfacing' 'current' 'queue' 'threads' 'feeds';
   }
   .folio-home-intro {
     display: none;
@@ -683,13 +668,6 @@ a:hover {
 }
 
 @media (max-width: 640px) {
-  .folio-home-header {
-    min-height: 82px;
-    padding-bottom: 16px;
-  }
-  .folio-home-header h1 {
-    font-size: clamp(30px, 11vw, 44px);
-  }
   .folio-home-focus,
   .folio-home-queue,
   .folio-home-threads,
@@ -984,25 +962,6 @@ body {
   margin-inline: auto;
 }
 
-.continuum-home-header {
-  display: flex;
-  min-height: 112px;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 28px;
-  padding: 10px 0 24px;
-  border-bottom: 1px solid color-mix(in srgb, var(--studio-seam) 82%, transparent);
-}
-
-.continuum-home-header h1 {
-  margin: 6px 0 0;
-  font-family: var(--font-display);
-  font-size: clamp(calc(38px * var(--font-scale)), 4.4vw, calc(60px * var(--font-scale)));
-  font-weight: 600;
-  letter-spacing: -0.055em;
-  line-height: 0.96;
-}
-
 .continuum-home .folio-kicker {
   color: var(--studio-muted);
   font-family: var(--font-mono);
@@ -1011,41 +970,10 @@ body {
   letter-spacing: 0.02em;
 }
 
-.continuum-home-status {
-  display: grid;
-  justify-items: end;
-  gap: 5px;
-  padding-bottom: 2px;
-  color: var(--studio-secondary);
-  text-align: end;
-}
-
-.continuum-home-status span {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: calc(13px * var(--font-scale));
-  font-weight: 600;
-}
-
-.continuum-home-status small {
-  color: var(--studio-muted);
-  font-size: calc(11px * var(--font-scale));
-}
-
-.continuum-live-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--studio-cypress);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--studio-cypress) 13%, transparent);
-}
-
 .continuum-home-spread {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(330px, 390px);
   gap: clamp(24px, 3vw, 42px);
-  padding-top: clamp(22px, 3vw, 38px);
 }
 
 .continuum-home-main,
@@ -1648,7 +1576,7 @@ body {
     grid-row: 1 / span 2;
     position: sticky;
     align-self: start;
-    top: 22px;
+    top: 0;
   }
 
   .continuum-home-secondary {
@@ -1706,16 +1634,8 @@ body {
     min-height: 46px !important;
   }
 
-  .continuum-home-header {
-    min-height: 92px;
-    flex-direction: row;
-    align-items: flex-end;
-    padding: 8px 0 18px;
-  }
-
   .continuum-home-spread {
     grid-template-columns: minmax(0, 1fr);
-    padding-top: 18px;
   }
 
   .continuum-home-main,
@@ -1725,23 +1645,6 @@ body {
 }
 
 @media (max-width: 640px) {
-  .continuum-home-header {
-    min-height: 78px;
-    align-items: flex-start;
-  }
-
-  .continuum-home-header h1 {
-    font-size: clamp(34px, 12vw, 46px);
-  }
-
-  .continuum-home-status {
-    padding-top: 4px;
-  }
-
-  .continuum-home-status small {
-    display: none;
-  }
-
   .continuum-home :is(.folio-home-resurfacing, .folio-home-focus, .folio-home-feeds) {
     padding: 18px;
   }
@@ -3085,8 +2988,7 @@ body {
     .folio-branch-head,
     .vertical-view-head
   )
-  h1,
-:root[data-theme='continuum'] .continuum-home-header h1 {
+  h1 {
   font-weight: 650;
   letter-spacing: -0.055em;
 }

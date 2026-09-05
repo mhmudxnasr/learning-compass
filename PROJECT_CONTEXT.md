@@ -34,7 +34,7 @@ The product interface is English-first. Notes Extractor source notes optimize fo
 
 ## Frontend behavior
 
-Home contains active, non-superseded Threads only; a ready count requires an available/in-progress Level and a lesson with study material. Paused/draft Threads remain accessible in Learn. Learner-facing Level labels honor an explicit authored “Level N” prefix, otherwise use storage position plus one; API positions stay zero-based. Authored lesson text uses the same safe semantic block renderer as notes without altering saved text or progression.
+Home opens directly with current lessons and Queue context, without a separate Today banner or aggregate counters. It contains active, non-superseded Threads only; readiness remains visible on each lesson. Paused/draft Threads remain accessible in Learn. Learner-facing Level labels honor an explicit authored “Level N” prefix, otherwise use storage position plus one; API positions stay zero-based. Authored lesson text uses the same safe semantic block renderer as notes without altering saved text or progression.
 
 Home completion offers an explicit undo for that exact lesson. Files preserves source/book/chapter identity and separates current pairs from earlier versions. Recall presents verified branch labels without rewriting historical card values. Atlas node selection retains map focus; opening its branch is a separate canonical navigation action.
 

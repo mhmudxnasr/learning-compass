@@ -250,15 +250,6 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
         artifacts: { ...(htmlFile ? { html: htmlFile } : {}), ...(pdfFile ? { pdf: pdfFile } : {}) },
       }
     : null
-  const readyLessons = threads.filter((thread) => {
-    const stage = thread.current_stage
-    const lesson = stage?.lessons?.[0]
-    return (
-      lesson &&
-      ['available', 'in_progress'].includes(stage?.status || '') &&
-      lessonReadiness(lesson) !== 'needs_material'
-    )
-  }).length
 
   const finishLesson = async (threadId: string, lesson: ThreadLesson) => {
     if (lessonCompletion || undoBusy) return
@@ -314,18 +305,7 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
 
   return (
     <div class="folio-home-workspace continuum-home">
-      <header class="folio-home-header continuum-home-header">
-        <div>
-          <h1>Today</h1>
-        </div>
-        <div class="continuum-home-status" aria-label="Today’s study state">
-          <span>
-            <i class="continuum-live-dot" />
-            {readyLessons || 0} {readyLessons === 1 ? 'turn' : 'turns'} ready
-          </span>
-          <small>{items.length ? `${items.length} in Queue` : 'Queue is clear'}</small>
-        </div>
-      </header>
+      <h1 class="visually-hidden">Home</h1>
 
       {completedLesson && (
         <div class="folio-action-status" role="status">

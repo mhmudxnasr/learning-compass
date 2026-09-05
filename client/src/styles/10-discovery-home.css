@@ -329,22 +329,6 @@
   padding: 8px 0 40px;
 }
 
-.folio-home-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-}
-
-.folio-home-header h1 {
-  margin: 0;
-  font-family: var(--font-reading, 'IBM Plex Serif', Georgia, serif);
-  font-size: clamp(24px, 2.8vw, 32px);
-  font-weight: var(--font-heading-weight);
-  line-height: 1.1;
-  color: var(--studio-ink);
-}
-
 .folio-hermes-brief {
   display: flex;
   align-items: center;
@@ -711,8 +695,7 @@
   text-transform: uppercase;
 }
 
-.model-identity-copy h1,
-.folio-home-header h1 {
+.model-identity-copy h1 {
   font-family: var(--font-reading);
   font-weight: var(--font-heading-weight);
 }
