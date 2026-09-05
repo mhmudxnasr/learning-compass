@@ -99,6 +99,18 @@ const baseUrl = `http://127.0.0.1:${port}`
 let server
 let browser
 
+async function openHomeAfterServiceWorkerActivation(page) {
+  // First activation reloads the app. Assertions and synthetic install prompts
+  // must target the controlled document that survives that reload.
+  await page.goto(`${baseUrl}/#/home`, { waitUntil: 'domcontentloaded' })
+  await page.waitForFunction(
+    () => navigator.serviceWorker.controller && performance.getEntriesByType('navigation')[0]?.type === 'reload',
+    null,
+    { timeout: 15000 },
+  )
+  await page.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout: 15000 })
+}
+
 try {
   for (const args of [
     [
@@ -836,7 +848,7 @@ try {
     if (message.type() === 'error') errors.push(message.text())
   })
 
-  await page.goto(`${baseUrl}/#/home`, { waitUntil: 'networkidle' })
+  await openHomeAfterServiceWorkerActivation(page)
   const rootHrefs = await page
     .locator('.root-rail nav[aria-label="Five workspaces"] a')
     .evaluateAll((links) => [...new Set(links.map((link) => link.getAttribute('href')))])
@@ -3576,15 +3588,7 @@ try {
       },
     })
   })
-  // First service-worker activation reloads the app. Inject the install prompt
-  // only after that controlled document is ready, so the reload cannot erase it.
-  await androidPage.goto(`${baseUrl}/#/home`, { waitUntil: 'domcontentloaded' })
-  await androidPage.waitForFunction(
-    () => navigator.serviceWorker.controller && performance.getEntriesByType('navigation')[0]?.type === 'reload',
-    null,
-    { timeout: 15000 },
-  )
-  await androidPage.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout: 15000 })
+  await openHomeAfterServiceWorkerActivation(androidPage)
   await androidPage.evaluate(() => {
     const event = new Event('beforeinstallprompt')
     Object.assign(event, {
