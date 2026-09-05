@@ -52,6 +52,8 @@ Simple manager reads have a one-logical-read budget. The only extra transport at
 
 The operations, recommendation, and Lite Visual skills load a compact entry point plus only the references required for the chosen task. Their loaded-entry budgets live in `docs/hermes-contract.json`. `npm run verify:hermes` audits active skill Markdown and references for real npm scripts and local paths, rejects frozen migration-state claims in procedures, and keeps the structured specialist receipt separate from the user-facing reply. This is a bounded static check, not a semantic proof of arbitrary instructions or current production state.
 
+Lite Visual's loaded entry point has an 8,000-byte ceiling, accommodating its 7,514-byte installed instructions with modest headroom. This per-skill allowance does not change the default Telegram fixed-prompt limits or other skills' budgets.
+
 | Context                                          | Owner                                 | Loading rule                                                     |
 | ------------------------------------------------ | ------------------------------------- | ---------------------------------------------------------------- |
 | Manager identity and behavior                    | `SOUL.md`                             | Always-on, stable, compact                                       |

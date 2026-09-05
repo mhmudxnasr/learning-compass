@@ -230,7 +230,7 @@
       "learning-compass-site-operator": 9859,
       "recommendations-worker-ops": 5000,
       "taste-rec": 6000,
-      "lite-visual": 6000,
+      "lite-visual": 8000,
       "ordinary_router_plus_operator": 17993
     },
     "read_slo_ms": {
