@@ -8,6 +8,7 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Advance the PWA shell to v61 so installed clients receive the Compass logo theme toggle.
 - Make the Compass logo toggle light/dark mode on desktop and mobile, remember the last palette in each mode, and save the active appearance through existing settings. Preserve the current workspace and typography; support keyboard activation and synchronized Preferences controls.
 - Remove all loaded-skill byte budgets and the combined router/operator cap from Hermes verification. Preserve fixed-prompt, skill-index, tool-schema, memory, and skill-integrity checks.
 - Raise Lite Visual's loaded-skill budget from 6,000 to 8,000 bytes to accommodate its installed instructions without changing other prompt limits.
