@@ -1,5 +1,9 @@
 # Learning Compass — Current State
 
+## Local dependencies restored — 2026-09-05
+
+At Mahmood's request, `npm ci` restored the lockfile dependencies (278 packages installed, zero audit vulnerabilities). TypeScript checking passes and both dependency manifests are unchanged. The checkout now occupies about 531 MiB, including 451 MiB in `node_modules/`; `.tmp/`, the separate WhatsApp repository, and `dist/` remain absent. This supersedes the dependency-reinstallation requirement below. No build or deployment ran.
+
 ## Extended local cleanup — 2026-09-05
 
 At Mahmood's explicit request, removed the complete `.tmp/`, `whatsapp-insights-site/` (including its separate Git repository), `node_modules/`, and `dist/` directories. This supersedes the preservation statements in the earlier cleanup entry: the 151 local recovery files, database dump, worktree archives, patches, and release receipts under `.tmp/` are gone. Historical entries referencing `.tmp/` retain their original observations but those local paths are no longer available. Backups outside this checkout were not targeted. All four directories are absent; tracked application sources and dependency manifests remain intact. Run `npm ci` before future local builds, tests, or extraction workflows that depend on this repository's Node packages. Verified the exact deletion scope, directory absence, Markdown formatting, and Git diff; no application tests, rebuild, dependency reinstall, or deployment ran.
