@@ -8,6 +8,8 @@ This file records user-visible behavior, architecture, dependency, and operating
 
 ## Unreleased
 
+- Make Hermes's routine Compass reads direct and scoped: Thread inventories/overviews, resume questions, Queue reads, and conversational target corrections. Keep write safeguards in an on-demand reference, reduce repeated instructions, and extend manager routing coverage with realistic short requests and follow-ups. Repair evaluation profile copying for dangling retired skill links and support explicit reasoning comparisons.
+
 - Synchronize Hermes routing with native Compass tools and bounded Level reads; reject retired adapter and forced reply instructions. Reconcile ambiguous Lite Visual uploads by exact pair/receipt readback without repeating writes, and cover oversized bodies/receipts plus HTTP 500 recovery in regression tests.
 - Integrate the selected Feeds reader and bounded Level reads with the deployed material notebooks and retirement controls; advance the combined PWA shell to v59 and retain both feature suites in full release verification.
 - Added explicit atomic retirement of standalone HTML/PDF companion pairs from current study materials, preserving source links, lesson progress, original files, and recovery history.

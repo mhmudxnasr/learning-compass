@@ -883,7 +883,7 @@ def _isolated_hermes_home(source_home: Path) -> Iterator[Path]:
         for name in ("skills", "memories"):
             source = source_home / name
             if source.exists():
-                shutil.copytree(source, target / name)
+                shutil.copytree(source, target / name, ignore_dangling_symlinks=True)
         for name in ("SOUL.md", "config.yaml", "auth.json"):
             source = source_home / name
             if source.is_file():
@@ -977,6 +977,7 @@ def _trajectory_metrics(messages: list[dict[str, Any]]) -> dict[str, Any]:
     tool_calls = 0
     assistant_bytes = 0
     tool_output_bytes = 0
+    terminal_commands: list[str] = []
     for message in messages:
         role = message.get("role")
         content = message.get("content") or ""
@@ -986,6 +987,8 @@ def _trajectory_metrics(messages: list[dict[str, Any]]) -> dict[str, Any]:
             for call in message.get("tool_calls") or []:
                 tool_calls += 1
                 function = call.get("function") or {}
+                if function.get("name") == "terminal":
+                    terminal_commands.append(str(_parse_tool_args(call).get("command", ""))[:1000])
                 if function.get("name") == "skill_view":
                     name = _parse_tool_args(call).get("name")
                     if isinstance(name, str) and name:
@@ -1025,6 +1028,7 @@ def _trajectory_metrics(messages: list[dict[str, Any]]) -> dict[str, Any]:
         "tool_calls": tool_calls,
         "assistant_bytes": assistant_bytes,
         "tool_output_bytes": tool_output_bytes,
+        "terminal_commands": terminal_commands,
     }
 
 
@@ -1190,6 +1194,7 @@ def _run_site_request_argv(argv: list[str]) -> str:
     """Execute the validated client without a shell or ambient credentials."""
     allowed_env = {
         "HERMES_HOME",
+        "HERMES_TURN_ID",
         "TASTE_MAP_AGENT_NAME",
         "TASTE_MAP_ALLOW_LOCAL",
         "TASTE_MAP_API_TOKEN",
@@ -1268,7 +1273,9 @@ def _site_request_only_terminal() -> Iterator[None]:
     def guarded(args: dict[str, Any], **kwargs: Any) -> str:
         argv = _site_request_argv(args.get("command"))
         if argv is None:
-            return json.dumps({"error": "manager_eval_terminal_blocked"})
+            return json.dumps({"error": "manager_eval_terminal_blocked",
+                               "allowed_client": str(_trusted_site_request_path()),
+                               "hint": "Use python <allowed_client> request GET <path>, or its capabilities/mutate subcommand, with inline arguments. Shell wrappers, other executables and @file inputs are not available in this fixture."})
         return _run_site_request_argv(argv)
 
     entry.handler = guarded
@@ -1286,6 +1293,7 @@ def run_case(
     source_home: Path,
     manager_context_file: Path,
     max_iterations: int,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     """Run one real agent against a loopback-only Worker fixture."""
     with _mock_worker(
@@ -1304,6 +1312,7 @@ def run_case(
                     manager_context_file, workspace
                 )
                 os.environ["HERMES_HOME"] = str(isolated_home)
+                os.environ["HERMES_TURN_ID"] = eval_session_id
                 os.environ["TERMINAL_CWD"] = str(workspace)
                 os.environ["TASTE_MAP_URL"] = base_url
                 os.environ["TASTE_MAP_ALLOW_LOCAL"] = "1"
@@ -1324,6 +1333,7 @@ def run_case(
                     platform="telegram",
                     enabled_toolsets=["skills", "terminal"],
                     max_iterations=max_iterations,
+                    reasoning_config={"enabled": True, "effort": reasoning_effort} if reasoning_effort else None,
                     prefill_messages=case.get("prefill") or None,
                     skip_context_files=False,
                     load_soul_identity=True,
@@ -1396,7 +1406,8 @@ def run_case(
                 # local key; without this explicit eval-owned teardown, a
                 # multi-case run reuses the previous fixture URL and cwd.
                 try:
-                    from tools.terminal_tool import clear_session_cwd, cleanup_vm
+                    from tools.terminal_tool import clear_session_cwd
+                    from tools.terminal_tool_lifecycle import cleanup_vm
 
                     cleanup_vm("default")
                     clear_session_cwd(eval_session_id)
@@ -1440,6 +1451,7 @@ def main() -> int:
         help="production AGENTS.md copied into each isolated eval workspace",
     )
     run.add_argument("--max-iterations", type=int, default=16)
+    run.add_argument("--reasoning-effort", choices=("low", "medium", "high"), default=None)
     run.add_argument("--output", type=Path, required=True)
 
     args = parser.parse_args()
@@ -1476,6 +1488,7 @@ def main() -> int:
                 source_home=args.source_home.expanduser(),
                 manager_context_file=args.manager_context_file.expanduser(),
                 max_iterations=args.max_iterations,
+                reasoning_effort=args.reasoning_effort,
             )
             for case in selected
         ]

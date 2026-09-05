@@ -14,6 +14,7 @@ from evals.manager_routing.harness import (
     _WorkerFixture,
     _failure_category,
     _install_manager_context,
+    _isolated_hermes_home,
     _recovery_result,
     _site_request_argv,
     _site_request_only_terminal,
@@ -29,6 +30,41 @@ CASES_PATH = (
     / "manager_routing"
     / "cases.json"
 )
+
+
+def test_profile_copy_skips_broken_links_and_isolates_valid_skills(tmp_path):
+    source = tmp_path / "source"
+    skills = source / "skills"
+    skills.mkdir(parents=True)
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "SKILL.md").write_text("original")
+    (skills / "valid").symlink_to(external, target_is_directory=True)
+    (skills / "retired").symlink_to(tmp_path / "missing", target_is_directory=True)
+    with _isolated_hermes_home(source) as copied:
+        assert not (copied / "skills/retired").exists()
+        copied_skill = copied / "skills/valid/SKILL.md"
+        assert copied_skill.read_text() == "original"
+        copied_skill.write_text("isolated change")
+        assert (external / "SKILL.md").read_text() == "original"
+    assert not copied.exists()
+
+
+def test_thread_followup_grader_rejects_wrong_target_and_mutations():
+    case = _case("thread-followup")
+    response = case["mock_responses"][0]
+    trace = {
+        "skills_loaded": ["learning-compass-operating-system", "learning-compass-site-operator"],
+        "final_response": "Business Negotiation has the Preparation Level.",
+        "api_calls": [{"method": "GET", "path": response["path"], "status": 200,
+                       "response_body": response["body"]}],
+    }
+    assert grade_case(case, trace) == []
+    trace["api_calls"][0]["path"] = "/learning/core/threads/thread-1/path"
+    assert grade_case(case, trace)
+    trace["api_calls"][0]["path"] = response["path"]
+    trace["api_calls"].append({"method": "POST", "path": "/sessions/start", "status": 200})
+    assert grade_case(case, trace)
 
 
 def _cases():
@@ -144,6 +180,8 @@ def test_eval_terminal_never_executes_shell_substitution(
 def test_eval_terminal_dispatches_validated_inline_json_without_shell(
     trusted_site_request, monkeypatch
 ):
+    monkeypatch.setenv("HERMES_TURN_ID", "manager-test-turn")
+    monkeypatch.setenv("UNRELATED_API_KEY", "must-not-reach-client")
     body = json.dumps(
         {"method": "POST", "path": "/feedback/record", "body": {"rating": 7}},
         separators=(",", ":"),
@@ -174,6 +212,8 @@ def test_eval_terminal_dispatches_validated_inline_json_without_shell(
     with _site_request_only_terminal():
         result = json.loads(registry.get_entry("terminal").handler({"command": command}))
 
+    assert captured["kwargs"]["env"]["HERMES_TURN_ID"] == "manager-test-turn"
+    assert "UNRELATED_API_KEY" not in captured["kwargs"]["env"]
     assert captured["argv"] == [
         sys.executable,
         str(trusted_site_request),
@@ -362,8 +402,8 @@ def test_case_slate_covers_every_required_rough_request():
     cases = _cases()
     prompts = {case["prompt"] for case in cases}
 
-    assert len(cases) == 21
-    assert prompts == {
+    assert {"what are in the threads", "open the second one", "no i meant the first one"} <= prompts
+    assert prompts >= {
         "whats next",
         "manage my learning",
         "fix all that",

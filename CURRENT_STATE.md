@@ -1,5 +1,15 @@
 # Learning Compass — Current State
 
+## Current truth — 2026-09-05 (Hermes routing reliability, local)
+
+Installed Hermes is dedicated to Learning Compass. The router and site-operator entry points total 9,210 bytes, down from 17,884; write-specific safeguards remain in `references/write-operations.md`. Common reads distinguish Thread lists, hub overviews, exact Thread/Level details, resume questions, and Queue inventory. Follow-ups preserve displayed order and IDs; corrections replace the target; inspection never changes learning state. The checked-in SOUL source matches the installed identity.
+
+The native Queue read exposed a 19,514-byte record response that exceeded the 12,000-byte output cap. The installed first-party client now supports comma-separated leaf fields (for example `items.*.id,video_title,learning_state`) without raising output or transport limits. Actual native dispatch passed for three Threads, three hub paths, and one Queue item; the Queue result was 434 bytes. No production data was mutated.
+
+The evaluation slate now has 31 cases, adding ten short-request, typo, Arabic, empty-list, and follow-up scenarios. Deterministic verification passes 40 manager tests and 48 installed-client tests, plus skill validation, quality, Hermes contracts, prompt budgets, and diff checks. The evaluator copies valid skill links into isolation, skips dangling retired links, preserves `HERMES_TURN_ID` for the real client ledger, and records bounded terminal commands for diagnosis.
+
+Real-model diagnostics are not a release certificate: the first ten-case trial passed seven and exposed fixture CLI guidance failures; a focused resume/follow-up replay passed both after actionable client guidance. The Thread overview uses one hub read instead of the baseline's hub plus two unnecessary full-path reads. Additional mutation diagnostics found a missing evaluator turn identity (fixed) and overly literal historical response grading. The small higher-reasoning comparison did not establish an improvement, so the model, medium reasoning, and platform tool settings remain unchanged. No broad rerun or deployment is claimed here; the release task owns integration and deployment.
+
 ## Current truth — 2026-09-05 (combined release in verification)
 
 Main now integrates the deployed material notebooks and companion retirement, the bounded metadata-only Level read, and the selected Feeds split reader with persistent Skip. The combined PWA shell is v59. Migration `0077_feed_entry_dismissals.sql` is additive and awaits the verified pre-migration backup and release gate. No new companion retirement or lesson-progress change is part of this release. Earlier dated entries retain their original task status; this entry owns the combined release status.

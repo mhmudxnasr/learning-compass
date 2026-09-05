@@ -2,6 +2,620 @@
   "schema": "hermes-manager-cases/v1",
   "cases": [
     {
+      "id": "threads-overview",
+      "prompt": "what are in the threads",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "forbidden_skills": ["taste-rec", "learning-thread-authoring", "progressive-learning-curriculum"],
+        "required_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/hub",
+            "count": 1
+          }
+        ],
+        "allowed_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/hub"
+          }
+        ],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [
+          {
+            "method": "GET",
+            "path": "/learning/core/hub",
+            "pointer": "/paths/0/title"
+          },
+          {
+            "method": "GET",
+            "path": "/learning/core/hub",
+            "pointer": "/paths/1/title"
+          }
+        ],
+        "max_response_bytes": 2200,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/learning/core/hub",
+          "status": 200,
+          "body": {
+            "paths": [
+              {
+                "id": "thread-1",
+                "title": "Practical Reasoning",
+                "status": "active",
+                "stage_count": 2,
+                "lesson_count": 5,
+                "completed_lesson_count": 2,
+                "current_stage_title": "Foundations",
+                "next_lesson": {
+                  "id": "lesson-3",
+                  "title": "Evidence and assumptions",
+                  "status": "in_progress"
+                },
+                "last_studied_at": "2026-09-04T18:00:00Z"
+              },
+              {
+                "id": "thread-2",
+                "title": "Business Negotiation",
+                "status": "paused",
+                "stage_count": 1,
+                "lesson_count": 3,
+                "completed_lesson_count": 0,
+                "current_stage_title": "Preparation",
+                "next_lesson": {
+                  "id": "lesson-6",
+                  "title": "Interests and positions",
+                  "status": "ready"
+                },
+                "last_studied_at": null
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "threads-typo",
+      "prompt": "whats insdie my threds",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "forbidden_skills": ["taste-rec", "learning-thread-authoring", "progressive-learning-curriculum"],
+        "required_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/hub",
+            "count": 1
+          }
+        ],
+        "allowed_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/hub"
+          }
+        ],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [
+          {
+            "method": "GET",
+            "path": "/learning/core/hub",
+            "pointer": "/paths/0/title"
+          },
+          {
+            "method": "GET",
+            "path": "/learning/core/hub",
+            "pointer": "/paths/1/title"
+          }
+        ],
+        "max_response_bytes": 2200,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/learning/core/hub",
+          "status": 200,
+          "body": {
+            "paths": [
+              {
+                "id": "thread-1",
+                "title": "Practical Reasoning",
+                "status": "active",
+                "stage_count": 2,
+                "lesson_count": 5,
+                "completed_lesson_count": 2,
+                "current_stage_title": "Foundations",
+                "next_lesson": {
+                  "id": "lesson-3",
+                  "title": "Evidence and assumptions",
+                  "status": "in_progress"
+                },
+                "last_studied_at": "2026-09-04T18:00:00Z"
+              },
+              {
+                "id": "thread-2",
+                "title": "Business Negotiation",
+                "status": "paused",
+                "stage_count": 1,
+                "lesson_count": 3,
+                "completed_lesson_count": 0,
+                "current_stage_title": "Preparation",
+                "next_lesson": {
+                  "id": "lesson-6",
+                  "title": "Interests and positions",
+                  "status": "ready"
+                },
+                "last_studied_at": null
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "threads-list",
+      "prompt": "list my threads",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "forbidden_skills": ["taste-rec", "learning-thread-authoring", "progressive-learning-curriculum"],
+        "required_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads",
+            "count": 1
+          }
+        ],
+        "allowed_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads"
+          }
+        ],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads",
+            "pointer": "/threads/0/title"
+          },
+          {
+            "method": "GET",
+            "path": "/learning/core/threads",
+            "pointer": "/threads/1/title"
+          }
+        ],
+        "max_response_bytes": 2200,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/learning/core/threads",
+          "status": 200,
+          "body": {
+            "threads": [
+              {
+                "id": "thread-1",
+                "title": "Practical Reasoning",
+                "status": "active"
+              },
+              {
+                "id": "thread-2",
+                "title": "Business Negotiation",
+                "status": "paused"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "threads-arabic",
+      "prompt": "ايه الثريدز اللي عندي؟",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "forbidden_skills": ["taste-rec", "learning-thread-authoring", "progressive-learning-curriculum"],
+        "required_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads",
+            "count": 1
+          }
+        ],
+        "allowed_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads"
+          }
+        ],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads",
+            "pointer": "/threads/0/title"
+          },
+          {
+            "method": "GET",
+            "path": "/learning/core/threads",
+            "pointer": "/threads/1/title"
+          }
+        ],
+        "max_response_bytes": 2200,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/learning/core/threads",
+          "status": 200,
+          "body": {
+            "threads": [
+              {
+                "id": "thread-1",
+                "title": "Practical Reasoning",
+                "status": "active"
+              },
+              {
+                "id": "thread-2",
+                "title": "Business Negotiation",
+                "status": "paused"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "resume-learning",
+      "prompt": "where did i stop",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "forbidden_skills": ["taste-rec", "learning-thread-authoring", "progressive-learning-curriculum"],
+        "required_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/hub",
+            "count": 1
+          }
+        ],
+        "allowed_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/hub"
+          }
+        ],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [
+          {
+            "method": "GET",
+            "path": "/learning/core/hub",
+            "pointer": "/paths/0/next_lesson/title"
+          }
+        ],
+        "max_response_bytes": 2200,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/learning/core/hub",
+          "status": 200,
+          "body": {
+            "paths": [
+              {
+                "id": "thread-1",
+                "title": "Practical Reasoning",
+                "status": "active",
+                "stage_count": 2,
+                "lesson_count": 5,
+                "completed_lesson_count": 2,
+                "current_stage_title": "Foundations",
+                "next_lesson": {
+                  "id": "lesson-3",
+                  "title": "Evidence and assumptions",
+                  "status": "in_progress"
+                },
+                "last_studied_at": "2026-09-04T18:00:00Z"
+              },
+              {
+                "id": "thread-2",
+                "title": "Business Negotiation",
+                "status": "paused",
+                "stage_count": 1,
+                "lesson_count": 3,
+                "completed_lesson_count": 0,
+                "current_stage_title": "Preparation",
+                "next_lesson": {
+                  "id": "lesson-6",
+                  "title": "Interests and positions",
+                  "status": "ready"
+                },
+                "last_studied_at": null
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "queue-inventory",
+      "prompt": "whats in my que",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "forbidden_skills": ["taste-rec", "learning-thread-authoring", "progressive-learning-curriculum"],
+        "required_calls": [
+          {
+            "method": "GET",
+            "path": "/capture/queue",
+            "count": 1
+          }
+        ],
+        "allowed_calls": [
+          {
+            "method": "GET",
+            "path": "/capture/queue"
+          }
+        ],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [
+          {
+            "method": "GET",
+            "path": "/capture/queue",
+            "pointer": "/items/0/video_title"
+          }
+        ],
+        "max_response_bytes": 2200,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/capture/queue",
+          "status": 200,
+          "body": {
+            "items": [
+              {
+                "id": "src-8",
+                "video_title": "Decision Journals",
+                "learning_state": "in_progress"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "threads-empty",
+      "prompt": "show my threads",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "forbidden_skills": ["taste-rec", "learning-thread-authoring", "progressive-learning-curriculum"],
+        "required_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads",
+            "count": 1
+          }
+        ],
+        "allowed_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads"
+          }
+        ],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [],
+        "max_response_bytes": 2200,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/learning/core/threads",
+          "status": 200,
+          "body": {
+            "threads": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "thread-followup",
+      "prompt": "open the second one",
+      "prefill": [
+        {
+          "role": "user",
+          "content": "list my threads"
+        },
+        {
+          "role": "assistant",
+          "content": "1. Practical Reasoning (thread-1)\n2. Business Negotiation (thread-2)"
+        }
+      ],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "forbidden_skills": ["taste-rec", "learning-thread-authoring", "progressive-learning-curriculum"],
+        "required_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads/thread-2/path",
+            "count": 1
+          }
+        ],
+        "allowed_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads/thread-2/path"
+          }
+        ],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads/thread-2/path",
+            "pointer": "/thread/title"
+          },
+          {
+            "method": "GET",
+            "path": "/learning/core/threads/thread-2/path",
+            "pointer": "/stages/0/title"
+          }
+        ],
+        "max_response_bytes": 2200,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/learning/core/threads/thread-2/path",
+          "status": 200,
+          "body": {
+            "thread": {
+              "id": "thread-2",
+              "title": "Business Negotiation"
+            },
+            "stages": [
+              {
+                "id": "stage-2",
+                "title": "Preparation",
+                "position": 0,
+                "lessons": [
+                  {
+                    "id": "lesson-6",
+                    "title": "Interests and positions",
+                    "status": "not_started"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "thread-corrected-target",
+      "prompt": "no i meant the first one",
+      "prefill": [
+        {
+          "role": "user",
+          "content": "list my threads"
+        },
+        {
+          "role": "assistant",
+          "content": "1. Practical Reasoning (thread-1)\n2. Business Negotiation (thread-2)"
+        },
+        {
+          "role": "user",
+          "content": "open the second one"
+        },
+        {
+          "role": "assistant",
+          "content": "Business Negotiation (thread-2) has the Preparation Level."
+        }
+      ],
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "required_skills": ["learning-compass-site-operator"],
+        "forbidden_skills": ["taste-rec", "learning-thread-authoring", "progressive-learning-curriculum"],
+        "required_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads/thread-1/path",
+            "count": 1
+          }
+        ],
+        "allowed_calls": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads/thread-1/path"
+          }
+        ],
+        "max_api_calls": 1,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "grounding_assertions": [
+          {
+            "method": "GET",
+            "path": "/learning/core/threads/thread-1/path",
+            "pointer": "/thread/title"
+          }
+        ],
+        "max_response_bytes": 2200,
+        "require_successful_api": true
+      },
+      "mock_responses": [
+        {
+          "method": "GET",
+          "path": "/learning/core/threads/thread-1/path",
+          "status": 200,
+          "body": {
+            "thread": {
+              "id": "thread-1",
+              "title": "Practical Reasoning"
+            },
+            "stages": [
+              {
+                "id": "stage-1",
+                "title": "Foundations",
+                "lessons": []
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "thread-ambiguous",
+      "prompt": "open that thread",
+      "expect": {
+        "first_skill": "learning-compass-operating-system",
+        "max_api_calls": 0,
+        "max_context_calls": 0,
+        "max_mutations": 0,
+        "max_response_bytes": 800,
+        "response_contains_any": ["which", "Practical Reasoning", "Business Negotiation"]
+      },
+      "prefill": [
+        {
+          "role": "user",
+          "content": "Compare Practical Reasoning (thread-1) and Business Negotiation (thread-2)."
+        },
+        {
+          "role": "assistant",
+          "content": "Both are active learning Threads. Either is available."
+        }
+      ],
+      "mock_responses": []
+    },
+    {
       "id": "whats-next",
       "prompt": "whats next",
       "expect": {
