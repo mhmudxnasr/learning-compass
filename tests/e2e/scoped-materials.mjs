@@ -70,8 +70,7 @@ export async function verifyScopedMaterials({ page, baseUrl, requestJson, thread
       .evaluate((input) => input.files[0].name),
     'lesson-reference.txt',
   )
-  const abortUpload = (route) => route.abort('failed')
-  await page.route(`${baseUrl}/artifacts`, abortUpload)
+  await page.context().setOffline(true)
   await panel().getByRole('button', { name: 'Upload file', exact: true }).click()
   await panel().getByRole('alert').waitFor()
   assert.equal(
@@ -80,7 +79,7 @@ export async function verifyScopedMaterials({ page, baseUrl, requestJson, thread
       .evaluate((input) => input.files[0].name),
     'lesson-reference.txt',
   )
-  await page.unroute(`${baseUrl}/artifacts`, abortUpload)
+  await page.context().setOffline(false)
   await panel().getByRole('button', { name: 'Upload file', exact: true }).click()
   await panel()
     .getByRole('link', { name: /lesson-reference.txt/ })
@@ -154,8 +153,7 @@ export async function verifyScopedMaterials({ page, baseUrl, requestJson, thread
 
   // A queued request already has one durable outbox identity; it must not leave
   // the same filled form available for a second submission with a fresh ID.
-  const abortNote = (route) => (route.request().method() === 'POST' ? route.abort('failed') : route.fallback())
-  await page.route(`${baseUrl}/notes`, abortNote)
+  await page.context().setOffline(true)
   await panel().getByLabel('Note title', { exact: true }).fill('Saved while offline')
   await panel().getByLabel('Note body', { exact: true }).fill('Sync this once, without creating a duplicate.')
   await panel().getByRole('button', { name: 'Save note', exact: true }).click()
@@ -164,10 +162,10 @@ export async function verifyScopedMaterials({ page, baseUrl, requestJson, thread
   await panel().getByRole('button', { name: 'Add note', exact: true }).click()
   assert.equal(await panel().getByLabel('Note title', { exact: true }).inputValue(), '')
   await panel().getByRole('button', { name: 'Cancel', exact: true }).click()
-  await page.unroute(`${baseUrl}/notes`, abortNote)
   const synced = page.waitForResponse(
     (response) => response.url() === `${baseUrl}/notes` && response.request().method() === 'POST' && response.ok(),
   )
+  await page.context().setOffline(false)
   await page.evaluate(() => window.dispatchEvent(new Event('online')))
   await synced
   assert.equal(

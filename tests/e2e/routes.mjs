@@ -826,7 +826,8 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   page.setDefaultNavigationTimeout(20_000)
   let browserIp = 'e2e-browser-desktop'
-  await page.route(`${baseUrl}/**`, (route) => {
+  // Service-worker fetches need the same isolated identity as page requests.
+  await page.context().route(`${baseUrl}/**`, (route) => {
     route.continue({ headers: { ...route.request().headers(), 'cf-connecting-ip': browserIp, 'x-real-ip': browserIp } })
   })
   const errors = []
@@ -3566,9 +3567,23 @@ try {
     extraHTTPHeaders: { 'x-real-ip': 'e2e-android-browser' },
   })
   androidPage.setDefaultNavigationTimeout(20_000)
-  // The install/offline flow needs a mounted Home screen and ready service worker,
-  // independently of background network activity in this fresh browser context.
+  await androidPage.context().route(`${baseUrl}/**`, (route) => {
+    route.continue({
+      headers: {
+        ...route.request().headers(),
+        'cf-connecting-ip': 'e2e-android-browser',
+        'x-real-ip': 'e2e-android-browser',
+      },
+    })
+  })
+  // First service-worker activation reloads the app. Inject the install prompt
+  // only after that controlled document is ready, so the reload cannot erase it.
   await androidPage.goto(`${baseUrl}/#/home`, { waitUntil: 'domcontentloaded' })
+  await androidPage.waitForFunction(
+    () => navigator.serviceWorker.controller && performance.getEntriesByType('navigation')[0]?.type === 'reload',
+    null,
+    { timeout: 15000 },
+  )
   await androidPage.locator('.folio-home-workspace').waitFor({ state: 'visible', timeout: 15000 })
   await androidPage.evaluate(() => {
     const event = new Event('beforeinstallprompt')
