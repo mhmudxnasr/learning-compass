@@ -44,7 +44,7 @@ function safeUUID(): string {
 
 const mutationId = () => `mut_${Date.now()}_${safeUUID()}`
 
-type ApiRequestInit = RequestInit & { timeoutMs?: number; queueOnNetworkError?: boolean }
+type ApiRequestInit = RequestInit & { timeoutMs?: number; queueOnNetworkError?: boolean; responseType?: 'blob' }
 
 export async function api<T = any>(url: string, init?: ApiRequestInit): Promise<T> {
   const method = (init?.method || 'GET').toUpperCase()
@@ -60,7 +60,7 @@ export async function api<T = any>(url: string, init?: ApiRequestInit): Promise<
   }, timeoutMs)
   const abortFromCaller = () => controller.abort()
   init?.signal?.addEventListener('abort', abortFromCaller, { once: true })
-  const { timeoutMs: _timeoutMs, queueOnNetworkError = true, ...requestInit } = init || {}
+  const { timeoutMs: _timeoutMs, queueOnNetworkError = true, responseType, ...requestInit } = init || {}
   let response: Response
   try {
     response = await authFetch(url, { ...requestInit, headers, signal: controller.signal })
@@ -83,6 +83,7 @@ export async function api<T = any>(url: string, init?: ApiRequestInit): Promise<
     init?.signal?.removeEventListener('abort', abortFromCaller)
   }
 
+  if (response.ok && responseType === 'blob') return (await response.blob()) as T
   let body: any
   const contentType = response.headers.get('content-type') || ''
   if (contentType.includes('application/json')) {

@@ -14,6 +14,7 @@ import {
   type SourceMaterialOption,
 } from './learn/sourceMaterials'
 import type { PathRecord, PathSource, PathStage, ThreadLesson } from './learn/types'
+import { LearningCalendar } from '../features/activity/LearningCalendar'
 
 export type HomeSelection = {
   type: 'source' | 'thread'
@@ -759,6 +760,7 @@ export function HomeWorkspace({ onCapture, onInspect: _onInspect, onNavigate }: 
           </section>
         </div>
       </div>
+      <LearningCalendar revision={completedLesson?.lesson.id || ''} />
     </div>
   )
 }

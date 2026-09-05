@@ -139,6 +139,7 @@ const CAPABILITIES = [
     'Run the configured maintenance workflow on demand and persist a task-level receipt.',
   ],
   ['GET', '/dashboard/briefing', 'Read Momentum, active Queue files, weekly progress, and current insight.'],
+  ['GET', '/home/activity', 'Read recorded learning activity by Cairo month and day, with paginated day details.'],
   ['GET', '/capture', 'Read captured source records.'],
   ['POST', '/capture', 'Save a URL, text, or artifact as a source record.'],
   [
@@ -501,7 +502,11 @@ const CAPABILITIES = [
     '/learning/core/threads/:id',
     'Read a Thread workspace, direct lesson state, sources, Units, and optional project context.',
   ],
-  ['GET', '/learning/core/threads/:id/export', 'Export a complete Thread packet as JSON or Markdown.'],
+  [
+    'GET',
+    '/learning/core/threads/:id/export',
+    'Export a Thread as JSON, Markdown, or an Obsidian file manifest; optional stage_id selects a Level.',
+  ],
   ['PATCH', '/learning/core/threads/:id', 'Edit a Thread or its final synthesis.'],
   ['POST', '/learning/core/threads/:id/status', 'Activate, pause, or abandon a Thread.'],
   ['POST', '/learning/core/threads/:id/sources', 'Attach a source to a Thread with an explicit role.'],

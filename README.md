@@ -1,5 +1,7 @@
 # Learning Compass
 
+Home includes a monthly learning activity calendar with Cairo dates and linked daily history. In a Thread, expand **Download for Obsidian**, choose the whole Thread or one Level, and download linked Markdown notes and a curriculum index. Book/chapter notes and personal handwriting reflections are included. Optional companions use existing HTML/PDF files; unzip the folder directly into your vault root and open **Start here**. This is an explicit snapshot of saved material, not a new extraction or two-way sync.
+
 For repository work, start with [AGENTS.md](AGENTS.md), the durable [project context](PROJECT_CONTEXT.md), and the [current handoff](CURRENT_STATE.md#handoff). Use the [contribution map](#contribution-map) below to select source files and tests. The codebase uses the same checked-in guidance for every model.
 
 Threads is the main study workspace: plan a question, author its Levels and lessons, continue the exact next lesson, organize source material, and keep a notebook and optional synthesis. Its study desk preserves search and sorting, exposes priority and material gaps, and gives lessons a searchable curriculum navigator and focus mode. New Threads begin in Planning; creation does not generate a curriculum automatically.

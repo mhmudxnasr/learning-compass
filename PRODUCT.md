@@ -29,6 +29,9 @@ A zero-noise, purpose-first personal knowledge ledger. Unlike generic read-it-la
 
 ## Capabilities and Constraints
 
+- **Learning activity calendar**: Home shows a month of recorded activity and linked day details, with Cairo DST-aware dates. Completions, reopenings, notes saved, and card reviews remain distinct actions; passive reading and automatic lesson starts are excluded. Navigation and empty/error states remain usable on mobile.
+- **Obsidian Thread download**: A Thread disclosure exports existing notes, personal reflections, source pages, and ordered curriculum into a linked Markdown ZIP. The learner may choose one Level and include current companions. This explicit download includes book/chapter notes; routine Hermes archive exclusions remain. Nothing is extracted or rewritten during export.
+
 - **Feed triage**: A compact article navigator sits beside one source excerpt. Open article opens the original; Skip removes that exact entry from the feed and advances immediately. Failure restores the entry. Skipping preserves the saved source and Queue state, persists across refreshes, and is not negative taste feedback. Subscriptions stay under Manage.
 
 - **Learning desk**: Threads is a daily study workspace. Active, Planning, Paused, Completed, and All views share searchable, bounded rows with exact next-lesson actions, known duration, current/future material gaps, priority, and pause/resume. Search and sort survive a return from a lesson. A new Thread starts in Planning and opens first-Level authoring; it does not promise an automatically generated curriculum.

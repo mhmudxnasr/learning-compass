@@ -2,10 +2,18 @@
 
 ## Handoff
 
+- **Learning calendar and Obsidian download:** Implemented locally; see the entry below for scope and checks. The explicit download includes book/chapter notes while routine Hermes archiving retains its exclusion. No deployment or production data changes.
+
 - **Start here:** `AGENTS.md` owns the working rules, `PROJECT_CONTEXT.md` the durable product model, and the README contribution map points to source files and focused tests. Read older entries below only when their history is relevant.
 - **Local work:** The verified Impeccable frontend repairs retain Continuum and the five-root navigation while correcting reading hierarchy, responsive layouts, accessible controls, source identity, and recovery. Workspace code is lazy-loaded; the local PWA shell is v62. The entry below owns this task's exact evidence; no deployment was performed.
 - **Last recorded deployment:** `docs/release-snapshot.json`, observed `2026-09-05T03:41:17.365Z`, records Worker `9145072d-ce6c-4744-b5c2-a16550a09b7d` from `ebaa50d` with PWA shell v61. This is historical release evidence, not a fresh live-health claim. Local maintenance and frontend repairs have not been deployed.
 - **Local environment:** lockfile dependencies are restored. The deleted `.tmp/` recovery files and separate WhatsApp repository are absent; historical references to those paths are no longer usable. Generated `dist/` output was removed after the successful verification build. Dependency upgrades retain the holds in `docs/dependencies.md`.
+
+## Learning calendar and Obsidian Thread download — 2026-09-05 (local, verified)
+
+Home now includes a monthly Cairo/DST-aware activity calendar, linked day details, pagination, and honest empty/error states. It projects existing completion/reopening, note-save, and recall events without recording passive reading or changing progression. Threads offer an Obsidian ZIP of existing notes, faithful handwriting reflections, source pages, and an ordered curriculum index, with optional companions and Level filtering. Whole-Thread and selected-Level exports have distinct folder identities. Explicit downloads include book/chapter notes as Mahmood requested; routine Hermes archive rules remain unchanged. Notes Extractor, site-operator guidance, and durable Hermes memory reflect that exception.
+
+Verified: 43 focused unit/contract tests across calendar/export, Home completion, and agent control; `npm run verify:fast`; Hermes contracts/prompt checks; changed-file formatting and diff checks; focused calendar/export E2E against disposable Worker/D1 covering Cairo history, lesson navigation, actual ZIP download, optional PDF inclusion, unavailable-file/API errors, and desktop/light plus mobile/dark layouts. ZIP bytes/CRC and Unicode filenames also pass Python zipfile readback. The first E2E run exposed an ambiguous export-selector label, corrected before the passing rerun. No full release, migration, or unrelated browser suite was run. The latest measured initial JavaScript is 47.58 KB gzip including API/Preact, CSS 109.09 KB gzip, with ZIP code lazy-loaded at 0.74 KB gzip. No dependencies, schema, deployment, or production records changed; unrelated local edits are preserved.
 
 ## Impeccable frontend repairs — 2026-09-05 (local, verified)
 

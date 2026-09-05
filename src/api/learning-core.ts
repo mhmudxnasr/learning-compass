@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { buildThreadObsidianExport, ThreadExportError } from '../services/thread-obsidian-export'
 import { Bindings, normalizeUrlForDedup, safeError, safeErrorMessage } from '../lib'
 import {
   buildLearningEventStatement,
@@ -1888,6 +1889,22 @@ app.get('/threads/:id', async (c) => {
 })
 
 app.get('/threads/:id/export', async (c) => {
+  if (c.req.query('format') === 'obsidian') {
+    c.header('Cache-Control', 'no-store')
+    try {
+      return c.json(
+        await buildThreadObsidianExport(
+          c.env.DB,
+          c.req.param('id'),
+          new URL(c.req.url).origin,
+          c.req.query('stage_id'),
+        ),
+      )
+    } catch (error) {
+      if (error instanceof ThreadExportError) return c.json({ error: error.message }, error.status)
+      return c.json(safeError('The Thread could not be exported. Try again.')(error), 500)
+    }
+  }
   const thread = await c.env.DB.prepare(`SELECT * FROM learning_threads WHERE id=?`)
     .bind(c.req.param('id'))
     .first<any>()

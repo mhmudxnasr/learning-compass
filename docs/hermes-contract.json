@@ -449,6 +449,10 @@
       "owner": "learning-compass-site-operator",
       "permission": "explicit_learning_thread_export"
     },
+    "GET /home/activity": {
+      "owner": "learning-compass-site-operator",
+      "permission": "recorded_learning_history_read"
+    },
     "GET /learning/core/weekly": {
       "owner": "learning-compass-site-operator",
       "permission": "explicit_learning_thread_read"

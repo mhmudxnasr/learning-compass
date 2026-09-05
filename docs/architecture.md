@@ -1,5 +1,9 @@
 # Architecture
 
+`src/services/learning-calendar.ts` projects existing activity/event ledgers through the read-only `/home/activity` route. UTC timestamps are grouped using `Africa/Cairo`, independent of historical fixed-offset date columns. `client/src/features/activity/LearningCalendar.tsx` owns Home's month/day interaction. No schema or progression rules change.
+
+`src/services/thread-obsidian-export.ts` owns the additive `format=obsidian` Thread-export projection: exact selected ownership, canonical note sections, current companion selection, and a bounded file manifest. The client export feature creates a standard ZIP and optionally downloads companions through existing artifact endpoints; it never bypasses artifact access or reads R2 directly. D1 stays canonical, and export performs no writes or extraction. Explicit book-note inclusion is separate from routine Hermes archiving.
+
 Learning Compass is one Cloudflare Worker application with a statically built Preact client. D1 is the canonical relational store, R2 owns large artifacts, and Hermes performs bounded background work through the public Worker contract. There is no second backend or client-side database of record.
 
 ## Runtime flow

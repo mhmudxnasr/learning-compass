@@ -1,8 +1,30 @@
 import { Hono } from 'hono'
 import { Bindings, safeError } from '../lib'
 import { cached } from '../cache'
+import { cairoDate, loadLearningCalendar, validCalendarDate } from '../services/learning-calendar'
 
 const app = new Hono<{ Bindings: Bindings }>()
+
+app.get('/activity', async (c) => {
+  const month = c.req.query('month') || cairoDate(new Date()).slice(0, 7)
+  const day = c.req.query('day')
+  const offset = Number(c.req.query('offset') || 0)
+  if (
+    !validCalendarDate(`${month}-01`) ||
+    (day !== undefined && (!validCalendarDate(day) || !day.startsWith(`${month}-`))) ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    offset > 100000
+  ) {
+    return c.json({ error: 'Use month=YYYY-MM, an optional day within that month, and a nonnegative offset.' }, 400)
+  }
+  c.header('Cache-Control', 'no-store')
+  try {
+    return c.json(await loadLearningCalendar(c.env.DB, month, day, offset))
+  } catch (error) {
+    return c.json(safeError('Learning activity could not be loaded')(error), 500)
+  }
+})
 
 const firstOr = async (stmt: D1PreparedStatement, fallback: any = null) => {
   try {

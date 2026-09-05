@@ -10,6 +10,7 @@ import { verifyFeedTriage } from './feeds.mjs'
 import { verifyReadingRefinements } from './reading-refinements.mjs'
 import { verifyThemeToggle } from './theme-toggle.mjs'
 import { verifyFrontendQuality } from './frontend-quality.mjs'
+import { verifyCalendarExport } from './calendar-export.mjs'
 
 const { chromium } = createRequire(import.meta.url)('playwright')
 
@@ -856,6 +857,14 @@ suite: try {
     await openHomeAfterServiceWorkerActivation(page)
     await verifyThemeToggle({ page, baseUrl, requestJson })
     console.log('E2E passed: logo theme toggle, keyboard controls, saved presets/custom pairs, and responsive layouts')
+    break suite
+  }
+
+  if (process.env.E2E_FOCUS === 'calendar-export') {
+    await verifyCalendarExport({ page, baseUrl, requestJson, bookId: directBook.book.id })
+    console.log(
+      'E2E passed: Cairo calendar, linked day history, Obsidian download, mobile/dark layouts, and error recovery',
+    )
     break suite
   }
 
@@ -2107,6 +2116,7 @@ suite: try {
   await page.locator('.folio-paths').waitFor({ state: 'visible' })
   await verifyThreadDesk({ page, baseUrl, requestJson })
   await verifyFrontendQuality({ page, baseUrl, requestJson })
+  await verifyCalendarExport({ page, baseUrl, requestJson, bookId: directBook.book.id })
   await verifyFeedTriage({ page, baseUrl, requestJson, wrangler, persistDir })
   await page.goto(`${baseUrl}/#/learn?mode=paths`, { waitUntil: 'networkidle' })
   await page.locator('.folio-paths').waitFor({ state: 'visible' })

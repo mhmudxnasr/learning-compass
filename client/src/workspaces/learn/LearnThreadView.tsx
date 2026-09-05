@@ -25,6 +25,7 @@ import { PathResponse, PathStage } from './types'
 import { ThreadAuthoring } from './ThreadAuthoring'
 import { ThreadStudyOverview } from './ThreadStudyOverview'
 import { LessonNavigator } from './LessonNavigator'
+import { ThreadExport } from '../../features/export/ThreadExport'
 
 export function LearnThreadView({
   threadId,
@@ -259,6 +260,7 @@ function ThreadCommandCenter({
           </div>
         </div>
 
+        <ThreadExport threadId={thread.id} stages={path.stages} />
         <div class="vertical-thread-spine-grid">
           <div class="vertical-thread-identity">
             <div class="vertical-thread-status-line">
